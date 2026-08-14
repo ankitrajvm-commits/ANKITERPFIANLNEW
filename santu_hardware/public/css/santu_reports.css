@@ -1,0 +1,296 @@
+/*
+ * Reports workspace — Vyapar-inspired split layout
+ */
+
+.santu-reports-page-main {
+	padding: 0 !important;
+	height: calc(100vh - 56px);
+	overflow: hidden;
+}
+
+.santu-reports {
+	height: 100%;
+	background: #fff;
+}
+
+.santu-reports-layout {
+	display: flex;
+	height: 100%;
+	min-height: 0;
+}
+
+/* ---------- Left nav ---------- */
+.santu-reports-nav-panel {
+	width: 260px;
+	flex-shrink: 0;
+	border-right: 1px solid #e5e7eb;
+	background: #fafafa;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+
+.santu-reports-nav-scroll {
+	flex: 1;
+	overflow-y: auto;
+	overflow-x: hidden;
+	padding: 8px 0 24px;
+	-webkit-overflow-scrolling: touch;
+}
+
+.santu-reports-cat-header {
+	padding: 8px 14px 4px;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.03em;
+	color: #374151;
+	background: linear-gradient(90deg, #e8f8f5 0%, #f0faf8 100%);
+	border-top: 1px solid #e0f2ef;
+	border-bottom: 1px solid #e0f2ef;
+	margin-top: 4px;
+}
+
+.santu-reports-nav-item {
+	display: block;
+	width: 100%;
+	padding: 7px 14px 7px 18px;
+	border: none;
+	background: transparent;
+	text-align: left;
+	font-size: 13px;
+	color: #374151;
+	cursor: pointer;
+	line-height: 1.35;
+}
+.santu-reports-nav-item:hover {
+	background: #f3f4f6;
+}
+.santu-reports-nav-item.is-active {
+	background: #e8eaed;
+	font-weight: 600;
+	color: #111827;
+	border-left: 3px solid var(--santu-brand, #e0393e);
+	padding-left: 15px;
+}
+
+/* ---------- Workspace ---------- */
+.santu-reports-workspace {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+.santu-reports-ws-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 12px 20px;
+	border-bottom: 1px solid #f0f1f3;
+	flex-shrink: 0;
+}
+
+.santu-reports-ws-title {
+	font-size: 16px;
+	font-weight: 700;
+	color: #111827;
+	margin: 0;
+}
+
+.santu-reports-ws-toolbar {
+	display: flex;
+	gap: 4px;
+}
+
+.santu-reports-tb-btn {
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	border: 1px solid #e5e7eb;
+	border-radius: 6px;
+	background: #fff;
+	font-size: 15px;
+	cursor: pointer;
+}
+.santu-reports-tb-btn:hover {
+	background: #f3f4f6;
+}
+
+/* ---------- Filters ---------- */
+.santu-reports-filters {
+	padding: 10px 20px;
+	border-bottom: 1px solid #f0f1f3;
+	flex-shrink: 0;
+}
+
+.santu-reports-filter-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	gap: 10px 12px;
+}
+
+.santu-reports-filter-group {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+.santu-reports-filter-group label {
+	font-size: 10px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: #9ca3af;
+}
+
+.santu-reports-pill {
+	font-size: 13px;
+	padding: 5px 10px;
+	height: 32px;
+	border: 1px solid #e5e7eb;
+	border-radius: 6px;
+	background: #f9fafb;
+	min-width: 120px;
+}
+
+.santu-reports-run-btn {
+	margin-left: auto;
+	font-weight: 600 !important;
+	background: var(--santu-brand, #e0393e) !important;
+	border-color: var(--santu-brand, #e0393e) !important;
+}
+
+/* ---------- Table area ---------- */
+.santu-reports-table-area {
+	flex: 1;
+	overflow: auto;
+	padding: 12px 20px 20px;
+	min-height: 0;
+}
+
+.santu-reports-table-toolbar {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-bottom: 10px;
+}
+.santu-reports-table-search {
+	max-width: 280px;
+	font-size: 13px;
+	height: 32px;
+}
+.santu-reports-row-count {
+	font-size: 12px;
+	color: #9ca3af;
+	margin-left: auto;
+}
+
+.santu-reports-table-wrap {
+	overflow-x: auto;
+	border: 1px solid #e8eaed;
+	border-radius: 8px;
+}
+
+.santu-reports-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 12px;
+}
+
+.santu-reports-table thead th {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	background: #fafafa;
+	padding: 8px 10px;
+	font-size: 11px;
+	font-weight: 600;
+	color: #6b7280;
+	border-bottom: 1px solid #e5e7eb;
+	text-align: left;
+	cursor: pointer;
+	white-space: nowrap;
+}
+.santu-reports-table thead th.num { text-align: right; }
+.santu-reports-sort { opacity: 0.4; font-size: 10px; }
+
+.santu-reports-table tbody td {
+	padding: 6px 10px;
+	border-bottom: 1px solid #f3f4f6;
+	color: #374151;
+}
+.santu-reports-table tbody td.num {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+
+.santu-reports-summary-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+	margin-bottom: 10px;
+}
+.santu-reports-summary-chip {
+	font-size: 12px;
+	padding: 6px 12px;
+	background: #f3f4f6;
+	border-radius: 6px;
+}
+
+/* ---------- States ---------- */
+.santu-reports-loading,
+.santu-reports-empty,
+.santu-reports-welcome,
+.santu-reports-error {
+	padding: 40px 20px;
+	text-align: center;
+	font-size: 14px;
+	color: #6b7280;
+}
+.santu-reports-error { color: #b91c1c; }
+
+.santu-reports-config-box {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	padding: 24px;
+	margin: 20px;
+	background: #fffbeb;
+	border: 1px solid #fde68a;
+	border-radius: 8px;
+}
+.santu-reports-config-icon { font-size: 24px; }
+.santu-reports-config-text {
+	font-size: 14px;
+	color: #92400e;
+	line-height: 1.5;
+}
+
+@media print {
+	.santu-reports-nav-panel,
+	.santu-reports-filters,
+	.santu-reports-ws-toolbar,
+	.santu-reports-table-toolbar,
+	#santu-app-sidebar,
+	.navbar { display: none !important; }
+	.santu-reports-table-area { overflow: visible; }
+	body.santu-fixed-sidebar .main-section {
+		margin-left: 0 !important;
+		width: 100% !important;
+	}
+}
+
+@media (max-width: 900px) {
+	.santu-reports-nav-panel { width: 220px; }
+}
+
+@media (max-width: 768px) {
+	.santu-reports-layout { flex-direction: column; }
+	.santu-reports-nav-panel {
+		width: 100%;
+		max-height: 200px;
+		border-right: none;
+		border-bottom: 1px solid #e5e7eb;
+	}
+}

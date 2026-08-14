@@ -1,0 +1,163 @@
+/*
+ * Brand color variables (UX_STRATEGY.md SS5 finding 7 — generic Frappe blue
+ * everywhere reads as "someone else's software"). Deep indigo, deliberately
+ * outside UI_GUIDELINES.md SS4.3's existing semantic palette (green=paid,
+ * red=dues/low-stock, amber=warning, blue=neutral action) so the brand
+ * color never gets misread as one of those meanings. One variable to
+ * change if a different color is ever wanted.
+ */
+:root {
+	--santu-brand: #3730a3;
+	--santu-brand-dark: #2c2483;
+}
+
+.santu-kiosk-mode .btn-primary,
+.santu-kiosk-mode .indicator-pill.blue {
+	background-color: var(--santu-brand) !important;
+	border-color: var(--santu-brand) !important;
+}
+
+.santu-kiosk-mode .indicator-pill.blue {
+	color: #ffffff !important;
+}
+
+.santu-kiosk-mode .indicator-pill.blue span {
+	color: #ffffff !important;
+}
+
+.santu-kiosk-mode .btn-primary:hover {
+	background-color: var(--santu-brand-dark) !important;
+}
+
+/*
+ * Kiosk mode: Shop Mode + Billing hide Frappe Desk chrome (SS5 findings
+ * 1-2) so they read as dedicated shop software, not a page inside an ERP.
+ * Scoped strictly to body.santu-kiosk-mode — Admin Mode and the rest of
+ * Desk are completely untouched.
+ */
+body.santu-kiosk-mode .navbar {
+	display: none !important;
+}
+
+/*
+ * Status bar (UX_STRATEGY.md SS5 finding 6 / SS7) — thin, always-visible
+ * strip so "who's billing / register state / Privacy Mode" never has to be
+ * held in anyone's head.
+ */
+.santu-status-bar {
+	display: flex;
+	gap: 24px;
+	align-items: center;
+	padding: 10px 20px;
+	background: var(--fg-color, #fff);
+	border-bottom: 1px solid var(--border-color, #d1d8dd);
+	font-size: 15px;
+	font-weight: 600;
+	color: var(--text-color, #1f272e);
+}
+
+.santu-status-item {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.santu-status-muted {
+	color: var(--text-muted, #8d99a6);
+	font-weight: 400;
+}
+
+.santu-status-back,
+.santu-status-home,
+.santu-status-privacy {
+	cursor: pointer;
+	color: var(--santu-brand, #4f46e5);
+}
+
+.santu-status-back:hover,
+.santu-status-home:hover,
+.santu-status-privacy:hover {
+	text-decoration: underline;
+}
+
+.santu-status-privacy.santu-privacy-active {
+	color: var(--santu-danger, #dc2626);
+	font-weight: 700;
+}
+
+/* Item Details panel's own field rows already have this margin via core
+   CSS classes (control-label/control-value) — matching it here so the
+   injected Cost Price row sits flush with the rest, not just visually
+   similar. */
+.santu-cost-price-control {
+	margin-bottom: var(--margin-md, 10px);
+}
+
+.santu-cost-price-value {
+	color: var(--santu-danger, #dc2626);
+	font-weight: 600;
+}
+
+/* .page-head is position:sticky with top:48px to sit just below the
+   (now hidden) navbar; re-point that offset at the status bar's own
+   height instead, so nothing overlaps and no gap is left behind. */
+body.santu-kiosk-mode .page-head {
+	top: 43px !important;
+}
+
+/*
+ * Shift-start tile grid (UX_STRATEGY.md SS4.2) — same large-touch-target
+ * language as the Shop Mode grid, deliberately reused rather than inventing
+ * a second visual style for what is conceptually the same kind of screen.
+ */
+.santu-shift-start-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+	gap: 20px;
+	padding: 40px;
+	max-width: 900px;
+	margin: 0 auto;
+}
+
+.santu-shift-tile {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 12px;
+	padding: 32px 16px;
+	min-height: 140px;
+	border-radius: var(--border-radius-lg, 12px);
+	border: 1px solid var(--border-color, #d1d8dd);
+	background: var(--card-bg, var(--fg-color, #fff));
+	cursor: pointer;
+	user-select: none;
+	transition: transform 0.08s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.santu-shift-tile:hover,
+.santu-shift-tile:focus-visible {
+	border-color: var(--santu-brand);
+	box-shadow: var(--shadow-md, 0 4px 16px rgba(0, 0, 0, 0.08));
+	transform: translateY(-2px);
+	outline: none;
+}
+
+.santu-shift-initial {
+	width: 56px;
+	height: 56px;
+	border-radius: 50%;
+	background: var(--santu-brand);
+	color: #fff;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 24px;
+	font-weight: 700;
+}
+
+.santu-shift-name {
+	font-size: 18px;
+	font-weight: 600;
+	text-align: center;
+}

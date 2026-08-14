@@ -1,0 +1,73 @@
+/*
+ * Customer Dues by Village (2026-07-30) — new custom Page.
+ */
+.santu-dues-filters {
+	display: flex;
+	gap: var(--santu-space-3, 12px);
+	margin-bottom: var(--santu-space-4, 16px);
+}
+.santu-dues-search { flex: 1 1 auto; }
+.santu-dues-village { flex: 0 0 200px; }
+
+.santu-dues-summary-card {
+	background: var(--santu-brand-soft, #eef2ff);
+	border-radius: var(--santu-radius-lg, 12px);
+	padding: var(--santu-space-4, 16px);
+	margin-bottom: var(--santu-space-4, 16px);
+}
+.santu-dues-summary-label {
+	font-size: 12px;
+	color: var(--santu-text-muted, #6b7280);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	font-weight: 600;
+}
+.santu-dues-summary-amount {
+	font: 700 26px/1.3 var(--font-stack, inherit);
+	color: var(--santu-brand, #3730a3);
+}
+
+.santu-dues-list {
+	border: 1px solid var(--santu-border, #e5e7eb);
+	border-radius: var(--santu-radius-lg, 12px);
+	overflow: hidden;
+}
+.santu-dues-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 14px 16px;
+	border-bottom: 1px solid var(--santu-border, #e5e7eb);
+	cursor: pointer;
+}
+.santu-dues-row:last-child { border-bottom: none; }
+.santu-dues-row:hover { background: var(--santu-gray-50, #f9fafb); }
+.santu-dues-row-name { font-weight: 600; font-size: 14px; }
+.santu-dues-row-meta { font-size: 12px; color: var(--santu-text-muted, #6b7280); margin-top: 2px; }
+.santu-dues-row-amount {
+	font-size: 16px;
+	font-weight: 700;
+	color: var(--santu-danger, #b91c1c);
+	white-space: nowrap;
+}
+
+.santu-dues-bills-table { width: 100%; border-collapse: collapse; }
+.santu-dues-bills-table th {
+	text-align: left;
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--santu-text-muted, #6b7280);
+	border-bottom: 1px solid var(--santu-border, #e5e7eb);
+	padding: 6px 8px;
+}
+.santu-dues-bills-table th.num { text-align: right; }
+.santu-dues-bill-row td { padding: 8px; border-bottom: 1px solid var(--santu-border, #e5e7eb); font-size: 13px; }
+.santu-dues-bill-row td.num { text-align: right; }
+.santu-dues-bill-row { cursor: pointer; }
+.santu-dues-bill-row:hover { background: var(--santu-gray-50, #f9fafb); }
+
+@media (max-width: 700px) {
+	.santu-dues-filters { flex-direction: column; }
+	.santu-dues-village { flex: 1 1 auto; }
+}

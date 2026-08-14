@@ -1,0 +1,39 @@
+/*
+ * Buying workspace UI redesign (2026-07-30, UI/UX-only session). Scoped
+ * strictly to body[data-route="Workspaces/Buying"] — no other screen
+ * touched.
+ */
+
+/* Color assigned by class, not :nth-child/:nth-of-type — both count DOM
+   siblings by tag/position among ALL siblings, not just matching
+   elements, which already caused a real bug on the Home dashboard
+   (logged in IMPROVEMENT_LOG.md 2026-07-30). Classes applied by
+   kiosk_mode.js::santu_color_buying_cards() instead. */
+body[data-route="Workspaces/Buying"] .links-widget-box {
+	border-top-width: 3px !important;
+	border-top-style: solid !important;
+	padding: var(--santu-space-4, 16px);
+}
+body[data-route="Workspaces/Buying"] .links-widget-box.santu-accent-0 { border-top-color: #2563eb !important; }
+body[data-route="Workspaces/Buying"] .links-widget-box.santu-accent-1 { border-top-color: #16a34a !important; }
+body[data-route="Workspaces/Buying"] .links-widget-box.santu-accent-2 { border-top-color: #7c3aed !important; }
+
+body[data-route="Workspaces/Buying"] .shortcut-widget-box {
+	min-height: 56px;
+	border-left-width: 4px !important;
+	border-left-style: solid !important;
+	border-left-color: var(--santu-gray-200, #e5e7eb) !important;
+}
+
+/* Per-shortcut accent color, same aria-label technique used on
+   Home/Selling — this workspace's shortcuts had the generic min-height
+   bump but never got individual colors, unlike every other workspace. */
+body[data-route="Workspaces/Buying"] .shortcut-widget-box[aria-label="Item"] { border-left-color: #2563eb !important; }
+body[data-route="Workspaces/Buying"] .shortcut-widget-box[aria-label="Purchase Analytics"] { border-left-color: #7c3aed !important; }
+body[data-route="Workspaces/Buying"] .shortcut-widget-box[aria-label="Purchase Invoice"] { border-left-color: #d97706 !important; }
+body[data-route="Workspaces/Buying"] .shortcut-widget-box[aria-label="Supplier"] { border-left-color: #16a34a !important; }
+body[data-route="Workspaces/Buying"] .shortcut-widget-box[aria-label="Upload Bill"] { border-left-color: #0d9488 !important; }
+
+body[data-route="Workspaces/Buying"] .widget-title {
+	font-weight: 700;
+}

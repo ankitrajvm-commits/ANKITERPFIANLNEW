@@ -1,0 +1,16 @@
+{
+ "content": null,
+ "doctype": "Page",
+ "icon": "octicon octicon-sync",
+ "idx": 0,
+ "module": "Santu Hardware",
+ "name": "santu-sync",
+ "page_name": "santu-sync",
+ "restrict_to_domain": null,
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Sync & Share"
+}

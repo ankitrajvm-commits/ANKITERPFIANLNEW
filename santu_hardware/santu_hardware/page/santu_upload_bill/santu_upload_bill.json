@@ -1,0 +1,16 @@
+{
+ "content": null,
+ "doctype": "Page",
+ "icon": "octicon octicon-file-pdf",
+ "idx": 0,
+ "module": "Santu Hardware",
+ "name": "santu-upload-bill",
+ "page_name": "santu-upload-bill",
+ "restrict_to_domain": null,
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Upload Supplier Bill"
+}

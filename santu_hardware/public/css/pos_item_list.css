@@ -1,0 +1,83 @@
+/*
+ * POS item picker: list rows instead of a tile grid (2026-07-30 direct
+ * request — tiles "not looking easy" to scan). Same DOM/component
+ * (erpnext's ItemSelector), restyled only — search, stock badges, and
+ * click-to-add all keep working exactly as before.
+ */
+/* A single-column list of 10+ rows is taller than the original grid's
+ * content ever was, and flex children default to `min-height: auto`,
+ * which silently defeats a parent's `max-height`/`overflow` clipping —
+ * without the explicit `min-height: 0` here the list pushes the whole
+ * page down and scrolls the page instead of scrolling within its own
+ * panel (caught live: had to scroll the entire POS screen to reach the
+ * payment panel after switching to list view). */
+body[data-route="point-of-sale"] .items-selector {
+	overflow-y: auto !important;
+	min-height: 0 !important;
+}
+body[data-route="point-of-sale"] .items-container {
+	display: flex !important;
+	flex-direction: column !important;
+	flex-wrap: nowrap !important;
+	gap: 0 !important;
+	grid-template-columns: none !important;
+	min-height: 0 !important;
+}
+
+body[data-route="point-of-sale"] .item-wrapper {
+	display: flex !important;
+	align-items: center !important;
+	width: 100% !important;
+	max-width: 100% !important;
+	margin: 0 !important;
+	padding: 10px 12px !important;
+	border: none !important;
+	border-bottom: 1px solid var(--santu-border, #e5e7eb) !important;
+	border-radius: 0 !important;
+	box-shadow: none !important;
+}
+body[data-route="point-of-sale"] .item-wrapper:hover {
+	background: var(--santu-gray-50, #f9fafb) !important;
+}
+
+body[data-route="point-of-sale"] .item-display.abbr {
+	width: 40px !important;
+	height: 40px !important;
+	min-width: 40px !important;
+	min-height: 40px !important;
+	max-height: 40px !important;
+	font-size: 14px !important;
+	border-radius: 8px !important;
+	margin-right: 12px !important;
+	flex-shrink: 0;
+}
+
+body[data-route="point-of-sale"] .item-detail {
+	flex: 1 1 auto !important;
+	display: flex !important;
+	align-items: center !important;
+	justify-content: space-between !important;
+	padding: 0 !important;
+	min-width: 0;
+}
+
+body[data-route="point-of-sale"] .item-name {
+	white-space: nowrap !important;
+	overflow: hidden !important;
+	text-overflow: ellipsis !important;
+	font-size: 14px !important;
+	flex: 1 1 auto;
+	margin-right: 12px;
+}
+
+body[data-route="point-of-sale"] .item-rate {
+	flex-shrink: 0;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+body[data-route="point-of-sale"] .item-qty-pill {
+	position: static !important;
+	margin-left: 12px !important;
+	flex-shrink: 0;
+}

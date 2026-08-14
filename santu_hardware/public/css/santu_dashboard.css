@@ -1,0 +1,495 @@
+body[data-route="santu-dashboard"] .page-head,
+.santu-dash-page .page-head {
+	display: none !important;
+}
+
+body[data-route="santu-dashboard"] .page-content {
+	margin-top: 0;
+}
+
+.santu-dash {
+	max-width: none;
+	margin: 0;
+	padding: 16px 16px 40px;
+	background: #f4f6f8;
+	min-height: calc(100vh - 60px);
+}
+
+.santu-dash-loading,
+.santu-dash-error {
+	text-align: center;
+	padding: 64px 16px;
+	color: #6b7280;
+	font-weight: 600;
+}
+
+.santu-dash-error {
+	color: #b91c1c;
+}
+
+.santu-dash-layout {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 300px;
+	gap: 16px;
+	align-items: start;
+}
+
+.santu-dash-main {
+	min-width: 0;
+}
+
+.santu-dash-widgets {
+	position: sticky;
+	top: 12px;
+}
+
+.santu-dash-actions {
+	margin-bottom: 16px;
+}
+
+.santu-dash-tile {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	min-height: 92px;
+	border-radius: 12px;
+	border: 1px solid #e5e7eb;
+	background: #fff;
+	cursor: pointer;
+	user-select: none;
+	transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.santu-dash-tile:hover,
+.santu-dash-tile:focus-visible {
+	border-color: #93c5fd;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+	outline: none;
+}
+
+.santu-dash-tile-icon {
+	font-size: 28px;
+	line-height: 1;
+}
+
+.santu-dash-tile-label {
+	font: 600 15px/1.3 inherit;
+	color: #111827;
+}
+
+.santu-dash-tile-featured {
+	flex-direction: row;
+	gap: 14px;
+	min-height: 88px;
+	margin-bottom: 12px;
+	background: #e0393e;
+	border-color: #e0393e;
+}
+
+.santu-dash-tile-featured .santu-dash-tile-label {
+	color: #fff;
+	font: 700 26px/1.2 inherit;
+	letter-spacing: 0.02em;
+}
+
+.santu-dash-tile-featured .santu-dash-tile-icon {
+	font-size: 34px;
+}
+
+.santu-dash-tile-featured:hover {
+	background: #c92a2f;
+	border-color: #c92a2f;
+	box-shadow: 0 6px 18px rgba(224, 57, 62, 0.28);
+}
+
+.santu-dash-actions-row {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 12px;
+}
+
+.santu-dash-section {
+	margin-bottom: 16px;
+}
+
+.santu-dash-section-title {
+	font: 700 18px/1.3 inherit;
+	color: #111827;
+	margin-bottom: 12px;
+}
+
+.santu-dash-section-kicker {
+	font: 700 13px/1.3 inherit;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: #6b7280;
+	margin-bottom: 0;
+}
+
+.santu-dash-section-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 10px;
+}
+
+.santu-dash-view-all {
+	border: none;
+	background: none;
+	color: #2563eb;
+	font-weight: 600;
+	font-size: 13px;
+	cursor: pointer;
+}
+
+.santu-dash-vy-row {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 12px;
+	margin-bottom: 16px;
+}
+
+.santu-dash-vy-card {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	padding: 18px 20px;
+	border-radius: 12px;
+	border: 1px solid #e5e7eb;
+	background: #fff;
+	cursor: pointer;
+	transition: box-shadow 0.15s ease;
+}
+
+.santu-dash-vy-card:hover {
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.santu-dash-vy-card-label {
+	font-size: 13px;
+	color: #6b7280;
+	margin-bottom: 6px;
+}
+
+.santu-dash-vy-card-amount {
+	font: 700 28px/1.15 inherit;
+	color: #111827;
+	margin-bottom: 6px;
+}
+
+.santu-dash-vy-card-sub {
+	font-size: 13px;
+	color: #6b7280;
+}
+
+.santu-dash-vy-card-icon {
+	width: 36px;
+	height: 36px;
+	min-width: 36px;
+	border-radius: 999px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 16px;
+	font-weight: 700;
+}
+
+.santu-dash-vy-card-icon.santu-tone-good {
+	background: #dcfce7;
+	color: #16a34a;
+}
+
+.santu-dash-vy-card-icon.santu-tone-warning {
+	background: #fee2e2;
+	color: #dc2626;
+}
+
+.santu-dash-vy-chart-card {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 12px;
+	padding: 18px 20px 8px;
+	margin-bottom: 16px;
+}
+
+.santu-dash-vy-chart-card .santu-dash-chart {
+	border: none;
+	padding: 0;
+	margin-top: 8px;
+	min-height: 220px;
+	background: transparent;
+}
+
+.santu-dash-vy-chart-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+}
+
+.santu-dash-vy-chart-card .santu-dash-section-title {
+	font: 400 13px/1.3 inherit;
+	color: #6b7280;
+	margin-bottom: 4px;
+}
+
+.santu-dash-vy-chart-amount {
+	font: 700 28px/1.15 inherit;
+	color: #111827;
+}
+
+.santu-dash-vy-chart-dropdown {
+	position: relative;
+}
+
+.santu-dash-vy-chart-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	border: none;
+	cursor: pointer;
+	padding: 6px 12px;
+	border-radius: 999px;
+	background: #eaf1fe;
+	color: #2f6fed;
+	font: 600 13px/1.4 inherit;
+	white-space: nowrap;
+}
+
+.santu-dash-vy-chart-menu {
+	position: absolute;
+	top: calc(100% + 6px);
+	right: 0;
+	z-index: 20;
+	min-width: 160px;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 12px;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+	padding: 6px 0;
+}
+
+.santu-dash-vy-chart-menu-item {
+	padding: 8px 14px;
+	font-size: 14px;
+	color: #111827;
+	cursor: pointer;
+}
+
+.santu-dash-vy-chart-menu-item:hover {
+	background: #f9fafb;
+}
+
+.santu-dash-reports-row {
+	display: grid;
+	grid-template-columns: repeat(4, 1fr);
+	gap: 12px;
+}
+
+.santu-dash-report-card {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 14px 16px;
+	border-radius: 12px;
+	border: 1px solid #e5e7eb;
+	background: #fff;
+	font-weight: 600;
+	font-size: 14px;
+	cursor: pointer;
+}
+
+.santu-dash-report-card:hover {
+	border-color: #93c5fd;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.santu-dash-report-arrow {
+	color: #3b82f6;
+	font-size: 20px;
+	line-height: 1;
+}
+
+.santu-dash-chart-empty {
+	text-align: center;
+	padding: 48px 16px;
+	color: #6b7280;
+	font-size: 14px;
+}
+
+.santu-dash-widget-rail {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 12px;
+	min-height: calc(100vh - 92px);
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+.santu-dash-widget-list {
+	flex: 1;
+	padding: 16px;
+	overflow: auto;
+}
+
+.santu-dash-widget-empty {
+	height: 100%;
+	min-height: 320px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+	color: #111827;
+	font-weight: 700;
+	padding: 24px 12px;
+}
+
+.santu-dash-widget-empty-art {
+	margin-bottom: 12px;
+}
+
+.santu-dash-widget-empty p {
+	margin: 0;
+}
+
+.santu-dash-widget-empty-sub {
+	font-weight: 400;
+	font-size: 13px;
+	color: #6b7280;
+	max-width: 220px;
+	margin-top: 8px !important;
+}
+
+.santu-dash-w-card {
+	position: relative;
+	border-bottom: 1px solid #eef0f3;
+	padding: 14px 28px 14px 0;
+	cursor: pointer;
+}
+
+.santu-dash-w-title {
+	font-size: 12px;
+	color: #6b7280;
+	margin-bottom: 4px;
+}
+
+.santu-dash-w-value {
+	font-size: 18px;
+	font-weight: 700;
+	color: #111827;
+}
+
+.santu-dash-w-remove {
+	position: absolute;
+	right: 0;
+	top: 10px;
+	border: none;
+	background: none;
+	color: #9ca3af;
+	font-size: 18px;
+	cursor: pointer;
+	line-height: 1;
+}
+
+.santu-dash-add-widget,
+.santu-dash-picker-footer {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	width: 100%;
+	border: none;
+	background: #dbeafe;
+	color: #1e3a8a;
+	font-weight: 600;
+	padding: 14px 16px;
+	cursor: pointer;
+}
+
+.santu-dash-add-plus {
+	font-size: 22px;
+	font-weight: 400;
+	color: #374151;
+}
+
+.santu-dash-picker-inrail {
+	min-height: calc(100vh - 92px);
+}
+
+.santu-dash-picker-list {
+	overflow-y: auto;
+	flex: 1;
+}
+
+.santu-dash-picker-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 14px 16px;
+	border-bottom: 1px solid #eef0f3;
+	background: #fff;
+}
+
+.santu-dash-picker-title {
+	font-size: 12px;
+	color: #6b7280;
+}
+
+.santu-dash-picker-value {
+	font-size: 16px;
+	font-weight: 700;
+	color: #111827;
+}
+
+.santu-dash-picker-add {
+	width: 36px;
+	height: 36px;
+	border: none;
+	background: none;
+	color: #2563eb;
+	font-size: 28px;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.santu-dash-picker-add.is-added {
+	width: auto;
+	color: #15803d;
+	font-size: 13px;
+	font-weight: 700;
+}
+
+.santu-dash-sale-link {
+	cursor: pointer;
+}
+
+.santu-dash-picker-close {
+	border: none;
+	background: none;
+	font-size: 18px;
+	cursor: pointer;
+	color: #374151;
+}
+
+@media (max-width: 980px) {
+	.santu-dash-layout {
+		grid-template-columns: 1fr;
+	}
+	.santu-dash-widgets {
+		position: static;
+	}
+	.santu-dash-widget-rail,
+	.santu-dash-picker-inrail {
+		min-height: 380px;
+	}
+}
+
+@media (max-width: 800px) {
+	.santu-dash-actions-row,
+	.santu-dash-vy-row,
+	.santu-dash-reports-row {
+		grid-template-columns: 1fr;
+	}
+}

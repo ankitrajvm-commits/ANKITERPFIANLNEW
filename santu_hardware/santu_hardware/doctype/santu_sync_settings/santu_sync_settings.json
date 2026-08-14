@@ -1,0 +1,86 @@
+{
+ "actions": [],
+ "creation": "2026-08-14 12:00:00.000000",
+ "doctype": "DocType",
+ "document_type": "Setup",
+ "engine": "InnoDB",
+ "field_order": [
+  "sync_enabled",
+  "staff_sharing_enabled",
+  "cloud_sync_url",
+  "column_break_1",
+  "last_sync_on",
+  "next_sync_on",
+  "last_sync_status",
+  "last_sync_error",
+  "pending_changes"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "sync_enabled",
+   "fieldtype": "Check",
+   "label": "Sync Enabled"
+  },
+  {
+   "default": "0",
+   "description": "Allow staff user access management for this business.",
+   "fieldname": "staff_sharing_enabled",
+   "fieldtype": "Check",
+   "label": "Staff Sharing Enabled"
+  },
+  {
+   "description": "Optional remote sync endpoint. Leave blank for local-only mode.",
+   "fieldname": "cloud_sync_url",
+   "fieldtype": "Data",
+   "label": "Cloud Sync URL"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_sync_on",
+   "fieldtype": "Datetime",
+   "label": "Last Sync",
+   "read_only": 1
+  },
+  {
+   "fieldname": "next_sync_on",
+   "fieldtype": "Datetime",
+   "label": "Next Sync",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_sync_status",
+   "fieldtype": "Select",
+   "label": "Sync Status",
+   "options": "\nSynced\nFailed\nNot Configured\nDisabled",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_sync_error",
+   "fieldtype": "Small Text",
+   "label": "Last Error",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "pending_changes",
+   "fieldtype": "Int",
+   "label": "Pending Changes",
+   "read_only": 1
+  }
+ ],
+ "issingle": 1,
+ "module": "Santu Hardware",
+ "name": "Santu Sync Settings",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  }
+ ]
+}

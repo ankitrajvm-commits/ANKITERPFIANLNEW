@@ -1,0 +1,129 @@
+{
+ "actions": [],
+ "creation": "2026-08-14 12:30:00.000000",
+ "doctype": "DocType",
+ "document_type": "Setup",
+ "engine": "InnoDB",
+ "field_order": [
+  "recipient_section",
+  "send_to_party",
+  "send_update_message",
+  "send_copy_to_self",
+  "owner_whatsapp_number",
+  "column_break_recipient",
+  "auto_send_on_submit",
+  "attach_invoice_pdf",
+  "include_web_invoice_link",
+  "include_payment_link",
+  "include_party_balance",
+  "reminder_section",
+  "enable_payment_reminder",
+  "reminder_frequency_days",
+  "templates_section",
+  "templates"
+ ],
+ "fields": [
+  {
+   "fieldname": "recipient_section",
+   "fieldtype": "Section Break",
+   "label": "Message Recipient Settings"
+  },
+  {
+   "default": "1",
+   "fieldname": "send_to_party",
+   "fieldtype": "Check",
+   "label": "Send Message to Party"
+  },
+  {
+   "default": "1",
+   "fieldname": "send_update_message",
+   "fieldtype": "Check",
+   "label": "Send Transaction Update Message"
+  },
+  {
+   "default": "0",
+   "fieldname": "send_copy_to_self",
+   "fieldtype": "Check",
+   "label": "Send Message Copy to Self"
+  },
+  {
+   "fieldname": "owner_whatsapp_number",
+   "fieldtype": "Data",
+   "label": "Owner WhatsApp Number",
+   "description": "Used when Send Message Copy to Self is enabled"
+  },
+  {
+   "fieldname": "column_break_recipient",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "auto_send_on_submit",
+   "fieldtype": "Check",
+   "label": "Auto Send Invoice on Transaction Submit"
+  },
+  {
+   "default": "1",
+   "fieldname": "attach_invoice_pdf",
+   "fieldtype": "Check",
+   "label": "Attach Invoice PDF"
+  },
+  {
+   "default": "1",
+   "fieldname": "include_web_invoice_link",
+   "fieldtype": "Check",
+   "label": "Include Web Invoice Link"
+  },
+  {
+   "default": "0",
+   "fieldname": "include_payment_link",
+   "fieldtype": "Check",
+   "label": "Include Payment Link"
+  },
+  {
+   "default": "1",
+   "fieldname": "include_party_balance",
+   "fieldtype": "Check",
+   "label": "Include Current Party Balance"
+  },
+  {
+   "fieldname": "reminder_section",
+   "fieldtype": "Section Break",
+   "label": "Payment Reminders"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_payment_reminder",
+   "fieldtype": "Check",
+   "label": "Enable Payment Reminder"
+  },
+  {
+   "default": "7",
+   "fieldname": "reminder_frequency_days",
+   "fieldtype": "Int",
+   "label": "Reminder Frequency (Days)"
+  },
+  {
+   "fieldname": "templates_section",
+   "fieldtype": "Section Break",
+   "label": "Message Templates"
+  },
+  {
+   "fieldname": "templates",
+   "fieldtype": "Table",
+   "label": "Templates",
+   "options": "Santu Message Template"
+  }
+ ],
+ "issingle": 1,
+ "module": "Santu Hardware",
+ "name": "Santu Transaction Message Settings",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  }
+ ]
+}

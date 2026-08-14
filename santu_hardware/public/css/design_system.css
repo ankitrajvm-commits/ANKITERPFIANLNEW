@@ -1,0 +1,206 @@
+/*
+ * SANTU CUSTOMIZATION — Design System v1 (UX_STRATEGY.md §9, ROADMAP.md
+ * "Phase 2.5 — Foundation & Critical-Workflow Redesign").
+ *
+ * Single source of truth for every custom color/type/spacing/elevation
+ * value used across the app's own screens (Shop Mode, kiosk mode, future
+ * redesigned screens). Nothing here overrides Frappe's own variables
+ * globally — these are new `--santu-*` tokens that Frappe's default theme
+ * (light and dark) doesn't provide, used only inside `.santu-*` classes.
+ * This keeps every future screen visually consistent without repeating
+ * magic numbers, and gives one place to retune the whole look later.
+ *
+ * Dark mode: follows Frappe's own toggle (`html[data-theme="dark"]`, see
+ * `theme_switcher.js`) rather than inventing separate logic — matches
+ * UI_GUIDELINES.md §4.4 ("defaulting to macOS system setting").
+ */
+
+:root {
+	/* Neutrals — replaces ad-hoc var(--border-color, #d1d8dd) references */
+	--santu-gray-50: #f9fafb;
+	--santu-gray-100: #f3f4f6;
+	--santu-gray-200: #e5e7eb;
+	--santu-gray-500: #6b7280;
+	--santu-gray-900: #111827;
+
+	/* Brand (unchanged values, now grouped with the rest of the system) */
+	--santu-brand: #3730a3;
+	--santu-brand-dark: #2c2483;
+	--santu-brand-soft: #eef2ff;
+
+	/* Semantic — meanings fixed by UI_GUIDELINES.md §4.3, values made deliberate */
+	--santu-success: #15803d;
+	--santu-success-soft: #f0fdf4;
+	--santu-danger: #b91c1c;
+	--santu-danger-soft: #fef2f2;
+	--santu-warning: #b45309;
+	--santu-warning-soft: #fffbeb;
+
+	/* Typography scale — 16px body is the floor (UI_GUIDELINES §4.1) */
+	--santu-text-display: 700 32px/1.2 var(--font-stack, inherit);
+	--santu-text-h1: 700 24px/1.3 var(--font-stack, inherit);
+	--santu-text-h2: 600 18px/1.4 var(--font-stack, inherit);
+	--santu-text-body: 400 16px/1.5 var(--font-stack, inherit);
+	--santu-text-label: 600 13px/1.4 var(--font-stack, inherit);
+
+	/* Spacing scale */
+	--santu-space-1: 4px;
+	--santu-space-2: 8px;
+	--santu-space-3: 12px;
+	--santu-space-4: 16px;
+	--santu-space-6: 24px;
+	--santu-space-8: 32px;
+	--santu-space-12: 48px;
+	--santu-space-16: 64px;
+
+	/* Radius */
+	--santu-radius-sm: 8px;
+	--santu-radius-md: 12px;
+	--santu-radius-lg: 16px;
+	--santu-radius-full: 999px;
+
+	/* Elevation — soft shadow reads as "object on a surface", not a form */
+	--santu-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+	--santu-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+	--santu-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);
+
+	/* Surfaces (light) */
+	--santu-surface: #ffffff;
+	--santu-surface-sunken: var(--santu-gray-50);
+	--santu-border: var(--santu-gray-200);
+	--santu-text: var(--santu-gray-900);
+	--santu-text-muted: var(--santu-gray-500);
+}
+
+html[data-theme="dark"] {
+	--santu-gray-50: #15171a;
+	--santu-gray-100: #1c1f23;
+	--santu-gray-200: #2a2e33;
+	--santu-gray-500: #9aa4b2;
+	--santu-gray-900: #f3f4f6;
+
+	--santu-brand-soft: #211f4a;
+	--santu-success-soft: #10241a;
+	--santu-danger-soft: #2a1414;
+	--santu-warning-soft: #2a2110;
+
+	--santu-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+	--santu-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+	--santu-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+
+	--santu-surface: #1c1f23;
+	--santu-surface-sunken: var(--santu-gray-50);
+	--santu-border: var(--santu-gray-200);
+	--santu-text: var(--santu-gray-900);
+	--santu-text-muted: var(--santu-gray-500);
+}
+
+/*
+ * Button style base — large, touch-friendly, text always alongside icon
+ * (UI_GUIDELINES §4.2). Applied via class, not a global button override,
+ * so Desk's own buttons outside our screens are untouched.
+ */
+.santu-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--santu-space-2);
+	min-height: 44px;
+	padding: var(--santu-space-3) var(--santu-space-6);
+	border-radius: var(--santu-radius-sm);
+	border: 1px solid var(--santu-border);
+	background: var(--santu-surface);
+	color: var(--santu-text);
+	font: var(--santu-text-body);
+	font-weight: 600;
+	cursor: pointer;
+	transition: transform 0.08s ease, box-shadow 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.santu-btn:hover {
+	box-shadow: var(--santu-shadow-sm);
+	border-color: var(--santu-brand);
+}
+
+.santu-btn:active {
+	transform: translateY(1px);
+}
+
+.santu-btn-primary {
+	background: var(--santu-brand);
+	border-color: var(--santu-brand);
+	color: #fff;
+}
+
+.santu-btn-primary:hover {
+	background: var(--santu-brand-dark);
+	border-color: var(--santu-brand-dark);
+}
+
+/* Card surface — the "soft elevation" replacing flat 1px borders */
+.santu-card {
+	background: var(--santu-surface);
+	border: 1px solid var(--santu-border);
+	border-radius: var(--santu-radius-lg);
+	box-shadow: var(--santu-shadow-sm);
+}
+
+/* Tabular figures for any column of money amounts, so digits align */
+.santu-figures {
+	font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Number-card widget titles on Desk workspaces (e.g. "Total Incoming
+ * Payment") were truncating to "TOTAL INCOMING PAYME..." on 4-per-row
+ * cards — unreadable at a glance. Renaming the underlying Number Card
+ * docs was tried and reverted (editing `Workspace.number_cards[].label`
+ * away from its original value silently breaks that widget's rendering —
+ * a Frappe quirk, see IMPROVEMENT_LOG.md). CSS-only fix instead: let the
+ * title wrap to two lines rather than ellipsis-truncate.
+ */
+.widget.number-widget-box .widget-title .ellipsis {
+	white-space: normal;
+	overflow: visible;
+	text-overflow: unset;
+	line-height: 1.3;
+}
+
+/*
+ * Smart POS confirmation content (pos_smart_confirm.js). <span> in the
+ * markup, not <div> — frappe.confirm() wraps this in a <p>, which
+ * auto-closes on a block element per the HTML5 spec (found by testing,
+ * see the comment in pos_smart_confirm.js). display:block/flex here gets
+ * the same layout without tripping that.
+ */
+.santu-confirm-summary {
+	display: block;
+	font: var(--santu-text-body, 400 16px/1.5 inherit);
+}
+
+.santu-confirm-amount {
+	display: block;
+	font: var(--santu-text-h1, 700 24px/1.3 inherit);
+	margin-bottom: var(--santu-space-3, 12px);
+}
+
+.santu-confirm-row {
+	display: flex;
+	justify-content: space-between;
+	padding: var(--santu-space-1, 4px) 0;
+	border-bottom: 1px solid var(--santu-border, #e5e7eb);
+}
+
+.santu-confirm-row span {
+	color: var(--santu-text-muted, #6b7280);
+}
+
+.santu-confirm-risk {
+	display: block;
+	margin-top: var(--santu-space-3, 12px);
+	padding: var(--santu-space-3, 12px);
+	background: var(--santu-warning-soft, #fffbeb);
+	color: var(--santu-warning, #b45309);
+	border-radius: var(--santu-radius-sm, 8px);
+	font: var(--santu-text-label, 600 13px/1.4 inherit);
+}

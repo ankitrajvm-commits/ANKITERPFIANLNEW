@@ -1,0 +1,69 @@
+/*
+ * Accounting workspace UI redesign (2026-07-30, UI/UX-only session).
+ * Scoped strictly to body[data-route="Workspaces/Accounting"] — no other
+ * screen touched. Labels for the 4 number cards are renamed by
+ * kiosk_mode.js::santu_relabel_accounting_workspace() (DOM text only, the
+ * underlying data is untouched — see that function's comment for why).
+ */
+
+/* Money in = green, money out = amber (UI_GUIDELINES.md §4.3) — color
+   communicates status at a glance instead of requiring the owner to read
+   and interpret four identical-looking gray boxes. */
+body[data-route="Workspaces/Accounting"] .number-widget-box {
+	border-left-width: 4px !important;
+	border-left-style: solid !important;
+	border-left-color: var(--santu-gray-200, #e5e7eb) !important;
+}
+body[data-route="Workspaces/Accounting"] .number-widget-box.santu-tone-good {
+	border-left-color: var(--santu-success, #15803d) !important;
+}
+body[data-route="Workspaces/Accounting"] .number-widget-box.santu-tone-warning {
+	border-left-color: var(--santu-warning, #b45309) !important;
+}
+
+/* More generous breathing room between the number cards and the P&L
+   chart above them — stock spacing reads dense/spreadsheet-like. */
+body[data-route="Workspaces/Accounting"] .widget-group:has(.number-widget-box) {
+	margin-top: var(--santu-space-4, 16px);
+}
+
+/* Shortcuts — larger touch targets, consistent with the rest of the
+   product (this row is currently the same cramped default Frappe size
+   as every other Desk workspace). */
+body[data-route="Workspaces/Accounting"] .shortcut-widget-box {
+	min-height: 56px;
+	border-left-width: 4px !important;
+	border-left-style: solid !important;
+	border-left-color: var(--santu-gray-200, #e5e7eb) !important;
+}
+
+/* Per-shortcut accent color (2026-08-06 follow-up), same aria-label
+   technique used on every other workspace — this row had the size bump
+   but never got individual colors. */
+body[data-route="Workspaces/Accounting"] .shortcut-widget-box[aria-label="🏘 Customer Dues by Village"] { border-left-color: #d97706 !important; }
+body[data-route="Workspaces/Accounting"] .shortcut-widget-box[aria-label="Chart of Accounts"] { border-left-color: #475569 !important; }
+body[data-route="Workspaces/Accounting"] .shortcut-widget-box[aria-label="Sales Invoice"] { border-left-color: #7c3aed !important; }
+body[data-route="Workspaces/Accounting"] .shortcut-widget-box[aria-label="Purchase Invoice"] { border-left-color: #ea580c !important; }
+body[data-route="Workspaces/Accounting"] .shortcut-widget-box[aria-label="Journal Entry"] { border-left-color: #4f46e5 !important; }
+body[data-route="Workspaces/Accounting"] .shortcut-widget-box[aria-label="Payment Entry"] { border-left-color: #db2777 !important; }
+body[data-route="Workspaces/Accounting"] .shortcut-widget-box[aria-label="Accounts Receivable"] { border-left-color: #16a34a !important; }
+body[data-route="Workspaces/Accounting"] .shortcut-widget-box[aria-label="General Ledger"] { border-left-color: #0891b2 !important; }
+body[data-route="Workspaces/Accounting"] .shortcut-widget-box[aria-label="Trial Balance"] { border-left-color: #0d9488 !important; }
+/* This tile's visible label is "Financial Reports" but its aria-label
+   attribute is still the stale "Dashboard" (pre-rename) — confirmed live
+   via DOM inspection, matching on the actual attribute value. */
+body[data-route="Workspaces/Accounting"] .shortcut-widget-box[aria-label="Dashboard"] { border-left-color: #2563eb !important; }
+body[data-route="Workspaces/Accounting"] .shortcut-widget-box[aria-label="Loyalty Points"] { border-left-color: #3730a3 !important; }
+
+/* Section headers ("Reports & Masters", card titles) — a bit more
+   presence so the page reads as organized sections, not a flat list. */
+body[data-route="Workspaces/Accounting"] .widget-title {
+	font-weight: 700;
+}
+
+/* The two kept sections (Accounting Masters, Payments) now have room to
+   breathe now that 7 sections were removed — let each card take a full
+   half-width column with generous padding instead of a cramped 1/3 grid. */
+body[data-route="Workspaces/Accounting"] .links-widget-box {
+	padding: var(--santu-space-4, 16px);
+}

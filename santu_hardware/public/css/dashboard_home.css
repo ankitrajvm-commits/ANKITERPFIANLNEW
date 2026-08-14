@@ -1,0 +1,99 @@
+/*
+ * Home workspace — colors + the greeting banner. Generic sizing/spacing/
+ * hover rules shared by every workspace now live in
+ * workspace_typography.css; this file only owns what's specific to
+ * Home: which shortcut/card gets which accent color (aria-label
+ * matched, since Home's shortcuts are different DocTypes than any other
+ * workspace's), and the greeting banner introduced 2026-08-05.
+ * Scoped strictly to body[data-route="Workspaces/Home"] — does not
+ * touch any other screen.
+ */
+
+body[data-route="Workspaces/Home"] .shortcut-widget-box .indicator-pill {
+	color: #fff !important;
+	font-weight: 700;
+	border-radius: var(--santu-radius-full, 999px);
+}
+
+body[data-route="Workspaces/Home"] .shortcut-widget-box[aria-label="Item"] .indicator-pill {
+	background-color: #2563eb !important; /* blue — catalog */
+}
+body[data-route="Workspaces/Home"] .shortcut-widget-box[aria-label="Customer"] .indicator-pill {
+	background-color: #16a34a !important; /* green — customers */
+}
+body[data-route="Workspaces/Home"] .shortcut-widget-box[aria-label="Supplier"] .indicator-pill {
+	background-color: #d97706 !important; /* amber — purchasing */
+}
+body[data-route="Workspaces/Home"] .shortcut-widget-box[aria-label="Sales Invoice"] .indicator-pill {
+	background-color: #7c3aed !important; /* purple — revenue */
+}
+body[data-route="Workspaces/Home"] .shortcut-widget-box[aria-label="Leaderboard"] .indicator-pill {
+	background-color: #0d9488 !important; /* teal */
+}
+
+body[data-route="Workspaces/Home"] .shortcut-widget-box {
+	border-left-width: 3px !important;
+	border-left-style: solid !important;
+}
+body[data-route="Workspaces/Home"] .shortcut-widget-box[aria-label="Item"] { border-left-color: #2563eb !important; }
+body[data-route="Workspaces/Home"] .shortcut-widget-box[aria-label="Customer"] { border-left-color: #16a34a !important; }
+body[data-route="Workspaces/Home"] .shortcut-widget-box[aria-label="Supplier"] { border-left-color: #d97706 !important; }
+body[data-route="Workspaces/Home"] .shortcut-widget-box[aria-label="Sales Invoice"] { border-left-color: #7c3aed !important; }
+body[data-route="Workspaces/Home"] .shortcut-widget-box[aria-label="Leaderboard"] { border-left-color: #0d9488 !important; }
+
+/* Section cards (Accounting / Stock) — a rotating modern accent instead
+   of every card looking identical. Color assigned by
+   santu_color_dashboard_cards() in kiosk_mode.js, not CSS :nth-of-type —
+   that counts DOM siblings by tag, not by class, so it didn't line up
+   with just the .links-widget-box cards (found by testing: the border
+   stayed default gray). */
+body[data-route="Workspaces/Home"] .links-widget-box {
+	border-top-width: 3px !important;
+	border-top-style: solid !important;
+}
+/* !important needed: desk_theme.css's .widget rule sets the `border-color`
+   shorthand (all four sides) with !important, which otherwise beats a
+   plain border-top-color rule regardless of load order — found by testing,
+   the classes were applying correctly but the color never showed. */
+body[data-route="Workspaces/Home"] .links-widget-box.santu-accent-0 { border-top-color: #2563eb !important; }
+body[data-route="Workspaces/Home"] .links-widget-box.santu-accent-1 { border-top-color: #16a34a !important; }
+body[data-route="Workspaces/Home"] .links-widget-box.santu-accent-2 { border-top-color: #d97706 !important; }
+body[data-route="Workspaces/Home"] .links-widget-box.santu-accent-3 { border-top-color: #7c3aed !important; }
+
+/* Greeting banner (santu_render_home_greeting() in kiosk_mode.js) — a
+   soft brand-tinted card instead of a plain text line, so the very first
+   thing staff see reads like a dashboard opening, not a nav menu. */
+body[data-route="Workspaces/Home"] .santu-home-greeting {
+	background: linear-gradient(135deg, var(--santu-brand, #3730a3) 0%, var(--santu-brand-dark, #2c2483) 100%);
+	border-radius: var(--santu-radius-md, 12px);
+	padding: 26px 30px;
+	margin-bottom: 18px;
+	color: #ffffff;
+	box-shadow: var(--santu-shadow-md, 0 4px 16px rgba(55, 48, 163, 0.25));
+}
+body[data-route="Workspaces/Home"] .santu-home-greeting-text {
+	font-size: 28px;
+	font-weight: 700;
+	letter-spacing: -0.01em;
+}
+body[data-route="Workspaces/Home"] .santu-home-greeting-date {
+	font-size: 16px;
+	font-weight: 500;
+	opacity: 0.85;
+	margin-top: 2px;
+}
+
+/* "New Sale" shortcut — same blue as everywhere else primary actions use
+   this color, but with a soft tinted background since it's the one thing
+   on this screen staff reach for dozens of times a day. */
+body[data-route="Workspaces/Home"] .shortcut-widget-box[aria-label="New Sale"] {
+	border-left-color: #2563eb !important;
+	background: var(--santu-brand-soft, #eef2ff);
+}
+body[data-route="Workspaces/Home"] .shortcut-widget-box[aria-label="New Sale"] .widget-title,
+body[data-route="Workspaces/Home"] .shortcut-widget-box[aria-label="New Sale"] .ellipsis {
+	font-weight: 700 !important;
+}
+body[data-route="Workspaces/Home"] .shortcut-widget-box[aria-label="Returns"] {
+	border-left-color: #b91c1c !important;
+}

@@ -1,0 +1,100 @@
+/*
+ * 2026-08-06 direct request: "do the same ui ux design in the other and
+ * all pages of the app" — the Home workspace redesign (bigger type,
+ * taller tap targets, hover-lift cards) was scoped to
+ * body[data-route="Workspaces/Home"] only. This is the SAME set of
+ * structural rules — page title, section headers, shortcut pills, report
+ * cards — generalized to every workspace via the `^=` prefix selector
+ * (matches "Workspaces/Home", "Workspaces/Accounting",
+ * "Workspaces/Buying", "Workspaces/Selling", "Workspaces/Stock",
+ * "Workspaces/Staff", "Workspaces/Settings" — all of them, one rule).
+ *
+ * Deliberately NOT here: per-workspace COLORS (which shortcut/card gets
+ * which accent). Those are semantic to each workspace's own set of
+ * shortcuts (aria-label matched) and already live in each workspace's
+ * own file (dashboard_home.css, buying_workspace.css,
+ * selling_workspace.css, stock_workspace.css, staff_workspace.css,
+ * settings_workspace.css, accounting_workspace.css) — this file only
+ * owns size/spacing/motion, identical everywhere, loaded before those so
+ * a more specific per-workspace override always wins if one exists.
+ */
+
+body[data-route^="Workspaces/"] .title-area .title-text {
+	font-size: 30px !important;
+	font-weight: 700 !important;
+	letter-spacing: -0.01em;
+}
+body[data-route^="Workspaces/"] .page-head {
+	padding-top: 6px !important;
+	padding-bottom: 6px !important;
+}
+
+body[data-route^="Workspaces/"] .ce-header b {
+	font-size: 20px !important;
+}
+
+/* Shortcut pills — bigger label text, taller tap targets, lift on hover. */
+body[data-route^="Workspaces/"] .shortcut-widget-box {
+	padding: 16px 18px !important;
+	min-height: 64px;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+body[data-route^="Workspaces/"] .shortcut-widget-box .ellipsis,
+body[data-route^="Workspaces/"] .shortcut-widget-box .widget-title {
+	font-size: 16px !important;
+	/* At 16px, longer labels ("Customer Dues by Village", "Purchase
+	   Invoice") no longer fit their fixed grid-column width and were
+	   spilling out past the pill's own border into the next one
+	   (confirmed live: `.ellipsis`'s own text never triggered its
+	   ellipsis — the overflow was the whole label sitting wider than
+	   its box, `overflow: visible` on the box let it bleed sideways
+	   instead of clipping). Wrapping instead of truncating keeps every
+	   label fully readable regardless of length. */
+	white-space: normal !important;
+	overflow: visible !important;
+	text-overflow: unset !important;
+	line-height: 1.25;
+}
+body[data-route^="Workspaces/"] .shortcut-widget-box .indicator-pill {
+	font-size: 13px !important;
+	padding: 3px 10px !important;
+}
+body[data-route^="Workspaces/"] .shortcut-widget-box:hover {
+	box-shadow: var(--santu-shadow-md, 0 4px 16px rgba(0, 0, 0, 0.1));
+}
+
+/* Report/master cards — bigger card title, more generous link spacing,
+   lift on hover. */
+body[data-route^="Workspaces/"] .links-widget-box {
+	padding: 20px 22px !important;
+	transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+body[data-route^="Workspaces/"] .links-widget-box .widget-title {
+	font-weight: 700;
+}
+body[data-route^="Workspaces/"] .links-widget-box .widget-title .ellipsis {
+	font-size: 19px !important;
+}
+body[data-route^="Workspaces/"] .links-widget-box .link-item {
+	font-size: 15px !important;
+	padding-top: 10px !important;
+	padding-bottom: 10px !important;
+}
+body[data-route^="Workspaces/"] .links-widget-box:hover {
+	box-shadow: var(--santu-shadow-md, 0 4px 16px rgba(0, 0, 0, 0.1));
+	transform: translateY(-1px);
+}
+
+/* Number cards (Today's Sales / Purchases / Payments Received etc. on
+   Accounting) and chart widgets — same title-weight treatment so they
+   don't look like a different, older design language next to the
+   shortcut/report cards right below them. */
+body[data-route^="Workspaces/"] .number-widget-box .widget-title,
+body[data-route^="Workspaces/"] .chart-widget-box .widget-title {
+	font-weight: 700;
+	font-size: 15px !important;
+}
+body[data-route^="Workspaces/"] .number-widget-box .number {
+	font-size: 26px !important;
+	font-weight: 700 !important;
+}

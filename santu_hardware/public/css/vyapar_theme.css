@@ -1,0 +1,128 @@
+/*
+ * Vyapar-look theme (2026-08-06 direct request: "I WANT THIS SOFTWARE UI
+ * AS EXACT AS VYAPAAR BILLING SOFTWARE"). Phase 1 of the agreed plan —
+ * global shell: light sidebar with a red active-indicator, red/blue
+ * primary/secondary buttons, white topbar+content, card style. Built from
+ * screenshots the user sent of their own installed Vyapar app.
+ *
+ * `--santu-brand` (used everywhere via desk_theme.css's `.btn-primary`
+ * override, focus rings, etc.) is retargeted to Vyapar's red here — one
+ * token change, cascades through every already-brand-colored element in
+ * the app instead of re-styling each one. A new `--santu-brand-secondary`
+ * (blue) token is added for the "Add Purchase"-style secondary action
+ * Vyapar uses next to its primary red one.
+ */
+
+:root {
+	--santu-brand: #e0393e;
+	--santu-brand-dark: #c22a2e;
+	--santu-brand-soft: #fdeceb;
+
+	--santu-brand-secondary: #2f6fed;
+	--santu-brand-secondary-dark: #2559c4;
+	--santu-brand-secondary-soft: #eaf1fe;
+
+	--santu-sidebar-bg: #ffffff;
+	--santu-sidebar-bg-hover: #f3f4f6;
+	--santu-sidebar-bg-active: #fdeceb;
+	--santu-sidebar-text: #4b5563;
+	--santu-sidebar-text-active: #e0393e;
+}
+
+/* ---------- Sidebar (workspace/module nav) ----------------------------
+ * `.desk-sidebar` is the actual scrollable nav list itself (confirmed in
+ * frappe's own workspace.js — not a wrapper around it), so styling it
+ * directly fills the whole column. Every child text/icon color is set
+ * explicitly rather than left to inherit, since a missed element would
+ * silently render unreadable (white-on-white or dark-on-dark) — the one
+ * failure mode worth being careful about here. */
+.layout-side-section:has(.desk-sidebar) {
+	background: var(--santu-sidebar-bg) !important;
+	border-right: 1px solid #e5e7eb;
+}
+
+.desk-sidebar {
+	background: var(--santu-sidebar-bg) !important;
+	padding-top: var(--santu-space-2, 8px);
+}
+
+.desk-sidebar .standard-sidebar-label,
+.desk-sidebar .standard-sidebar-label span {
+	color: var(--santu-sidebar-text) !important;
+	opacity: 0.7;
+}
+
+.desk-sidebar .sidebar-item-icon,
+.desk-sidebar .sidebar-item-icon svg {
+	color: var(--santu-sidebar-text) !important;
+	fill: var(--santu-sidebar-text) !important;
+}
+
+.desk-sidebar .item-anchor,
+.desk-sidebar .sidebar-item-label {
+	color: var(--santu-sidebar-text) !important;
+}
+
+.desk-sidebar .desk-sidebar-item {
+	border-radius: 0 var(--santu-radius-sm, 8px) var(--santu-radius-sm, 8px) 0;
+	border-left: 3px solid transparent;
+}
+
+/* The injected "Dashboard"/"Parties" rows (pos_dashboard_sidebar_link.js)
+   use plain emoji instead of Frappe's SVG icon system — size/position
+   tuned to visually match the real icons sitting next to them. */
+.santu-extra-sidebar-item .sidebar-item-icon {
+	font-size: 15px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+}
+.santu-extra-sidebar-item .item-anchor {
+	cursor: pointer;
+}
+
+.desk-sidebar .desk-sidebar-item:hover {
+	background: var(--santu-sidebar-bg-hover) !important;
+}
+
+.desk-sidebar .desk-sidebar-item.selected,
+.desk-sidebar .sidebar-item-container .selected > .item-anchor,
+.desk-sidebar .sidebar-item-container .selected > .desk-sidebar-item {
+	background: var(--santu-sidebar-bg-active) !important;
+	border-left-color: var(--santu-brand) !important;
+	border-radius: 0 var(--santu-radius-sm, 8px) var(--santu-radius-sm, 8px) 0 !important;
+}
+
+.desk-sidebar .desk-sidebar-item.selected .item-anchor,
+.desk-sidebar .desk-sidebar-item.selected .sidebar-item-label,
+.desk-sidebar .desk-sidebar-item.selected .sidebar-item-icon,
+.desk-sidebar .desk-sidebar-item.selected .sidebar-item-icon svg {
+	color: var(--santu-sidebar-text-active) !important;
+	fill: var(--santu-sidebar-text-active) !important;
+	font-weight: 600;
+}
+
+.desk-sidebar .drop-icon,
+.desk-sidebar .drop-icon svg {
+	color: var(--santu-sidebar-text) !important;
+	fill: var(--santu-sidebar-text) !important;
+}
+
+/* ---------- Buttons -----------------------------------------------------
+ * `.btn-primary` already tracks `--santu-brand` via desk_theme.css, so it
+ * picks up red automatically. This adds the blue secondary style for
+ * anything explicitly marked `.santu-btn-secondary` (e.g. "New Purchase"/
+ * "Receive Stock" actions, matching Vyapar's red-Sale/blue-Purchase
+ * pairing) without touching every plain `.btn-default` on Desk. */
+.santu-btn-secondary,
+.btn.santu-btn-secondary {
+	background-color: var(--santu-brand-secondary) !important;
+	border-color: var(--santu-brand-secondary) !important;
+	color: #fff !important;
+}
+
+.santu-btn-secondary:hover {
+	background-color: var(--santu-brand-secondary-dark) !important;
+	border-color: var(--santu-brand-secondary-dark) !important;
+}

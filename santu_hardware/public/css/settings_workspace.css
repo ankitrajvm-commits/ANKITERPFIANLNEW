@@ -1,0 +1,53 @@
+/*
+ * Settings workspace UI redesign (2026-07-30, UI/UX-only session). Scoped
+ * strictly to body[data-route="Workspaces/Settings"] — no individual
+ * settings page touched.
+ */
+
+body[data-route="Workspaces/Settings"] .shortcut-widget-box {
+	min-height: 72px;
+	border-left-width: 4px !important;
+	border-left-style: solid !important;
+	border-left-color: var(--santu-gray-200, #e5e7eb) !important;
+	font-size: 15px;
+}
+
+body[data-route="Workspaces/Settings"] .shortcut-widget-box[aria-label="🏪 Shop Information"] {
+	border-left-color: #2563eb !important; /* blue — identity */
+}
+body[data-route="Workspaces/Settings"] .shortcut-widget-box[aria-label="🧾 GST & Tax"] {
+	border-left-color: #0d9488 !important; /* teal — compliance */
+}
+body[data-route="Workspaces/Settings"] .shortcut-widget-box[aria-label="💰 Billing Settings"] {
+	border-left-color: #7c3aed !important; /* purple — money in */
+}
+body[data-route="Workspaces/Settings"] .shortcut-widget-box[aria-label="📦 Inventory Settings"] {
+	border-left-color: #ea580c !important; /* orange — stock */
+}
+body[data-route="Workspaces/Settings"] .shortcut-widget-box[aria-label="🖨 Printer Settings"] {
+	border-left-color: #475569 !important; /* slate — hardware/device */
+}
+body[data-route="Workspaces/Settings"] .shortcut-widget-box[aria-label="💳 Payment Methods"] {
+	border-left-color: #db2777 !important; /* pink — payments */
+}
+body[data-route="Workspaces/Settings"] .shortcut-widget-box[aria-label="👥 Staff & Permissions"] {
+	border-left-color: #4f46e5 !important; /* indigo — people */
+}
+body[data-route="Workspaces/Settings"] .shortcut-widget-box[aria-label="🏬 Warehouse Settings"] {
+	border-left-color: #92400e !important; /* brown — storage */
+}
+body[data-route="Workspaces/Settings"] .shortcut-widget-box[aria-label="📄 Invoice Design"] {
+	border-left-color: #0891b2 !important; /* cyan — documents */
+}
+body[data-route="Workspaces/Settings"] .shortcut-widget-box[aria-label="💾 Backup & Restore"] {
+	border-left-color: #dc2626 !important; /* red — safety-critical */
+}
+
+body[data-route="Workspaces/Settings"] .links-widget-box {
+	padding: var(--santu-space-4, 16px);
+}
+
+body[data-route="Workspaces/Settings"] .santu-advanced-section {
+	background: var(--santu-gray-50, #f9fafb);
+	border-style: dashed !important;
+}

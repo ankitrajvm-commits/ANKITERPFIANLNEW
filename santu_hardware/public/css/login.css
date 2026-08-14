@@ -1,0 +1,43 @@
+/*
+ * SANTU CUSTOMIZATION — Login screen redesign (ROADMAP.md "Phase 2.5 Stage
+ * 1"). Custom-app CSS only, no core template edit: the generic website
+ * chrome (top navbar, newsletter-signup footer, dead "Create Account" link
+ * — signup is disabled system-wide, that link only leads to a "Signup
+ * Disabled" dead end) is real estate this single-shop internal tool has no
+ * use for, so it's hidden rather than left as confusing noise. Scoped to
+ * `#page-login` via :has() so nothing on the rest of the (unused) public
+ * website is affected.
+ */
+body:has(#page-login) nav.navbar {
+	display: none !important;
+}
+
+/* Signup is disabled system-wide (System Settings), so this section is a
+   dead end ("Signup Disabled" message) rather than a working form. */
+#page-login section.for-signup {
+	display: none !important;
+}
+
+#page-login .page-card {
+	border-radius: var(--santu-radius-lg, 16px);
+	box-shadow: var(--santu-shadow-md, 0 4px 16px rgba(0, 0, 0, 0.08));
+	border: none;
+}
+
+#page-login .btn-login,
+#page-login button[type="submit"] {
+	background-color: var(--santu-brand, #3730a3) !important;
+	border-color: var(--santu-brand, #3730a3) !important;
+}
+
+#page-login .btn-login:hover,
+#page-login button[type="submit"]:hover {
+	background-color: var(--santu-brand-dark, #2c2483) !important;
+}
+
+/* "Login with Email Link" is turned off via System Settings
+   (login_with_email_link=0) — one less decision on first launch. This is a
+   fallback only, in case that section still renders in some auth state. */
+#page-login a[href="#login-with-email-link"] {
+	display: none;
+}

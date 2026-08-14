@@ -1,0 +1,187 @@
+/*
+ * 2026-08-01 direct request: "ui ko bada kro" (make the UI bigger) — the
+ * live billing screen (point-of-sale) is what staff stare at and tap all
+ * day, so this scales it up specifically rather than bumping text
+ * Desk-wide (which would risk breaking dense screens like list views and
+ * reports that assume Frappe's stock 13px scale).
+ *
+ * ERPNext's own point-of-sale.scss builds every font-size/padding/margin
+ * off shared CSS custom properties (--text-*, --padding-*, --margin-*) —
+ * confirmed by reading the source, not guessed. Redeclaring those
+ * variables scoped to body[data-route="point-of-sale"] scales the whole
+ * screen (item list, cart, numpad, item details, payment) from one place,
+ * the same "one variable to retune the whole look" pattern already used
+ * in design_system.css. Variables are global (:root-defined) but CSS
+ * custom properties cascade — scoping the override to this body selector
+ * means no other Desk screen is affected.
+ */
+body[data-route="point-of-sale"] {
+	--text-tiny: 13px;
+	--text-2xs: 14px;
+	--text-xs: 14px;
+	--text-sm: 15px;
+	--text-md: 15px;
+	--text-base: 16px;
+	--text-lg: 19px;
+	--text-xl: 21px;
+	--text-2xl: 24px;
+	--text-3xl: 28px;
+	--text-4xl: 30px;
+
+	--padding-sm: 8px;
+	--padding-md: 19px;
+	--margin-sm: 12px;
+	--margin-md: 18px;
+}
+
+/* Numpad buttons (1-9, Quantity/Discount/Rate, Checkout) — bigger tap
+   targets, not just bigger text, since these are pressed all day. */
+body[data-route="point-of-sale"] .numpad-btn {
+	min-height: 52px !important;
+	font-size: var(--text-lg) !important;
+	font-weight: 600;
+}
+
+body[data-route="point-of-sale"] .numpad-section .checkout-btn {
+	min-height: 56px !important;
+	font-size: var(--text-xl) !important;
+}
+
+/* Item picker rows (pos_item_list.css already restyles these into a list —
+   enlarging on top of that, not replacing it). */
+body[data-route="point-of-sale"] .item-wrapper {
+	padding: 14px 12px !important;
+}
+body[data-route="point-of-sale"] .item-display.abbr {
+	width: 48px !important;
+	height: 48px !important;
+	min-width: 48px !important;
+	min-height: 48px !important;
+	max-height: 48px !important;
+	font-size: var(--text-md) !important;
+}
+body[data-route="point-of-sale"] .item-name {
+	font-size: var(--text-md) !important;
+}
+body[data-route="point-of-sale"] .item-rate {
+	font-size: var(--text-md) !important;
+}
+
+/* Cart line items */
+body[data-route="point-of-sale"] .cart-item-wrapper {
+	padding: 14px 12px !important;
+}
+body[data-route="point-of-sale"] .cart-item-wrapper .item-name {
+	font-size: var(--text-lg) !important;
+}
+body[data-route="point-of-sale"] .cart-item-wrapper .item-rate {
+	font-size: var(--text-lg) !important;
+}
+
+/* Core's `.item-name-desc` is a `nowrap` flex column that ellipsis-truncates
+   under the fixed-width avatar + qty/rate columns next to it — with the
+   bigger avatar and font-size above, that squeeze got tight enough to
+   truncate the name to 4-5 characters ("Fevi...") in the cart, confirmed
+   live. Letting it wrap to 2 lines instead, and shrinking the avatar back
+   down just in the cart (it's a plain 2-letter placeholder here — this
+   shop has no item photos, so the picker list is where a bigger tap
+   target actually helps, not a row you've already filled). */
+body[data-route="point-of-sale"] .cart-item-wrapper .item-name-desc,
+body[data-route="point-of-sale"] .cart-item-wrapper .item-name,
+body[data-route="point-of-sale"] .cart-item-wrapper .item-desc {
+	white-space: normal !important;
+	overflow: visible !important;
+	text-overflow: unset !important;
+	line-height: 1.3;
+}
+body[data-route="point-of-sale"] .cart-item-wrapper .item-display.abbr {
+	width: 32px !important;
+	height: 32px !important;
+	min-width: 32px !important;
+	min-height: 32px !important;
+	max-height: 32px !important;
+	font-size: var(--text-sm) !important;
+	margin-right: 10px !important;
+}
+
+/* Payment method cards on the checkout screen — all rendered as identical
+   plain white/outline boxes by core, differentiated only by their text
+   label. Colored left-borders + an icon per method (matching the
+   colored-shortcut-card pattern already used in Buying/Selling/Settings)
+   make the right card scannable at a glance instead of having to read
+   every label. */
+body[data-route="point-of-sale"] .mode-of-payment {
+	border-left: 4px solid var(--gray-300) !important;
+}
+body[data-route="point-of-sale"] .mode-of-payment[data-mode="cash"] {
+	border-left-color: var(--dark-green-500, #2d9d5f) !important;
+}
+body[data-route="point-of-sale"] .mode-of-payment[data-mode="cash"]::before {
+	content: "\1F4B5  ";
+}
+body[data-route="point-of-sale"] .mode-of-payment[data-mode="upi"] {
+	border-left-color: var(--santu-brand, #3730a3) !important;
+}
+body[data-route="point-of-sale"] .mode-of-payment[data-mode="upi"]::before {
+	content: "\1F4F1  ";
+}
+body[data-route="point-of-sale"] .mode-of-payment[data-mode="card"] {
+	border-left-color: var(--blue-500, #2490ef) !important;
+}
+body[data-route="point-of-sale"] .mode-of-payment[data-mode="card"]::before {
+	content: "\1F4B3  ";
+}
+body[data-route="point-of-sale"] .mode-of-payment[data-mode="bank_transfer"] {
+	border-left-color: var(--purple-500, #7c3aed) !important;
+}
+body[data-route="point-of-sale"] .mode-of-payment[data-mode="bank_transfer"]::before {
+	content: "\1F3E6  ";
+}
+body[data-route="point-of-sale"] .mode-of-payment[data-mode="cheque"],
+body[data-route="point-of-sale"] .mode-of-payment[data-mode="bank_draft"] {
+	border-left-color: var(--orange-500, #f2994a) !important;
+}
+body[data-route="point-of-sale"] .mode-of-payment[data-mode="cheque"]::before,
+body[data-route="point-of-sale"] .mode-of-payment[data-mode="bank_draft"]::before {
+	content: "\1F4C4  ";
+}
+
+/* Search box + item group filter at the top of the item picker */
+body[data-route="point-of-sale"] .search-field input,
+body[data-route="point-of-sale"] .item-group-field input {
+	font-size: var(--text-base) !important;
+	min-height: 44px !important;
+}
+
+/* Item Details panel's photo box defaults to 11rem (176px) square — this
+   shop has no item photos, so it's always just a blank gray box with a
+   2-letter abbreviation, eating close to half the panel's height for
+   zero information. Shrinking it to a small badge gives that space back
+   to the actual Qty/Rate/Discount fields below. */
+body[data-route="point-of-sale"] .item-details .item-display .item-image {
+	width: 3rem !important;
+	height: 3rem !important;
+	min-width: 3rem !important;
+}
+body[data-route="point-of-sale"] .item-details .item-display .item-image .item-abbr {
+	font-size: var(--text-lg) !important;
+}
+
+/* Item Details panel form fields (Quantity/Rate/Discount/Warehouse/Cost Price) */
+body[data-route="point-of-sale"] .item-details .form-container label,
+body[data-route="point-of-sale"] .item-details .form-container .control-value,
+body[data-route="point-of-sale"] .item-details .form-container input {
+	font-size: var(--text-base) !important;
+}
+
+/* Pencil icon injected next to the customer name (pos_edit_customer_name.js) */
+body[data-route="point-of-sale"] .santu-edit-customer-name-btn {
+	display: inline-block;
+	margin-left: 8px;
+	cursor: pointer;
+	opacity: 0.55;
+	font-size: 15px;
+}
+body[data-route="point-of-sale"] .santu-edit-customer-name-btn:hover {
+	opacity: 1;
+}

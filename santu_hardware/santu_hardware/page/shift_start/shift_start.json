@@ -1,0 +1,16 @@
+{
+ "content": null,
+ "doctype": "Page",
+ "icon": "octicon octicon-person",
+ "idx": 0,
+ "module": "Santu Hardware",
+ "name": "shift-start",
+ "page_name": "shift-start",
+ "restrict_to_domain": null,
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Who's Billing?"
+}

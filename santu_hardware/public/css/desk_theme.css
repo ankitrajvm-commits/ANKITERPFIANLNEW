@@ -1,0 +1,275 @@
+/*
+ * Desk-wide visual modernization pass (2026-07-30 direct request: "make
+ * the ui better... its looking old fashioned"). Unlike kiosk_mode.css/
+ * shop_mode.css (scoped to Shop Mode/POS only), this applies everywhere
+ * in Desk — Owner's Admin Mode included — since stock Frappe's flat
+ * borders, tiny touch targets, and boxy buttons look dated on every
+ * screen, not just the ones already redesigned. Pure CSS on top of
+ * design_system.css's tokens: no JS behavior change, nothing removed,
+ * fully reversible by deleting this file. Benchmark: Notion/Linear/Apple
+ * — soft elevation instead of flat borders, generous spacing, rounded
+ * corners, a real focus state, brand color where Frappe used generic blue.
+ */
+
+/* ---------- Buttons ---------- */
+.btn {
+	border-radius: var(--santu-radius-sm, 8px) !important;
+	font-weight: 600;
+	transition: box-shadow 0.15s ease, transform 0.05s ease;
+}
+
+.btn:active {
+	transform: translateY(1px);
+}
+
+.btn-primary {
+	background-color: var(--santu-brand, #3730a3) !important;
+	border-color: var(--santu-brand, #3730a3) !important;
+}
+
+.btn-primary:hover {
+	background-color: var(--santu-brand-dark, #2c2483) !important;
+	border-color: var(--santu-brand-dark, #2c2483) !important;
+	box-shadow: var(--santu-shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.15));
+}
+
+.btn-default:hover,
+.btn-secondary:hover {
+	box-shadow: var(--santu-shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.08));
+}
+
+/* ---------- Page head ---------- */
+.page-head {
+	background: var(--santu-surface, var(--fg-color));
+}
+
+.page-head .title-text,
+.page-title .title-text {
+	font: var(--santu-text-h1, 700 24px/1.3 inherit) !important;
+}
+
+/* ---------- Cards, widgets, form sections (soft elevation, not flat borders) ---------- */
+.widget,
+.frappe-card,
+.form-dashboard-section .section-body,
+.dashboard-widget-box {
+	border-radius: var(--santu-radius-md, 12px) !important;
+	border-color: var(--santu-border, #e5e7eb) !important;
+	box-shadow: var(--santu-shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.06));
+}
+
+.form-page .form-tabs-list,
+.form-layout {
+	border-radius: var(--santu-radius-md, 12px);
+}
+
+/* ---------- Form inputs ---------- */
+.form-control,
+.input-with-feedback {
+	border-radius: var(--santu-radius-sm, 8px) !important;
+	border-color: var(--santu-border, #e5e7eb) !important;
+	padding-top: 6px;
+	padding-bottom: 6px;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.form-control:focus,
+.input-with-feedback:focus {
+	border-color: var(--santu-brand, #3730a3) !important;
+	box-shadow: 0 0 0 3px var(--santu-brand-soft, #eef2ff) !important;
+}
+
+/* Native checkboxes/radios — accent-color is broadly supported and gives
+   a branded check without needing to rebuild the control from scratch. */
+input[type="checkbox"],
+input[type="radio"] {
+	accent-color: var(--santu-brand, #3730a3);
+	width: 15px;
+	height: 15px;
+}
+
+/* ---------- List view rows ---------- */
+.list-row-container:hover,
+.list-row:hover {
+	background-color: var(--santu-gray-50, #f9fafb);
+}
+
+.list-row-col.list-subject .bold {
+	font-weight: 600;
+}
+
+/* ---------- Indicator pills / status badges ---------- */
+.indicator-pill {
+	border-radius: var(--santu-radius-full, 999px) !important;
+	font-weight: 600;
+	padding: 2px 10px !important;
+}
+
+/* ---------- Sidebar (Admin Mode navigation) ----------
+ * Selected/hover background+radius now owned by vyapar_theme.css's dark
+ * navy sidebar rules (2026-08-06) — this file's old light-brand-soft
+ * version had higher selector specificity (`.selected > .desk-sidebar-item`
+ * vs. `.desk-sidebar-item.selected`) and was winning over the dark theme,
+ * leaving the active item light-pink-on-dark-navy instead of the intended
+ * dark-navy-with-red-border look. Kept as a comment, not deleted outright,
+ * so the conflict and its cause stay documented if the sidebar theme ever
+ * needs touching again. */
+
+/* ---------- Tabs (form/workspace tab bar) ---------- */
+.form-tabs .nav-link.active,
+.workspace-sidebar-item.active {
+	color: var(--santu-brand, #3730a3) !important;
+	border-bottom-color: var(--santu-brand, #3730a3) !important;
+	font-weight: 600;
+}
+
+/* ---------- Scrollbars (thin, modern) ---------- */
+::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--santu-gray-200, #e5e7eb);
+	border-radius: var(--santu-radius-full, 999px);
+	border: 2px solid transparent;
+	background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--santu-gray-500, #6b7280);
+	background-clip: content-box;
+}
+
+/* ---------- Typography — a touch larger and more generous line-height
+   reads as "app," Frappe's stock density reads as "spreadsheet" ---------- */
+body {
+	font-size: 15px;
+	line-height: 1.5;
+}
+
+.page-title .title-text,
+.title-area .title-text {
+	letter-spacing: -0.01em;
+}
+
+/* ---------- Navbar — stock height feels cramped next to modern apps ---------- */
+.navbar {
+	min-height: 56px !important;
+	box-shadow: 0 1px 0 var(--santu-border, #e5e7eb);
+}
+
+/* ---------- Page body stops using the screen on wide monitors ---------- *
+ * Frappe wraps every Desk page (workspace, list, form — all of them,
+ * verified) in Bootstrap's `.container`, capped at 1290px. On a 1920px
+ * screen that leaves ~315px dead space on each side — reported live via
+ * screenshot as bad margins "in full screen". Raised the cap so the page
+ * actually uses a wide monitor, with a soft ceiling (`96vw`) so it never
+ * touches the very edge on ultra-wide displays. Below ~1450px this rule
+ * is a no-op — the original 1290px cap already fits. */
+.page-body.container {
+	max-width: min(1600px, 96vw) !important;
+}
+
+/* 2026-08-06 direct report, with screenshot: the fix above only widened
+   the page BODY — the navbar and every page's title bar (".page-head")
+   are each their OWN separate `.container` (confirmed live: both were
+   still capped at the original 1290px and centered, leaving the same
+   ~200px+ dead gap on the left that the body fix above was meant to
+   kill, just one level up). Same treatment, same reasoning — these are
+   shared Desk chrome, not one specific page, so fixing it here (not a
+   route-scoped rule) is what actually makes the navbar/title bar match
+   the body's width on every screen consistently. */
+.navbar .container,
+.page-head .container {
+	max-width: min(1600px, 96vw) !important;
+}
+
+/* ---------- Shop name in the topbar ------------------------------------ *
+ * The "SH" logo alone doesn't read as a shop name at a glance — this is
+ * on screen during every sale, including when a customer is watching the
+ * bill get made at the counter. Text inserted by
+ * `santu_add_navbar_brand_text()` in kiosk_mode.js (the navbar markup
+ * itself only has a slot for the logo image, no app-name text). */
+.navbar-brand.navbar-home {
+	display: flex !important;
+	align-items: center;
+	gap: 12px;
+}
+.santu-navbar-brand-text {
+	font: 700 23px/1 var(--font-stack, inherit);
+	letter-spacing: -0.02em;
+	color: var(--santu-text, #111827); /* theme-aware token — near-black in light mode, near-white in dark */
+	white-space: nowrap;
+}
+
+#navbar-search {
+	border-radius: var(--santu-radius-full, 999px) !important;
+	background: var(--santu-gray-50, #f9fafb) !important;
+	border-color: transparent !important;
+}
+
+#navbar-search:focus {
+	background: var(--santu-surface, #fff) !important;
+	border-color: var(--santu-brand, #3730a3) !important;
+	box-shadow: 0 0 0 3px var(--santu-brand-soft, #eef2ff) !important;
+}
+
+/* ---------- Page container — more breathing room around content ---------- */
+.page-head {
+	padding-top: var(--santu-space-2, 8px);
+	padding-bottom: var(--santu-space-2, 8px);
+}
+
+.page-body {
+	padding-top: var(--santu-space-4, 16px);
+}
+
+/* ---------- Form section headers — a label on a thin line reads as a
+   spreadsheet section break; a little weight and space reads as a real
+   section of an app. ---------- */
+.form-section .section-head {
+	font: var(--santu-text-h2, 600 18px/1.4 inherit) !important;
+	padding-top: var(--santu-space-4, 16px);
+	padding-bottom: var(--santu-space-2, 8px);
+	border-bottom: none !important;
+}
+
+.form-column .control-label {
+	font-weight: 600;
+	color: var(--santu-text-muted, #6b7280);
+	text-transform: none;
+}
+
+/* ---------- Status/"Not Saved" style pills next to page titles ---------- */
+.indicator-pill.no-indicator-dot,
+.form-page .indicator-pill {
+	border-radius: var(--santu-radius-full, 999px);
+}
+
+/* ---------- List-view filter sidebar removed, Desk-wide ---------------- *
+ * "Filter By / Assigned To / Created By / Edit Filters / Tags / Show Tags /
+ * Save Filter" — unused by a 2-owner shop, and it ate a fifth of the
+ * screen width on every single list view.
+ *
+ * IMPORTANT: Frappe v15 reuses the exact same `.list-sidebar` class for
+ * the Workspace module-switcher sidebar (Home/Accounting/Buying/Selling/
+ * Stock/Staff/Settings) — a first pass here matched `.list-sidebar`
+ * directly and hid that nav entirely, breaking navigation Desk-wide
+ * (caught live, reverted same session). The two are only distinguishable
+ * by content: the workspace-nav sidebar wraps a `.desk-sidebar` element,
+ * the list-filter sidebar wraps a `.filter-section` element instead — so
+ * this rule positively matches on `.filter-section`, not on
+ * `.list-sidebar` alone. The document FORM sidebar (Assigned To/
+ * Attachments/Share on an individual record, a different component,
+ * `.form-sidebar`) was never affected either way. */
+.list-sidebar:has(.filter-section) {
+	display: none !important;
+}
+.layout-side-section:has(> .list-sidebar:has(.filter-section)) {
+	display: none !important;
+}
+.row.layout-main:has(> .layout-side-section > .list-sidebar:has(.filter-section)) > .layout-main-section-wrapper {
+	flex: 1 1 100% !important;
+	max-width: 100% !important;
+}

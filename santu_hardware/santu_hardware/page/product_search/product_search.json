@@ -1,0 +1,16 @@
+{
+ "content": null,
+ "doctype": "Page",
+ "icon": "octicon octicon-search",
+ "idx": 0,
+ "module": "Santu Hardware",
+ "name": "product-search",
+ "page_name": "product-search",
+ "restrict_to_domain": null,
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Product Search"
+}

@@ -1,0 +1,153 @@
+{
+ "actions": [],
+ "creation": "2026-07-30 00:00:00.000000",
+ "doctype": "DocType",
+ "document_type": "Setup",
+ "engine": "InnoDB",
+ "field_order": [
+  "enable_smart_confirmation",
+  "column_break_1",
+  "large_amount_threshold",
+  "discount_limit_percent",
+  "credit_sale_limit",
+  "printer_settings_section",
+  "printer_name",
+  "paper_width",
+  "column_break_printer",
+  "print_copies",
+  "auto_print",
+  "open_cash_drawer",
+  "payments_section",
+  "upi_id",
+  "privacy_mode_section",
+  "privacy_mode_pin"
+ ],
+ "fields": [
+  {
+   "default": "1",
+   "description": "When off, every sale asks for confirmation (safest, slowest). When on, only large amounts, high discounts, and credit sales above their limits ask.",
+   "fieldname": "enable_smart_confirmation",
+   "fieldtype": "Check",
+   "label": "Skip confirmation for normal sales"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "50000",
+   "description": "Sales above this amount always ask for confirmation before completing.",
+   "fieldname": "large_amount_threshold",
+   "fieldtype": "Currency",
+   "label": "Large Sale Amount"
+  },
+  {
+   "default": "10",
+   "description": "A manual discount above this percentage always asks for confirmation.",
+   "fieldname": "discount_limit_percent",
+   "fieldtype": "Percent",
+   "label": "Manual Discount Limit"
+  },
+  {
+   "default": "5000",
+   "description": "Leaving more than this amount unpaid (credit) on a sale always asks for confirmation.",
+   "fieldname": "credit_sale_limit",
+   "fieldtype": "Currency",
+   "label": "Credit Sale Limit"
+  },
+  {
+   "fieldname": "printer_settings_section",
+   "fieldtype": "Section Break",
+   "label": "Printer"
+  },
+  {
+   "description": "Picked from the printers your browser/QZ Tray can see on this computer. Set from the billing screen's printer picker, not typed here.",
+   "fieldname": "printer_name",
+   "fieldtype": "Data",
+   "label": "Selected Printer"
+  },
+  {
+   "default": "80mm",
+   "fieldname": "paper_width",
+   "fieldtype": "Select",
+   "label": "Paper Width",
+   "options": "58mm\n80mm"
+  },
+  {
+   "fieldname": "column_break_printer",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "print_copies",
+   "fieldtype": "Int",
+   "label": "Copies"
+  },
+  {
+   "default": "0",
+   "description": "Print automatically the moment a sale completes, no preview or button press.",
+   "fieldname": "auto_print",
+   "fieldtype": "Check",
+   "label": "Auto Print"
+  },
+  {
+   "default": "0",
+   "description": "Send the cash-drawer-open command to the printer with every print (needs a drawer wired to the printer's kick-out port).",
+   "fieldname": "open_cash_drawer",
+   "fieldtype": "Check",
+   "label": "Open Cash Drawer"
+  },
+  {
+   "fieldname": "payments_section",
+   "fieldtype": "Section Break",
+   "label": "Payments"
+  },
+  {
+   "description": "Your shop's UPI ID (e.g. santuhardware@okaxis). When set, printed bills show a scan-to-pay QR pre-filled with the bill amount. Leave blank to hide it.",
+   "fieldname": "upi_id",
+   "fieldtype": "Data",
+   "label": "UPI ID"
+  },
+  {
+   "fieldname": "privacy_mode_section",
+   "fieldtype": "Section Break",
+   "label": "Privacy Mode"
+  },
+  {
+   "default": "7739",
+   "description": "Entering this PIN on the billing screen's \"Privacy Mode\" status bar item reveals each item's cost price for 10 seconds (or until tapped again) — for deciding how much discount still leaves a profit, without leaving it visible to customers by default.",
+   "fieldname": "privacy_mode_pin",
+   "fieldtype": "Data",
+   "label": "Privacy Mode PIN"
+  }
+ ],
+ "icon": "fa fa-shield",
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-07-30 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Santu Hardware",
+ "name": "Santu POS Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Cashier"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "ASC",
+ "states": []
+}

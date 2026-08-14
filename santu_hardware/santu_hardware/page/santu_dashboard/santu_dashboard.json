@@ -1,0 +1,16 @@
+{
+ "content": null,
+ "doctype": "Page",
+ "icon": "octicon octicon-dashboard",
+ "idx": 0,
+ "module": "Santu Hardware",
+ "name": "santu-dashboard",
+ "page_name": "santu-dashboard",
+ "restrict_to_domain": null,
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Dashboard"
+}

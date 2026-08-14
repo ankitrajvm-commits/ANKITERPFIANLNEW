@@ -1,0 +1,27 @@
+/*
+ * ERPNext Settings workspace UI redesign (2026-08-06 follow-up to the
+ * workspace-wide color rollout). Scoped strictly to
+ * body[data-route="Workspaces/ERPNext Settings"] — no other screen
+ * touched. Same aria-label per-shortcut accent pattern used on
+ * Home/Buying/Selling/Stock/Staff/Settings/Users; this workspace had the
+ * generic sizing bump from workspace_typography.css but no colors.
+ */
+
+body[data-route="Workspaces/ERPNext Settings"] .shortcut-widget-box {
+	min-height: 64px;
+	border-left-width: 4px !important;
+	border-left-style: solid !important;
+	border-left-color: var(--santu-gray-200, #e5e7eb) !important;
+}
+
+body[data-route="Workspaces/ERPNext Settings"] .shortcut-widget-box[aria-label="System Settings"] { border-left-color: #475569 !important; }
+body[data-route="Workspaces/ERPNext Settings"] .shortcut-widget-box[aria-label="Accounts Settings"] { border-left-color: #7c3aed !important; }
+body[data-route="Workspaces/ERPNext Settings"] .shortcut-widget-box[aria-label="Stock Settings"] { border-left-color: #16a34a !important; }
+body[data-route="Workspaces/ERPNext Settings"] .shortcut-widget-box[aria-label="Selling Settings"] { border-left-color: #2563eb !important; }
+body[data-route="Workspaces/ERPNext Settings"] .shortcut-widget-box[aria-label="Buying Settings"] { border-left-color: #d97706 !important; }
+body[data-route="Workspaces/ERPNext Settings"] .shortcut-widget-box[aria-label="Global Defaults"] { border-left-color: #4f46e5 !important; }
+body[data-route="Workspaces/ERPNext Settings"] .shortcut-widget-box[aria-label="Print Settings"] { border-left-color: #0891b2 !important; }
+
+body[data-route="Workspaces/ERPNext Settings"] .links-widget-box {
+	padding: var(--santu-space-4, 16px);
+}

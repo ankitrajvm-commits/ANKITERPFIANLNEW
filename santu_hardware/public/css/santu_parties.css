@@ -1,0 +1,109 @@
+/*
+ * Parties page (2026-08-06) — Customer + Supplier merged into one
+ * Vyapar-style split-view: search + list on the left, selected party's
+ * transactions on the right. Structure mirrors customer_dues.css's
+ * filter+list pattern, extended with a two-panel layout.
+ */
+.santu-parties {
+	display: flex;
+	gap: var(--santu-space-6, 24px);
+	align-items: flex-start;
+	height: calc(100vh - 180px);
+}
+
+.santu-parties-list-panel {
+	flex: 0 0 320px;
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+
+.santu-parties-search {
+	margin-bottom: var(--santu-space-3, 12px);
+}
+
+.santu-parties-list {
+	flex: 1 1 auto;
+	overflow-y: auto;
+	border: 1px solid var(--santu-border, #e5e7eb);
+	border-radius: var(--santu-radius-lg, 12px);
+}
+
+.santu-parties-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 14px 16px;
+	border-bottom: 1px solid var(--santu-border, #e5e7eb);
+	cursor: pointer;
+}
+.santu-parties-row:last-child { border-bottom: none; }
+.santu-parties-row:hover { background: var(--santu-gray-50, #f9fafb); }
+.santu-parties-row-active {
+	background: var(--santu-brand-secondary-soft, #eaf1fe) !important;
+}
+.santu-parties-row-name { font-weight: 600; font-size: 14px; }
+.santu-parties-row-amount { font-size: 14px; font-weight: 600; color: var(--santu-text-muted, #6b7280); }
+.santu-parties-row-amount.santu-tone-warning { color: var(--santu-warning, #b45309); }
+.santu-parties-row-amount.santu-tone-danger { color: var(--santu-danger, #b91c1c); }
+
+.santu-parties-detail-panel {
+	flex: 1 1 auto;
+	height: 100%;
+	overflow-y: auto;
+	border: 1px solid var(--santu-border, #e5e7eb);
+	border-radius: var(--santu-radius-lg, 12px);
+	padding: var(--santu-space-6, 24px);
+}
+
+.santu-parties-empty {
+	color: var(--santu-text-muted, #6b7280);
+	padding: var(--santu-space-8, 32px);
+	text-align: center;
+}
+
+.santu-parties-detail-head {
+	display: flex;
+	align-items: center;
+	gap: var(--santu-space-3, 12px);
+	margin-bottom: var(--santu-space-6, 24px);
+}
+
+.santu-parties-detail-name {
+	font: var(--santu-text-h1, 700 24px/1.3 inherit);
+}
+
+.santu-parties-detail-type {
+	padding: 3px 10px;
+	border-radius: var(--santu-radius-full, 999px);
+	background: var(--santu-brand-soft, #fdeceb);
+	color: var(--santu-brand, #e0393e);
+	font: var(--santu-text-label, 600 13px/1.4 inherit);
+}
+
+.santu-parties-detail-section-title {
+	font: var(--santu-text-h2, 600 18px/1.4 inherit);
+	margin-bottom: var(--santu-space-3, 12px);
+}
+
+.santu-parties-table { width: 100%; border-collapse: collapse; }
+.santu-parties-table th {
+	text-align: left;
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--santu-text-muted, #6b7280);
+	border-bottom: 1px solid var(--santu-border, #e5e7eb);
+	padding: 8px;
+}
+.santu-parties-table th.num { text-align: right; }
+.santu-parties-bill-row td { padding: 10px 8px; border-bottom: 1px solid var(--santu-border, #e5e7eb); font-size: 14px; }
+.santu-parties-bill-row td.num { text-align: right; }
+.santu-parties-bill-row { cursor: pointer; }
+.santu-parties-bill-row:hover { background: var(--santu-gray-50, #f9fafb); }
+
+@media (max-width: 800px) {
+	.santu-parties { flex-direction: column; height: auto; }
+	.santu-parties-list-panel { flex: 1 1 auto; width: 100%; height: 400px; }
+	.santu-parties-detail-panel { width: 100%; height: auto; }
+}

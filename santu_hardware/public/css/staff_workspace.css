@@ -1,0 +1,36 @@
+/*
+ * Staff workspace UI redesign (2026-07-30, UI/UX-only session). Scoped
+ * strictly to body[data-route="Workspaces/Staff"] — no other screen
+ * touched (User/Employee forms explicitly out of scope).
+ */
+
+body[data-route="Workspaces/Staff"] .shortcut-widget-box {
+	min-height: 64px;
+	border-left-width: 4px !important;
+	border-left-style: solid !important;
+	border-left-color: var(--santu-gray-200, #e5e7eb) !important;
+}
+
+body[data-route="Workspaces/Staff"] .shortcut-widget-box[aria-label="Employees"],
+body[data-route="Workspaces/Staff"] .shortcut-widget-box[aria-label="Add Employee"] {
+	border-left-color: #16a34a !important; /* green — people */
+}
+body[data-route="Workspaces/Staff"] .shortcut-widget-box[aria-label="Staff Logins"],
+body[data-route="Workspaces/Staff"] .shortcut-widget-box[aria-label="Add Staff Login"] {
+	border-left-color: #2563eb !important; /* blue — accounts/access */
+}
+body[data-route="Workspaces/Staff"] .shortcut-widget-box[aria-label="Access Levels"] {
+	border-left-color: #7c3aed !important; /* purple — permissions */
+}
+body[data-route="Workspaces/Staff"] .shortcut-widget-box[aria-label="Recent Activity"] {
+	border-left-color: #d97706 !important; /* amber — informational */
+}
+
+body[data-route="Workspaces/Staff"] .links-widget-box {
+	padding: var(--santu-space-4, 16px);
+}
+
+body[data-route="Workspaces/Staff"] .santu-advanced-section {
+	background: var(--santu-gray-50, #f9fafb);
+	border-style: dashed !important;
+}

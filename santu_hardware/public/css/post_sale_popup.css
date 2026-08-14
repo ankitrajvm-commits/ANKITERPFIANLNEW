@@ -1,0 +1,28 @@
+/*
+ * Post-sale action popup (2026-07-30) — shown the instant a bill is
+ * submitted. Scoped to its own classes only; the dialog chrome itself
+ * is standard Frappe, untouched.
+ */
+.santu-post-sale-summary {
+	text-align: center;
+	padding: var(--santu-space-4, 16px) 0;
+}
+.santu-post-sale-amount {
+	font: 700 32px/1.2 var(--font-stack, inherit);
+	color: var(--santu-success, #15803d);
+}
+.santu-post-sale-customer {
+	font-size: 14px;
+	color: var(--santu-text-muted, #6b7280);
+	margin-top: 4px;
+}
+.santu-post-sale-actions {
+	display: flex;
+	gap: var(--santu-space-2, 8px);
+	flex-wrap: wrap;
+	padding: 0 var(--santu-space-4, 16px) var(--santu-space-4, 16px);
+}
+.santu-whatsapp-btn {
+	color: #15803d !important;
+	border-color: #15803d !important;
+}

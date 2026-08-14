@@ -1,0 +1,182 @@
+/*
+ * Fixed global sidebar — always visible left nav; main content opens to the right.
+ */
+
+:root {
+	--santu-sidebar-width: 220px;
+}
+
+#santu-app-sidebar {
+	position: fixed;
+	top: 56px;
+	left: 0;
+	width: var(--santu-sidebar-width);
+	height: calc(100vh - 56px);
+	background: #ffffff;
+	border-right: 1px solid #e5e7eb;
+	z-index: 1020;
+	overflow-y: auto;
+	overflow-x: hidden;
+	flex-shrink: 0;
+}
+
+.santu-app-sidebar-list {
+	padding: 8px 0 24px;
+}
+
+.santu-app-sidebar-label {
+	padding: 12px 16px 6px;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	color: #9ca3af;
+	text-transform: uppercase;
+}
+
+.santu-app-sidebar-item {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	padding: 10px 16px;
+	border: none;
+	background: transparent;
+	text-align: left;
+	font-size: 14px;
+	font-weight: 500;
+	color: #374151;
+	cursor: pointer;
+	border-left: 3px solid transparent;
+}
+.santu-app-sidebar-item:hover {
+	background: #f3f4f6;
+}
+.santu-app-sidebar-item.is-active {
+	background: #fdeceb;
+	border-left-color: #e0393e;
+	color: #e0393e;
+	font-weight: 600;
+}
+
+.santu-app-sidebar-icon {
+	width: 18px;
+	text-align: center;
+	flex-shrink: 0;
+	font-size: 15px;
+	line-height: 1;
+}
+
+.santu-app-sidebar-text {
+	flex: 1 1 auto;
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.santu-app-sidebar-chevron {
+	font-size: 10px;
+	opacity: 0.5;
+	flex-shrink: 0;
+}
+
+.santu-app-sidebar-children {
+	display: none;
+}
+.santu-app-sidebar-group.is-expanded .santu-app-sidebar-children {
+	display: block;
+}
+
+.santu-app-sidebar-child {
+	padding-left: 36px !important;
+	font-size: 13px;
+	border-left: 3px solid transparent;
+}
+.santu-app-sidebar-child .santu-app-sidebar-icon {
+	font-size: 10px;
+	opacity: 0.5;
+}
+.santu-app-sidebar-child.is-active {
+	background: #fdeceb !important;
+	border-left-color: #e0393e !important;
+	color: #e0393e !important;
+	font-weight: 600;
+}
+.santu-app-sidebar-child.is-active .santu-app-sidebar-icon {
+	opacity: 0.9;
+	color: #e0393e;
+}
+.santu-app-sidebar-group.is-active > .santu-app-sidebar-parent {
+	color: #e0393e;
+	font-weight: 600;
+}
+
+/* Push all main content to the right of fixed sidebar */
+body.santu-fixed-sidebar:not(.santu-kiosk-mode) .main-section {
+	margin-left: var(--santu-sidebar-width) !important;
+	width: calc(100% - var(--santu-sidebar-width)) !important;
+	max-width: none !important;
+}
+
+body.santu-fixed-sidebar:not(.santu-kiosk-mode) #body,
+body.santu-fixed-sidebar:not(.santu-kiosk-mode) .page-container {
+	max-width: 100% !important;
+}
+
+/* Hide duplicate workspace sidebar — we use the fixed one instead */
+body.santu-fixed-sidebar:not(.santu-kiosk-mode) [data-page-route="Workspaces"] .layout-side-section:has(.desk-sidebar) {
+	display: none !important;
+}
+
+body.santu-fixed-sidebar:not(.santu-kiosk-mode) [data-page-route="Workspaces"] .layout-main-section-wrapper {
+	flex: 0 0 100% !important;
+	max-width: 100% !important;
+	width: 100% !important;
+}
+
+body.santu-fixed-sidebar:not(.santu-kiosk-mode) [data-page-route="Workspaces"] .row.layout-main {
+	margin-left: 0 !important;
+}
+
+/* Custom pages — use full width to the right of sidebar */
+body.santu-fixed-sidebar:not(.santu-kiosk-mode) .santu-sale,
+body.santu-fixed-sidebar:not(.santu-kiosk-mode) .santu-purchase,
+body.santu-fixed-sidebar:not(.santu-kiosk-mode) .santu-reports,
+body.santu-fixed-sidebar:not(.santu-kiosk-mode) .santu-sync,
+body.santu-fixed-sidebar:not(.santu-kiosk-mode) .santu-utilities,
+body.santu-fixed-sidebar:not(.santu-kiosk-mode) .santu-txn-msg,
+body.santu-fixed-sidebar:not(.santu-kiosk-mode) .santu-wa-connect,
+body.santu-fixed-sidebar:not(.santu-kiosk-mode) .santu-items,
+body.santu-fixed-sidebar:not(.santu-kiosk-mode) .santu-dash,
+body.santu-fixed-sidebar:not(.santu-kiosk-mode) .santu-parties {
+	max-width: none !important;
+	width: 100% !important;
+}
+
+body.santu-fixed-sidebar:not(.santu-kiosk-mode) .page-body.container {
+	max-width: 100% !important;
+	width: 100% !important;
+	padding-left: 16px;
+	padding-right: 16px;
+}
+
+body.santu-fixed-sidebar:not(.santu-kiosk-mode) .navbar .container,
+body.santu-fixed-sidebar:not(.santu-kiosk-mode) .page-head .container {
+	max-width: 100% !important;
+	margin-left: 0 !important;
+}
+
+/* Navbar spans full width; only content below is offset */
+body.santu-fixed-sidebar:not(.santu-kiosk-mode) .navbar {
+	width: 100% !important;
+}
+
+@media (max-width: 768px) {
+	#santu-app-sidebar {
+		width: 200px;
+	}
+	body.santu-fixed-sidebar:not(.santu-kiosk-mode) .main-section {
+		margin-left: 200px !important;
+		width: calc(100% - 200px) !important;
+	}
+}

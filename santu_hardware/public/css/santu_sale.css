@@ -1,0 +1,474 @@
+/*
+ * Sale Invoices — Vyapar-inspired compact dashboard
+ */
+
+.santu-sale-page-main {
+	padding: 0 !important;
+}
+
+.santu-sale {
+	max-width: 100%;
+	margin: 0;
+	padding: 12px 20px 24px;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+	color: #1f2937;
+}
+
+/* ---------- Page header ---------- */
+.santu-sale-page-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 10px;
+	min-height: 36px;
+}
+
+.santu-sale-page-title {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.santu-sale-title-text {
+	font-size: 18px;
+	font-weight: 700;
+	color: #111827;
+	line-height: 1.2;
+}
+
+.santu-sale-title-chevron {
+	font-size: 11px;
+	color: #9ca3af;
+	line-height: 1;
+}
+
+.santu-sale-add-btn {
+	font-weight: 700 !important;
+	font-size: 13px !important;
+	padding: 7px 18px !important;
+	border-radius: 6px !important;
+	background: var(--santu-brand, #e0393e) !important;
+	border-color: var(--santu-brand, #e0393e) !important;
+	box-shadow: none !important;
+	white-space: nowrap;
+}
+.santu-sale-add-btn:hover,
+.santu-sale-add-btn:focus {
+	background: #c42f34 !important;
+	border-color: #c42f34 !important;
+}
+
+/* ---------- Filter bar ---------- */
+.santu-sale-filter-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px 10px;
+	padding: 8px 12px;
+	margin-bottom: 10px;
+	background: #fff;
+	border: 1px solid #e8eaed;
+	border-radius: 8px;
+}
+
+.santu-sale-filter-label {
+	font-size: 13px;
+	font-weight: 500;
+	color: #6b7280;
+	white-space: nowrap;
+}
+
+.santu-sale-pill {
+	appearance: none;
+	-webkit-appearance: none;
+	font-size: 13px;
+	font-weight: 500;
+	color: #374151;
+	background: #f9fafb;
+	border: 1px solid #e5e7eb;
+	border-radius: 6px;
+	padding: 5px 10px;
+	height: 32px;
+	line-height: 1.2;
+	cursor: pointer;
+	outline: none;
+}
+.santu-sale-pill:hover {
+	border-color: #d1d5db;
+	background: #f3f4f6;
+}
+.santu-sale-pill:focus {
+	border-color: var(--santu-brand, #e0393e);
+	box-shadow: 0 0 0 2px rgba(224, 57, 62, 0.12);
+}
+
+select.santu-sale-pill {
+	padding-right: 26px;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%236b7280' d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 8px center;
+	background-color: #f9fafb;
+	min-width: 110px;
+}
+
+.santu-sale-date-range {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.santu-sale-cal-icon {
+	font-size: 14px;
+	line-height: 1;
+	opacity: 0.85;
+}
+
+.santu-sale-date-to {
+	font-size: 12px;
+	color: #9ca3af;
+}
+
+input.santu-sale-pill[type="date"] {
+	min-width: 130px;
+	cursor: text;
+}
+
+.santu-sale-company {
+	min-width: 130px;
+	max-width: 200px;
+}
+
+/* ---------- Summary card ---------- */
+.santu-sale-summary-wrap {
+	margin-bottom: 10px;
+}
+
+.santu-sale-summary-card {
+	background: linear-gradient(135deg, #faf8ff 0%, #fff 60%);
+	border: 1px solid #ece8f4;
+	border-radius: 8px;
+	padding: 12px 16px;
+}
+
+.santu-sale-summary-top {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin-bottom: 2px;
+}
+
+.santu-sale-summary-label {
+	font-size: 12px;
+	font-weight: 600;
+	color: #6b7280;
+}
+
+.santu-sale-summary-badge {
+	font-size: 11px;
+	font-weight: 600;
+	padding: 2px 8px;
+	border-radius: 12px;
+	white-space: nowrap;
+}
+.santu-sale-pct-up {
+	color: #15803d;
+	background: #ecfdf3;
+}
+.santu-sale-pct-down {
+	color: #b91c1c;
+	background: #fef2f2;
+}
+
+.santu-sale-summary-amount {
+	font-size: 22px;
+	font-weight: 700;
+	color: #111827;
+	line-height: 1.3;
+	margin-bottom: 4px;
+}
+
+.santu-sale-summary-sub {
+	font-size: 12px;
+	color: #6b7280;
+}
+.santu-sale-summary-sub b {
+	font-weight: 600;
+	color: #374151;
+}
+.santu-sale-summary-sep {
+	margin: 0 6px;
+	color: #d1d5db;
+}
+
+.santu-sale-balance-due {
+	color: #b91c1c !important;
+}
+
+/* ---------- Transactions card ---------- */
+.santu-sale-txn-wrap {
+	background: #fff;
+	border: 1px solid #e8eaed;
+	border-radius: 8px;
+	overflow: hidden;
+}
+
+.santu-sale-txn-card-inner {
+	padding: 0;
+}
+
+.santu-sale-txn-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 10px 14px;
+	border-bottom: 1px solid #f0f1f3;
+}
+
+.santu-sale-txn-title {
+	font-size: 14px;
+	font-weight: 700;
+	color: #111827;
+}
+
+.santu-sale-txn-toolbar {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.santu-sale-icon-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 30px;
+	height: 30px;
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: 6px;
+	background: transparent;
+	font-size: 15px;
+	cursor: pointer;
+	line-height: 1;
+}
+.santu-sale-icon-btn:hover {
+	background: #f3f4f6;
+	border-color: #e5e7eb;
+}
+
+.santu-sale-txn-search-panel {
+	padding: 0 14px 10px;
+	border-bottom: 1px solid #f0f1f3;
+}
+.santu-sale-txn-search-panel .form-control {
+	font-size: 13px;
+	height: 32px;
+	padding: 5px 10px;
+	border-radius: 6px;
+	border-color: #e5e7eb;
+}
+
+/* ---------- Table ---------- */
+.santu-sale-txn-table-wrap {
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+}
+
+.santu-sale-txn-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+
+.santu-sale-txn-table thead th {
+	text-align: left;
+	padding: 8px 12px;
+	font-size: 11px;
+	font-weight: 600;
+	color: #9ca3af;
+	background: #fafafa;
+	border-bottom: 1px solid #eceef1;
+	white-space: nowrap;
+}
+.santu-sale-txn-table thead th.num {
+	text-align: right;
+}
+
+.santu-sale-txn-table tbody td {
+	padding: 7px 12px;
+	border-bottom: 1px solid #f3f4f6;
+	color: #374151;
+	vertical-align: middle;
+}
+.santu-sale-txn-table tbody td.num {
+	text-align: right;
+}
+
+.santu-sale-txn-row {
+	cursor: pointer;
+	transition: background 0.1s;
+}
+.santu-sale-txn-row:hover {
+	background: #f9fafb;
+}
+
+.santu-sale-inv-no {
+	font-weight: 600;
+	color: #1f2937;
+}
+
+.santu-sale-row-actions {
+	white-space: nowrap;
+}
+
+.santu-sale-row-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	margin-left: 2px;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	font-size: 13px;
+	cursor: pointer;
+	opacity: 0.7;
+}
+.santu-sale-row-btn:hover {
+	background: #f3f4f6;
+	opacity: 1;
+}
+
+.santu-sale-row-menu {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+.santu-sale-row-menu-item {
+	display: block;
+	width: 100%;
+	text-align: left;
+	padding: 8px 12px;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	font-size: 13px;
+	cursor: pointer;
+}
+.santu-sale-row-menu-item:hover {
+	background: #f3f4f6;
+}
+
+/* ---------- Loading / empty ---------- */
+.santu-sale-loading {
+	padding: 24px;
+	text-align: center;
+	font-size: 13px;
+	color: #9ca3af;
+}
+
+.santu-sale-empty {
+	text-align: center;
+	padding: 36px 20px;
+}
+
+.santu-sale-empty-title {
+	font-size: 15px;
+	font-weight: 700;
+	color: #374151;
+	margin-bottom: 6px;
+}
+
+.santu-sale-empty-sub {
+	font-size: 13px;
+	color: #9ca3af;
+	margin-bottom: 16px;
+}
+
+.santu-sale-empty-btn {
+	font-weight: 700 !important;
+}
+
+.santu-sale-empty-so {
+	padding: 56px 24px;
+}
+
+.santu-sale-empty-icon {
+	font-size: 48px;
+	margin-bottom: 16px;
+	opacity: 0.85;
+}
+
+.santu-sale-empty-text {
+	font-size: 14px;
+	color: #6b7280;
+	max-width: 420px;
+	margin: 0 auto 20px;
+	line-height: 1.5;
+}
+
+.santu-sale-empty-btn-so {
+	background: #f59e0b !important;
+	border-color: #f59e0b !important;
+	color: #fff !important;
+	font-weight: 700 !important;
+	padding: 10px 24px !important;
+	border-radius: 8px !important;
+}
+
+/* ---------- Print ---------- */
+@media print {
+	.santu-sale-filter-bar,
+	.santu-sale-txn-toolbar,
+	.santu-sale-row-actions,
+	.santu-sale-add-btn,
+	#santu-app-sidebar,
+	.navbar {
+		display: none !important;
+	}
+	body.santu-fixed-sidebar .main-section {
+		margin-left: 0 !important;
+		width: 100% !important;
+	}
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1366px) {
+	.santu-sale {
+		padding: 10px 14px 20px;
+	}
+	input.santu-sale-pill[type="date"] {
+		min-width: 118px;
+	}
+}
+
+@media (max-width: 900px) {
+	.santu-sale-filter-bar {
+		gap: 6px 8px;
+	}
+	.santu-sale-date-range {
+		width: 100%;
+	}
+}
+
+@media (max-width: 768px) {
+	.santu-sale-page-header {
+		flex-wrap: wrap;
+	}
+	.santu-sale-summary-top {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+	.santu-sale-txn-table {
+		font-size: 12px;
+	}
+	.santu-sale-txn-table thead th,
+	.santu-sale-txn-table tbody td {
+		padding: 6px 8px;
+	}
+}

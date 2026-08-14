@@ -1,0 +1,264 @@
+/* WhatsApp Connect — Santu Hardware */
+
+.santu-wa-connect-page-main { padding: 0 !important; }
+
+.santu-wa-connect {
+	height: calc(100vh - 56px);
+	display: flex;
+	flex-direction: column;
+	background: #f0f2f5;
+}
+
+.santu-wa-connect-header {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 12px 20px;
+	background: #fff;
+	border-bottom: 1px solid #e9edef;
+}
+
+.santu-wa-connect-header h1 {
+	margin: 0;
+	font-size: 18px;
+	font-weight: 700;
+	flex: 1;
+}
+
+.santu-wa-state-badge {
+	font-size: 12px;
+	font-weight: 600;
+	padding: 4px 12px;
+	border-radius: 12px;
+	background: #fef2f2;
+	color: #b91c1c;
+}
+
+.santu-wa-state-badge.connected { background: #dcfce7; color: #15803d; }
+
+.santu-wa-settings-btn { margin-left: auto; }
+
+/* Setup screen */
+.santu-wa-connect-setup {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	flex: 1;
+	gap: 0;
+}
+
+.santu-wa-setup-left {
+	padding: 48px 40px;
+	background: #fff;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+}
+
+.santu-wa-illustration { font-size: 64px; margin-bottom: 16px; }
+.santu-wa-setup-left h2 { font-size: 22px; font-weight: 700; }
+.santu-wa-muted { color: #667781; font-size: 13px; max-width: 360px; }
+
+.santu-wa-setup-right {
+	padding: 48px 40px;
+	background: #f8fafc;
+	border-left: 1px solid #e9edef;
+}
+
+.santu-wa-setup-right h3 { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
+.santu-wa-steps { font-size: 14px; line-height: 1.8; margin-bottom: 20px; }
+.santu-wa-terms { display: block; margin-bottom: 16px; font-size: 13px; }
+.santu-wa-setup-actions { display: flex; gap: 10px; }
+.santu-wa-setup-actions .btn-primary { background: #e11d48; border-color: #e11d48; }
+.santu-wa-warn { color: #b45309; font-size: 13px; margin-top: 12px; }
+.santu-wa-error { background: #fef2f2; color: #b91c1c; padding: 10px; border-radius: 6px; margin-bottom: 12px; font-size: 13px; }
+
+/* Workspace */
+.santu-wa-workspace {
+	display: grid;
+	grid-template-columns: 340px 1fr;
+	flex: 1;
+	overflow: hidden;
+}
+
+.santu-wa-chat-list-panel {
+	background: #fff;
+	border-right: 1px solid #e9edef;
+	display: flex;
+	flex-direction: column;
+}
+
+.santu-wa-search {
+	margin: 10px;
+	border-radius: 8px;
+}
+
+.santu-wa-chat-list { flex: 1; overflow-y: auto; }
+
+.santu-wa-chat-item {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 12px 16px;
+	cursor: pointer;
+	border-bottom: 1px solid #f0f2f5;
+}
+
+.santu-wa-chat-item:hover, .santu-wa-chat-item.active { background: #f0f2f5; }
+
+.santu-wa-avatar {
+	width: 48px;
+	height: 48px;
+	border-radius: 50%;
+	background: #dfe5e7;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-weight: 700;
+	color: #54656f;
+	flex-shrink: 0;
+}
+
+.santu-wa-chat-meta { flex: 1; min-width: 0; }
+.santu-wa-chat-top { display: flex; justify-content: space-between; font-size: 13px; }
+.santu-wa-chat-preview { font-size: 12px; color: #667781; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.santu-wa-unread { background: #25d366; color: #fff; border-radius: 10px; padding: 2px 7px; font-size: 11px; font-weight: 700; }
+
+/* Chat panel */
+.santu-wa-chat-panel {
+	display: flex;
+	flex-direction: column;
+	background: #efeae2;
+	background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h60v60H0z' fill='%23efeae2'/%3E%3Cpath d='M30 10l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z' fill='%23d9d0c3' opacity='.3'/%3E%3C/svg%3E");
+}
+
+.santu-wa-chat-empty, .santu-wa-empty-chat, .santu-wa-empty, .santu-wa-loading {
+	padding: 40px;
+	text-align: center;
+	color: #667781;
+	flex: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.santu-wa-chat-header {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 10px 16px;
+	background: #f0f2f5;
+	border-bottom: 1px solid #e9edef;
+}
+
+.santu-wa-messages {
+	flex: 1;
+	overflow-y: auto;
+	padding: 16px;
+}
+
+.santu-wa-date-divider {
+	text-align: center;
+	font-size: 12px;
+	color: #667781;
+	margin: 12px 0;
+	background: #e1f2fa;
+	display: inline-block;
+	padding: 4px 12px;
+	border-radius: 8px;
+	margin-left: auto;
+	margin-right: auto;
+	width: fit-content;
+}
+
+.santu-wa-bubble {
+	max-width: 65%;
+	margin-bottom: 8px;
+	padding: 8px 12px;
+	border-radius: 8px;
+	font-size: 14px;
+	line-height: 1.45;
+	box-shadow: 0 1px 1px rgba(0,0,0,0.06);
+}
+
+.santu-wa-bubble.outgoing {
+	margin-left: auto;
+	background: #d9fdd3;
+	border-top-right-radius: 0;
+}
+
+.santu-wa-bubble.incoming {
+	margin-right: auto;
+	background: #fff;
+	border-top-left-radius: 0;
+}
+
+.santu-wa-bubble-meta { font-size: 10px; color: #667781; text-align: right; margin-top: 4px; }
+.santu-wa-bubble-meta .ticks { color: #53bdeb; }
+
+.santu-wa-quick-actions {
+	display: flex;
+	gap: 8px;
+	padding: 8px 12px;
+	background: #f0f2f5;
+	flex-wrap: wrap;
+}
+
+.santu-wa-chip {
+	border: 1px solid #e9edef;
+	background: #fff;
+	border-radius: 20px;
+	padding: 6px 14px;
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.santu-wa-chip:hover { background: #f0f2f5; }
+
+.santu-wa-suggestions { padding: 4px 12px 8px; background: #f0f2f5; }
+.santu-wa-sugg-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.santu-wa-sugg {
+	border: 1px solid #e9edef;
+	background: #fff;
+	border-radius: 16px;
+	padding: 4px 12px;
+	font-size: 11px;
+	cursor: pointer;
+}
+.santu-wa-regenerate { font-size: 11px; color: #667781; border: none; background: none; cursor: pointer; margin-left: auto; }
+
+.santu-wa-composer {
+	display: flex;
+	gap: 8px;
+	padding: 10px 16px;
+	background: #f0f2f5;
+	align-items: center;
+}
+
+.santu-wa-composer .form-control { border-radius: 24px; flex: 1; }
+.santu-wa-composer .wa-send-btn { border-radius: 50%; width: 40px; height: 40px; padding: 0; }
+
+/* Settings drawer */
+.santu-wa-settings-drawer { position: fixed; inset: 0; z-index: 1050; }
+.santu-wa-drawer-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.3); }
+.santu-wa-drawer-panel {
+	position: absolute; right: 0; top: 0; bottom: 0; width: 360px;
+	background: #fff; box-shadow: -4px 0 20px rgba(0,0,0,0.1);
+	display: flex; flex-direction: column;
+}
+.santu-wa-drawer-header {
+	display: flex; justify-content: space-between; align-items: center;
+	padding: 16px 20px; border-bottom: 1px solid #e9edef;
+}
+.santu-wa-drawer-header h3 { margin: 0; font-size: 16px; }
+.santu-wa-drawer-body { padding: 20px; font-size: 14px; }
+.santu-wa-drawer-body label { display: block; margin-bottom: 10px; }
+.santu-wa-drawer-body .btn-block { margin-bottom: 8px; text-align: left; }
+
+@media (max-width: 900px) {
+	.santu-wa-connect-setup { grid-template-columns: 1fr; }
+	.santu-wa-workspace { grid-template-columns: 1fr; }
+	.santu-wa-chat-list-panel { max-height: 200px; }
+}

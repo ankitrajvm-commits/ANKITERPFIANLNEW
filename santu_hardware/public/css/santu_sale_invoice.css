@@ -1,0 +1,218 @@
+/*
+ * Quick Sale Invoice — shop-friendly Sales Invoice creation UI.
+ */
+
+.santu-sale-invoice-page-main {
+	padding: 0 !important;
+}
+
+.santu-si {
+	padding: 16px 20px 32px;
+	max-width: 1400px;
+	margin: 0 auto;
+}
+
+.santu-si-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 16px;
+}
+
+.santu-si-title {
+	font-size: 22px;
+	font-weight: 700;
+	margin: 0;
+	color: #111827;
+}
+
+.santu-si-body {
+	display: flex;
+	gap: 20px;
+	align-items: flex-start;
+}
+
+.santu-si-main {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.santu-si-side {
+	flex: 0 0 300px;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.santu-si-card {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 12px;
+	padding: 16px;
+}
+
+.santu-si-label {
+	display: block;
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: #6b7280;
+	margin-bottom: 8px;
+}
+
+.santu-si-customer-row,
+.santu-si-item-entry-row {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+}
+
+.santu-si-search-wrap {
+	position: relative;
+	flex: 1 1 auto;
+}
+
+.santu-si-customer-search,
+.santu-si-item-search {
+	font-size: 15px;
+	padding: 10px 12px;
+	border-radius: 8px;
+}
+
+.santu-si-item-qty {
+	width: 80px;
+	flex-shrink: 0;
+}
+
+.santu-si-suggest {
+	display: none;
+	position: absolute;
+	top: 100%;
+	left: 0;
+	right: 0;
+	z-index: 1050;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+	max-height: 260px;
+	overflow-y: auto;
+	margin-top: 4px;
+}
+
+.santu-si-suggest-row {
+	padding: 10px 12px;
+	cursor: pointer;
+	border-bottom: 1px solid #f3f4f6;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.santu-si-suggest-row:hover { background: #f9fafb; }
+.santu-si-suggest-row strong { font-size: 14px; color: #111827; }
+.santu-si-suggest-row span { font-size: 12px; color: #6b7280; }
+
+.santu-si-customer-selected {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px 16px;
+	margin-top: 10px;
+	font-size: 13px;
+	color: #374151;
+}
+
+.santu-si-table-wrap {
+	overflow-x: auto;
+}
+
+.santu-si-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+.santu-si-table thead th {
+	text-align: left;
+	padding: 10px 8px;
+	font-size: 11px;
+	font-weight: 700;
+	color: #9ca3af;
+	text-transform: uppercase;
+	border-bottom: 1px solid #e5e7eb;
+}
+.santu-si-table thead th.num,
+.santu-si-table td.num { text-align: right; }
+.santu-si-table tbody td {
+	padding: 8px;
+	border-bottom: 1px solid #f3f4f6;
+	vertical-align: middle;
+}
+.santu-si-table .form-control.input-xs {
+	width: 72px;
+	padding: 4px 6px;
+	font-size: 13px;
+	display: inline-block;
+}
+
+.santu-si-stock-warn { color: #b45309; font-size: 11px; display: block; }
+.santu-si-stock-ok { color: #15803d; font-size: 11px; display: block; }
+
+.santu-si-empty-items {
+	text-align: center;
+	padding: 32px;
+	color: #9ca3af;
+	font-size: 14px;
+}
+
+.santu-si-total-row {
+	display: flex;
+	justify-content: space-between;
+	padding: 8px 0;
+	font-size: 14px;
+	color: #374151;
+}
+.santu-si-grand-row {
+	font-size: 18px;
+	font-weight: 700;
+	color: #111827;
+	border-top: 1px solid #e5e7eb;
+	margin-top: 8px;
+	padding-top: 12px;
+}
+.santu-si-grand { color: #e0393e; }
+
+.santu-si-payment-card .form-control {
+	margin-bottom: 12px;
+	font-size: 15px;
+	padding: 10px 12px;
+	border-radius: 8px;
+}
+
+.santu-si-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.santu-si-actions .btn {
+	font-weight: 700;
+	padding: 10px 16px;
+	border-radius: 8px;
+}
+.santu-si-actions .btn-primary {
+	background: var(--santu-brand, #e0393e) !important;
+	border-color: var(--santu-brand, #e0393e) !important;
+}
+
+.santu-si-add-item-btn {
+	font-weight: 700;
+	padding: 10px 18px;
+	white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+	.santu-si-body { flex-direction: column; }
+	.santu-si-side { flex: 1 1 auto; width: 100%; }
+}

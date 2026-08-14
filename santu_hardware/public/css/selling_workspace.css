@@ -1,0 +1,49 @@
+/*
+ * Selling workspace UI redesign (2026-07-30, UI/UX-only session). Scoped
+ * strictly to body[data-route="Workspaces/Selling"] — no other screen
+ * touched (POS/billing screen itself explicitly out of scope this round).
+ *
+ * The native Workspace Shortcut `color` field (set via data edit) turned
+ * out not to render as any visible tint on the Desk workspace widget —
+ * found by testing, not assumed. Falling back to the same scoped
+ * CSS + JS-by-attribute technique already proven safe elsewhere
+ * (Home/Accounting/Buying), keyed off `aria-label` this time since
+ * shortcuts already carry a stable one.
+ */
+
+body[data-route="Workspaces/Selling"] .shortcut-widget-box {
+	min-height: 64px;
+	border-left-width: 4px !important;
+	border-left-style: solid !important;
+	border-left-color: var(--santu-gray-200, #e5e7eb) !important;
+}
+
+body[data-route="Workspaces/Selling"] .shortcut-widget-box[aria-label="New Sale"] { border-left-color: #2563eb !important; }
+body[data-route="Workspaces/Selling"] .shortcut-widget-box[aria-label="Customer"] { border-left-color: #16a34a !important; }
+body[data-route="Workspaces/Selling"] .shortcut-widget-box[aria-label="Bill"] { border-left-color: #7c3aed !important; }
+body[data-route="Workspaces/Selling"] .shortcut-widget-box[aria-label="Payment Collection"] { border-left-color: #16a34a !important; }
+body[data-route="Workspaces/Selling"] .shortcut-widget-box[aria-label="Customer Dues"] { border-left-color: #d97706 !important; }
+body[data-route="Workspaces/Selling"] .shortcut-widget-box[aria-label="Returns"] { border-left-color: #b91c1c !important; }
+
+/* "New Sale" is the one action used dozens of times a day — give it the
+   same visual weight the rest of the product already gives its primary
+   action (Shop Mode's New Bill banner, Dashboard's Start New Sale). */
+body[data-route="Workspaces/Selling"] .shortcut-widget-box[aria-label="New Sale"] {
+	background: var(--santu-brand-soft, #eef2ff);
+}
+body[data-route="Workspaces/Selling"] .shortcut-widget-box[aria-label="New Sale"] .widget-title {
+	color: var(--santu-brand, #3730a3);
+	font-weight: 700;
+}
+
+/* The 3 curated sections vs. the "Advanced" catch-all should look
+   visually distinct — Advanced is deliberately plainer/denser, it's the
+   deprioritized "everything else," not a fourth peer section. */
+body[data-route="Workspaces/Selling"] .links-widget-box {
+	padding: var(--santu-space-4, 16px);
+}
+
+body[data-route="Workspaces/Selling"] .santu-advanced-section {
+	background: var(--santu-gray-50, #f9fafb);
+	border-style: dashed !important;
+}

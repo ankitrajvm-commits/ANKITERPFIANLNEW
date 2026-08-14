@@ -1,0 +1,56 @@
+{
+ "actions": [],
+ "creation": "2026-08-14 13:00:00.000000",
+ "doctype": "DocType",
+ "document_type": "Setup",
+ "engine": "InnoDB",
+ "field_order": [
+  "sync_personal_contacts",
+  "passcode_enabled",
+  "passcode",
+  "terms_accepted",
+  "terms_accepted_on"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "sync_personal_contacts",
+   "fieldtype": "Check",
+   "label": "Sync Personal Contacts"
+  },
+  {
+   "default": "0",
+   "fieldname": "passcode_enabled",
+   "fieldtype": "Check",
+   "label": "Set Passcode"
+  },
+  {
+   "fieldname": "passcode",
+   "fieldtype": "Password",
+   "label": "Passcode"
+  },
+  {
+   "default": "0",
+   "fieldname": "terms_accepted",
+   "fieldtype": "Check",
+   "label": "Terms Accepted"
+  },
+  {
+   "fieldname": "terms_accepted_on",
+   "fieldtype": "Datetime",
+   "label": "Terms Accepted On",
+   "read_only": 1
+  }
+ ],
+ "issingle": 1,
+ "module": "Santu Hardware",
+ "name": "Santu WhatsApp Connect Settings",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  }
+ ]
+}

@@ -1,0 +1,16 @@
+{
+ "content": null,
+ "doctype": "Page",
+ "icon": "octicon octicon-tools",
+ "idx": 0,
+ "module": "Santu Hardware",
+ "name": "santu-utilities",
+ "page_name": "santu-utilities",
+ "restrict_to_domain": null,
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Utilities"
+}

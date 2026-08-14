@@ -1,0 +1,85 @@
+{
+ "actions": [],
+ "creation": "2026-08-14 12:00:00.000000",
+ "doctype": "DocType",
+ "document_type": "Setup",
+ "engine": "InnoDB",
+ "field_order": [
+  "auto_backup_enabled",
+  "backup_frequency",
+  "backup_time",
+  "retention_count",
+  "include_files",
+  "column_break_1",
+  "last_backup_on",
+  "next_backup_on",
+  "last_backup_status"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "auto_backup_enabled",
+   "fieldtype": "Check",
+   "label": "Enable Auto Backup"
+  },
+  {
+   "default": "Daily",
+   "fieldname": "backup_frequency",
+   "fieldtype": "Select",
+   "label": "Backup Frequency",
+   "options": "Daily\nWeekly\nCustom"
+  },
+  {
+   "default": "02:00:00",
+   "fieldname": "backup_time",
+   "fieldtype": "Time",
+   "label": "Backup Time"
+  },
+  {
+   "default": "10",
+   "fieldname": "retention_count",
+   "fieldtype": "Int",
+   "label": "Backups to Retain"
+  },
+  {
+   "default": "1",
+   "fieldname": "include_files",
+   "fieldtype": "Check",
+   "label": "Include Files"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_backup_on",
+   "fieldtype": "Datetime",
+   "label": "Last Backup",
+   "read_only": 1
+  },
+  {
+   "fieldname": "next_backup_on",
+   "fieldtype": "Datetime",
+   "label": "Next Backup",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_backup_status",
+   "fieldtype": "Select",
+   "label": "Last Backup Status",
+   "options": "\nSuccess\nFailed\nNever",
+   "read_only": 1
+  }
+ ],
+ "issingle": 1,
+ "module": "Santu Hardware",
+ "name": "Santu Backup Settings",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  }
+ ]
+}

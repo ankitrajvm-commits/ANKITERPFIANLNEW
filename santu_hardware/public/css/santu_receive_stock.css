@@ -1,0 +1,151 @@
+/*
+ * Receive Stock page (2026-08-06) — "class 7 k baachhe ko v samjh aa
+ * jaye" was the explicit bar. Big touch targets, one thing per step
+ * (search → quantity → done), no accounting vocabulary anywhere on
+ * screen. Structure mirrors santu_low_stock.css's card-list pattern.
+ */
+.santu-receive {
+	max-width: 480px;
+}
+
+.santu-receive-hint {
+	font-size: 15px;
+	color: var(--santu-text-muted, #6b7280);
+	margin-bottom: var(--santu-space-3, 12px);
+}
+
+.santu-receive-search {
+	font-size: 18px;
+	padding: 14px 16px !important;
+	height: auto !important;
+	margin-bottom: var(--santu-space-4, 16px);
+}
+
+.santu-receive-results { margin-bottom: var(--santu-space-4, 16px); }
+.santu-receive-result-card {
+	background: var(--santu-surface, #fff);
+	border: 1px solid var(--santu-border, #e5e7eb);
+	border-radius: var(--santu-radius-lg, 12px);
+	padding: 16px;
+	margin-bottom: 10px;
+	cursor: pointer;
+	transition: box-shadow 0.15s ease, transform 0.1s ease;
+}
+.santu-receive-result-card:hover {
+	box-shadow: var(--santu-shadow-md, 0 4px 16px rgba(0, 0, 0, 0.1));
+	transform: translateY(-1px);
+}
+.santu-receive-result-name { font-size: 17px; font-weight: 700; }
+.santu-receive-result-meta { font-size: 13px; color: var(--santu-text-muted, #6b7280); margin-top: 4px; }
+
+.santu-receive-today-title {
+	font-size: 12px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--santu-text-muted, #6b7280);
+	font-weight: 700;
+	margin-bottom: 6px;
+}
+.santu-receive-today-row {
+	font-size: 14px;
+	padding: 6px 0;
+	color: var(--santu-success, #15803d);
+}
+
+.santu-receive-back {
+	background: none;
+	border: none;
+	color: var(--santu-brand, #3730a3);
+	font-weight: 600;
+	font-size: 15px;
+	padding: 0;
+	margin-bottom: var(--santu-space-4, 16px);
+	cursor: pointer;
+}
+
+.santu-receive-item-card {
+	background: var(--santu-brand-soft, #eef2ff);
+	border-radius: var(--santu-radius-lg, 12px);
+	padding: 18px;
+	margin-bottom: var(--santu-space-5, 20px);
+}
+.santu-receive-item-name { font-size: 20px; font-weight: 700; color: var(--santu-brand, #3730a3); }
+.santu-receive-item-meta { font-size: 14px; color: var(--santu-text-muted, #6b7280); margin-top: 4px; }
+
+.santu-receive-block { margin-bottom: var(--santu-space-5, 20px); }
+.santu-receive-block label {
+	display: block;
+	font-size: 15px;
+	font-weight: 600;
+	margin-bottom: 10px;
+}
+
+.santu-receive-qty-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+.santu-receive-qty-btn {
+	width: 56px;
+	height: 56px;
+	font-size: 28px;
+	font-weight: 700;
+	border: 1px solid var(--santu-border, #e5e7eb);
+	border-radius: var(--santu-radius-md, 12px);
+	background: var(--santu-gray-50, #f9fafb);
+	cursor: pointer;
+	flex: 0 0 auto;
+}
+.santu-receive-qty-btn:hover { background: var(--santu-brand-soft, #eef2ff); }
+.santu-receive-qty-input {
+	flex: 1 1 auto;
+	height: 56px;
+	font-size: 28px;
+	font-weight: 700;
+	text-align: center;
+	border: 1px solid var(--santu-border, #e5e7eb);
+	border-radius: var(--santu-radius-md, 12px);
+}
+
+.santu-receive-qty-quick {
+	display: flex;
+	gap: 10px;
+	margin-top: 10px;
+}
+.santu-receive-qty-quick-btn {
+	flex: 1 1 0;
+	padding: 10px;
+	font-size: 15px;
+	font-weight: 600;
+	border: 1px solid var(--santu-border, #e5e7eb);
+	border-radius: var(--santu-radius-md, 12px);
+	background: var(--santu-surface, #fff);
+	cursor: pointer;
+}
+.santu-receive-qty-quick-btn:hover { background: var(--santu-gray-50, #f9fafb); }
+
+.santu-receive-rate-input {
+	font-size: 18px !important;
+	padding: 12px 14px !important;
+	height: auto !important;
+}
+
+.santu-receive-submit,
+.santu-receive-another {
+	width: 100%;
+	font-size: 18px !important;
+	padding: 16px !important;
+	height: auto !important;
+	border-radius: var(--santu-radius-md, 12px) !important;
+}
+
+.santu-receive-step-success {
+	text-align: center;
+	padding-top: 40px;
+}
+.santu-receive-success-icon { font-size: 56px; margin-bottom: 16px; }
+.santu-receive-success-text {
+	font-size: 18px;
+	line-height: 1.6;
+	margin-bottom: var(--santu-space-5, 20px);
+}

@@ -1,0 +1,118 @@
+{
+ "actions": [],
+ "creation": "2026-08-14 12:30:00.000000",
+ "doctype": "DocType",
+ "document_type": "Setup",
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "provider",
+  "api_url",
+  "access_token",
+  "phone_number_id",
+  "business_account_id",
+  "sender_number",
+  "column_break_1",
+  "connection_status",
+  "connect_state",
+  "display_phone_number",
+  "last_test_on",
+  "last_test_error",
+  "webhook_verify_token"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enable WhatsApp"
+  },
+  {
+   "default": "Meta Cloud API",
+   "fieldname": "provider",
+   "fieldtype": "Select",
+   "label": "WhatsApp Provider",
+   "options": "Meta Cloud API"
+  },
+  {
+   "default": "https://graph.facebook.com/v21.0",
+   "fieldname": "api_url",
+   "fieldtype": "Data",
+   "label": "API URL"
+  },
+  {
+   "fieldname": "access_token",
+   "fieldtype": "Password",
+   "label": "Access Token"
+  },
+  {
+   "fieldname": "phone_number_id",
+   "fieldtype": "Data",
+   "label": "Phone Number ID"
+  },
+  {
+   "fieldname": "business_account_id",
+   "fieldtype": "Data",
+   "label": "Business Account ID"
+  },
+  {
+   "fieldname": "sender_number",
+   "fieldtype": "Data",
+   "label": "Default Sender Number"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "connection_status",
+   "fieldtype": "Select",
+   "label": "Connection Status",
+   "options": "Not Connected\nConnected\nFailed",
+   "read_only": 1
+  },
+  {
+   "default": "DISCONNECTED",
+   "fieldname": "connect_state",
+   "fieldtype": "Select",
+   "label": "Connect State",
+   "options": "DISCONNECTED\nCONNECTING\nCONNECTED\nRECONNECTING\nLOGGED_OUT\nERROR",
+   "read_only": 1
+  },
+  {
+   "fieldname": "display_phone_number",
+   "fieldtype": "Data",
+   "label": "Display Phone Number",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_test_on",
+   "fieldtype": "Datetime",
+   "label": "Last Test On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_test_error",
+   "fieldtype": "Small Text",
+   "label": "Last Test Error",
+   "read_only": 1
+  },
+  {
+   "fieldname": "webhook_verify_token",
+   "fieldtype": "Data",
+   "label": "Webhook Verify Token",
+   "description": "Used for Meta webhook verification"
+  }
+ ],
+ "issingle": 1,
+ "module": "Santu Hardware",
+ "name": "Santu WhatsApp Settings",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  }
+ ]
+}

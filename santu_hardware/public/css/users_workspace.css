@@ -1,0 +1,24 @@
+/*
+ * Users workspace UI redesign (2026-08-06 follow-up to the workspace-wide
+ * color rollout). Scoped strictly to body[data-route="Workspaces/Users"]
+ * — no other screen touched. Same aria-label per-shortcut accent pattern
+ * used on Home/Buying/Selling/Stock/Staff/Settings; this workspace had
+ * the generic sizing bump from workspace_typography.css but no colors.
+ */
+
+body[data-route="Workspaces/Users"] .shortcut-widget-box {
+	min-height: 64px;
+	border-left-width: 4px !important;
+	border-left-style: solid !important;
+	border-left-color: var(--santu-gray-200, #e5e7eb) !important;
+}
+
+body[data-route="Workspaces/Users"] .shortcut-widget-box[aria-label="User"] { border-left-color: #2563eb !important; }
+body[data-route="Workspaces/Users"] .shortcut-widget-box[aria-label="Role"] { border-left-color: #7c3aed !important; }
+body[data-route="Workspaces/Users"] .shortcut-widget-box[aria-label="Permission Manager"] { border-left-color: #4f46e5 !important; }
+body[data-route="Workspaces/Users"] .shortcut-widget-box[aria-label="User Profile"] { border-left-color: #0d9488 !important; }
+body[data-route="Workspaces/Users"] .shortcut-widget-box[aria-label="User Type"] { border-left-color: #ea580c !important; }
+
+body[data-route="Workspaces/Users"] .links-widget-box {
+	padding: var(--santu-space-4, 16px);
+}

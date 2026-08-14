@@ -1,0 +1,96 @@
+{
+ "actions": [],
+ "autoname": "format:SBL-{YYYY}{MM}{DD}-{#####}",
+ "creation": "2026-08-14 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "backup_type",
+  "location",
+  "status",
+  "file_size",
+  "database_file",
+  "files_path",
+  "private_files_path",
+  "config_path",
+  "error_message",
+  "created_by_user"
+ ],
+ "fields": [
+  {
+   "fieldname": "backup_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Type",
+   "options": "Manual\nAutomatic\nGoogle Drive",
+   "reqd": 1
+  },
+  {
+   "fieldname": "location",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Location",
+   "options": "Local Server\nGoogle Drive",
+   "reqd": 1
+  },
+  {
+   "default": "In Progress",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "In Progress\nSuccess\nFailed",
+   "reqd": 1
+  },
+  {
+   "fieldname": "file_size",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Size (bytes)"
+  },
+  {
+   "fieldname": "database_file",
+   "fieldtype": "Small Text",
+   "label": "Database File"
+  },
+  {
+   "fieldname": "files_path",
+   "fieldtype": "Small Text",
+   "label": "Public Files"
+  },
+  {
+   "fieldname": "private_files_path",
+   "fieldtype": "Small Text",
+   "label": "Private Files"
+  },
+  {
+   "fieldname": "config_path",
+   "fieldtype": "Small Text",
+   "label": "Site Config"
+  },
+  {
+   "fieldname": "error_message",
+   "fieldtype": "Small Text",
+   "label": "Error"
+  },
+  {
+   "fieldname": "created_by_user",
+   "fieldtype": "Link",
+   "label": "Created By",
+   "options": "User"
+  }
+ ],
+ "module": "Santu Hardware",
+ "name": "Santu Backup Log",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC"
+}

@@ -1,0 +1,138 @@
+"""WhatsApp provider abstraction — all API calls server-side only."""
+
+from __future__ import annotations
+
+import json
+from abc import ABC, abstractmethod
+
+import frappe
+import requests
+from frappe.utils import get_url
+
+
+class WhatsAppProviderError(Exception):
+	pass
+
+
+class WhatsAppProvider(ABC):
+	@abstractmethod
+	def test_connection(self) -> dict:
+		pass
+
+	@abstractmethod
+	def send_text(self, to: str, body: str) -> dict:
+		pass
+
+	@abstractmethod
+	def send_document(self, to: str, file_bytes: bytes, filename: str, caption: str = "") -> dict:
+		pass
+
+
+class MetaCloudAPIProvider(WhatsAppProvider):
+	def __init__(self, settings):
+		self.settings = settings
+		self.api_url = (settings.api_url or "https://graph.facebook.com/v21.0").rstrip("/")
+		self.phone_number_id = settings.phone_number_id
+		self.token = settings.get_password("access_token", raise_exception=False)
+
+	def _headers(self):
+		if not self.token:
+			raise WhatsAppProviderError("WhatsApp access token is not configured.")
+		return {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"}
+
+	def test_connection(self) -> dict:
+		if not self.phone_number_id:
+			raise WhatsAppProviderError("Phone Number ID is required.")
+		url = f"{self.api_url}/{self.phone_number_id}"
+		resp = requests.get(url, headers=self._headers(), timeout=30)
+		data = resp.json() if resp.content else {}
+		if resp.status_code != 200:
+			err = data.get("error", {})
+			raise WhatsAppProviderError(err.get("message") or resp.text or "Connection failed")
+		return {"ok": True, "display_phone_number": data.get("display_phone_number"), "verified_name": data.get("verified_name")}
+
+	def send_text(self, to: str, body: str) -> dict:
+		url = f"{self.api_url}/{self.phone_number_id}/messages"
+		payload = {
+			"messaging_product": "whatsapp",
+			"recipient_type": "individual",
+			"to": to,
+			"type": "text",
+			"text": {"preview_url": True, "body": body[:4096]},
+		}
+		resp = requests.post(url, headers=self._headers(), json=payload, timeout=60)
+		data = resp.json() if resp.content else {}
+		if resp.status_code not in (200, 201):
+			err = data.get("error", {})
+			raise WhatsAppProviderError(err.get("message") or resp.text or "Send failed")
+		msg_id = (data.get("messages") or [{}])[0].get("id")
+		return {"provider_message_id": msg_id, "raw": data}
+
+	def _upload_media(self, file_bytes: bytes, filename: str) -> str:
+		url = f"{self.api_url}/{self.phone_number_id}/media"
+		headers = {"Authorization": f"Bearer {self.token}"}
+		files = {"file": (filename, file_bytes, "application/pdf")}
+		data = {"messaging_product": "whatsapp", "type": "application/pdf"}
+		resp = requests.post(url, headers=headers, data=data, files=files, timeout=120)
+		result = resp.json() if resp.content else {}
+		if resp.status_code not in (200, 201):
+			err = result.get("error", {})
+			raise WhatsAppProviderError(err.get("message") or "Media upload failed")
+		return result.get("id")
+
+	def send_document(self, to: str, file_bytes: bytes, filename: str, caption: str = "") -> dict:
+		media_id = self._upload_media(file_bytes, filename)
+		url = f"{self.api_url}/{self.phone_number_id}/messages"
+		doc_payload = {"id": media_id, "filename": filename}
+		if caption:
+			doc_payload["caption"] = caption[:1024]
+		payload = {
+			"messaging_product": "whatsapp",
+			"to": to,
+			"type": "document",
+			"document": doc_payload,
+		}
+		resp = requests.post(url, headers=self._headers(), json=payload, timeout=60)
+		data = resp.json() if resp.content else {}
+		if resp.status_code not in (200, 201):
+			err = data.get("error", {})
+			raise WhatsAppProviderError(err.get("message") or resp.text or "Document send failed")
+		msg_id = (data.get("messages") or [{}])[0].get("id")
+		return {"provider_message_id": msg_id, "raw": data}
+
+	def send_document_link(self, to: str, link: str, filename: str, caption: str = "") -> dict:
+		url = f"{self.api_url}/{self.phone_number_id}/messages"
+		doc_payload = {"link": link, "filename": filename}
+		if caption:
+			doc_payload["caption"] = caption[:1024]
+		payload = {
+			"messaging_product": "whatsapp",
+			"to": to,
+			"type": "document",
+			"document": doc_payload,
+		}
+		resp = requests.post(url, headers=self._headers(), json=payload, timeout=60)
+		data = resp.json() if resp.content else {}
+		if resp.status_code not in (200, 201):
+			err = data.get("error", {})
+			raise WhatsAppProviderError(err.get("message") or resp.text or "Document send failed")
+		msg_id = (data.get("messages") or [{}])[0].get("id")
+		return {"provider_message_id": msg_id, "raw": data}
+
+
+def get_whatsapp_provider():
+	settings = frappe.get_single("Santu WhatsApp Settings")
+	if not settings.enabled:
+		return None
+	if settings.provider == "Meta Cloud API":
+		return MetaCloudAPIProvider(settings)
+	raise WhatsAppProviderError(f"Unsupported provider: {settings.provider}")
+
+
+def is_whatsapp_configured() -> bool:
+	settings = frappe.get_single("Santu WhatsApp Settings")
+	return bool(
+		settings.enabled
+		and settings.phone_number_id
+		and settings.get_password("access_token", raise_exception=False)
+	)

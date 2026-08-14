@@ -1,0 +1,16 @@
+{
+ "content": null,
+ "doctype": "Page",
+ "icon": "octicon octicon-comment-discussion",
+ "idx": 0,
+ "module": "Santu Hardware",
+ "name": "santu-transaction-message",
+ "page_name": "santu-transaction-message",
+ "restrict_to_domain": null,
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Transaction Message"
+}

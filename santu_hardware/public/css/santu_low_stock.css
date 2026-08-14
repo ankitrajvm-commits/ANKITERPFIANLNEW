@@ -1,0 +1,85 @@
+/*
+ * Low Stock page (2026-08-06) — "what's about to run out, what's already
+ * out, what's selling fast enough to run out soon." Structure mirrors
+ * customer_dues.css (same filter-bar + card-list pattern already
+ * established), tone colors reused from the Dashboard's alert cards
+ * (santu_dashboard.css: urgent=red, warning=orange) plus a third
+ * "notice" tone for the new running-out-soon tier.
+ */
+.santu-lowstock-filters {
+	display: flex;
+	gap: var(--santu-space-3, 12px);
+	margin-bottom: var(--santu-space-4, 16px);
+}
+.santu-lowstock-search { flex: 1 1 auto; }
+.santu-lowstock-share { flex: 0 0 auto; white-space: nowrap; }
+
+.santu-lowstock-allgood {
+	background: var(--santu-gray-50, #f9fafb);
+	border-radius: var(--santu-radius-lg, 12px);
+	padding: var(--santu-space-5, 20px);
+	text-align: center;
+	font-weight: 600;
+	color: var(--santu-success, #15803d);
+	margin-bottom: var(--santu-space-4, 16px);
+}
+
+.santu-lowstock-summary-row {
+	display: flex;
+	gap: var(--santu-space-3, 12px);
+	flex-wrap: wrap;
+	margin-bottom: var(--santu-space-4, 16px);
+}
+.santu-lowstock-chip {
+	padding: 8px 14px;
+	border-radius: var(--santu-radius-full, 999px);
+	font-weight: 700;
+	font-size: 13px;
+}
+.santu-lowstock-chip.santu-tone-urgent { background: #fee2e2; color: #b91c1c; }
+.santu-lowstock-chip.santu-tone-warning { background: #ffedd5; color: #c2410c; }
+.santu-lowstock-chip.santu-tone-notice { background: #fef9c3; color: #a16207; }
+
+.santu-lowstock-section { margin-bottom: var(--santu-space-5, 20px); }
+.santu-lowstock-section-title {
+	font-weight: 700;
+	font-size: 15px;
+	margin-bottom: var(--santu-space-2, 8px);
+}
+.santu-lowstock-section-title.santu-tone-urgent { color: #b91c1c; }
+.santu-lowstock-section-title.santu-tone-warning { color: #c2410c; }
+.santu-lowstock-section-title.santu-tone-notice { color: #a16207; }
+
+.santu-lowstock-list {
+	border: 1px solid var(--santu-border, #e5e7eb);
+	border-radius: var(--santu-radius-lg, 12px);
+	overflow: hidden;
+}
+.santu-lowstock-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 14px 16px;
+	border-bottom: 1px solid var(--santu-border, #e5e7eb);
+	cursor: pointer;
+}
+.santu-lowstock-row:last-child { border-bottom: none; }
+.santu-lowstock-row:hover { background: var(--santu-gray-50, #f9fafb); }
+.santu-lowstock-row-name { font-weight: 600; font-size: 14px; }
+.santu-lowstock-row-meta { font-size: 12px; color: var(--santu-text-muted, #6b7280); margin-top: 2px; }
+.santu-lowstock-row-code {
+	font-family: var(--font-mono, monospace);
+	background: var(--santu-gray-100, #f3f4f6);
+	padding: 1px 6px;
+	border-radius: var(--santu-radius-sm, 4px);
+}
+.santu-lowstock-row-suggest {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--santu-brand, #3730a3);
+	white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+	.santu-lowstock-filters { flex-direction: column; }
+}
