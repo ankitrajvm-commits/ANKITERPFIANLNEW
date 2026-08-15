@@ -7,6 +7,14 @@ import json
 import frappe
 from frappe.utils import flt
 
+# "google_profile" was removed 2026-08-15 (direct request "Remove it from the
+# catalog"): the card promised "Track your business visibility" but opened
+# ERPNext's native Google Settings form — OAuth client ID/secret and Drive
+# Picker config. Wrong on three counts: a native form, developer-level
+# settings a shop owner should never be handed, and nothing to do with a
+# Google Business Profile, which this app doesn't integrate with at all.
+# It stays out of ALLOWED_WIDGETS so any saved preference still naming it is
+# filtered out on read rather than resurrecting a dead card.
 ALLOWED_WIDGETS = [
 	"purchases",
 	"expenses",
@@ -15,7 +23,6 @@ ALLOWED_WIDGETS = [
 	"bank_balance",
 	"low_stock",
 	"whatsapp",
-	"google_profile",
 ]
 
 
@@ -124,8 +131,6 @@ def get_widget_metrics(period: str = "This Month", from_date: str = None, to_dat
 	except Exception:
 		pass
 
-	google_available = bool(frappe.db.exists("DocType", "Google Settings"))
-
 	return {
 		"purchases": period_totals["purchases"],
 		"expenses": period_totals["expenses"],
@@ -134,20 +139,19 @@ def get_widget_metrics(period: str = "This Month", from_date: str = None, to_dat
 		"bank_balance": _account_balance("Bank"),
 		"whatsapp_connected": whatsapp_connected,
 		"whatsapp_label": whatsapp_label,
-		"google_available": google_available,
-		"google_label": "Track your business visibility" if google_available else "Not configured",
 		"period_from": period_totals["from_date"],
 		"period_to": period_totals["to_date"],
 	}
 
 
-def widget_catalog(metrics: dict, low_stock_count: int = 0) -> list:
+def widget_catalog(metrics: dict, low_stock_count: int = 0, period: str = "This Month") -> list:
 	return [
 		{
 			"key": "purchases",
 			"title": "Purchases",
 			"kind": "currency",
 			"value": metrics.get("purchases") or 0,
+			"period": period,
 			"route": "santu-purchase",
 		},
 		{
@@ -155,6 +159,7 @@ def widget_catalog(metrics: dict, low_stock_count: int = 0) -> list:
 			"title": "Expenses",
 			"kind": "currency",
 			"value": metrics.get("expenses") or 0,
+			"period": period,
 			"route": "santu-reports",
 			"report_id": "expense",
 		},
@@ -163,6 +168,7 @@ def widget_catalog(metrics: dict, low_stock_count: int = 0) -> list:
 			"title": "Stock Value",
 			"kind": "currency",
 			"value": metrics.get("stock_value") or 0,
+			"period": "As of Now",
 			"route": "query-report",
 			"report_name": "Stock Balance",
 		},
@@ -171,16 +177,16 @@ def widget_catalog(metrics: dict, low_stock_count: int = 0) -> list:
 			"title": "Cash In Hand",
 			"kind": "currency",
 			"value": metrics.get("cash_in_hand") or 0,
-			"route": "query-report",
-			"report_name": "Account Balance",
+			"period": "As of Now",
+			"route": "santu-cash-bank",
 		},
 		{
 			"key": "bank_balance",
 			"title": "Total Bank Balance",
 			"kind": "currency",
 			"value": metrics.get("bank_balance") or 0,
-			"route": "query-report",
-			"report_name": "Account Balance",
+			"period": "As of Now",
+			"route": "santu-cash-bank",
 		},
 		{
 			"key": "low_stock",
@@ -188,6 +194,7 @@ def widget_catalog(metrics: dict, low_stock_count: int = 0) -> list:
 			"kind": "text",
 			"text": "View Items Low on Stock",
 			"count": low_stock_count,
+			"period": "As of Now",
 			"route": "santu-low-stock",
 		},
 		{
@@ -195,16 +202,8 @@ def widget_catalog(metrics: dict, low_stock_count: int = 0) -> list:
 			"title": "WhatsApp Smart Connect",
 			"kind": "text",
 			"text": metrics.get("whatsapp_label") or "Connect with Parties",
+			"period": "",
 			"route": "santu-whatsapp-connect",
-		},
-		{
-			"key": "google_profile",
-			"title": "Google Profile Manager",
-			"kind": "text",
-			"text": metrics.get("google_label") or "Not configured",
-			"route": "Form",
-			"doctype": "Google Settings",
-			"available": bool(metrics.get("google_available")),
 		},
 	]
 
@@ -243,6 +242,6 @@ def get_dashboard_widget_data(period: str = "This Month", from_date: str = None,
 	metrics = get_widget_metrics(period, from_date, to_date)
 	return {
 		"metrics": metrics,
-		"catalog": widget_catalog(metrics),
+		"catalog": widget_catalog(metrics, period=period),
 		"selected": get_user_widgets(),
 	}

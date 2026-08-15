@@ -1,0 +1,282 @@
+/* Vyapar-match top bar — see santu_topbar.js for what's real vs decorative. */
+
+.santu-topbar-extra {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-right: 16px;
+	flex: 1 1 auto;
+	justify-content: flex-end;
+}
+
+.santu-topbar-search-wrap {
+	position: relative;
+	flex: 1 1 auto;
+	max-width: 320px;
+}
+
+.santu-topbar-search {
+	width: 100%;
+	box-sizing: border-box;
+	border: 1px solid #e5e7eb;
+	border-radius: 999px;
+	padding: 8px 16px;
+	font-size: 14px;
+	background: #f9fafb;
+}
+.santu-topbar-search:focus {
+	outline: none;
+	border-color: var(--santu-brand, #e0393e);
+	background: #fff;
+}
+
+.santu-topbar-search-dropdown {
+	position: absolute;
+	top: calc(100% + 6px);
+	left: 0;
+	right: 0;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+	max-height: 320px;
+	overflow-y: auto;
+	z-index: 1100;
+}
+.santu-topbar-dd-row {
+	padding: 10px 14px;
+	font-size: 14px;
+	cursor: pointer;
+	border-bottom: 1px solid #f3f4f6;
+}
+.santu-topbar-dd-row:hover {
+	background: #f9fafb;
+}
+.santu-topbar-dd-sub {
+	display: block;
+	font-size: 12px;
+	color: #9ca3af;
+	margin-top: 2px;
+}
+.santu-topbar-dd-empty {
+	padding: 14px;
+	font-size: 14px;
+	color: #9ca3af;
+}
+
+.santu-topbar-btn {
+	border-radius: 999px;
+	padding: 8px 18px;
+	font-size: 14px;
+	font-weight: 700;
+	cursor: pointer;
+	white-space: nowrap;
+	background: #fff;
+}
+.santu-topbar-btn-sale {
+	border: 1.5px solid var(--santu-brand, #e0393e);
+	color: var(--santu-brand, #e0393e);
+}
+.santu-topbar-btn-sale:hover {
+	background: #fdeceb;
+}
+.santu-topbar-btn-purchase {
+	border: 1.5px solid var(--santu-brand-secondary, #2f6fed);
+	color: var(--santu-brand-secondary, #2f6fed);
+}
+.santu-topbar-btn-purchase:hover {
+	background: #eaf1fe;
+}
+
+.santu-topbar-icon-btn {
+	width: 34px;
+	height: 34px;
+	border-radius: 50%;
+	border: 1px solid #e5e7eb;
+	background: #fff;
+	font-size: 17px;
+	font-weight: 700;
+	color: #374151;
+	cursor: pointer;
+	flex-shrink: 0;
+}
+.santu-topbar-icon-btn:hover {
+	background: #f3f4f6;
+}
+.santu-topbar-quick {
+	color: var(--santu-brand, #e0393e);
+	border-color: var(--santu-brand, #e0393e);
+}
+
+.santu-topbar-menu {
+	position: fixed;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+	min-width: 170px;
+	z-index: 1200;
+	overflow: hidden;
+}
+.santu-topbar-menu button {
+	display: block;
+	width: 100%;
+	text-align: left;
+	border: none;
+	background: none;
+	padding: 10px 14px;
+	font-size: 14px;
+	cursor: pointer;
+}
+.santu-topbar-menu button:hover {
+	background: #f3f4f6;
+}
+
+/* ---------- "+Add More" mega-menu ---------- */
+.santu-topbar-mega {
+	position: fixed;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 12px;
+	box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+	z-index: 1200;
+	overflow: hidden;
+	min-width: 640px;
+}
+.santu-topbar-mega-cols {
+	display: flex;
+	padding: 18px 24px;
+	gap: 40px;
+}
+.santu-topbar-mega-col {
+	min-width: 170px;
+}
+.santu-topbar-mega-heading {
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	color: #9ca3af;
+	margin-bottom: 10px;
+}
+.santu-topbar-mega-item {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 12px;
+	width: 100%;
+	border: none;
+	background: none;
+	padding: 7px 0;
+	font-size: 15px;
+	color: #1f2937;
+	cursor: pointer;
+	text-align: left;
+}
+.santu-topbar-mega-item:hover {
+	color: var(--santu-brand-secondary, #2f6fed);
+}
+.santu-topbar-mega-item-sub {
+	display: block;
+	font-size: 12px;
+	color: #9ca3af;
+	margin-left: 14px;
+}
+.santu-topbar-mega-item-kbd {
+	font-size: 12px;
+	color: #9ca3af;
+	white-space: nowrap;
+	flex-shrink: 0;
+}
+.santu-topbar-mega-footer {
+	background: #fef3c7;
+	padding: 12px 24px;
+	font-size: 13px;
+	color: #92400e;
+}
+.santu-topbar-mega-kbd {
+	display: inline-block;
+	background: #fff;
+	border: 1px solid #fde68a;
+	border-radius: 6px;
+	padding: 2px 8px;
+	font-weight: 700;
+	margin: 0 2px;
+}
+
+/* ---------- Privacy (screen blur) ---------- */
+body.santu-dash-privacy-active .santu-dash-main,
+body.santu-dash-privacy-active .santu-dash-widgets,
+body.santu-dash-privacy-active .page-content {
+	filter: blur(6px);
+	pointer-events: none;
+	user-select: none;
+}
+#santu-dash-privacy-overlay {
+	display: none;
+}
+body.santu-dash-privacy-active #santu-dash-privacy-overlay {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 16px;
+	position: fixed;
+	inset: 56px 0 0 var(--santu-sidebar-width, 240px);
+	z-index: 1050;
+	cursor: pointer;
+	pointer-events: auto;
+}
+.santu-dash-privacy-icon {
+	font-size: 48px;
+	width: 88px;
+	height: 88px;
+	border-radius: 50%;
+	border: 3px solid #2f6fed;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: #fff;
+}
+.santu-dash-privacy-text {
+	background: rgba(55, 65, 81, 0.92);
+	color: #fff;
+	padding: 14px 22px;
+	border-radius: 10px;
+	font-size: 15px;
+	font-weight: 600;
+	text-align: center;
+	line-height: 1.5;
+}
+
+@media (max-width: 1100px) {
+	.santu-topbar-search-wrap {
+		display: none;
+	}
+	.santu-topbar-mega {
+		min-width: unset;
+		left: 12px !important;
+		right: 12px !important;
+	}
+	.santu-topbar-mega-cols {
+		flex-wrap: wrap;
+	}
+}
+@media (max-width: 900px) {
+	.santu-topbar-btn {
+		display: none;
+	}
+}
+
+/* Frappe's Help dropdown — every entry in it (Documentation, User Forum,
+   Frappe School, Report an Issue, About, Keyboard Shortcuts, Frappe Support)
+   is hidden via Navbar Settings, which leaves the button opening an empty
+   panel: worse than before. The button itself has no shop use either, so it
+   goes too (2026-08-15: "if hardware shop owner has no use for this then
+   remove it naa, delete it").
+
+   Hidden in CSS rather than removed from the DOM because the navbar is
+   Frappe's own markup — a template change would be undone by any upgrade,
+   and the Navbar Settings rows are already the durable half of this. */
+.navbar .dropdown-help {
+	display: none !important;
+}

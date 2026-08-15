@@ -9,13 +9,13 @@
 }
 
 .santu-receive-hint {
-	font-size: 15px;
+	font-size: 16px;
 	color: var(--santu-text-muted, #6b7280);
 	margin-bottom: var(--santu-space-3, 12px);
 }
 
 .santu-receive-search {
-	font-size: 18px;
+	font-size: 19px;
 	padding: 14px 16px !important;
 	height: auto !important;
 	margin-bottom: var(--santu-space-4, 16px);
@@ -35,11 +35,11 @@
 	box-shadow: var(--santu-shadow-md, 0 4px 16px rgba(0, 0, 0, 0.1));
 	transform: translateY(-1px);
 }
-.santu-receive-result-name { font-size: 17px; font-weight: 700; }
-.santu-receive-result-meta { font-size: 13px; color: var(--santu-text-muted, #6b7280); margin-top: 4px; }
+.santu-receive-result-name { font-size: 18px; font-weight: 700; }
+.santu-receive-result-meta { font-size: 14px; color: var(--santu-text-muted, #6b7280); margin-top: 4px; }
 
 .santu-receive-today-title {
-	font-size: 12px;
+	font-size: 13px;
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 	color: var(--santu-text-muted, #6b7280);
@@ -47,7 +47,7 @@
 	margin-bottom: 6px;
 }
 .santu-receive-today-row {
-	font-size: 14px;
+	font-size: 15px;
 	padding: 6px 0;
 	color: var(--santu-success, #15803d);
 }
@@ -57,7 +57,7 @@
 	border: none;
 	color: var(--santu-brand, #3730a3);
 	font-weight: 600;
-	font-size: 15px;
+	font-size: 16px;
 	padding: 0;
 	margin-bottom: var(--santu-space-4, 16px);
 	cursor: pointer;
@@ -69,13 +69,13 @@
 	padding: 18px;
 	margin-bottom: var(--santu-space-5, 20px);
 }
-.santu-receive-item-name { font-size: 20px; font-weight: 700; color: var(--santu-brand, #3730a3); }
-.santu-receive-item-meta { font-size: 14px; color: var(--santu-text-muted, #6b7280); margin-top: 4px; }
+.santu-receive-item-name { font-size: 22px; font-weight: 700; color: var(--santu-brand, #3730a3); }
+.santu-receive-item-meta { font-size: 15px; color: var(--santu-text-muted, #6b7280); margin-top: 4px; }
 
 .santu-receive-block { margin-bottom: var(--santu-space-5, 20px); }
 .santu-receive-block label {
 	display: block;
-	font-size: 15px;
+	font-size: 16px;
 	font-weight: 600;
 	margin-bottom: 10px;
 }
@@ -115,7 +115,7 @@
 .santu-receive-qty-quick-btn {
 	flex: 1 1 0;
 	padding: 10px;
-	font-size: 15px;
+	font-size: 16px;
 	font-weight: 600;
 	border: 1px solid var(--santu-border, #e5e7eb);
 	border-radius: var(--santu-radius-md, 12px);
@@ -125,7 +125,7 @@
 .santu-receive-qty-quick-btn:hover { background: var(--santu-gray-50, #f9fafb); }
 
 .santu-receive-rate-input {
-	font-size: 18px !important;
+	font-size: 19px !important;
 	padding: 12px 14px !important;
 	height: auto !important;
 }
@@ -133,7 +133,7 @@
 .santu-receive-submit,
 .santu-receive-another {
 	width: 100%;
-	font-size: 18px !important;
+	font-size: 19px !important;
 	padding: 16px !important;
 	height: auto !important;
 	border-radius: var(--santu-radius-md, 12px) !important;
@@ -145,7 +145,7 @@
 }
 .santu-receive-success-icon { font-size: 56px; margin-bottom: 16px; }
 .santu-receive-success-text {
-	font-size: 18px;
+	font-size: 19px;
 	line-height: 1.6;
 	margin-bottom: var(--santu-space-5, 20px);
 }

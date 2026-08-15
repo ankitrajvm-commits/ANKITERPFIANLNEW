@@ -166,14 +166,21 @@ function santu_apply_kiosk_mode() {
 		}, 2000);
 	}
 
+	// Home + Dashboard merge (2026-08-14 direct request): the native
+	// Home workspace and the custom santu-dashboard page were duplicating
+	// each other (same "New Sale" shortcut, raw Item/Customer/Supplier
+	// lists Home had no nicer view for than the ones santu-items/
+	// santu-parties already provide). Dashboard is the one users actually
+	// want, so anyone landing on the default Workspaces/Home screen — the
+	// standard behavior for a bare /app with no other default_workspace —
+	// now gets bounced straight to it. santu_color_dashboard_cards() /
+	// santu_render_home_greeting() below are Home's own native-card
+	// styling and are now dead (kept, not deleted, in case Home becomes
+	// a real destination again later — same precedent as
+	// santu_redirect_cashier_to_billing() above).
 	clearInterval(santu_dashboard_poll_timer);
-	if (route && route[0] === "Workspaces" && (route[1] || "") === "Home") {
-		santu_color_dashboard_cards();
-		santu_render_home_greeting();
-		santu_dashboard_poll_timer = setInterval(() => {
-			santu_color_dashboard_cards();
-			santu_render_home_greeting();
-		}, 2000);
+	if (route && route[0] === "Workspaces" && (route[1] || "Home") === "Home") {
+		frappe.set_route("santu-dashboard");
 	}
 
 	// Also fires on the native "Accounts Dashboard" (route ["dashboard-view",
@@ -373,11 +380,6 @@ function santu_render_status_bar() {
 		$bar = $('<div class="santu-status-bar"></div>').prependTo(document.body);
 	}
 
-	const staff = santu_get_current_staff();
-	const staff_html = staff
-		? `👤 ${frappe.utils.escape_html(staff)}`
-		: `👤 <span class="santu-status-muted">Not selected</span>`;
-
 	// "yaha se bhi back aane ka option nahi hai" (2026-07-31 direct
 	// report) — kiosk_mode.css hides the ENTIRE navbar (including the
 	// Santu Hardware logo/home link) on every kiosk route, and the only
@@ -394,24 +396,23 @@ function santu_render_status_bar() {
 	// wherever the cashier was mid-flow (e.g. mid-sale for a customer).
 	// A real "Back" (one step at a time, browser-history based) sits
 	// next to it so either is available.
-	const back_html = `<span class="santu-status-item santu-status-back" role="button" tabindex="0">← ${__("Back")}</span>`;
-	const home_html = `<span class="santu-status-item santu-status-home" role="button" tabindex="0">🏠 ${__("Home")}</span>`;
-
-	// "PRIVACY MODE IS NOT WORKING" (2026-08-01 direct report) — this was
-	// always a static placeholder label, never wired to anything (see
-	// `santu_toggle_privacy_mode` below for what it actually does now:
-	// PIN-gated reveal of item cost price, direct spec from the user).
-	const privacy_active = santu_is_privacy_mode_active();
-	const privacy_html = `<span class="santu-status-item santu-status-privacy${
-		privacy_active ? " santu-privacy-active" : ""
-	}" role="button" tabindex="0">${privacy_active ? "🔓" : "🔒"} ${__("Privacy Mode")}</span>`;
+	//
+	// The Staff/Register/Privacy Mode items that used to sit alongside
+	// Back/Home were removed 2026-08-15 direct request ("ise hatao" on a
+	// screenshot of exactly those three) — Back/Home stay since kiosk mode
+	// still hides the native navbar and this is the only way out of it.
+	// Privacy Mode's PIN-gated cost-price reveal (santu_toggle_privacy_mode,
+	// referenced from santu_sale_invoice.js) has no other trigger now, so
+	// cost price stays hidden — say so if that turns out to still be needed.
+	// Icon-only per 2026-08-15 direct follow-up ("just cross and minus
+	// rakho na") — − for Back, ✕ for Home (closing out of the kiosk flow),
+	// no text labels.
+	const back_html = `<span class="santu-status-item santu-status-back" role="button" tabindex="0" title="${__("Back")}" aria-label="${__("Back")}">−</span>`;
+	const home_html = `<span class="santu-status-item santu-status-home" role="button" tabindex="0" title="${__("Home")}" aria-label="${__("Home")}">✕</span>`;
 
 	$bar.html(`
 		${back_html}
 		${home_html}
-		<span class="santu-status-item">${staff_html}</span>
-		<span class="santu-status-item santu-register-status">🔑 Register: …</span>
-		${privacy_html}
 	`);
 
 	$bar.find(".santu-status-back").on("click keydown", (e) => {
@@ -425,23 +426,6 @@ function santu_render_status_bar() {
 		e.preventDefault();
 		frappe.set_route("Workspaces", "Home");
 	});
-
-	$bar.find(".santu-status-privacy").on("click keydown", (e) => {
-		if (e.type === "keydown" && e.key !== "Enter" && e.key !== " ") return;
-		e.preventDefault();
-		santu_toggle_privacy_mode();
-	});
-
-	frappe
-		.call("erpnext.selling.page.point_of_sale.point_of_sale.check_opening_entry", {
-			user: frappe.session.user,
-		})
-		.then((r) => {
-			const is_open = r.message && r.message.length > 0;
-			$bar.find(".santu-register-status").html(
-				is_open ? "🟢 Register: Open" : "⚪ Register: Closed"
-			);
-		});
 }
 
 function santu_apply_pending_pos_item() {

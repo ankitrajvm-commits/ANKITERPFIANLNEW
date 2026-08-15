@@ -38,36 +38,33 @@ const santu_items_page = {
 	render_shell(page) {
 		const $root = $(`
 			<div class="santu-items">
-				<div class="santu-items-topbar">
-					<div class="santu-items-topbar-search">
-						<span class="santu-items-topbar-search-icon">🔍</span>
-						<input type="text" class="santu-items-top-search" placeholder="Search Transactions">
-					</div>
-					<div class="santu-items-topbar-actions">
-						<button type="button" class="santu-items-btn-sale">+ Add Sale</button>
-						<button type="button" class="santu-items-btn-purchase">+ Add Purchase</button>
-						<button type="button" class="santu-items-btn-quick" title="Quick Add">+</button>
-						<button type="button" class="santu-items-btn-menu" title="More">⋮</button>
-					</div>
-				</div>
 				<div class="santu-items-tabs-wrap"><div class="santu-items-tabs"></div></div>
 				<div class="santu-items-body">
 					<div class="santu-items-list-panel">
 						<div class="santu-items-toolbar">
+							<button type="button" class="santu-items-search-toggle" title="Search">
+								<svg width="18" height="18" viewBox="0 0 20 20" fill="none"><circle cx="9" cy="9" r="6" stroke="#656672" stroke-width="1.5"/><path d="M13.5 13.5L17 17" stroke="#656672" stroke-width="1.5" stroke-linecap="round"/></svg>
+							</button>
 							<div class="santu-items-toolbar-search">
-								<span class="santu-items-search-icon">🔍</span>
 								<input type="text" class="santu-items-search" placeholder="Search">
 							</div>
-							<button type="button" class="btn btn-primary santu-items-add-btn">+ Add Item</button>
+							<div class="santu-items-add-split">
+								<button type="button" class="santu-items-add-btn">+ Add Item</button>
+								<button type="button" class="santu-items-add-caret" title="More">▾</button>
+							</div>
+							<button type="button" class="santu-items-btn-menu" title="More">⋮</button>
 						</div>
 						<div class="santu-items-table-head">
-							<span class="santu-items-col-item">ITEM</span>
+							<span class="santu-items-col-item">ITEM <span class="santu-items-qty-filter santu-items-item-filter" title="Filter items">▾</span></span>
 							<span class="santu-items-col-qty">QUANTITY</span>
 						</div>
 						<div class="santu-items-list"></div>
 					</div>
 					<div class="santu-items-detail-panel">
-						<div class="santu-items-empty">Select an item to see details.</div>
+						<div class="santu-items-empty">
+							<img src="/assets/santu_hardware/images/items/empty_item.svg" alt="" width="72" height="72">
+							<div>Select an item to see details.</div>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -77,13 +74,13 @@ const santu_items_page = {
 		this.$root = $root;
 		this.$tabs = $root.find(".santu-items-tabs");
 		this.$search = $root.find(".santu-items-search");
-		this.$topSearch = $root.find(".santu-items-top-search");
 		this.$list = $root.find(".santu-items-list");
 		this.$detail = $root.find(".santu-items-detail-panel");
 		this.$tableHead = $root.find(".santu-items-table-head");
 		this.$addBtn = $root.find(".santu-items-add-btn");
 		this.active_tab = SANTU_ITEMS_TABS[0];
 		this.selected_code = santu_items.utils.get_selected_code();
+		this.qty_sort_dir = null;
 
 		SANTU_ITEMS_TABS.forEach((tab) => {
 			$(`<button type="button" class="santu-items-tab" data-key="${tab.key}">${tab.label}</button>`)
@@ -94,18 +91,50 @@ const santu_items_page = {
 	},
 
 	bind_events() {
-		this.$root.find(".santu-items-btn-sale").on("click", () => frappe.set_route("point-of-sale"));
-		this.$root.find(".santu-items-btn-purchase").on("click", () => frappe.set_route("santu-receive-stock"));
-		this.$root.find(".santu-items-btn-quick").on("click", () => frappe.new_doc("Item"));
 		this.$root.find(".santu-items-btn-menu").on("click", () => this.show_quick_menu());
 		this.$addBtn.on("click", () => this.add_master_record());
+		this.$root.find(".santu-items-add-caret").on("click", (e) => this.show_add_menu($(e.currentTarget)));
+
+		this.$root.find(".santu-items-item-filter").on("click", (e) => {
+			e.stopPropagation();
+			this.qty_sort_dir = this.qty_sort_dir === "desc" ? "asc" : "desc";
+			this.reload_list();
+		});
+
+		const $searchWrap = this.$root.find(".santu-items-toolbar-search");
+		this.$root.find(".santu-items-search-toggle").on("click", () => {
+			$searchWrap.toggleClass("santu-items-search-open");
+			if ($searchWrap.hasClass("santu-items-search-open")) this.$search.trigger("focus");
+		});
 
 		const on_search = santu_items.utils.debounce(() => this.reload_list());
 		this.$search.on("input", on_search);
-		this.$topSearch.on("input", function () {
-			santu_items_page.$search.val($(this).val());
-			on_search();
+	},
+
+	show_add_menu($anchor) {
+		const items = [
+			{ label: "New Item", action: () => frappe.new_doc("Item") },
+			{ label: "Import Items", action: () => frappe.set_route("data-import") },
+			{ label: "Bulk Items Update", action: () => frappe.set_route("List", "Item") },
+		];
+		const $menu = $(`<div class="santu-topbar-menu"></div>`);
+		items.forEach((item) => {
+			$(`<button type="button">${frappe.utils.escape_html(item.label)}</button>`)
+				.on("click", () => {
+					$menu.remove();
+					item.action();
+				})
+				.appendTo($menu);
 		});
+		$(".santu-topbar-menu").remove();
+		$("body").append($menu);
+		const rect = $anchor[0].getBoundingClientRect();
+		$menu.css({ top: rect.bottom + 6 + "px", left: rect.left + "px" });
+		setTimeout(() => {
+			$(document).one("click.santu-items-add-menu", (e) => {
+				if (!$(e.target).closest(".santu-topbar-menu").length) $menu.remove();
+			});
+		}, 0);
 	},
 
 	switch_tab(tab) {
@@ -124,9 +153,18 @@ const santu_items_page = {
 		this.$addBtn.text(
 			is_master ? `+ Add ${this.active_tab.key === "category" ? "Category" : "Unit"}` : "+ Add Item"
 		);
-		this.$tableHead.find(".santu-items-col-qty").text(
-			this.active_tab.key === "category" ? "ITEMS" : this.active_tab.key === "units" ? "TYPE" : "QUANTITY"
+		const item_label = this.active_tab.key === "category" ? "CATEGORY" : "ITEM";
+		this.$tableHead.find(".santu-items-col-item").html(
+			`${item_label} <span class="santu-items-qty-filter santu-items-item-filter" title="Filter">▾</span>`
 		);
+		this.$tableHead.find(".santu-items-item-filter").on("click", (e) => {
+			e.stopPropagation();
+			this.qty_sort_dir = this.qty_sort_dir === "desc" ? "asc" : "desc";
+			this.reload_list();
+		});
+
+		const label = this.active_tab.key === "category" ? "ITEM" : this.active_tab.key === "units" ? "TYPE" : "QUANTITY";
+		this.$tableHead.find(".santu-items-col-qty").text(label);
 	},
 
 	add_master_record() {
@@ -147,10 +185,15 @@ const santu_items_page = {
 			return;
 		}
 
-		const rows = await santu_items.api.get_items_list({
+		let rows = await santu_items.api.get_items_list({
 			search: this.$search.val() || null,
 			item_type: this.active_tab.item_type,
 		});
+
+		if (this.qty_sort_dir) {
+			const dir = this.qty_sort_dir === "asc" ? 1 : -1;
+			rows = [...rows].sort((a, b) => (flt(a.available_qty) - flt(b.available_qty)) * dir);
+		}
 
 		this.$list.empty();
 		if (!rows.length) {
@@ -191,21 +234,41 @@ const santu_items_page = {
 	},
 
 	async load_categories() {
-		const rows = await santu_items.api.get_item_groups(this.$search.val());
+		const data = await santu_items.api.get_item_groups(this.$search.val());
 		this.$list.empty();
-		if (!rows.length) {
+
+		const select_category = (row, $row, is_uncategorized) => {
+			santu_items.list.set_active(this.$list, null);
+			this.$list.find(".santu-items-row").removeClass("santu-items-row-active");
+			$row.addClass("santu-items-row-active");
+			santu_items.detail.show_category(this.$detail, row, is_uncategorized);
+		};
+
+		if (data.uncategorized && data.uncategorized.item_count > 0) {
+			const $row = santu_items.list.build_category_row(
+				{ name: "Items not in any Category", item_count: data.uncategorized.item_count },
+				true
+			);
+			$row.on("click", () => select_category(data.uncategorized, $row, true));
+			this.$list.append($row);
+		}
+
+		if (!data.categories.length && !(data.uncategorized && data.uncategorized.item_count > 0)) {
 			santu_items.list.show_empty(this.$list, "No categories found.");
 			return;
 		}
-		rows.forEach((row) => {
-			const $row = santu_items.list.build_category_row(row);
-			$row.on("click", () => {
-				santu_items.list.set_active(this.$list, null);
-				$row.addClass("santu-items-row-active");
-				santu_items.detail.show_category(this.$detail, row);
-			});
+
+		data.categories.forEach((row) => {
+			const $row = santu_items.list.build_category_row(row, false);
+			$row.on("click", () => select_category(row, $row, false));
 			this.$list.append($row);
 		});
+
+		if (data.uncategorized && data.uncategorized.item_count > 0) {
+			select_category(data.uncategorized, this.$list.find(".santu-items-row").first(), true);
+		} else if (data.categories.length) {
+			select_category(data.categories[0], this.$list.find(".santu-items-row").first(), false);
+		}
 	},
 
 	async load_units() {
@@ -230,7 +293,7 @@ const santu_items_page = {
 		const menu = [
 			{ label: "New Item", action: () => frappe.new_doc("Item") },
 			{ label: "Receive Stock", action: () => frappe.set_route("santu-receive-stock") },
-			{ label: "New Sale", action: () => frappe.set_route("point-of-sale") },
+			{ label: "New Sale", action: () => frappe.set_route("santu-sale-invoice") },
 			{ label: "Low Stock", action: () => frappe.set_route("santu-low-stock") },
 		];
 		const d = new frappe.ui.Dialog({

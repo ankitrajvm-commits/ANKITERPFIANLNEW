@@ -191,10 +191,22 @@ body {
  * bill get made at the counter. Text inserted by
  * `santu_add_navbar_brand_text()` in kiosk_mode.js (the navbar markup
  * itself only has a slot for the logo image, no app-name text). */
+/* Logo flush against the very left edge of the screen (2026-08-14 direct
+   request) — Bootstrap's `.container` centers itself with automatic side
+   margins by default; the navbar's own container needs those zeroed out
+   directly (not just under the fixed-sidebar body-class rule elsewhere,
+   since that's scoped to a specific selector chain) or the brand sits
+   ~250px in from the true edge instead of flush against it. */
+.navbar .container {
+	margin-left: 0 !important;
+	padding-left: 16px !important;
+}
+
 .navbar-brand.navbar-home {
 	display: flex !important;
 	align-items: center;
 	gap: 12px;
+	margin-left: 0 !important;
 }
 .santu-navbar-brand-text {
 	font: 700 23px/1 var(--font-stack, inherit);

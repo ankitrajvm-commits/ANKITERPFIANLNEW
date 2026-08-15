@@ -179,10 +179,18 @@ def get_party_phone(party_type: str, party_name: str, phone_field: str = "mobile
 	if whatsapp:
 		return normalize_indian_phone(whatsapp)
 
-	if phone_field == "phone":
-		raw = frappe.db.get_value(party_type, party_name, "phone") or frappe.db.get_value(party_type, party_name, "mobile_no")
-	else:
-		raw = frappe.db.get_value(party_type, party_name, "mobile_no") or frappe.db.get_value(party_type, party_name, "phone")
+	# Customer/Supplier only ever have a "mobile_no" column, never "phone"
+	# (that's a Contact/Lead/User field) — querying a column that doesn't
+	# exist on the doctype throws a raw SQL error, so only try each field
+	# the meta actually has.
+	meta = frappe.get_meta(party_type)
+	fields_to_try = ["phone", "mobile_no"] if phone_field == "phone" else ["mobile_no", "phone"]
+	raw = None
+	for f in fields_to_try:
+		if meta.has_field(f):
+			raw = frappe.db.get_value(party_type, party_name, f)
+			if raw:
+				break
 
 	if not raw and party_type in ("Customer", "Supplier"):
 		contact = frappe.db.sql(
@@ -269,7 +277,13 @@ def build_message_context(doc, transaction_type: str) -> dict:
 	party_type, party_name = None, None
 	customer_name, supplier_name = "", ""
 
-	if doc.doctype in ("Sales Invoice", "POS Invoice", "Sales Order", "Quotation", "Delivery Note"):
+	if doc.doctype == "Quotation":
+		# Quotation has no `customer` field — its party is a Dynamic Link
+		# (`party_name`, pointing at Customer or Lead per `quotation_to`),
+		# with `customer_name` as the separate display-name field.
+		party_type, party_name = "Customer", doc.party_name
+		customer_name = doc.customer_name or doc.party_name
+	elif doc.doctype in ("Sales Invoice", "POS Invoice", "Sales Order", "Delivery Note"):
 		party_type, party_name = "Customer", doc.customer
 		customer_name = doc.customer_name or doc.customer
 	elif doc.doctype in ("Purchase Invoice", "Purchase Order"):

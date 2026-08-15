@@ -34,6 +34,12 @@ santu_utilities.views = {
 								<h3>Import From Excel</h3>
 								<p>Upload .xlsx / .xls files with column mapping and validation.</p>
 							</label>
+							<label class="santu-utilities-method-card">
+								<input type="radio" name="import_method" value="pdf" />
+								<div class="method-icon">📄</div>
+								<h3>Import From PDF</h3>
+								<p>Upload a supplier's price list or catalogue PDF — items are auto-read and matched.</p>
+							</label>
 						</div>
 						<div class="santu-utilities-or">OR</div>
 						<label class="santu-utilities-method-card wide">
@@ -60,7 +66,8 @@ santu_utilities.views = {
 				this._render_barcode_import($wrap, () => { state.method = null; render(); });
 				return;
 			}
-			if (state.method === "excel") {
+			if (state.method === "excel" || state.method === "pdf") {
+				state.source = state.method;
 				this._render_excel_import($wrap, state, () => { state.method = null; render(); });
 			}
 		};
@@ -125,6 +132,7 @@ santu_utilities.views = {
 	},
 
 	async _render_excel_import($wrap, state, onBack) {
+		const is_pdf = state.source === "pdf";
 		const step = state.step || "upload";
 		if (step === "upload") {
 			$wrap.html(`
@@ -132,7 +140,8 @@ santu_utilities.views = {
 					<button class="btn btn-default btn-sm santu-util-back">← Back</button>
 				</div>
 				<div class="santu-utilities-card">
-					<h3>Upload Excel File</h3>
+					<h3>Upload ${is_pdf ? "PDF" : "Excel"} File</h3>
+					${is_pdf ? `<p class="santu-utilities-muted">Works best with a real (text) PDF price list or catalogue — not a scanned photo.</p>` : ""}
 					<div class="santu-utilities-upload-zone" id="santu-item-upload"></div>
 				</div>
 			`);
@@ -140,7 +149,7 @@ santu_utilities.views = {
 			const uploader = new frappe.ui.FileUploader({
 				wrapper: $wrap.find("#santu-item-upload")[0],
 				allow_multiple: false,
-				restrictions: { allowed_file_types: [".xlsx", ".xls", ".csv"] },
+				restrictions: { allowed_file_types: is_pdf ? [".pdf"] : [".xlsx", ".xls", ".csv"] },
 				onsuccess: (file) => {
 					state.file_url = file.file_url;
 					state.step = "map";
@@ -151,7 +160,8 @@ santu_utilities.views = {
 		}
 		if (step === "map") {
 			$wrap.html(`<div class="santu-utilities-loading">Reading file…</div>`);
-			santu_utilities.api.parseItemsFile(state.file_url).then((data) => {
+			const parse_call = is_pdf ? santu_utilities.api.parseItemsFilePdf(state.file_url) : santu_utilities.api.parseItemsFile(state.file_url);
+			parse_call.then((data) => {
 				state.parsed = data;
 				state.mapping = { ...data.suggested_mapping };
 				let mapHtml = `<div class="santu-utilities-toolbar"><button class="btn btn-default btn-sm santu-util-back-map">← Upload</button></div>
@@ -183,7 +193,13 @@ santu_utilities.views = {
 		}
 		if (step === "validate") {
 			$wrap.html(`<div class="santu-utilities-loading">Validating…</div>`);
-			const result = await santu_utilities.api.validateItemsImport({ file_url: state.file_url, mapping: state.mapping });
+			// PDF-sourced rows were already parsed client-side in the "map"
+			// step (state.parsed.rows) — validate_items_import only knows how
+			// to re-read Excel/CSV from a file_url, so PDF passes its rows
+			// straight through instead.
+			const result = await santu_utilities.api.validateItemsImport(
+				is_pdf ? { rows: state.parsed.rows, mapping: state.mapping } : { file_url: state.file_url, mapping: state.mapping }
+			);
 			state.validation = result;
 			const c = result.counts;
 			$wrap.html(`
@@ -474,8 +490,15 @@ santu_utilities.views = {
 
 	async _print_barcode_labels($wrap, state) {
 		const size = $wrap.find(".santu-bg-size").val();
-		const r = await santu_utilities.api.generateBarcodeLabels(state.list, size);
+		// window.open must run synchronously inside the click handler, before
+		// any await — otherwise most browsers treat it as a popup (not a
+		// user-initiated navigation) and silently block it, returning null.
 		const w = window.open("", "_blank");
+		if (!w) {
+			frappe.msgprint(__("Please allow pop-ups for this site to preview/print barcode labels."));
+			return;
+		}
+		const r = await santu_utilities.api.generateBarcodeLabels(state.list, size);
 		let html = `<html><head><title>Barcode Labels</title><style>
 			body{font-family:sans-serif} .label{border:1px solid #ccc;padding:8px;margin:8px;display:inline-block;text-align:center}
 			img{max-width:100%} .line{font-size:11px}
@@ -509,6 +532,8 @@ santu_utilities.views = {
 			let html = `
 				<div class="santu-utilities-toolbar">
 					<input class="form-control santu-bulk-search" placeholder="Search by Item Name / Code / HSN / Brand" value="${frappe.utils.escape_html(state.search)}">
+					<input type="text" class="form-control santu-bulk-scan" placeholder="📷 Scan barcode…" autocomplete="off">
+					<button type="button" class="btn btn-default santu-bulk-pdf-import">📄 Import from PDF</button>
 					<div class="santu-bulk-modes">
 						<label><input type="radio" name="bulk_mode" value="pricing" ${state.mode === "pricing" ? "checked" : ""}> Pricing</label>
 						<label><input type="radio" name="bulk_mode" value="stock" ${state.mode === "stock" ? "checked" : ""}> Stock</label>
@@ -527,7 +552,13 @@ santu_utilities.views = {
 				const checked = state.selected.has(it.name) ? "checked" : "";
 				html += `<tr data-name="${frappe.utils.escape_html(it.name)}"><td><input type="checkbox" class="santu-bulk-chk" ${checked}></td><td>${(state.page - 1) * 50 + idx + 1}</td>`;
 				cols.forEach((c) => {
-					const val = it[c] ?? "";
+					// A field staged in state.edits (typed by hand, or filled in by
+					// the barcode-scan / PDF-import actions below) always wins over
+					// what's still in the database — otherwise a re-render (paging,
+					// switching mode and back, another scan) would silently discard
+					// an unsaved edit the moment the row scrolls out of view.
+					const staged = state.edits[it.name];
+					const val = (staged && staged[c] !== undefined) ? staged[c] : (it[c] ?? "");
 					const editable = ["valuation_rate", "standard_rate", "brand", "description", "gst_hsn_code", "barcode"].includes(c);
 					html += editable
 						? `<td><input class="form-control input-sm santu-bulk-edit" data-field="${c}" value="${frappe.utils.escape_html(String(val))}"></td>`
@@ -549,6 +580,85 @@ santu_utilities.views = {
 				render();
 			}, 400);
 			$wrap.find(".santu-bulk-search").on("input", debouncedSearch);
+
+			// Scan a barcode straight into the bulk-update list — finds the
+			// item, brings it into view (via the existing search filter) and
+			// checks it, so a cashier can scan several items in a row,
+			// editing each one's fields as it comes up, then apply all of
+			// them together with one "Update Selected" click at the end
+			// (selection/edits persist across scans, only the visible table
+			// filter changes).
+			const $scan = $wrap.find(".santu-bulk-scan");
+			$scan.on("keydown", async (e) => {
+				if (e.key !== "Enter") return;
+				const code = $scan.val().trim();
+				if (!code) return;
+				$scan.prop("disabled", true);
+				try {
+					const found = await santu_utilities.api.lookupBarcode(code);
+					const results = (found && found.results) || [];
+					if (!results.length) {
+						frappe.show_alert({ message: __("No item found for barcode {0}", [code]), indicator: "orange" });
+						return;
+					}
+					const item = results.find((r) => r.item_code === code) || results[0];
+					state.selected.add(item.item_code);
+					state.search = item.item_code;
+					state.page = 1;
+					await render();
+					frappe.show_alert({ message: __("Scanned {0} — edit its fields below", [item.item_name]), indicator: "green" });
+					$wrap.find(".santu-bulk-scan").trigger("focus");
+				} finally {
+					$scan.prop("disabled", false);
+				}
+			});
+
+			// Import from PDF — a supplier's price list, matched against the
+			// existing catalogue (this screen only ever edits items that
+			// already exist; a line that doesn't match anything belongs in
+			// Import Items -> Import From PDF instead, which shares the same
+			// PDF reader). Every match gets selected + its Purchase Price
+			// staged, exactly like a manual edit would — so several PDFs (or
+			// a PDF plus manual scans) can be reviewed together before one
+			// "Update Selected" applies all of it.
+			$wrap.find(".santu-bulk-pdf-import").on("click", () => {
+				const dialog = new frappe.ui.Dialog({
+					title: __("Import from PDF"),
+					fields: [
+						{ fieldtype: "HTML", fieldname: "upload_note", options: `<p class="text-muted">${__("Upload a supplier's price list or catalogue PDF. Matched items get selected below with their new Purchase Price staged for review.")}</p>` },
+						{ fieldtype: "HTML", fieldname: "upload_zone" },
+					],
+				});
+				dialog.show();
+				new frappe.ui.FileUploader({
+					wrapper: dialog.fields_dict.upload_zone.$wrapper[0],
+					allow_multiple: false,
+					restrictions: { allowed_file_types: [".pdf"] },
+					onsuccess: async (file) => {
+						dialog.hide();
+						frappe.dom.freeze(__("Reading PDF…"));
+						try {
+							const result = await santu_utilities.api.matchPdfItemsForBulkUpdate(file.file_url);
+							result.matched.forEach((m) => {
+								state.selected.add(m.item_code);
+								if (!state.edits[m.item_code]) state.edits[m.item_code] = {};
+								if (m.rate != null) state.edits[m.item_code].valuation_rate = m.rate;
+							});
+							state.mode = "pricing";
+							state.search = "";
+							state.page = 1;
+							await render();
+							const msg = result.unmatched_count
+								? __("Matched {0} items from the PDF ({1} lines not found in your catalogue — add those via Import Items instead).", [result.matched_count, result.unmatched_count])
+								: __("Matched {0} items from the PDF — review prices below and Update Selected.", [result.matched_count]);
+							frappe.msgprint(msg);
+						} finally {
+							frappe.dom.unfreeze();
+						}
+					},
+				});
+			});
+
 			$wrap.find('input[name="bulk_mode"]').on("change", function () {
 				state.mode = $(this).val();
 				state.page = 1;

@@ -10,6 +10,12 @@ santu_utilities.api = {
 	parseItemsFile(file_url) {
 		return frappe.xcall(`${UTILITIES_API}.parse_items_import_file`, { file_url });
 	},
+	parseItemsFilePdf(file_url) {
+		return frappe.xcall(`${UTILITIES_API}.parse_items_import_file_from_pdf`, { file_url });
+	},
+	matchPdfItemsForBulkUpdate(file_url) {
+		return frappe.xcall(`${UTILITIES_API}.match_pdf_items_for_bulk_update`, { file_url });
+	},
 	validateItemsImport(args) {
 		return frappe.xcall(`${UTILITIES_API}.validate_items_import`, args);
 	},

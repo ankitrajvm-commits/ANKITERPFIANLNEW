@@ -18,7 +18,7 @@ frappe.pages["shift-start"].on_page_load = function (wrapper) {
 				// No staff configured yet (Admin Mode > Staff Member) — don't
 				// block billing on a feature nobody has set up, just proceed.
 				santu_set_current_staff(null);
-				frappe.set_route("point-of-sale");
+				frappe.set_route("santu-sale-invoice");
 				return;
 			}
 			render_shift_start_grid(page, staff);
@@ -49,5 +49,5 @@ function render_shift_start_grid(page, staff) {
 
 function santu_pick_staff(staff_name) {
 	santu_set_current_staff(staff_name);
-	frappe.set_route("point-of-sale");
+	frappe.set_route("santu-sale-invoice");
 }

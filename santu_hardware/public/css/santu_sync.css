@@ -16,7 +16,7 @@
 }
 
 .santu-sync-title {
-	font-size: 18px;
+	font-size: 19px;
 	font-weight: 700;
 	color: #111827;
 	margin: 0;
@@ -44,20 +44,20 @@
 }
 
 .santu-sync-hero h2 {
-	font-size: 22px;
+	font-size: 24px;
 	font-weight: 700;
 	margin: 0 0 10px;
 }
 
 .santu-sync-hero p {
-	font-size: 14px;
+	font-size: 15px;
 	color: #6b7280;
 	line-height: 1.5;
 	margin: 0 0 8px;
 }
 
 .santu-sync-muted {
-	font-size: 12px;
+	font-size: 13px;
 	color: #9ca3af;
 }
 
@@ -80,7 +80,7 @@
 }
 
 .santu-sync-card h3 {
-	font-size: 15px;
+	font-size: 16px;
 	font-weight: 700;
 	margin: 0 0 12px;
 }
@@ -92,19 +92,19 @@
 }
 
 .santu-sync-card-label {
-	font-size: 12px;
+	font-size: 13px;
 	color: #6b7280;
 	font-weight: 600;
 }
 
 .santu-sync-card-value {
-	font-size: 20px;
+	font-size: 22px;
 	font-weight: 700;
 	color: #111827;
 }
 
 .santu-sync-card-sub {
-	font-size: 12px;
+	font-size: 13px;
 	color: #9ca3af;
 	margin-top: 4px;
 }
@@ -120,7 +120,7 @@
 	display: flex;
 	flex-wrap: wrap;
 	gap: 16px 24px;
-	font-size: 13px;
+	font-size: 14px;
 	color: #374151;
 	margin-bottom: 16px;
 	padding: 10px 14px;
@@ -130,7 +130,7 @@
 }
 
 .santu-sync-section h3 {
-	font-size: 14px;
+	font-size: 15px;
 	font-weight: 700;
 	margin: 0 0 10px;
 }
@@ -139,7 +139,7 @@
 .santu-sync-table {
 	width: 100%;
 	border-collapse: collapse;
-	font-size: 13px;
+	font-size: 14px;
 	background: #fff;
 	border: 1px solid #e8eaed;
 	border-radius: 8px;
@@ -149,7 +149,7 @@
 .santu-sync-table thead th {
 	text-align: left;
 	padding: 8px 12px;
-	font-size: 11px;
+	font-size: 12px;
 	font-weight: 600;
 	color: #9ca3af;
 	background: #fafafa;
@@ -169,7 +169,7 @@
 	border: none;
 	background: transparent;
 	color: #2563eb;
-	font-size: 12px;
+	font-size: 13px;
 	cursor: pointer;
 	padding: 2px 6px;
 }
@@ -192,7 +192,7 @@
 	background: #fef2f2;
 	border: 1px solid #fecaca;
 	border-radius: 8px;
-	font-size: 13px;
+	font-size: 14px;
 	color: #991b1b;
 	margin-bottom: 16px;
 }
@@ -202,7 +202,7 @@
 	background: #fffbeb;
 	border: 1px solid #fde68a;
 	border-radius: 8px;
-	font-size: 13px;
+	font-size: 14px;
 	color: #92400e;
 	margin: 12px 0;
 }
@@ -213,7 +213,7 @@
 	padding: 32px;
 	text-align: center;
 	color: #9ca3af;
-	font-size: 14px;
+	font-size: 15px;
 }
 .santu-sync-error { color: #b91c1c; }
 
@@ -223,7 +223,7 @@
 	gap: 12px;
 }
 .santu-sync-role-group {
-	font-size: 13px;
+	font-size: 14px;
 	padding: 8px;
 	background: #f9fafb;
 	border-radius: 6px;

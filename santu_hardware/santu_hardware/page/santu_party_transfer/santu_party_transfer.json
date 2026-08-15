@@ -1,0 +1,16 @@
+{
+ "content": null,
+ "doctype": "Page",
+ "icon": "octicon octicon-arrow-switch",
+ "idx": 0,
+ "module": "Santu Hardware",
+ "name": "santu-party-transfer",
+ "page_name": "santu-party-transfer",
+ "restrict_to_domain": null,
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Party to Party Transfer"
+}

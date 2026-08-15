@@ -1,474 +1,1273 @@
+/* global frappe, santu_sale_invoice, santu_toggle_privacy_mode, santu_is_privacy_mode_active */
+// Santu Hardware POS — Sales Invoice screen (2026-08-14 redesign).
+// Backs onto a real Sales Invoice (not POS Invoice) via
+// santu_hardware.santu_hardware.api.save_sale_invoice — multi-tab shell
+// is purely client-side (localStorage), no draft documents are created
+// while a sale is in progress. See "Start New Sale" routing in
+// santu_dashboard.js / santu_fixed_sidebar.js for entry points.
 frappe.pages["santu-sale-invoice"].on_page_load = function (wrapper) {
-	const page = frappe.ui.make_app_page({
-		parent: wrapper,
-		title: "Sale Invoice",
-		single_column: true,
-	});
-
-	$(page.wrapper).find(".page-head .page-actions").hide();
-	$(page.main).addClass("santu-sale-invoice-page-main");
-
 	frappe.require(
 		["/assets/santu_hardware/js/santu_sale_invoice/santu_sale_invoice_api.js"],
-		() => santu_sale_invoice_page.init(page)
+		() => {
+			const page = frappe.ui.make_app_page({ parent: wrapper, title: "Sale", single_column: true });
+			$(page.wrapper).find(".page-head").hide();
+			$(page.main).addClass("santu-si2-page-main");
+			santu_sale_pos.init(page);
+		}
 	);
 };
 
-const santu_sale_invoice_page = {
-	async init(page) {
+// "Convert to Sales Invoice" (from Quotation or Sales Order,
+// santu_sale_transactions.js) hands off the mapped-but-unsaved doc here via
+// frappe.route_options.prefill instead of trying to view it — see the
+// matching note in santu_sales_order.js for why (get_invoice_view_data only
+// knows real saved documents).
+frappe.pages["santu-sale-invoice"].on_page_show = function () {
+	const prefill = frappe.route_options && frappe.route_options.prefill;
+	if (prefill && window.santu_sale_pos && santu_sale_pos.page && santu_sale_pos.init_data) {
+		frappe.route_options = null;
+		santu_sale_pos._apply_prefill(prefill);
+		return;
+	}
+	if (window.santu_sale_pos && santu_sale_pos.page) santu_sale_pos.render();
+};
+
+const SANTU_SI2_STORAGE_KEY = "santu_sale_pos_tabs_v1";
+const SANTU_SI2_DEFAULT_TERMS =
+	"The goods returned can only be exchanged at store only. Call before making any exchange or return confirmation.";
+
+const santu_sale_pos = {
+	init(page) {
 		this.page = page;
-		this.state = {
-			customer: null,
-			customer_name: "",
-			items: [],
-			payments: [],
-			warehouse: null,
-			company: null,
-			selling_price_list: null,
-			payment_modes: [],
-			paid_amount: 0,
-			payment_mode: "Cash",
-		};
-		this.render_shell();
-		await this.load_init();
-		this.bind_events();
-		this.focus_item_search();
-	},
+		this.init_data = null;
+		this.tabs = [];
+		this.active_id = null;
+		this._save_debounced = santu_sale_invoice.utils.debounce(() => this._persist(), 400);
 
-	render_shell() {
-		const $root = $(`
-			<div class="santu-si">
-				<div class="santu-si-header">
-					<h1 class="santu-si-title">Sale Invoice</h1>
-					<div class="santu-si-header-actions">
-						<button type="button" class="btn btn-default santu-si-back">← Back</button>
-					</div>
-				</div>
-				<div class="santu-si-body">
-					<div class="santu-si-main">
-						<div class="santu-si-card santu-si-customer-card">
-							<label class="santu-si-label">Customer</label>
-							<div class="santu-si-customer-row">
-								<div class="santu-si-search-wrap">
-									<input type="text" class="form-control santu-si-customer-search" placeholder="Search customer name or phone" autocomplete="off">
-									<div class="santu-si-suggest santu-si-customer-suggest"></div>
-								</div>
-								<button type="button" class="btn btn-default santu-si-new-customer">+ New</button>
-							</div>
-							<div class="santu-si-customer-info"></div>
-						</div>
-						<div class="santu-si-card santu-si-item-entry-card">
-							<label class="santu-si-label">Add Item</label>
-							<div class="santu-si-item-entry-row">
-								<div class="santu-si-search-wrap santu-si-item-search-wrap">
-									<input type="text" class="form-control santu-si-item-search" placeholder="Search item name, code or barcode" autocomplete="off">
-									<div class="santu-si-suggest santu-si-item-suggest"></div>
-								</div>
-								<input type="number" class="form-control santu-si-item-qty" value="1" min="0.01" step="any" title="Qty">
-								<button type="button" class="btn btn-primary santu-si-add-item-btn">Add</button>
-							</div>
-						</div>
-						<div class="santu-si-card santu-si-table-card">
-							<div class="santu-si-table-wrap">
-								<table class="santu-si-table">
-									<thead>
-										<tr>
-											<th>Item</th>
-											<th>Code</th>
-											<th class="num">Qty</th>
-											<th>UOM</th>
-											<th class="num">Rate</th>
-											<th class="num">Disc %</th>
-											<th class="num">Amount</th>
-											<th></th>
-										</tr>
-									</thead>
-									<tbody class="santu-si-items-body"></tbody>
-								</table>
-							</div>
-							<div class="santu-si-empty-items">No items added yet. Search and add items above.</div>
-						</div>
-					</div>
-					<div class="santu-si-side">
-						<div class="santu-si-card santu-si-totals-card">
-							<div class="santu-si-total-row"><span>Subtotal</span><span class="santu-si-subtotal santu-figures">₹ 0.00</span></div>
-							<div class="santu-si-total-row"><span>Discount</span><span class="santu-si-discount santu-figures">₹ 0.00</span></div>
-							<div class="santu-si-total-row santu-si-grand-row"><span>Grand Total</span><span class="santu-si-grand santu-figures">₹ 0.00</span></div>
-						</div>
-						<div class="santu-si-card santu-si-payment-card">
-							<label class="santu-si-label">Payment Mode</label>
-							<select class="form-control santu-si-payment-mode"></select>
-							<label class="santu-si-label">Amount Received</label>
-							<input type="number" class="form-control santu-si-paid-amount" min="0" step="0.01" value="0">
-							<div class="santu-si-total-row"><span>Balance</span><span class="santu-si-balance santu-figures">₹ 0.00</span></div>
-						</div>
-						<div class="santu-si-actions">
-							<button type="button" class="btn btn-default santu-si-save-draft">Save Draft</button>
-							<button type="button" class="btn btn-primary santu-si-save-submit">Save & Submit</button>
-							<button type="button" class="btn btn-default santu-si-save-print">Save & Print</button>
-							<button type="button" class="btn btn-default santu-si-save-new">Save & New Sale</button>
-						</div>
-					</div>
-				</div>
-			</div>
-		`).appendTo(this.page.body);
+		$(page.body).html(`<div class="santu-si2-loading">Loading…</div>`);
 
-		this.$root = $root;
-		this.$customer_search = $root.find(".santu-si-customer-search");
-		this.$customer_suggest = $root.find(".santu-si-customer-suggest");
-		this.$customer_info = $root.find(".santu-si-customer-info");
-		this.$item_search = $root.find(".santu-si-item-search");
-		this.$item_suggest = $root.find(".santu-si-item-suggest");
-		this.$item_qty = $root.find(".santu-si-item-qty");
-		this.$items_body = $root.find(".santu-si-items-body");
-		this.$empty_items = $root.find(".santu-si-empty-items");
-		this.$payment_mode = $root.find(".santu-si-payment-mode");
-		this.$paid_amount = $root.find(".santu-si-paid-amount");
-	},
-
-	async load_init() {
-		const data = await santu_sale_invoice.api.init();
-		this.state.company = data.company;
-		this.state.warehouse = data.warehouse;
-		this.state.selling_price_list = data.selling_price_list;
-		this.state.payment_modes = data.payment_modes || [];
-		this.$payment_mode.empty();
-		this.state.payment_modes.forEach((m) => {
-			this.$payment_mode.append(`<option value="${frappe.utils.escape_html(m.name)}">${frappe.utils.escape_html(m.name)}</option>`);
+		santu_sale_invoice.api.init().then((data) => {
+			this.init_data = data;
+			const prefill = frappe.route_options && frappe.route_options.prefill;
+			frappe.route_options = null;
+			if (prefill) {
+				this._apply_prefill(prefill);
+				return;
+			}
+			this._load_from_storage();
+			if (!this.tabs.length) this._new_tab();
+			this.render();
 		});
-		if (this.state.payment_modes.length) {
-			this.state.payment_mode = this.state.payment_modes[0].name;
+	},
+
+	// ---------- persistence (localStorage only — see file header) ----------
+	_load_from_storage() {
+		try {
+			const raw = localStorage.getItem(SANTU_SI2_STORAGE_KEY);
+			if (!raw) return;
+			const parsed = JSON.parse(raw);
+			if (parsed && Array.isArray(parsed.tabs) && parsed.tabs.length) {
+				this.tabs = parsed.tabs;
+				this.active_id = parsed.active_id && this.tabs.some((t) => t.id === parsed.active_id)
+					? parsed.active_id
+					: this.tabs[0].id;
+			}
+		} catch (e) {
+			// corrupt storage — start fresh rather than block the screen
+			this.tabs = [];
+		}
+	},
+	_persist() {
+		try {
+			localStorage.setItem(
+				SANTU_SI2_STORAGE_KEY,
+				JSON.stringify({ tabs: this.tabs, active_id: this.active_id })
+			);
+		} catch (e) {
+			// storage full/unavailable — sale still works, just not refresh-safe
 		}
 	},
 
-	bind_events() {
-		const u = santu_sale_invoice.utils;
+	_default_place_of_supply() {
+		// Shop-specific default (direct request) — Bihar, matching whatever
+		// exact "NN-Bihar" option string this India Compliance install uses
+		// rather than hardcoding a state code that might not match.
+		const options = this.init_data.place_of_supply_options || [];
+		return options.find((o) => o.toLowerCase().includes("bihar")) || null;
+	},
 
-		this.$root.find(".santu-si-back").on("click", () => frappe.set_route("santu-sale"));
+	_blank_tab() {
+		return {
+			id: santu_sale_invoice.utils.uid(),
+			label: null, // auto-numbered by position if null
+			customer: null,
+			customer_details: null,
+			phone: "",
+			payment_mode: "credit",
+			mode_of_payment: (this.init_data.payment_modes[0] || {}).name || null,
+			paid_amount: null, // null = "full amount" (Cash mode); a number less than the total = partial payment, remainder goes to the customer's account
+			items: [],
+			additional_discount_amount: 0,
+			round_off: true,
+			place_of_supply: this._default_place_of_supply(),
+			posting_date: this.init_data.posting_date,
+			terms: SANTU_SI2_DEFAULT_TERMS,
+			description: "",
+			held: false,
+			saved_invoice: null, // {name, grand_total, ...} once saved
+		};
+	},
 
-		this.$customer_search.on(
-			"input",
-			u.debounce(async () => {
-				const q = this.$customer_search.val().trim();
-				if (q.length < 2) return this.$customer_suggest.hide().empty();
-				const rows = await santu_sale_invoice.api.search_customers(q);
-				this.render_customer_suggest(rows);
-			})
-		);
+	_new_tab(focus) {
+		const t = this._blank_tab();
+		this.tabs.push(t);
+		if (focus !== false) this.active_id = t.id;
+		this._save_debounced();
+		return t;
+	},
 
-		this.$item_search.on(
-			"input",
-			u.debounce(async () => {
-				const q = this.$item_search.val().trim();
-				if (q.length < 1) return this.$item_suggest.hide().empty();
-				const res = await santu_sale_invoice.api.search_items(q);
-				this.render_item_suggest(res.results || []);
-			})
-		);
+	// Builds a fresh tab from a mapped-but-unsaved doc (Quotation's or
+	// Sales Order's "Convert to Sales Invoice") — see the matching method
+	// in santu_sales_order.js for why items are re-looked-up via item_row()
+	// rather than trusting the mapped doc's own shape.
+	_apply_prefill(doc) {
+		const tab = this._blank_tab();
+		tab.customer = doc.customer || doc.party_name || null;
+		tab.place_of_supply = doc.place_of_supply || tab.place_of_supply;
+		if (doc.terms) tab.terms = doc.terms;
+		tab.additional_discount_amount = doc.discount_amount || 0;
+		this.tabs.push(tab);
+		this.active_id = tab.id;
+		this._save_debounced();
+		this.render();
 
-		this.$item_search.on("keydown", (e) => {
-			if (e.key === "Enter") {
-				e.preventDefault();
-				const $first = this.$item_suggest.find(".santu-si-suggest-row").first();
-				if ($first.length) $first.trigger("click");
-				else this.add_item_from_search();
-			}
-		});
+		if (tab.customer) {
+			santu_sale_invoice.api.customer_details(tab.customer).then((d) => {
+				tab.customer_details = d;
+				// Same Walk-in-must-be-Cash correction _select_customer applies —
+				// a prefilled tab sets tab.customer directly, bypassing it, which
+				// let a converted Quotation for Walk-in Customer reach Save still
+				// on Credit and fail with "cannot have an outstanding balance"
+				// (confirmed live 2026-08-15).
+				if ((d.customer_name || "").trim().toLowerCase() === "walk-in customer" && tab.payment_mode === "credit") {
+					tab.payment_mode = "cash";
+					frappe.show_alert({ message: __("Walk-in Customer must pay in full — switched to Cash."), indicator: "orange" });
+					this._save_debounced();
+					this._render_body();
+					return;
+				}
+				this._save_debounced();
+				this._render_customer_info();
+			});
+		}
 
-		this.$root.find(".santu-si-add-item-btn").on("click", () => this.add_item_from_search());
-		this.$root.find(".santu-si-new-customer").on("click", () => this.quick_new_customer());
-		this.$paid_amount.on("input", () => this.recalc_totals());
-		this.$payment_mode.on("change", () => {
-			this.state.payment_mode = this.$payment_mode.val();
-		});
-
-		this.$root.find(".santu-si-save-draft").on("click", () => this.save_invoice(0, false));
-		this.$root.find(".santu-si-save-submit").on("click", () => this.save_invoice(1, false));
-		this.$root.find(".santu-si-save-print").on("click", () => this.save_invoice(1, true));
-		this.$root.find(".santu-si-save-new").on("click", () => this.save_invoice(1, false, true));
-
-		$(document).on("click.santu_si", (e) => {
-			if (!$(e.target).closest(".santu-si-search-wrap").length) {
-				this.$customer_suggest.hide();
-				this.$item_suggest.hide();
-			}
+		(doc.items || []).forEach((r) => {
+			santu_sale_invoice.api.item_row(tab.customer, r.item_code, this.init_data.warehouse, r.qty).then((row) => {
+				tab.items.push({
+					id: santu_sale_invoice.utils.uid(),
+					item_code: r.item_code,
+					item_name: row.item_name || r.item_name || r.item_code,
+					qty: r.qty,
+					uom: r.uom || row.uom || row.stock_uom,
+					uom_options: row.uom ? [row.uom, row.stock_uom].filter((v, i, a) => v && a.indexOf(v) === i) : [row.stock_uom],
+					rate: r.rate,
+					discount_percentage: r.discount_percentage || 0,
+					discount_amount: r.discount_amount || 0,
+					tax_rate: row.tax_rate || 0,
+					amount: r.amount || r.qty * r.rate,
+				});
+				this._save_debounced();
+				this._render_items();
+			});
 		});
 	},
 
-	render_customer_suggest(rows) {
-		this.$customer_suggest.empty();
-		if (!rows.length) return this.$customer_suggest.hide();
-		rows.forEach((r) => {
-			$(`<div class="santu-si-suggest-row" role="button">
-				<strong>${frappe.utils.escape_html(r.customer_name)}</strong>
-				<span>${frappe.utils.escape_html(r.mobile_no || "")} ${frappe.utils.escape_html(r.santu_village || "")}</span>
-			</div>`)
-				.on("click", () => this.select_customer(r))
-				.appendTo(this.$customer_suggest);
-		});
-		this.$customer_suggest.show();
+	_active_tab() {
+		return this.tabs.find((t) => t.id === this.active_id) || this.tabs[0];
 	},
 
-	render_item_suggest(rows) {
-		this.$item_suggest.empty();
-		if (!rows.length) return this.$item_suggest.hide();
-		rows.forEach((r) => {
-			const stock = r.available_qty !== null ? `Stock: ${r.available_qty}` : "";
-			$(`<div class="santu-si-suggest-row" role="button" data-code="${frappe.utils.escape_html(r.item_code)}">
-				<strong>${frappe.utils.escape_html(r.item_name)}</strong>
-				<span>${frappe.utils.escape_html(r.item_code)} · ${santu_sale_invoice.utils.format_money(r.price)} · ${stock}</span>
-			</div>`)
-				.on("click", () => {
-					this.$item_search.val(r.item_code);
-					this.$item_suggest.hide();
-					this.add_item(r.item_code);
-				})
-				.appendTo(this.$item_suggest);
-		});
-		this.$item_suggest.show();
+	_tab_label(tab, idx) {
+		return tab.label || `Sale #${idx + 1}`;
 	},
 
-	async select_customer(row) {
-		this.state.customer = row.name;
-		this.state.customer_name = row.customer_name;
-		this.$customer_search.val(row.customer_name);
-		this.$customer_suggest.hide();
-		const details = await santu_sale_invoice.api.customer_details(row.name);
-		this.$customer_info.html(`
-			<div class="santu-si-customer-selected">
-				<strong>${frappe.utils.escape_html(details.customer_name)}</strong>
-				${details.mobile_no ? `<span>📞 ${frappe.utils.escape_html(details.mobile_no)}</span>` : ""}
-				${details.village ? `<span>📍 ${frappe.utils.escape_html(details.village)}</span>` : ""}
-				${details.address ? `<span>${frappe.utils.escape_html(details.address)}</span>` : ""}
+	_tab_is_empty(tab) {
+		return !tab.customer && !tab.items.length && !tab.saved_invoice;
+	},
+
+	// ---------- top-level render ----------
+	render() {
+		if (!this.tabs.length) this._new_tab();
+		const $body = $(this.page.body);
+		$body.html(`
+			<div class="santu-si2">
+				<div class="santu-si2-tabbar">
+					<div class="santu-si2-tabs"></div>
+					<div class="santu-si2-toolbar">
+						<button type="button" class="santu-si2-icon-btn" data-action="calculator" title="Calculator">🧮</button>
+						<button type="button" class="santu-si2-icon-btn" data-action="settings" title="Settings">⚙</button>
+					</div>
+				</div>
+				<div class="santu-si2-body"></div>
 			</div>
 		`);
-		this.focus_item_search();
+		this.$root = $body.find(".santu-si2");
+		this._render_tabbar();
+		this._render_body();
+		this._bind_toolbar();
+		this._bind_shortcuts();
 	},
 
-	quick_new_customer() {
-		const d = new frappe.ui.Dialog({
-			title: "New Customer",
-			fields: [
-				{ fieldname: "customer_name", label: "Name", fieldtype: "Data", reqd: 1 },
-				{ fieldname: "mobile_no", label: "Phone", fieldtype: "Data" },
-				{ fieldname: "santu_village", label: "Village", fieldtype: "Data" },
-			],
-			primary_action_label: "Create",
-			primary_action: async (values) => {
-				const name = await frappe.xcall("santu_hardware.santu_hardware.api.get_or_create_customer_by_phone", {
-					customer_name: values.customer_name,
-					phone: values.mobile_no || "",
-					village: values.santu_village || "",
+	_render_tabbar() {
+		const $tabs = this.$root.find(".santu-si2-tabs");
+		$tabs.empty();
+		this.tabs.forEach((tab, idx) => {
+			const active = tab.id === this.active_id;
+			const $tab = $(`
+				<button type="button" class="santu-si2-tab${active ? " is-active" : ""}${tab.held ? " is-held" : ""}" data-tab="${tab.id}">
+					<span class="santu-si2-tab-label">${frappe.utils.escape_html(this._tab_label(tab, idx))}</span>
+					<span class="santu-si2-tab-close" data-close="${tab.id}">×</span>
+				</button>
+			`);
+			$tab.on("click", (e) => {
+				if ($(e.target).is(".santu-si2-tab-close")) return;
+				this.active_id = tab.id;
+				this._save_debounced();
+				this.render();
+			});
+			$tab.find(".santu-si2-tab-close").on("click", (e) => {
+				e.stopPropagation();
+				this._close_tab(tab.id);
+			});
+			$tabs.append($tab);
+		});
+		$(`<button type="button" class="santu-si2-tab-add" title="New Sale (Ctrl+N)">+</button>`)
+			.on("click", () => {
+				this._new_tab();
+				this.render();
+			})
+			.appendTo($tabs);
+	},
+
+	_close_tab(id) {
+		const tab = this.tabs.find((t) => t.id === id);
+		if (!tab) return;
+		const finish = () => {
+			this.tabs = this.tabs.filter((t) => t.id !== id);
+			if (!this.tabs.length) this._new_tab(false);
+			if (this.active_id === id) this.active_id = this.tabs[0].id;
+			this._save_debounced();
+			this.render();
+		};
+		if (this._tab_is_empty(tab)) {
+			finish();
+			return;
+		}
+		frappe.confirm(
+			__("This sale has unsaved items. Close anyway? (Tip: use Hold Sale instead to keep it for later.)"),
+			finish
+		);
+	},
+
+	// ---------- body ----------
+	_render_body() {
+		const tab = this._active_tab();
+		const $wrap = this.$root.find(".santu-si2-body");
+		$wrap.html(`
+			<div class="santu-si2-header">
+				<div class="santu-si2-header-title">Sale</div>
+				<div class="santu-si2-mode">
+					<span class="santu-si2-mode-label${tab.payment_mode === "credit" ? " is-active" : ""}" data-mode="credit">Credit</span>
+					<label class="santu-si2-switch">
+						<input type="checkbox" class="santu-si2-mode-input" ${tab.payment_mode === "cash" ? "checked" : ""}>
+						<span class="santu-si2-slider"></span>
+					</label>
+					<span class="santu-si2-mode-label${tab.payment_mode === "cash" ? " is-active" : ""}" data-mode="cash">Cash</span>
+				</div>
+				${
+					tab.payment_mode === "cash"
+						? `<select class="santu-si2-mop">${(this.init_data.payment_modes || [])
+								.map((m) => `<option value="${frappe.utils.escape_html(m.name)}" ${m.name === tab.mode_of_payment ? "selected" : ""}>${frappe.utils.escape_html(m.name)}</option>`)
+								.join("")}</select>
+							<label class="santu-si2-paid-now-label">Paid Now
+								<input type="number" class="santu-si2-paid-now" min="0" step="any" placeholder="Full amount" value="${tab.paid_amount != null ? tab.paid_amount : ""}">
+							</label>
+							<span class="santu-si2-remaining-note" style="display:none;"></span>`
+						: ""
+				}
+			</div>
+
+			<div class="santu-si2-toprow">
+				<div class="santu-si2-customer-col">
+					<div class="santu-si2-customer-search-wrap">
+						<input type="text" class="santu-si2-customer-search" placeholder="Search by Name/Phone *" autocomplete="off">
+						<div class="santu-si2-customer-dropdown" style="display:none;"></div>
+					</div>
+					<input type="text" class="santu-si2-phone" placeholder="Phone No.">
+				</div>
+				<div class="santu-si2-customer-info"></div>
+				<div class="santu-si2-invoice-info">
+					<div class="santu-si2-inv-row">
+						<span class="santu-si2-inv-label">Invoice Number</span>
+						<span class="santu-si2-inv-value">${
+							tab.saved_invoice
+								? frappe.utils.escape_html(tab.saved_invoice.name)
+								: frappe.utils.escape_html((this.init_data.naming_series_default || "").replace(/\.#+.*/, "")) + " (auto)"
+						}</span>
+					</div>
+					<div class="santu-si2-inv-row">
+						<span class="santu-si2-inv-label">Invoice Date</span>
+						<input type="date" class="santu-si2-posting-date" value="${tab.posting_date}">
+					</div>
+					<div class="santu-si2-inv-row">
+						<span class="santu-si2-inv-label">State of supply</span>
+						<select class="santu-si2-place-of-supply">
+							<option value="">Select</option>
+							${(this.init_data.place_of_supply_options || [])
+								.map((o) => `<option value="${frappe.utils.escape_html(o)}" ${o === tab.place_of_supply ? "selected" : ""}>${frappe.utils.escape_html(o)}</option>`)
+								.join("")}
+						</select>
+					</div>
+				</div>
+			</div>
+
+			<div class="santu-si2-table-wrap">
+				<table class="santu-si2-table">
+					<thead>
+						<tr>
+							<th class="santu-si2-col-idx">#</th>
+							<th class="santu-si2-col-item">ITEM</th>
+							<th class="santu-si2-col-qty">QTY</th>
+							<th class="santu-si2-col-uom">UNIT</th>
+							<th class="santu-si2-col-rate">PRICE/UNIT</th>
+							<th class="santu-si2-col-disc">DISCOUNT</th>
+							<th class="santu-si2-col-tax">TAX</th>
+							<th class="santu-si2-col-amount">AMOUNT</th>
+							<th class="santu-si2-col-remove"></th>
+						</tr>
+					</thead>
+					<tbody></tbody>
+					<tfoot>
+						<tr>
+							<td colspan="2"><button type="button" class="santu-si2-add-row">+ ADD ROW</button> <button type="button" class="santu-si2-scan-row" title="Scan a barcode">📷 SCAN BARCODE</button></td>
+							<td class="santu-si2-total-qty">0</td>
+							<td></td>
+							<td></td>
+							<td></td>
+							<td></td>
+							<td class="santu-si2-total-amount santu-si2-figures">₹ 0</td>
+							<td></td>
+						</tr>
+					</tfoot>
+				</table>
+			</div>
+
+			<div class="santu-si2-lowerrow">
+				<div class="santu-si2-extras">
+					<button type="button" class="santu-si2-extra-btn" data-extra="terms">☰ ADD TERMS &amp; CONDITIONS</button>
+					<button type="button" class="santu-si2-extra-btn" data-extra="description">＋ ADD DESCRIPTION</button>
+					<button type="button" class="santu-si2-extra-btn" data-extra="image">📷 ADD IMAGE</button>
+					<button type="button" class="santu-si2-extra-btn" data-extra="document">📄 ADD DOCUMENT</button>
+				</div>
+				<div class="santu-si2-summary">
+					<div class="santu-si2-summary-row">
+						<span>Subtotal</span>
+						<span class="santu-si2-figures santu-si2-sum-subtotal">₹ 0</span>
+					</div>
+					<div class="santu-si2-summary-row">
+						<span>Discount (whole bill)</span>
+						<input type="number" min="0" step="0.01" class="santu-si2-add-discount" value="${tab.additional_discount_amount || ""}" placeholder="0">
+					</div>
+					<div class="santu-si2-summary-row">
+						<span>Tax</span>
+						<span class="santu-si2-figures santu-si2-sum-tax">₹ 0</span>
+					</div>
+					<div class="santu-si2-summary-row">
+						<span><label><input type="checkbox" class="santu-si2-round-off" ${tab.round_off ? "checked" : ""}> Round Off</label></span>
+						<span class="santu-si2-figures santu-si2-sum-roundoff">₹ 0</span>
+					</div>
+					<div class="santu-si2-summary-row santu-si2-summary-total">
+						<span>Total</span>
+						<span class="santu-si2-figures santu-si2-sum-total">₹ 0</span>
+					</div>
+				</div>
+			</div>
+
+			<div class="santu-si2-actionbar">
+				<div class="santu-si2-actionbar-left">
+					<button type="button" class="santu-si2-btn santu-si2-btn-hold" data-action="hold">Hold Sale <span class="santu-si2-kbd">F9</span></button>
+					${
+						tab.saved_invoice
+							? `<button type="button" class="santu-si2-btn" data-action="whatsapp">Send on WhatsApp</button>`
+							: ""
+					}
+					<div class="santu-si2-more-wrap">
+						<button type="button" class="santu-si2-btn" data-action="more">More ▾</button>
+						<div class="santu-si2-more-menu" style="display:none;">
+							<button type="button" data-more="payment">Payment</button>
+							<button type="button" data-more="sales_return">Sales Return</button>
+							<button type="button" data-more="submit_draft">Save as Draft (don't submit)</button>
+						</div>
+					</div>
+				</div>
+				<div class="santu-si2-actionbar-right">
+					<button type="button" class="santu-si2-btn" data-action="share">Share ▾</button>
+					<button type="button" class="santu-si2-btn" data-action="save_print">Save &amp; Print</button>
+					<button type="button" class="santu-si2-btn santu-si2-btn-primary" data-action="save">Save <span class="santu-si2-kbd">Ctrl+S</span></button>
+				</div>
+			</div>
+		`);
+
+		this._render_items();
+		this._render_customer_info();
+		this._bind_body_events();
+	},
+
+	// ---------- customer ----------
+	_render_customer_info() {
+		const tab = this._active_tab();
+		const $info = this.$root.find(".santu-si2-customer-info");
+		const $search = this.$root.find(".santu-si2-customer-search");
+		const $phone = this.$root.find(".santu-si2-phone");
+		if (!tab.customer) {
+			$info.empty();
+			return;
+		}
+		$search.val(tab.customer_details ? tab.customer_details.customer_name : tab.customer);
+		$phone.val((tab.customer_details && tab.customer_details.mobile_no) || tab.phone || "");
+		const d = tab.customer_details || {};
+		const outstanding = d.outstanding_amount || 0;
+		$info.html(`
+			<div class="santu-si2-cust-card">
+				<div class="santu-si2-cust-name">${frappe.utils.escape_html(d.customer_name || tab.customer)}
+					<button type="button" class="santu-si2-cust-clear" title="Change customer">×</button>
+				</div>
+				${d.village ? `<div class="santu-si2-cust-sub">${frappe.utils.escape_html(d.village)}</div>` : ""}
+				<div class="santu-si2-cust-stats">
+					<span class="${outstanding > 0 ? "santu-si2-warn-text" : ""}">Outstanding: ₹ ${santu_sale_invoice.utils.format_money(outstanding).replace("₹ ", "")}</span>
+					${d.credit_limit ? `<span>Credit Limit: ₹ ${santu_sale_invoice.utils.format_money(d.credit_limit).replace("₹ ", "")}</span>` : ""}
+				</div>
+			</div>
+		`);
+		$info.find(".santu-si2-cust-clear").on("click", () => {
+			tab.customer = null;
+			tab.customer_details = null;
+			this._save_debounced();
+			this._render_body();
+		});
+	},
+
+	_customer_search(q) {
+		const $dd = this.$root.find(".santu-si2-customer-dropdown");
+		if (!q || q.length < 2) {
+			$dd.hide().empty();
+			return;
+		}
+		santu_sale_invoice.api.search_customers(q).then((raw_rows) => {
+			$dd.empty();
+
+			// "Walk-in Customer" specifically has genuine duplicate master
+			// records left over from before dedup existed — collapse only
+			// that name to one row. Two DIFFERENT real people who happen to
+			// share a name (the actual case this dropdown needs to handle
+			// well) must both stay visible — that's what the expand
+			// arrow/village/note below is for, not deduping them away.
+			const seen_walkin = new Set();
+			const rows = raw_rows.filter((c) => {
+				const key = (c.customer_name || "").trim().toLowerCase();
+				if (key !== "walk-in customer") return true;
+				if (seen_walkin.has(key)) return false;
+				seen_walkin.add(key);
+				return true;
+			});
+
+			const has_walkin = rows.some((c) => (c.customer_name || "").trim().toLowerCase() === "walk-in customer");
+			const exact_match = rows.some((c) => (c.customer_name || "").trim().toLowerCase() === q.trim().toLowerCase());
+
+			rows.forEach((c) => {
+				const $row = $(`
+					<div class="santu-si2-dd-row" data-customer="${frappe.utils.escape_html(c.name)}">
+						<div class="santu-si2-dd-row-main">
+							<div class="santu-si2-dd-row-text">
+								<b>${frappe.utils.escape_html(c.customer_name)}</b>
+								${c.mobile_no ? `<span>${frappe.utils.escape_html(c.mobile_no)}</span>` : ""}
+							</div>
+							<button type="button" class="santu-si2-dd-expand" title="More info">▸</button>
+						</div>
+						<div class="santu-si2-dd-row-info" style="display:none;">
+							<div class="santu-si2-dd-row-village">${c.santu_village ? `📍 ${frappe.utils.escape_html(c.santu_village)}` : "No village on file"}</div>
+							<textarea class="santu-si2-dd-row-note" placeholder="Add a note to identify this customer (e.g. house/landmark)">${frappe.utils.escape_html(c.customer_details || "")}</textarea>
+							<button type="button" class="santu-si2-dd-row-note-save">Save note</button>
+						</div>
+					</div>
+				`).appendTo($dd);
+
+				$row.find(".santu-si2-dd-row-main").on("click", () => this._select_customer(c.name));
+
+				$row.find(".santu-si2-dd-expand").on("click", (e) => {
+					e.stopPropagation();
+					$row.find(".santu-si2-dd-row-info").toggle();
 				});
-				d.hide();
-				await this.select_customer({ name, customer_name: values.customer_name, mobile_no: values.mobile_no });
+
+				$row.find(".santu-si2-dd-row-note, .santu-si2-dd-row-note-save").on("click", (e) => e.stopPropagation());
+				$row.find(".santu-si2-dd-row-note-save").on("click", () => {
+					const note = $row.find(".santu-si2-dd-row-note").val();
+					santu_sale_invoice.api.update_customer_note(c.name, note).then(() => {
+						c.customer_details = note;
+						frappe.show_alert({ message: "Note saved", indicator: "green" });
+					});
+				});
+			});
+
+			if (!has_walkin) {
+				$(`<div class="santu-si2-dd-row santu-si2-dd-walkin" data-walkin="1">Walk-in Customer</div>`)
+					.on("click", () => this._use_walkin_customer())
+					.appendTo($dd);
+			}
+
+			if (!exact_match) {
+				$(`<div class="santu-si2-dd-row santu-si2-dd-add" data-add="1">+ Add "${frappe.utils.escape_html(q)}" as new customer</div>`)
+					.on("click", () => this._open_add_party_dialog(q))
+					.appendTo($dd);
+			}
+
+			$dd.show();
+		});
+	},
+
+	_select_customer(name) {
+		const tab = this._active_tab();
+		tab.customer = name;
+		this.$root.find(".santu-si2-customer-dropdown").hide().empty();
+		santu_sale_invoice.api.customer_details(name).then((d) => {
+			tab.customer_details = d;
+			// Walk-in Customer can't carry a balance — switch out of Credit
+			// automatically rather than let the cashier build a whole sale
+			// and only find out at Save.
+			let mode_changed = false;
+			if ((d.customer_name || "").trim().toLowerCase() === "walk-in customer" && tab.payment_mode === "credit") {
+				tab.payment_mode = "cash";
+				mode_changed = true;
+				frappe.show_alert({ message: __("Walk-in Customer must pay in full — switched to Cash."), indicator: "orange" });
+			}
+			this._save_debounced();
+			if (mode_changed) this._render_body();
+			else this._render_customer_info();
+		});
+	},
+
+	_use_walkin_customer() {
+		const existing = frappe.boot.sysdefaults && frappe.boot.sysdefaults.customer;
+		santu_sale_invoice.api.search_customers("Walk-in").then((rows) => {
+			const walkin = rows.find((r) => r.customer_name === "Walk-in Customer");
+			if (walkin) {
+				this._select_customer(walkin.name);
+			} else {
+				this._quick_add_customer("Walk-in Customer");
+			}
+		});
+	},
+
+	_quick_add_customer(name) {
+		const phone = this.$root.find(".santu-si2-phone").val();
+		santu_sale_invoice.api.create_customer(name, phone || null, null).then((customer_name) => {
+			this._select_customer(customer_name);
+			frappe.show_alert({ message: __("Customer added"), indicator: "green" });
+		});
+	},
+
+	_open_add_party_dialog(name) {
+		const phone = this.$root.find(".santu-si2-phone").val();
+		santu_sale_invoice.utils.open_add_party_dialog({
+			name,
+			phone,
+			on_created: (customer_name) => this._select_customer(customer_name),
+		});
+	},
+
+	// ---------- items ----------
+	_render_items() {
+		const tab = this._active_tab();
+		const $tbody = this.$root.find(".santu-si2-table tbody");
+		$tbody.empty();
+
+		if (!tab.items.length) {
+			$(`<tr class="santu-si2-empty-row"><td colspan="9">No items yet — search above or press F4 / scan a barcode.</td></tr>`).appendTo($tbody);
+		}
+
+		tab.items.forEach((row, idx) => {
+			const $tr = $(`
+				<tr data-row="${row.id}">
+					<td class="santu-si2-col-idx">${idx + 1}</td>
+					<td class="santu-si2-col-item">
+						<div class="santu-si2-item-name">${frappe.utils.escape_html(row.item_name || row.item_code)}</div>
+						<div class="santu-si2-item-sub">
+							${row.available_qty != null ? `<span class="${row.available_qty <= 0 ? "santu-si2-stock-out" : row.available_qty <= 5 ? "santu-si2-stock-low" : "santu-si2-stock-ok"}">Available: ${row.available_qty} ${frappe.utils.escape_html(row.uom || "")}</span>` : ""}
+							${santu_is_privacy_mode_active && santu_is_privacy_mode_active() && row.cost_price != null ? `<span class="santu-si2-cost-price">Cost: ₹ ${santu_sale_invoice.utils.format_money(row.cost_price).replace("₹ ", "")}</span>` : ""}
+						</div>
+					</td>
+					<td class="santu-si2-col-qty">
+						<div class="santu-si2-qty-stepper">
+							<button type="button" class="santu-si2-qty-dec">−</button>
+							<input type="number" class="santu-si2-qty-input" value="${row.qty}" min="0" step="any">
+							<button type="button" class="santu-si2-qty-inc">+</button>
+						</div>
+					</td>
+					<td class="santu-si2-col-uom">
+						<select class="santu-si2-uom-select">
+							${(row.uom_options || [row.uom]).filter(Boolean).map((u) => `<option value="${frappe.utils.escape_html(u)}" ${u === row.uom ? "selected" : ""}>${frappe.utils.escape_html(u)}</option>`).join("")}
+						</select>
+					</td>
+					<td class="santu-si2-col-rate">
+						<input type="number" class="santu-si2-rate-input" value="${row.rate}" min="0" step="any" ${row.can_edit_rate === false ? "disabled" : ""}>
+					</td>
+					<td class="santu-si2-col-disc">
+						<input type="number" class="santu-si2-disc-pct-input" value="${row.discount_percentage || ""}" min="0" max="100" step="any" placeholder="%">
+						<input type="number" class="santu-si2-disc-amt-input" value="${row.discount_amount || ""}" min="0" step="any" placeholder="₹">
+					</td>
+					<td class="santu-si2-col-tax santu-si2-tax-display" title="From this item's own GST/tax template — not editable here">
+						${row.tax_rate ? row.tax_rate + "%" : "NONE"}
+					</td>
+					<td class="santu-si2-col-amount santu-si2-figures santu-si2-row-amount">₹ ${santu_sale_invoice.utils.format_money(row.amount || 0).replace("₹ ", "")}</td>
+					<td class="santu-si2-col-remove"><button type="button" class="santu-si2-row-remove" title="Remove">🗑</button></td>
+				</tr>
+			`);
+			$tbody.append($tr);
+		});
+
+		this._bind_item_row_events();
+		this._recalc_totals();
+	},
+
+	_item_search(q, $anchor) {
+		let $dd = this.$root.find(".santu-si2-item-dropdown");
+		if (!$dd.length) {
+			$dd = $(`<div class="santu-si2-item-dropdown" style="display:none;"></div>`).appendTo(this.$root.find(".santu-si2-table-wrap"));
+		}
+		if (!q) {
+			santu_sale_invoice.api.recent_items().then((rows) => this._render_item_dropdown($dd, rows, "Recent Items"));
+			return;
+		}
+		santu_sale_invoice.api.search_items(q).then((r) => this._render_item_dropdown($dd, r.results || [], null, q));
+	},
+
+	_render_item_dropdown($dd, rows, heading, query) {
+		$dd.empty();
+		if (heading) $dd.append(`<div class="santu-si2-dd-heading">${heading}</div>`);
+		if (!rows.length) {
+			$dd.append(`<div class="santu-si2-dd-empty">No items found.</div>`);
+		}
+		rows.forEach((item) => {
+			const out_of_stock = item.available_qty != null && item.available_qty <= 0;
+			$(`
+				<div class="santu-si2-dd-row santu-si2-item-dd-row">
+					<div>
+						<b>${frappe.utils.escape_html(item.item_name)}</b>
+						<span class="santu-si2-dd-sub">${frappe.utils.escape_html(item.item_code)}${item.brand ? " · " + frappe.utils.escape_html(item.brand) : ""}</span>
+					</div>
+					<div class="santu-si2-dd-right">
+						<span class="${out_of_stock ? "santu-si2-stock-out" : item.available_qty <= 5 ? "santu-si2-stock-low" : "santu-si2-stock-ok"}">${item.available_qty != null ? item.available_qty + " " + (item.stock_uom || "") : ""}</span>
+						<span class="santu-si2-figures">₹ ${santu_sale_invoice.utils.format_money(item.price || 0).replace("₹ ", "")}</span>
+					</div>
+				</div>
+			`)
+				.on("click", () => this._add_item(item.item_code))
+				.appendTo($dd);
+		});
+		if (query) {
+			$(`<div class="santu-si2-dd-row santu-si2-dd-add" data-quick-add="1">+ Quick-create "${frappe.utils.escape_html(query)}"</div>`)
+				.on("click", () => this._quick_create_item(query))
+				.appendTo($dd);
+		}
+		$dd.show();
+	},
+
+	_quick_create_item(item_name) {
+		const d = new frappe.ui.Dialog({
+			title: __("Quick Create Item"),
+			fields: [
+				{ fieldtype: "Data", fieldname: "item_name", label: "Item Name", default: item_name, reqd: 1 },
+				{ fieldtype: "Currency", fieldname: "selling_price", label: "Selling Price", reqd: 1 },
+			],
+			primary_action_label: __("Create & Add"),
+			primary_action: (v) => {
+				santu_sale_invoice.api.quick_create_item(v.item_name, v.selling_price).then((r) => {
+					d.hide();
+					this._add_item(r.item_code);
+				});
 			},
 		});
 		d.show();
 	},
 
-	add_item_from_search() {
-		const code = this.$item_search.val().trim();
-		if (!code) return;
-		this.add_item(code);
-	},
+	_add_item(item_code) {
+		const tab = this._active_tab();
+		this.$root.find(".santu-si2-item-dropdown").hide();
+		this.$root.find(".santu-si2-item-search").val("");
 
-	async add_item(item_code) {
-		if (!this.state.customer) {
-			frappe.msgprint(__("Please select a customer first."));
-			this.$customer_search.focus();
-			return;
-		}
-		const qty = parseFloat(this.$item_qty.val()) || 1;
-		if (qty <= 0) {
-			frappe.msgprint(__("Please enter a valid quantity."));
+		const existing = tab.items.find((r) => r.item_code === item_code);
+		if (existing) {
+			existing.qty = (Number(existing.qty) || 0) + 1;
+			this._recompute_row(existing).then(() => this._render_items());
 			return;
 		}
 
-		try {
-			const row = await santu_sale_invoice.api.item_row(
-				this.state.customer,
+		santu_sale_invoice.api.item_row(tab.customer, item_code, this.init_data.warehouse, 1).then((row) => {
+			const new_row = {
+				id: santu_sale_invoice.utils.uid(),
 				item_code,
-				this.state.warehouse,
-				qty
-			);
-
-			if (row.is_stock_item && row.available_qty !== null && qty > row.available_qty) {
-				frappe.msgprint({
-					title: __("Low Stock"),
-					message: __("Insufficient stock for {0}. Available: {1}", [row.item_name, row.available_qty]),
-					indicator: "orange",
+				item_name: row.item_name || item_code,
+				qty: 1,
+				uom: row.uom || row.stock_uom,
+				uom_options: row.uom ? [row.uom, row.stock_uom].filter((v, i, a) => v && a.indexOf(v) === i) : [row.stock_uom],
+				rate: row.price_list_rate || row.rate || 0,
+				discount_percentage: 0,
+				discount_amount: 0,
+				tax_rate: row.tax_rate || 0,
+				available_qty: row.available_qty,
+				// A dedicated Cashier (has the role, not also System Manager —
+				// same "is this really just a cashier" check kiosk_mode.js's
+				// santu_redirect_cashier_to_billing() already uses) shouldn't
+				// be able to override the selling price; anyone else can.
+				can_edit_rate: !(frappe.user.has_role("Cashier") && !frappe.user.has_role("System Manager")),
+				amount: row.price_list_rate || row.rate || 0,
+			};
+			tab.items.push(new_row);
+			this._save_debounced();
+			this._render_items();
+			if (santu_is_privacy_mode_active && santu_is_privacy_mode_active()) {
+				santu_sale_invoice.api.item_cost_price(item_code, this.init_data.warehouse).then((c) => {
+					new_row.cost_price = c.cost_price || c;
+					this._render_items();
 				});
 			}
+		});
+	},
 
-			const amount = flt(row.qty) * flt(row.rate) - flt(row.discount_amount);
-			this.state.items.push({
-				item_code: row.item_code,
-				item_name: row.item_name,
-				qty: flt(row.qty),
-				uom: row.uom || row.stock_uom,
-				rate: flt(row.rate),
-				discount_percentage: flt(row.discount_percentage),
-				discount_amount: flt(row.discount_amount),
-				amount: amount,
-				warehouse: row.warehouse || this.state.warehouse,
-				available_qty: row.available_qty,
-			});
+	_recompute_row(row) {
+		const tab = this._active_tab();
+		return santu_sale_invoice.api.item_row(tab.customer, row.item_code, this.init_data.warehouse, row.qty).then((r) => {
+			row.available_qty = r.available_qty;
+			this._save_debounced();
+		});
+	},
 
-			this.render_items();
-			this.$item_search.val("").focus();
-			this.$item_qty.val(1);
-			this.$item_suggest.hide();
-			this.recalc_totals();
-		} catch (e) {
-			frappe.msgprint(__("Could not add item. Please check item code."));
-			console.error(e);
+	_row_local_recalc(row) {
+		const base = (Number(row.qty) || 0) * (Number(row.rate) || 0);
+		const pct_disc = base * ((Number(row.discount_percentage) || 0) / 100);
+		const amt_disc = Number(row.discount_amount) || 0;
+		const after_disc = Math.max(base - pct_disc - amt_disc, 0);
+		const tax = after_disc * ((Number(row.tax_rate) || 0) / 100);
+		row.amount = after_disc + tax;
+		row._tax_amount = tax;
+		row._net_amount = after_disc;
+	},
+
+	_recalc_totals() {
+		const tab = this._active_tab();
+		let qty_total = 0;
+		let net_total = 0;
+		let tax_total = 0;
+		tab.items.forEach((row) => {
+			this._row_local_recalc(row);
+			qty_total += Number(row.qty) || 0;
+			net_total += row._net_amount || 0;
+			tax_total += row._tax_amount || 0;
+		});
+		const additional_discount = Number(tab.additional_discount_amount) || 0;
+		const pre_round = Math.max(net_total + tax_total - additional_discount, 0);
+		const rounded = tab.round_off ? Math.round(pre_round) : pre_round;
+		const round_off_amount = rounded - pre_round;
+		tab._computed_total = rounded;
+
+		this.$root.find(".santu-si2-total-qty").text(qty_total);
+		this.$root.find(".santu-si2-total-amount").text("₹ " + santu_sale_invoice.utils.format_money(net_total + tax_total).replace("₹ ", ""));
+		this.$root.find(".santu-si2-sum-subtotal").text("₹ " + santu_sale_invoice.utils.format_money(net_total).replace("₹ ", ""));
+		this.$root.find(".santu-si2-sum-tax").text("₹ " + santu_sale_invoice.utils.format_money(tax_total).replace("₹ ", ""));
+		this.$root.find(".santu-si2-sum-roundoff").text("₹ " + santu_sale_invoice.utils.format_money(round_off_amount).replace("₹ ", ""));
+		this.$root.find(".santu-si2-sum-total").text("₹ " + santu_sale_invoice.utils.format_money(rounded).replace("₹ ", ""));
+		tab.items.forEach((row) => {
+			this.$root
+				.find(`tr[data-row="${row.id}"] .santu-si2-row-amount`)
+				.text("₹ " + santu_sale_invoice.utils.format_money(row.amount).replace("₹ ", ""));
+		});
+
+		if (tab.payment_mode === "cash") {
+			const $paidInput = this.$root.find(".santu-si2-paid-now");
+			$paidInput.attr("placeholder", "Full amount: ₹ " + santu_sale_invoice.utils.format_money(rounded).replace("₹ ", ""));
+			const $note = this.$root.find(".santu-si2-remaining-note");
+			const paid = tab.paid_amount == null ? rounded : Number(tab.paid_amount) || 0;
+			const remaining = Math.max(rounded - paid, 0);
+			if (tab.paid_amount != null && remaining > 0) {
+				$note
+					.text("Remaining ₹ " + santu_sale_invoice.utils.format_money(remaining).replace("₹ ", "") + " will be added to the customer's account")
+					.show();
+			} else {
+				$note.hide();
+			}
 		}
 	},
 
-	render_items() {
-		this.$items_body.empty();
-		const has = this.state.items.length > 0;
-		this.$empty_items.toggle(!has);
-		this.$root.find(".santu-si-table").toggle(has);
+	// ---------- events ----------
+	_bind_body_events() {
+		const tab = this._active_tab();
+		const $root = this.$root;
 
-		this.state.items.forEach((row, idx) => {
-			const stock_warn =
-				row.available_qty !== null && row.qty > row.available_qty
-					? `<span class="santu-si-stock-warn">Low stock (${row.available_qty})</span>`
-					: row.available_qty !== null
-						? `<span class="santu-si-stock-ok">Stock: ${row.available_qty}</span>`
-						: "";
-			const $tr = $(`
-				<tr data-idx="${idx}">
-					<td>${frappe.utils.escape_html(row.item_name)} ${stock_warn}</td>
-					<td>${frappe.utils.escape_html(row.item_code)}</td>
-					<td class="num"><input type="number" class="form-control input-xs santu-si-inline-qty" value="${row.qty}" min="0.01" step="any"></td>
-					<td>${frappe.utils.escape_html(row.uom || "")}</td>
-					<td class="num"><input type="number" class="form-control input-xs santu-si-inline-rate" value="${row.rate}" min="0" step="0.01"></td>
-					<td class="num"><input type="number" class="form-control input-xs santu-si-inline-disc" value="${row.discount_percentage || 0}" min="0" max="100" step="0.01"></td>
-					<td class="num santu-figures">${santu_sale_invoice.utils.format_money(row.amount)}</td>
-					<td><button type="button" class="btn btn-xs btn-danger santu-si-remove">✕</button></td>
-				</tr>
-			`);
-			$tr.find(".santu-si-inline-qty, .santu-si-inline-rate, .santu-si-inline-disc").on("change input", () => {
-				row.qty = parseFloat($tr.find(".santu-si-inline-qty").val()) || 0;
-				row.rate = parseFloat($tr.find(".santu-si-inline-rate").val()) || 0;
-				row.discount_percentage = parseFloat($tr.find(".santu-si-inline-disc").val()) || 0;
-				row.discount_amount = (row.qty * row.rate * row.discount_percentage) / 100;
-				row.amount = row.qty * row.rate - row.discount_amount;
-				$tr.find("td.num.santu-figures").last().text(santu_sale_invoice.utils.format_money(row.amount));
-				this.recalc_totals();
+		$root.find(".santu-si2-mode-input").on("change", (e) => {
+			tab.payment_mode = e.target.checked ? "cash" : "credit";
+			this._save_debounced();
+			this._render_body();
+		});
+		$root.find(".santu-si2-mode-label").on("click", function () {
+			tab.payment_mode = $(this).data("mode");
+			santu_sale_pos._save_debounced();
+			santu_sale_pos._render_body();
+		});
+		$root.find(".santu-si2-mop").on("change", (e) => {
+			tab.mode_of_payment = e.target.value;
+			this._save_debounced();
+		});
+		$root.find(".santu-si2-paid-now").on(
+			"input",
+			santu_sale_invoice.utils.debounce((e) => {
+				const v = e.target.value;
+				tab.paid_amount = v === "" ? null : Math.max(Number(v) || 0, 0);
+				this._save_debounced();
+				this._recalc_totals();
+			})
+		);
+
+		const $custSearch = $root.find(".santu-si2-customer-search");
+		$custSearch.on(
+			"input",
+			santu_sale_invoice.utils.debounce((e) => this._customer_search(e.target.value))
+		);
+		$custSearch.on("focus", (e) => {
+			if (e.target.value) this._customer_search(e.target.value);
+		});
+		$(document)
+			.off("click.santu-si2-dd")
+			.on("click.santu-si2-dd", (e) => {
+				if (!$(e.target).closest(".santu-si2-customer-search-wrap, .santu-si2-item-search-wrap, .santu-si2-item-dropdown").length) {
+					$root.find(".santu-si2-customer-dropdown, .santu-si2-item-dropdown").hide();
+				}
 			});
-			$tr.find(".santu-si-remove").on("click", () => {
-				this.state.items.splice(idx, 1);
-				this.render_items();
-				this.recalc_totals();
-				this.focus_item_search();
-			});
-			this.$items_body.append($tr);
+		$root.find(".santu-si2-phone").on("change", (e) => {
+			tab.phone = e.target.value;
+			this._save_debounced();
+		});
+
+		$root.find(".santu-si2-posting-date").on("change", (e) => {
+			tab.posting_date = e.target.value;
+			this._save_debounced();
+		});
+		$root.find(".santu-si2-place-of-supply").on("change", (e) => {
+			tab.place_of_supply = e.target.value;
+			this._save_debounced();
+		});
+
+		$root.find(".santu-si2-add-row, .santu-si2-scan-row").on("click", () => this._open_item_search_inline());
+
+		$root.find(".santu-si2-add-discount").on(
+			"input",
+			santu_sale_invoice.utils.debounce((e) => {
+				tab.additional_discount_amount = Number(e.target.value) || 0;
+				this._save_debounced();
+				this._recalc_totals();
+			})
+		);
+		$root.find(".santu-si2-round-off").on("change", (e) => {
+			tab.round_off = e.target.checked;
+			this._save_debounced();
+			this._recalc_totals();
+		});
+
+		$root.find("[data-extra]").on("click", (e) => this._open_extra($(e.currentTarget).data("extra")));
+
+		$root.find("[data-action]").on("click", (e) => this._handle_action($(e.currentTarget).data("action")));
+		$root.find("[data-more]").on("click", (e) => {
+			$root.find(".santu-si2-more-menu").hide();
+			this._handle_action($(e.currentTarget).data("more"));
 		});
 	},
 
-	recalc_totals() {
-		const u = santu_sale_invoice.utils;
-		let subtotal = 0;
-		let discount = 0;
-		this.state.items.forEach((r) => {
-			subtotal += r.qty * r.rate;
-			discount += r.discount_amount || 0;
+	_open_item_search_inline() {
+		const $existing = this.$root.find(".santu-si2-item-search");
+		if ($existing.length) {
+			$existing.trigger("focus");
+			return;
+		}
+		const $wrap = $(`
+			<div class="santu-si2-item-search-wrap">
+				<input type="text" class="santu-si2-item-search" placeholder="Search item name, code, barcode, brand… (F4)" autocomplete="off">
+			</div>
+		`);
+		this.$root.find(".santu-si2-table-wrap").prepend($wrap);
+		const $input = $wrap.find(".santu-si2-item-search");
+		$input.trigger("focus");
+		$input.on(
+			"input",
+			santu_sale_invoice.utils.debounce((e) => this._item_search(e.target.value.trim()))
+		);
+		$input.on("focus", () => this._item_search($input.val().trim()));
+		$input.on("keydown", (e) => {
+			if (e.key === "Enter") {
+				const q = $input.val().trim();
+				if (!q) return;
+				santu_sale_invoice.api.search_items(q).then((r) => {
+					if (r.exact_match) this._add_item(r.exact_match);
+					else if (r.results && r.results.length) this._add_item(r.results[0].item_code);
+				});
+			}
+			if (e.key === "Escape") {
+				this.$root.find(".santu-si2-item-dropdown, .santu-si2-item-search-wrap").remove();
+			}
 		});
-		const grand = subtotal - discount;
-		this.$root.find(".santu-si-subtotal").text(u.format_money(subtotal));
-		this.$root.find(".santu-si-discount").text(u.format_money(discount));
-		this.$root.find(".santu-si-grand").text(u.format_money(grand));
-
-		const paid = parseFloat(this.$paid_amount.val()) || 0;
-		const balance = Math.max(grand - paid, 0);
-		this.$root.find(".santu-si-balance").text(u.format_money(balance));
-		this.state.paid_amount = paid;
 	},
 
-	focus_item_search() {
-		setTimeout(() => this.$item_search.focus(), 100);
+	_bind_item_row_events() {
+		const tab = this._active_tab();
+		this.$root.find(".santu-si2-table tbody tr[data-row]").each((_, el) => {
+			const $tr = $(el);
+			const row = tab.items.find((r) => r.id === $tr.data("row"));
+			if (!row) return;
+
+			const on_change = () => {
+				this._save_debounced();
+				this._recalc_totals();
+			};
+
+			$tr.find(".santu-si2-qty-input").on("input", (e) => {
+				row.qty = Math.max(Number(e.target.value) || 0, 0);
+				on_change();
+				if (row.available_qty != null && row.qty > row.available_qty) {
+					this._flash_stock_warning($tr, row);
+				}
+			});
+			$tr.find(".santu-si2-qty-dec").on("click", () => {
+				row.qty = Math.max((Number(row.qty) || 0) - 1, 0);
+				$tr.find(".santu-si2-qty-input").val(row.qty);
+				on_change();
+			});
+			$tr.find(".santu-si2-qty-inc").on("click", () => {
+				row.qty = (Number(row.qty) || 0) + 1;
+				$tr.find(".santu-si2-qty-input").val(row.qty);
+				on_change();
+				if (row.available_qty != null && row.qty > row.available_qty) this._flash_stock_warning($tr, row);
+			});
+			$tr.find(".santu-si2-uom-select").on("change", (e) => {
+				row.uom = e.target.value;
+				on_change();
+			});
+			$tr.find(".santu-si2-rate-input").on("input", (e) => {
+				row.rate = Number(e.target.value) || 0;
+				on_change();
+			});
+			$tr.find(".santu-si2-disc-pct-input").on("input", (e) => {
+				row.discount_percentage = Number(e.target.value) || 0;
+				row.discount_amount = 0;
+				$tr.find(".santu-si2-disc-amt-input").val("");
+				on_change();
+			});
+			$tr.find(".santu-si2-disc-amt-input").on("input", (e) => {
+				row.discount_amount = Number(e.target.value) || 0;
+				row.discount_percentage = 0;
+				$tr.find(".santu-si2-disc-pct-input").val("");
+				on_change();
+			});
+			$tr.find(".santu-si2-row-remove").on("click", () => {
+				tab.items = tab.items.filter((r) => r.id !== row.id);
+				this._save_debounced();
+				this._render_items();
+			});
+		});
 	},
 
-	build_payload() {
-		return {
-			customer: this.state.customer,
-			company: this.state.company,
-			warehouse: this.state.warehouse,
-			selling_price_list: this.state.selling_price_list,
-			items: this.state.items.map((r) => ({
+	_flash_stock_warning($tr, row) {
+		frappe.show_alert({
+			message: __("Only {0} {1} available for {2}", [row.available_qty, row.uom || "", row.item_name]),
+			indicator: "orange",
+		});
+		$tr.addClass("santu-si2-row-warn");
+		setTimeout(() => $tr.removeClass("santu-si2-row-warn"), 1200);
+	},
+
+	_open_extra(kind) {
+		const tab = this._active_tab();
+		if (kind === "terms") {
+			const d = new frappe.ui.Dialog({
+				title: __("Terms & Conditions"),
+				fields: [{ fieldtype: "Small Text", fieldname: "terms", default: tab.terms }],
+				primary_action_label: __("Save"),
+				primary_action: (v) => {
+					tab.terms = v.terms;
+					this._save_debounced();
+					d.hide();
+				},
+			});
+			d.show();
+		} else if (kind === "description") {
+			const d = new frappe.ui.Dialog({
+				title: __("Description"),
+				fields: [{ fieldtype: "Small Text", fieldname: "description", default: tab.description }],
+				primary_action_label: __("Save"),
+				primary_action: (v) => {
+					tab.description = v.description;
+					this._save_debounced();
+					d.hide();
+				},
+			});
+			d.show();
+		} else {
+			frappe.show_alert({ message: __("Available after the first save, from the invoice's own attachment panel."), indicator: "blue" });
+		}
+	},
+
+	// ---------- toolbar (calculator / settings) ----------
+	_bind_toolbar() {
+		this.$root.find('[data-action="calculator"]').on("click", () => this._open_calculator());
+		this.$root.find('[data-action="settings"]').on("click", () => this._open_settings());
+	},
+
+	_open_calculator() {
+		if (!this._calc_value) this._calc_value = "";
+		const d = new frappe.ui.Dialog({ title: __("Calculator"), fields: [{ fieldtype: "HTML", fieldname: "calc" }] });
+		const $c = $(`
+			<div class="santu-si2-calc">
+				<input type="text" class="santu-si2-calc-display" readonly value="0">
+				<div class="santu-si2-calc-grid">
+					${["7", "8", "9", "÷", "4", "5", "6", "×", "1", "2", "3", "−", "0", ".", "=", "+", "C"]
+						.map((k) => `<button type="button" data-key="${k}" class="${["÷", "×", "−", "+", "="].includes(k) ? "santu-si2-calc-op" : ""}">${k}</button>`)
+						.join("")}
+				</div>
+			</div>
+		`);
+		d.fields_dict.calc.$wrapper.html($c);
+		const $display = $c.find(".santu-si2-calc-display");
+		let expr = "";
+		$c.find("[data-key]").on("click", function () {
+			const k = $(this).data("key");
+			if (k === "C") {
+				expr = "";
+			} else if (k === "=") {
+				try {
+					// eslint-disable-next-line no-eval
+					expr = String(eval(expr.replace(/÷/g, "/").replace(/×/g, "*").replace(/−/g, "-")));
+				} catch (e) {
+					expr = "Error";
+				}
+			} else {
+				expr += k;
+			}
+			$display.val(expr || "0");
+		});
+		d.show();
+	},
+
+	_open_settings() {
+		const d = new frappe.ui.Dialog({
+			title: __("Settings"),
+			fields: [
+				{ fieldtype: "Check", fieldname: "sale_prefix", label: "Sale Prefix", default: 1, read_only: 1 },
+				{ fieldtype: "Section Break" },
+				{ fieldtype: "HTML", fieldname: "settings_note" },
+			],
+		});
+		d.fields_dict.settings_note.$wrapper.html(`
+			<p class="text-muted">Invoice numbering uses ERPNext's own naming series (${frappe.utils.escape_html((this.init_data.naming_series_default || "").replace(/\.#+.*/, ""))}) — change it from
+			<a href="/app/sales-invoice/view/report" target="_blank">Sales Invoice Settings</a>.</p>
+			<p class="text-muted">Transaction Message (WhatsApp) is configured under Transaction Message in the sidebar.</p>
+			<p class="text-muted">Cost price is hidden by default — use the 🔒 Privacy Mode toggle (status bar) to reveal it with your PIN.</p>
+		`);
+		d.show();
+	},
+
+	// ---------- shortcuts ----------
+	_bind_shortcuts() {
+		$(document).off("keydown.santu-si2").on("keydown.santu-si2", (e) => {
+			if (!$("body").find(".santu-si2").length || !$(".santu-si2:visible").length) return;
+			const mod = e.ctrlKey || e.metaKey;
+			if (mod && e.key.toLowerCase() === "n") {
+				e.preventDefault();
+				this._new_tab();
+				this.render();
+			} else if (mod && e.key.toLowerCase() === "s") {
+				e.preventDefault();
+				this._handle_action("save");
+			} else if (e.key === "F2") {
+				e.preventDefault();
+				this.$root.find(".santu-si2-customer-search").trigger("focus");
+			} else if (e.key === "F4") {
+				e.preventDefault();
+				if (!this.$root.find(".santu-si2-item-search").length) this._open_item_search_inline();
+				else this.$root.find(".santu-si2-item-search").trigger("focus");
+			} else if (e.key === "F8") {
+				e.preventDefault();
+				this._handle_action("payment");
+			} else if (e.key === "F9") {
+				e.preventDefault();
+				this._handle_action("hold");
+			} else if (e.key === "Escape") {
+				this.$root.find(".santu-si2-customer-dropdown, .santu-si2-item-dropdown").hide();
+			}
+		});
+	},
+
+	// ---------- actions ----------
+	_handle_action(action) {
+		const tab = this._active_tab();
+		if (action === "more") {
+			this.$root.find(".santu-si2-more-menu").toggle();
+			return;
+		}
+		if (action === "hold") {
+			if (this._tab_is_empty(tab)) {
+				frappe.show_alert({ message: __("Nothing to hold."), indicator: "orange" });
+				return;
+			}
+			tab.held = true;
+			tab.label = tab.label || this._tab_label(tab, this.tabs.indexOf(tab));
+			this._save_debounced();
+			frappe.show_alert({ message: __("Sale held — still here whenever you're back."), indicator: "blue" });
+			this._render_tabbar();
+			return;
+		}
+		if (action === "sales_return") {
+			frappe.set_route("santu-sale", { view: "sales_return" });
+			sessionStorage.setItem("santu_sale_view", "sales_return");
+			return;
+		}
+		if (action === "payment") {
+			if (!tab.customer) {
+				frappe.msgprint(__("Select a customer first."));
+				return;
+			}
+			window.santu_open_collect_payment({ party_type: "Customer", party: tab.customer });
+			return;
+		}
+		if (action === "whatsapp") {
+			if (!tab.saved_invoice) return;
+			this._send_whatsapp(tab);
+			return;
+		}
+		if (action === "share") {
+			if (!tab.saved_invoice) {
+				frappe.msgprint(__("Save the sale first."));
+				return;
+			}
+			window.santu_open_invoice_view("Sales Invoice", tab.saved_invoice.name);
+			return;
+		}
+		if (action === "save" || action === "save_print" || action === "submit_draft") {
+			this._save_sale(tab, action);
+			return;
+		}
+	},
+
+	_validate_before_save(tab) {
+		if (!tab.customer) {
+			frappe.msgprint(__("Please select a customer."));
+			return false;
+		}
+		if (!tab.items.length) {
+			frappe.msgprint(__("Please add at least one item."));
+			return false;
+		}
+		for (const row of tab.items) {
+			if (!row.qty || row.qty <= 0) {
+				frappe.msgprint(__("Enter a valid quantity for {0}.", [row.item_name]));
+				return false;
+			}
+		}
+
+		// Walk-in Customer can never carry a balance (baaki) — cash-in-full
+		// only. Any other customer left with an outstanding balance (credit
+		// mode, or Paid Now less than the total) needs phone + address on
+		// file. Server re-checks this authoritatively (this screen isn't
+		// the only caller of save_sale_invoice) — this is just so the
+		// cashier finds out before typing the whole sale, not after.
+		const total = tab._computed_total || 0;
+		const paid = tab.payment_mode === "cash" ? (tab.paid_amount != null ? Number(tab.paid_amount) : total) : 0;
+		const outstanding = Math.max(total - paid, 0);
+		if (outstanding > 0) {
+			const d = tab.customer_details || {};
+			const name = (d.customer_name || "").trim().toLowerCase();
+			if (name === "walk-in customer") {
+				frappe.msgprint(__("Walk-in Customer cannot have an outstanding balance. Select or add a proper customer for a credit/baaki sale."));
+				return false;
+			}
+			const missing = [];
+			if (!d.mobile_no && !tab.phone) missing.push(__("Phone Number"));
+			if (!d.address) missing.push(__("Address"));
+			if (missing.length) {
+				frappe.msgprint(__("{0} required for {1} to have an outstanding balance (baaki).", [missing.join(" " + __("and") + " "), d.customer_name || tab.customer]));
+				return false;
+			}
+		}
+		return true;
+	},
+
+	_save_sale(tab, action) {
+		if (!this._validate_before_save(tab)) return;
+		const submit = action !== "submit_draft" ? 1 : 0;
+
+		const payload = {
+			customer: tab.customer,
+			company: this.init_data.company,
+			warehouse: this.init_data.warehouse,
+			posting_date: tab.posting_date,
+			selling_price_list: this.init_data.selling_price_list,
+			payment_mode: tab.payment_mode,
+			place_of_supply: tab.place_of_supply || null,
+			additional_discount_amount: tab.additional_discount_amount || 0,
+			terms: tab.terms || null,
+			description: tab.description || null,
+			items: tab.items.map((r) => ({
 				item_code: r.item_code,
 				qty: r.qty,
 				rate: r.rate,
 				uom: r.uom,
-				warehouse: r.warehouse,
-				discount_percentage: r.discount_percentage,
-				discount_amount: r.discount_amount,
+				discount_percentage: r.discount_percentage || 0,
+				discount_amount: r.discount_amount || 0,
 			})),
 			payments:
-				this.state.paid_amount > 0
-					? [{ mode_of_payment: this.state.payment_mode, amount: this.state.paid_amount }]
+				tab.payment_mode === "cash" && tab.mode_of_payment
+					? [{ mode_of_payment: tab.mode_of_payment, amount: tab.paid_amount != null ? tab.paid_amount : null }]
 					: [],
 		};
-	},
 
-	async save_invoice(submit, print_after, new_after) {
-		if (!this.state.customer) {
-			frappe.msgprint(__("Please select a customer."));
-			return;
-		}
-		if (!this.state.items.length) {
-			frappe.msgprint(__("Please add at least one item."));
-			return;
-		}
-
-		const grand = this.state.items.reduce((s, r) => s + (r.amount || 0), 0);
-		if (!this.state.paid_amount && submit) {
-			this.$paid_amount.val(grand);
-			this.state.paid_amount = grand;
-		}
-
-		frappe.dom.freeze(__("Saving..."));
-		try {
-			const result = await santu_sale_invoice.api.save(this.build_payload(), submit);
-			frappe.dom.unfreeze();
-			frappe.show_alert({ message: __("Sale saved: {0}", [result.name]), indicator: "green" });
-
-			if (print_after) {
-				if (typeof santu_print_thermal_bill === "function") {
-					await santu_print_thermal_bill("Sales Invoice", result.name);
+		frappe.dom.freeze(__("Saving…"));
+		santu_sale_invoice.api
+			.save(payload, submit)
+			.then((r) => {
+				frappe.dom.unfreeze();
+				tab.saved_invoice = r;
+				this._save_debounced();
+				frappe.show_alert({ message: __("Saved {0}", [r.name]), indicator: "green" });
+				this._render_body();
+				if (action === "save_print") {
+					frappe.set_route("print", "Sales Invoice", r.name);
 				}
-				frappe.set_route("Form", "Sales Invoice", result.name);
-			} else if (!new_after) {
-				frappe.set_route("Form", "Sales Invoice", result.name);
-			}
-
-			if (new_after) {
-				this.reset_form();
-			}
-		} catch (e) {
-			frappe.dom.unfreeze();
-			const msg = (e.message || e._server_messages || "Could not save invoice").toString();
-			frappe.msgprint({ title: __("Error"), message: msg, indicator: "red" });
-		}
+			})
+			.catch(() => frappe.dom.unfreeze());
 	},
 
-	reset_form() {
-		this.state.customer = null;
-		this.state.items = [];
-		this.state.paid_amount = 0;
-		this.$customer_search.val("");
-		this.$customer_info.empty();
-		this.$paid_amount.val(0);
-		this.render_items();
-		this.recalc_totals();
-		this.$customer_search.focus();
+	_send_whatsapp(tab) {
+		santu_sale_invoice.api.whatsapp_preview("Sales Invoice", tab.saved_invoice.name).then((preview) => {
+			const d = new frappe.ui.Dialog({
+				title: __("Send on WhatsApp"),
+				fields: [
+					{ fieldtype: "Data", fieldname: "phone", label: "Phone", default: preview.phone_display || preview.phone, read_only: 1 },
+					{ fieldtype: "Small Text", fieldname: "message", label: "Message", default: preview.message },
+				],
+				primary_action_label: __("Send"),
+				primary_action: (v) => {
+					santu_sale_invoice.api.whatsapp_send("Sales Invoice", tab.saved_invoice.name, v.message).then(() => {
+						frappe.show_alert({ message: __("Sent"), indicator: "green" });
+						d.hide();
+					});
+				},
+			});
+			d.show();
+		});
 	},
 };
-
-function flt(v) {
-	return parseFloat(v) || 0;
-}

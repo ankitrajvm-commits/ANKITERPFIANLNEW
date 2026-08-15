@@ -13,17 +13,33 @@ santu_reports.CATEGORIES = [
 	{ id: "loan", label: "Loan Accounts" },
 ];
 
+// erpnext's financial-statement family (Profit and Loss / Cash Flow / Balance
+// Sheet) all need filter_based_on + from_fiscal_year/to_fiscal_year to run —
+// our generic filter renderer never sees these since they live only in each
+// report's .js filter script, not the Report doctype's own filters meta.
+santu_reports.fiscal_year_filters = (init) => ({
+	filter_based_on: "Fiscal Year",
+	periodicity: "Yearly",
+	from_fiscal_year: init.fiscal_year,
+	to_fiscal_year: init.fiscal_year,
+});
+
 santu_reports.REPORTS = [
 	// Transaction
-	{ id: "sale", label: "Sale", category: "transaction", type: "erpnext", report_name: "POS Register" },
-	{ id: "purchase", label: "Purchase", category: "transaction", type: "erpnext", report_name: "Purchase Register" },
+	// "sale"/"purchase" embed the real Sale/Purchase screens verbatim
+	// (2026-08-15: "report ko ui aise rakho same to same" — Vyapar's own
+	// Reports > Sale is literally its Sale Invoices screen, not a re-skinned
+	// generic report) instead of going through the generic ERPNext report
+	// wrapper below, which showed POS Register's raw columns.
+	{ id: "sale", label: "Sale", category: "transaction", type: "embed", embed: "sale", view: "invoices" },
+	{ id: "purchase", label: "Purchase", category: "transaction", type: "embed", embed: "purchase", view: "bills" },
 	{ id: "day_book", label: "Day Book", category: "transaction", type: "erpnext", report_name: "General Ledger" },
 	{ id: "all_transactions", label: "All Transactions", category: "transaction", type: "erpnext", report_name: "General Ledger" },
-	{ id: "profit_and_loss", label: "Profit And Loss", category: "transaction", type: "erpnext", report_name: "Profit and Loss Statement", is_tree: true, parent_field: "account" },
+	{ id: "profit_and_loss", label: "Profit And Loss", category: "transaction", type: "erpnext", report_name: "Profit and Loss Statement", is_tree: true, parent_field: "account", extra_filters: santu_reports.fiscal_year_filters },
 	{ id: "bill_wise_profit", label: "Bill Wise Profit", category: "transaction", type: "erpnext", report_name: "Gross Profit", extra_filters: { group_by: "Invoice" } },
-	{ id: "cash_flow", label: "Cash Flow", category: "transaction", type: "erpnext", report_name: "Cash Flow", is_tree: true, parent_field: "account" },
-	{ id: "trial_balance", label: "Trial Balance Report", category: "transaction", type: "erpnext", report_name: "Trial Balance" },
-	{ id: "balance_sheet", label: "Balance Sheet", category: "transaction", type: "erpnext", report_name: "Balance Sheet", is_tree: true, parent_field: "account" },
+	{ id: "cash_flow", label: "Cash Flow", category: "transaction", type: "erpnext", report_name: "Cash Flow", is_tree: true, parent_field: "account", extra_filters: santu_reports.fiscal_year_filters },
+	{ id: "trial_balance", label: "Trial Balance Report", category: "transaction", type: "erpnext", report_name: "Trial Balance", extra_filters: (init) => ({ fiscal_year: init.fiscal_year }) },
+	{ id: "balance_sheet", label: "Balance Sheet", category: "transaction", type: "erpnext", report_name: "Balance Sheet", is_tree: true, parent_field: "account", extra_filters: santu_reports.fiscal_year_filters },
 
 	// Party
 	{ id: "party_statement", label: "Party Statement", category: "party", type: "erpnext", report_name: "General Ledger", extra_filters: { party_type: "Customer" } },

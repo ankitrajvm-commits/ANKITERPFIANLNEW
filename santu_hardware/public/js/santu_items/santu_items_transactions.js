@@ -51,21 +51,22 @@ santu_items.transactions = {
 
 		const u = santu_items.utils;
 		const sort_icon = (key) => {
-			if (sort_key !== key) return "";
-			return sort_dir === "asc" ? " ▲" : " ▼";
+			const active = sort_key === key ? " is-active" : "";
+			return `<span class="santu-items-col-filter${active}">▾</span>`;
 		};
 
 		const $table = $(`
 			<table class="santu-items-txn-table">
 				<thead>
 					<tr>
-						<th data-sort="type" class="sortable">TYPE${sort_icon("type")}</th>
-						<th data-sort="invoice_no" class="sortable">INVOICE/REF. NO${sort_icon("invoice_no")}</th>
-						<th data-sort="party_name" class="sortable">NAME${sort_icon("party_name")}</th>
-						<th data-sort="txn_date" class="sortable">DATE${sort_icon("txn_date")}</th>
-						<th data-sort="quantity" class="num sortable">QUANTITY${sort_icon("quantity")}</th>
-						<th data-sort="rate" class="num sortable">PRICE/UNIT${sort_icon("rate")}</th>
-						<th data-sort="status" class="sortable">STATUS${sort_icon("status")}</th>
+						<th data-sort="type" class="sortable">TYPE ${sort_icon("type")}</th>
+						<th data-sort="invoice_no">INVOICE/REF. NO.</th>
+						<th data-sort="party_name" class="sortable">NAME ${sort_icon("party_name")}</th>
+						<th data-sort="txn_date" class="sortable">DATE ${sort_icon("txn_date")}</th>
+						<th data-sort="quantity" class="num sortable">QUANTITY ${sort_icon("quantity")}</th>
+						<th data-sort="rate" class="num sortable">PRICE/UNIT ${sort_icon("rate")}</th>
+						<th data-sort="status" class="sortable">STATUS ${sort_icon("status")}</th>
+						<th class="santu-items-txn-kebab-col"></th>
 					</tr>
 				</thead>
 				<tbody></tbody>
@@ -87,18 +88,20 @@ santu_items.transactions = {
 					: t.status === "Paid"
 						? "santu-items-status-paid"
 						: "santu-items-status-done";
+			const type_dot = t.type === "Sale" ? "santu-items-type-sale" : t.type === "Purchase" ? "santu-items-type-purchase" : "santu-items-type-other";
 			$(`
 				<tr class="santu-items-txn-row">
-					<td>${frappe.utils.escape_html(t.type)}</td>
+					<td><span class="santu-items-type-dot ${type_dot}"></span>${frappe.utils.escape_html(t.type)}</td>
 					<td>${frappe.utils.escape_html(t.invoice_no)}</td>
 					<td>${frappe.utils.escape_html(t.party_name || "—")}</td>
 					<td>${frappe.datetime.str_to_user(t.txn_date)}</td>
-					<td class="num santu-figures">${u.format_qty(t.quantity, item.stock_uom)}</td>
+					<td class="num santu-figures">${u.format_qty_short(t.quantity)}</td>
 					<td class="num santu-figures">${rate}</td>
 					<td class="${status_class}">${frappe.utils.escape_html(t.status)}</td>
+					<td class="santu-items-txn-kebab-col"><button type="button" class="santu-items-row-menu" title="More">⋮</button></td>
 				</tr>
 			`)
-				.on("click", () => frappe.set_route("Form", t.doctype, t.invoice_no))
+				.on("click", () => window.santu_open_invoice_view(t.doctype, t.invoice_no))
 				.appendTo($tbody);
 		});
 

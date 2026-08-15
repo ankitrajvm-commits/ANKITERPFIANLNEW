@@ -180,7 +180,7 @@ body[data-route="point-of-sale"] .santu-edit-customer-name-btn {
 	margin-left: 8px;
 	cursor: pointer;
 	opacity: 0.55;
-	font-size: 15px;
+	font-size: 16px;
 }
 body[data-route="point-of-sale"] .santu-edit-customer-name-btn:hover {
 	opacity: 1;

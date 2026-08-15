@@ -75,7 +75,7 @@ async function load_dues($root, search, village) {
 	}
 
 	rows.forEach((row) => {
-		$(`
+		const $row = $(`
 			<div class="santu-dues-row" role="button" tabindex="0">
 				<div class="santu-dues-row-main">
 					<div class="santu-dues-row-name">${frappe.utils.escape_html(row.customer_name)}</div>
@@ -85,10 +85,19 @@ async function load_dues($root, search, village) {
 					</div>
 				</div>
 				<div class="santu-dues-row-amount">₹ ${format_currency_plain(row.total_due)}</div>
+				<button type="button" class="btn btn-xs btn-primary santu-dues-collect-btn">Collect Payment</button>
 			</div>
-		`)
-			.on("click", () => show_customer_bills(row))
-			.appendTo($list);
+		`);
+		$row.find(".santu-dues-collect-btn").on("click", (e) => {
+			e.stopPropagation();
+			window.santu_open_collect_payment({
+				party_type: "Customer",
+				party: row.customer,
+				amount: row.total_due,
+			});
+		});
+		$row.on("click", () => show_customer_bills(row));
+		$row.appendTo($list);
 	});
 }
 
@@ -113,7 +122,7 @@ async function show_customer_bills(row) {
 	const $table = $(`
 		<table class="santu-dues-bills-table">
 			<thead>
-				<tr><th>Bill</th><th>Date</th><th class="num">Amount</th><th class="num">Due</th><th>Status</th></tr>
+				<tr><th>Bill</th><th>Date</th><th>Items</th><th class="num">Amount</th><th class="num">Due</th><th>Status</th></tr>
 			</thead>
 			<tbody></tbody>
 		</table>
@@ -124,12 +133,13 @@ async function show_customer_bills(row) {
 			<tr class="santu-dues-bill-row">
 				<td>${frappe.utils.escape_html(b.name)}</td>
 				<td>${frappe.datetime.str_to_user(b.posting_date)}</td>
+				<td class="santu-dues-bill-items">${frappe.utils.escape_html(b.items_summary || "—")}</td>
 				<td class="num">₹ ${format_currency_plain(b.grand_total)}</td>
 				<td class="num">${b.outstanding_amount > 0 ? "₹ " + format_currency_plain(b.outstanding_amount) : "-"}</td>
 				<td><span class="indicator-pill ${b.outstanding_amount > 0 ? "orange" : "green"}">${frappe.utils.escape_html(b.status)}</span></td>
 			</tr>
 		`)
-			.on("click", () => frappe.set_route("Form", b.doctype, b.name))
+			.on("click", () => window.santu_open_invoice_view(b.doctype, b.name))
 			.appendTo($tbody);
 	});
 	d.fields_dict.bills.$wrapper.empty().append($table);

@@ -51,9 +51,28 @@ santu_items.api = {
 		});
 	},
 
+	async get_category_items(item_group, search) {
+		return frappe.xcall("santu_hardware.santu_hardware.api.get_category_items", {
+			item_group,
+			search: search || null,
+		});
+	},
+
 	async get_uoms(search) {
 		return frappe.xcall("santu_hardware.santu_hardware.api.get_uom_list", {
 			search: search || null,
+		});
+	},
+
+	async get_uom_conversions(uom) {
+		return frappe.xcall("santu_hardware.santu_hardware.api.get_uom_conversions", { uom });
+	},
+
+	async add_uom_conversion(from_uom, to_uom, value) {
+		return frappe.xcall("santu_hardware.santu_hardware.api.add_uom_conversion", {
+			from_uom,
+			to_uom,
+			value,
 		});
 	},
 };

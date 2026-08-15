@@ -100,6 +100,47 @@ def parse_items_import_file(file_url: str):
 
 
 @frappe.whitelist()
+def parse_items_import_file_from_pdf(file_url: str):
+	"""Same contract as parse_items_import_file (headers/rows/total_rows/
+	suggested_mapping) but sourced from a printed/scanned PDF price list or
+	catalogue instead of an Excel/CSV file — feeds the exact same Map
+	Columns -> Validate -> Import steps, so "import new items" stays one
+	single downstream path regardless of which file type it started from.
+	Reuses the GST bill line-item text-parsing engine already built for
+	Purchase Bill Upload (`_guess_item_rows`) rather than a second PDF
+	reader — one shared "read a PDF's item rows" capability, several
+	screens that call into it for their own purpose."""
+	_require_manager()
+	from santu_hardware.santu_hardware.api import _extract_pdf_pages, _guess_item_rows
+
+	text = "\n".join(_extract_pdf_pages(file_url))
+	parsed_rows = _guess_item_rows(text)
+	if not parsed_rows:
+		frappe.throw(
+			"Couldn't read any item rows from this PDF — it may be a scanned image "
+			"rather than a real PDF, or not in a recognisable price-list layout."
+		)
+
+	headers = ["Item Name", "HSN Code", "Purchase Price", "Item Code"]
+	rows = [
+		{
+			"Item Name": r["description"],
+			"HSN Code": r.get("hsn") or "",
+			"Purchase Price": r.get("rate") or "",
+			"Item Code": r.get("item_code") or "",
+		}
+		for r in parsed_rows
+	]
+	suggested_mapping = {
+		"Item Name": "item_name",
+		"HSN Code": "gst_hsn_code",
+		"Purchase Price": "valuation_rate",
+		"Item Code": "item_code",
+	}
+	return {"headers": headers, "rows": rows[:500], "total_rows": len(rows), "suggested_mapping": suggested_mapping}
+
+
+@frappe.whitelist()
 def validate_items_import(file_url: str = None, rows: str = None, mapping: str = None):
 	_require_manager()
 	mapping = frappe.parse_json(mapping) if isinstance(mapping, str) else (mapping or {})
@@ -252,6 +293,41 @@ def get_bulk_items(mode: str = "pricing", search: str = None, page: int = 1, pag
 		it["warehouse"] = bin.get("warehouse") or ""
 
 	return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+
+@frappe.whitelist()
+def match_pdf_items_for_bulk_update(file_url: str):
+	"""Match a PDF price list's lines against items already in the
+	catalogue, for Update Items In Bulk's "Import from PDF" action — this
+	screen only edits existing masters, it never creates new ones, so
+	unmatched lines are just counted (not returned): a genuinely new item
+	belongs in Import Items -> Import From PDF instead, which shares the
+	same underlying PDF reader. Rate is treated as this shop's own
+	Purchase Price, matching what a supplier's price list actually lists."""
+	_require_manager()
+	from santu_hardware.santu_hardware.api import _extract_pdf_pages, _guess_item_rows
+
+	text = "\n".join(_extract_pdf_pages(file_url))
+	parsed_rows = _guess_item_rows(text)
+	if not parsed_rows:
+		frappe.throw(
+			"Couldn't read any item rows from this PDF — it may be a scanned image "
+			"rather than a real PDF, or not in a recognisable price-list layout."
+		)
+
+	matched, unmatched_count, seen = [], 0, set()
+	for r in parsed_rows:
+		item_code = r.get("item_code")
+		if not item_code:
+			unmatched_count += 1
+			continue
+		if item_code in seen:
+			continue
+		seen.add(item_code)
+		item_name = frappe.db.get_value("Item", item_code, "item_name") or r["description"]
+		matched.append({"item_code": item_code, "item_name": item_name, "rate": r.get("rate"), "hsn": r.get("hsn")})
+
+	return {"matched": matched, "matched_count": len(matched), "unmatched_count": unmatched_count}
 
 
 @frappe.whitelist()

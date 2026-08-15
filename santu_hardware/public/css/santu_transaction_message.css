@@ -24,7 +24,7 @@
 	border: none;
 	background: transparent;
 	color: #94a3b8;
-	font-size: 11px;
+	font-size: 12px;
 	font-weight: 700;
 	letter-spacing: 0.05em;
 	cursor: pointer;
@@ -45,7 +45,7 @@
 }
 
 .santu-txn-msg-title {
-	font-size: 20px;
+	font-size: 22px;
 	font-weight: 700;
 	margin: 0 0 16px;
 	color: #0f172a;
@@ -68,7 +68,7 @@
 
 .santu-txn-msg-card h3 {
 	margin: 0 0 12px;
-	font-size: 14px;
+	font-size: 15px;
 	font-weight: 700;
 	color: #334155;
 }
@@ -77,7 +77,7 @@
 .santu-txn-msg-auto-grid label {
 	display: block;
 	margin-bottom: 8px;
-	font-size: 13px;
+	font-size: 14px;
 	cursor: pointer;
 }
 
@@ -87,7 +87,7 @@
 	gap: 4px 12px;
 }
 
-.santu-txn-msg-field { display: block; margin-top: 12px; font-size: 12px; font-weight: 600; }
+.santu-txn-msg-field { display: block; margin-top: 12px; font-size: 13px; font-weight: 600; }
 
 .santu-txn-msg-vars {
 	margin: 10px 0;
@@ -97,7 +97,7 @@
 	align-items: center;
 }
 
-.santu-txn-msg-vars .vars-label { font-size: 11px; font-weight: 600; color: #64748b; margin-right: 4px; }
+.santu-txn-msg-vars .vars-label { font-size: 12px; font-weight: 600; color: #64748b; margin-right: 4px; }
 
 .santu-txn-msg-footer {
 	display: flex;
@@ -111,7 +111,7 @@
 }
 
 .santu-txn-msg-preview-col h3 {
-	font-size: 14px;
+	font-size: 15px;
 	font-weight: 700;
 	margin-bottom: 12px;
 }
@@ -127,20 +127,20 @@
 
 .santu-wa-preview-bubble .wa-company {
 	font-weight: 700;
-	font-size: 12px;
+	font-size: 13px;
 	color: #075e54;
 	margin-bottom: 6px;
 }
 
 .santu-wa-preview-bubble .wa-body {
-	font-size: 13px;
+	font-size: 14px;
 	white-space: pre-wrap;
 	line-height: 1.45;
 	color: #111;
 }
 
 .santu-wa-preview-bubble .wa-time {
-	font-size: 10px;
+	font-size: 11px;
 	color: #667781;
 	text-align: right;
 	margin-top: 4px;
@@ -150,7 +150,7 @@
 	padding: 10px 14px;
 	border-radius: 6px;
 	margin-bottom: 12px;
-	font-size: 13px;
+	font-size: 14px;
 }
 
 .santu-txn-msg-banner.warn { background: #fef3c7; border: 1px solid #fbbf24; }
@@ -175,11 +175,11 @@
 
 .santu-txn-msg-form-grid label {
 	display: block;
-	font-size: 12px;
+	font-size: 13px;
 	font-weight: 600;
 }
 
-.santu-txn-msg-muted { font-size: 12px; color: #64748b; margin-top: 12px; }
+.santu-txn-msg-muted { font-size: 13px; color: #64748b; margin-top: 12px; }
 
 .santu-txn-msg-table {
 	width: 100%;
@@ -187,7 +187,7 @@
 	background: #fff;
 	border: 1px solid #e2e8f0;
 	border-radius: 8px;
-	font-size: 13px;
+	font-size: 14px;
 }
 
 .santu-txn-msg-table th {
@@ -199,7 +199,7 @@
 
 .santu-txn-msg-table td { padding: 8px 12px; border-top: 1px solid #f1f5f9; }
 
-.status-badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.status-badge { padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
 .status-ok { background: #dcfce7; color: #15803d; }
 .status-fail { background: #fef2f2; color: #b91c1c; }
 .status-queue { background: #fef9c3; color: #a16207; }
@@ -217,7 +217,7 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
-	font-size: 12px;
+	font-size: 13px;
 	margin-left: 12px;
 	padding: 4px 10px;
 	border-radius: 12px;
@@ -229,7 +229,7 @@
 	padding: 12px;
 	border-radius: 8px;
 	white-space: pre-wrap;
-	font-size: 13px;
+	font-size: 14px;
 	margin: 10px 0;
 	max-height: 200px;
 	overflow: auto;

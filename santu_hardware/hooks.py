@@ -32,7 +32,7 @@ app_license = "mit"
 # without a version bump, browsers keep serving a stale copy after every
 # edit during active development. Bump the number whenever these files
 # change.
-SANTU_ASSET_VERSION = "140"
+SANTU_ASSET_VERSION = "251"
 app_include_css = [
 	f"/assets/santu_hardware/css/design_system.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/vyapar_theme.css?v={SANTU_ASSET_VERSION}",
@@ -59,6 +59,8 @@ app_include_css = [
 	f"/assets/santu_hardware/css/santu_items.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/santu_sale.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/santu_sale_invoice.css?v={SANTU_ASSET_VERSION}",
+	f"/assets/santu_hardware/css/santu_invoice_preview.css?v={SANTU_ASSET_VERSION}",
+	f"/assets/santu_hardware/css/santu_collect_payment.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/santu_purchase.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/santu_reports.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/santu_sync.css?v={SANTU_ASSET_VERSION}",
@@ -66,6 +68,7 @@ app_include_css = [
 	f"/assets/santu_hardware/css/santu_transaction_message.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/santu_whatsapp_connect.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/santu_fixed_sidebar.css?v={SANTU_ASSET_VERSION}",
+	f"/assets/santu_hardware/css/santu_topbar.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/pos_large_ui.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/upload_bill.css?v={SANTU_ASSET_VERSION}",
 ]
@@ -74,9 +77,7 @@ app_include_js = [
 	f"/assets/santu_hardware/js/thermal_print.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/kiosk_mode.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/santu_fixed_sidebar.js?v={SANTU_ASSET_VERSION}",
-	f"/assets/santu_hardware/js/santu_utilities/santu_utilities_utils.js?v={SANTU_ASSET_VERSION}",
-	f"/assets/santu_hardware/js/santu_utilities/santu_utilities_api.js?v={SANTU_ASSET_VERSION}",
-	f"/assets/santu_hardware/js/santu_utilities/santu_utilities_views.js?v={SANTU_ASSET_VERSION}",
+	f"/assets/santu_hardware/js/santu_topbar.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/pos_dashboard_sidebar_link.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/pos_open_returns.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/pos_smart_confirm.js?v={SANTU_ASSET_VERSION}",
@@ -173,6 +174,12 @@ doctype_js = {
 
 after_install = "santu_hardware.setup.install.after_install"
 
+# Frappe re-seeds Navbar Settings' dropdown rows on upgrade, which would put
+# its own Documentation / Frappe School / Support / Apps entries back in front
+# of a shop owner. Re-hiding them after every migrate keeps that from silently
+# undoing the choice (2026-08-15).
+after_migrate = "santu_hardware.setup.install.hide_vendor_navbar_items"
+
 # Uninstallation
 # ------------
 
@@ -226,6 +233,12 @@ after_install = "santu_hardware.setup.install.after_install"
 # Hook on document methods and events
 
 doc_events = {
+	("Customer", "Supplier"): {
+		"before_save": "santu_hardware.santu_hardware.api.title_case_party_name",
+	},
+	"Address": {
+		"before_save": "santu_hardware.santu_hardware.api.title_case_address_fields",
+	},
 	("POS Invoice", "Sales Invoice"): {
 		"before_validate": "santu_hardware.santu_hardware.api.strip_gst_line_items",
 		"validate": "santu_hardware.santu_hardware.api.strip_gst_line_items",

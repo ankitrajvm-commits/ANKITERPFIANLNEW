@@ -73,13 +73,17 @@ santu_purchase.transactions = {
 			</div>
 		`);
 
+		// Pixel-match reference: for "bills" the filter bar above already has
+		// its own Excel/Print icons — a second copy here would be a visible
+		// duplicate that the reference screenshot doesn't have, so this
+		// header stays to just the title for that view.
 		const $header = $(`
 			<div class="santu-purchase-txn-header">
 				<span class="santu-purchase-txn-title">TRANSACTIONS</span>
 				<div class="santu-purchase-txn-toolbar">
 					${!show_inline_search ? `<button type="button" class="santu-purchase-icon-btn santu-purchase-txn-search-btn" title="Search">🔍</button>` : ""}
-					<button type="button" class="santu-purchase-icon-btn santu-purchase-txn-export-btn" title="Export">📗</button>
-					<button type="button" class="santu-purchase-icon-btn santu-purchase-txn-print-btn" title="Print">🖨</button>
+					${view !== "bills" ? `<button type="button" class="santu-purchase-icon-btn santu-purchase-txn-export-btn" title="Export">📗</button>
+					<button type="button" class="santu-purchase-icon-btn santu-purchase-txn-print-btn" title="Print">🖨</button>` : ""}
 				</div>
 			</div>
 		`).appendTo($card);
@@ -110,7 +114,11 @@ santu_purchase.transactions = {
 
 		const $table_wrap = $(`<div class="santu-purchase-txn-table-wrap"><table class="santu-purchase-txn-table"><thead><tr></tr></thead><tbody></tbody></table></div>`).appendTo($card);
 		const $thead = $table_wrap.find("thead tr");
-		cols.forEach((c) => $thead.append(`<th class="${c.num ? "num" : ""}">${c.label}</th>`));
+		cols.forEach((c) =>
+			$thead.append(
+				`<th class="${c.num ? "num" : ""}">${c.label}${view === "bills" ? `<span class="santu-purchase-th-filter" aria-hidden="true">▽</span>` : ""}</th>`
+			)
+		);
 		$thead.append(`<th class="num">Actions</th>`);
 
 		const $tbody = $table_wrap.find("tbody");
@@ -134,7 +142,7 @@ santu_purchase.transactions = {
 				e.stopPropagation();
 				this._row_action($(e.currentTarget).data("action"), t, view);
 			});
-			$row.on("click", () => frappe.set_route("Form", t.doctype, t.invoice_no));
+			$row.on("click", () => window.santu_open_invoice_view(t.doctype, t.invoice_no));
 			$row.appendTo($tbody);
 		});
 	},
@@ -158,6 +166,11 @@ santu_purchase.transactions = {
 					<button type="button" class="btn santu-purchase-add-btn santu-purchase-empty-btn">${frappe.utils.escape_html(meta.addLabel || "+ Add")}</button>
 				</div>
 			`);
+		} else if (view === "bills") {
+			// Pixel-match reference: plain centered text, no icon/button.
+			$card.append(`
+				<div class="santu-purchase-empty santu-purchase-empty-plain">No transactions to show</div>
+			`);
 		} else {
 			$card.append(`
 				<div class="santu-purchase-empty">
@@ -173,7 +186,7 @@ santu_purchase.transactions = {
 
 	_row_action(action, t, view) {
 		if (action === "open") {
-			frappe.set_route("Form", t.doctype, t.invoice_no);
+			window.santu_open_invoice_view(t.doctype, t.invoice_no);
 			return;
 		}
 		if (action === "print") {
@@ -195,16 +208,29 @@ santu_purchase.transactions = {
 		}
 		if (action === "more") {
 			const items = [
-				{ label: __("Open"), action: () => frappe.set_route("Form", t.doctype, t.invoice_no) },
+				{ label: __("Open"), action: () => window.santu_open_invoice_view(t.doctype, t.invoice_no) },
 				{ label: __("Print"), action: () => this._row_action("print", t, view) },
 			];
 			if (view === "purchase_order" && t.doctype === "Purchase Order") {
 				items.push({
 					label: __("Create Purchase Invoice"),
 					action: () => {
-						frappe.model.open_mapped_doc({
+						// frappe.model.open_mapped_doc({frm: {...}}) needs a REAL
+						// form object (calls frm.get_selected() internally) — a
+						// plain stub throws "opts.frm.get_selected is not a
+						// function" (confirmed live 2026-08-15). Call the
+						// mapped-doc method directly and hand the unsaved result
+						// to the Purchase Invoice quick-entry screen's own
+						// prefill handler instead.
+						frappe.call({
 							method: "erpnext.buying.doctype.purchase_order.purchase_order.make_purchase_invoice",
-							frm: { doc: { doctype: t.doctype, name: t.invoice_no } },
+							args: { source_name: t.invoice_no },
+							freeze: true,
+							callback: (r) => {
+								if (!r.message) return;
+								frappe.route_options = { prefill: r.message };
+								frappe.set_route("santu-purchase-invoice");
+							},
 						});
 					},
 				});

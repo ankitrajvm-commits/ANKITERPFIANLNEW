@@ -1,109 +1,520 @@
 /*
- * Parties page (2026-08-06) — Customer + Supplier merged into one
- * Vyapar-style split-view: search + list on the left, selected party's
- * transactions on the right. Structure mirrors customer_dues.css's
- * filter+list pattern, extended with a two-panel layout.
+ * Parties — pixel values taken from Vyapar compiled CSS
+ * parties-UIComponent_jsx_Parties_…-cfbc95.css (2026-08-15).
+ * Tokens from that file: VYAPAR_RED #ed1a3b, TEXT_BLACK #3f4155,
+ * BLUE #0075e8, GREEN #08bd7c, RED #f45972, LIGHT_BLUE #e4f2ff.
  */
+.santu-parties-page {
+	display: flex;
+	flex-direction: column;
+	height: calc(100vh - 56px);
+	box-sizing: border-box;
+	background: #f3f4f8;
+}
+.santu-parties-page .santu-parties {
+	flex: 1 1 auto;
+	min-height: 0;
+	height: auto;
+	margin: 4px;
+	gap: 4px;
+}
+
+.santu-parties-page-header {
+	background: #fff;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 12px 16px;
+	flex-shrink: 0;
+}
+.santu-parties-page-title {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	position: relative;
+	cursor: pointer;
+	user-select: none;
+}
+.santu-parties-title-text {
+	color: #3f4155;
+	font-size: 20px;
+	font-weight: 600;
+	line-height: 26px;
+}
+.santu-parties-title-chevron {
+	font-size: 12px;
+	color: #71748e;
+	line-height: 1;
+}
+.santu-parties-title-menu {
+	display: none;
+	position: absolute;
+	top: 32px;
+	left: 0;
+	background: #fff;
+	border-radius: 4px;
+	box-shadow: 0 5px 39px 9px rgba(63, 65, 85, 0.18);
+	z-index: 20;
+	padding: 4px 0;
+	min-width: 205px;
+}
+.santu-parties-title-menu.open { display: block; }
+.santu-parties-title-menu button {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: calc(100% - 16px);
+	margin: 4px 8px;
+	padding: 6px 12px;
+	border: none;
+	background: transparent;
+	color: #3f4155;
+	font-size: 14px;
+	font-weight: 400;
+	line-height: 21px;
+	text-align: left;
+	cursor: pointer;
+	border-radius: 4px;
+}
+.santu-parties-title-menu button:hover,
+.santu-parties-title-menu button.is-active { font-weight: 500; background: #f3f4f8; }
+
+.santu-parties-header-right {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+.santu-parties-header-sep {
+	background: rgba(0, 0, 0, 0.06);
+	border-radius: 10px;
+	width: 1px;
+	height: 24px;
+}
+.santu-parties-add-btn {
+	display: inline-flex !important;
+	align-items: center !important;
+	gap: 4px !important;
+	height: 32px !important;
+	padding: 5px 16px !important;
+	line-height: 1 !important;
+	font-size: 14px !important;
+	font-weight: 500 !important;
+	border-radius: 4px !important;
+	background: #ed1a3b !important;
+	border-color: #ed1a3b !important;
+	color: #fff !important;
+}
+
 .santu-parties {
 	display: flex;
-	gap: var(--santu-space-6, 24px);
-	align-items: flex-start;
+	align-items: stretch;
 	height: calc(100vh - 180px);
 }
 
 .santu-parties-list-panel {
-	flex: 0 0 320px;
+	flex: 0 0 312px;
+	max-width: 312px;
 	display: flex;
 	flex-direction: column;
 	height: 100%;
+	background: #fff;
+	border-radius: 4px;
+	overflow: hidden;
 }
 
+.santu-parties-search-wrap {
+	display: flex;
+	align-items: center;
+	padding: 12px;
+}
 .santu-parties-search {
-	margin-bottom: var(--santu-space-3, 12px);
+	margin-bottom: 0;
+	height: 36px;
+	border: 1px solid #eaeaef;
+	border-radius: 4px;
+	padding: 0 12px 0 36px;
+	font-size: 14px;
+	color: #3f4155;
+	background: #fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%239b9eb8' stroke-width='1.5'><circle cx='7' cy='7' r='5'/><path d='M11 11l3 3'/></svg>") no-repeat 12px center;
+}
+.santu-parties-search:focus {
+	border-color: #0075e8;
+	box-shadow: none;
+	outline: none;
+}
+
+.santu-parties-list-head {
+	display: flex;
+	justify-content: space-between;
+	padding: 0 16px 8px;
+	font-size: 12px;
+	font-weight: 500;
+	color: #9b9eb8;
 }
 
 .santu-parties-list {
 	flex: 1 1 auto;
 	overflow-y: auto;
-	border: 1px solid var(--santu-border, #e5e7eb);
-	border-radius: var(--santu-radius-lg, 12px);
+	border: none;
+	border-radius: 0;
 }
 
 .santu-parties-row {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	padding: 14px 16px;
-	border-bottom: 1px solid var(--santu-border, #e5e7eb);
+	padding: 0 16px;
+	height: 52px;
+	border-bottom: 1px solid #eaeaef;
 	cursor: pointer;
 }
 .santu-parties-row:last-child { border-bottom: none; }
-.santu-parties-row:hover { background: var(--santu-gray-50, #f9fafb); }
+.santu-parties-row:hover { background: #f8f8f8; }
 .santu-parties-row-active {
-	background: var(--santu-brand-secondary-soft, #eaf1fe) !important;
+	background: #e4f2ff !important;
 }
-.santu-parties-row-name { font-weight: 600; font-size: 14px; }
-.santu-parties-row-amount { font-size: 14px; font-weight: 600; color: var(--santu-text-muted, #6b7280); }
-.santu-parties-row-amount.santu-tone-warning { color: var(--santu-warning, #b45309); }
-.santu-parties-row-amount.santu-tone-danger { color: var(--santu-danger, #b91c1c); }
+.santu-parties-row-name {
+	font-weight: 400;
+	font-size: 14px;
+	line-height: 20px;
+	color: #3f4155;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	padding-right: 8px;
+}
+.santu-parties-row-amount {
+	font-size: 14px;
+	font-weight: 400;
+	line-height: 20px;
+	color: #71748e;
+	flex-shrink: 0;
+}
+.santu-parties-row-amount.santu-tone-success { color: #08bd7c; }
+.santu-parties-row-amount.santu-tone-danger { color: #f45972; }
 
 .santu-parties-detail-panel {
 	flex: 1 1 auto;
 	height: 100%;
-	overflow-y: auto;
-	border: 1px solid var(--santu-border, #e5e7eb);
-	border-radius: var(--santu-radius-lg, 12px);
-	padding: var(--santu-space-6, 24px);
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	min-width: 0;
 }
 
 .santu-parties-empty {
-	color: var(--santu-text-muted, #6b7280);
-	padding: var(--santu-space-8, 32px);
+	color: #71748e;
+	padding: 32px;
 	text-align: center;
+	background: #fff;
+	border-radius: 4px;
+	flex: 1;
+}
+
+.santu-parties-landing {
+	background: #fff;
+	border-radius: 4px;
+	margin: 4px;
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	gap: 60px;
+	min-height: 0;
+}
+.santu-parties-landing-text {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	max-width: 560px;
+	padding: 0 24px;
+}
+.santu-parties-landing-text h2 {
+	color: #3f4155;
+	text-align: center;
+	font-size: 24px;
+	font-weight: 700;
+	line-height: 36px;
+	margin: 0;
+}
+.santu-parties-landing-text p {
+	color: #71748e;
+	text-align: center;
+	font-size: 16px;
+	font-weight: 400;
+	line-height: 24px;
+	margin: 0;
+}
+.santu-parties-landing .santu-parties-add-btn {
+	position: relative;
+	overflow: hidden;
+	height: 40px !important;
+	padding: 8px 20px !important;
+}
+
+.santu-parties-list-empty {
+	padding: 24px 16px;
+	text-align: center;
+	color: #3f4155;
+}
+.santu-parties-list-empty b {
+	display: block;
+	font-size: 14px;
+	font-weight: 500;
+	margin-bottom: 4px;
+}
+.santu-parties-list-empty span {
+	font-size: 13px;
+	color: #71748e;
+}
+
+.santu-parties-card {
+	background: #fff;
+	border: none;
+	border-radius: 4px;
+	padding: 12px;
+	flex-shrink: 0;
+}
+.santu-parties-txn-card {
+	background: #fff;
+	border: none;
+	border-radius: 4px;
+	padding: 0;
+	flex: 1 1 auto;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
 }
 
 .santu-parties-detail-head {
 	display: flex;
 	align-items: center;
-	gap: var(--santu-space-3, 12px);
-	margin-bottom: var(--santu-space-6, 24px);
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 0;
 }
-
 .santu-parties-detail-name {
-	font: var(--santu-text-h1, 700 24px/1.3 inherit);
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	color: #3f4155;
+	font-size: 14px;
+	font-weight: 500;
+	line-height: 20px;
+	margin: auto 0;
+}
+.santu-parties-edit-btn {
+	border: none;
+	background: transparent;
+	display: inline-flex;
+	align-items: center;
+	cursor: pointer;
+	padding: 0;
+	color: #0075e8;
+}
+.santu-parties-edit-btn:hover { opacity: 0.7; }
+.santu-parties-edit-btn svg { width: 20px; height: 20px; }
+
+.santu-parties-detail-icons {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	flex-shrink: 0;
+}
+.santu-parties-icon-btn {
+	width: 20px;
+	height: 20px;
+	border: none;
+	background: transparent;
+	padding: 0;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: #656672;
+}
+.santu-parties-icon-btn:hover { opacity: 0.75; }
+.santu-parties-whatsapp-btn { color: #08bd7c; }
+.santu-parties-icon-sep {
+	background: rgba(0, 0, 0, 0.06);
+	border-radius: 10px;
+	width: 1px;
+	height: 24px;
 }
 
-.santu-parties-detail-type {
-	padding: 3px 10px;
-	border-radius: var(--santu-radius-full, 999px);
-	background: var(--santu-brand-soft, #fdeceb);
-	color: var(--santu-brand, #e0393e);
-	font: var(--santu-text-label, 600 13px/1.4 inherit);
+.santu-parties-detail-info {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	gap: 12px 32px;
+	margin-top: 12px;
+}
+.santu-parties-detail-info-col {
+	display: inline-flex;
+	flex-direction: column;
+	max-width: calc(100% - 8px);
+}
+.santu-parties-detail-info-label {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	text-align: left;
+	color: #71748e;
+	font-size: 12px;
+	font-weight: 400;
+	line-height: 18px;
+	margin-bottom: 0;
+}
+.santu-parties-detail-icon { flex-shrink: 0; }
+.santu-parties-detail-info-value {
+	color: #3f4155;
+	text-align: left;
+	font-size: 14px;
+	font-weight: 400;
+	line-height: 21px;
+	max-width: 320px;
 }
 
+.santu-parties-txn-head {
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: center;
+	height: 56px;
+	padding: 16px 12px;
+	flex-shrink: 0;
+}
 .santu-parties-detail-section-title {
-	font: var(--santu-text-h2, 600 18px/1.4 inherit);
-	margin-bottom: var(--santu-space-3, 12px);
+	color: #3f4155;
+	font-size: 14px;
+	font-weight: 500;
+	line-height: 18px;
+	margin: 0;
+	overflow: hidden;
+}
+.santu-parties-txn-icons {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+.santu-parties-txn-search {
+	height: 32px;
+	border: 1px solid #eaeaef;
+	border-radius: 4px;
+	padding: 0 10px;
+	font-size: 13px;
+	width: 180px;
+	display: none;
+}
+.santu-parties-txn-search.open { display: block; }
+.santu-parties-bills {
+	flex: 1;
+	overflow: auto;
+	padding-bottom: 4px;
 }
 
 .santu-parties-table { width: 100%; border-collapse: collapse; }
 .santu-parties-table th {
 	text-align: left;
-	font-size: 11px;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-	color: var(--santu-text-muted, #6b7280);
-	border-bottom: 1px solid var(--santu-border, #e5e7eb);
-	padding: 8px;
+	font-size: 12px;
+	font-weight: 500;
+	text-transform: none;
+	letter-spacing: 0;
+	color: #9b9eb8;
+	border-bottom: 1px solid #eaeaef;
+	padding: 8px 12px;
 }
 .santu-parties-table th.num { text-align: right; }
-.santu-parties-bill-row td { padding: 10px 8px; border-bottom: 1px solid var(--santu-border, #e5e7eb); font-size: 14px; }
+.santu-parties-bill-row td {
+	padding: 0 12px;
+	height: 52px;
+	border-bottom: 1px solid #eaeaef;
+	font-size: 14px;
+	line-height: 52px;
+	color: #3f4155;
+}
 .santu-parties-bill-row td.num { text-align: right; }
 .santu-parties-bill-row { cursor: pointer; }
-.santu-parties-bill-row:hover { background: var(--santu-gray-50, #f9fafb); }
+.santu-parties-bill-row:hover { background: #f8f8f8; }
+
+/* Add Party dialog — AddEditPartyDialog (max-width 352px, radius 8px) */
+.santu-parties-add-dialog .modal-dialog { max-width: 352px; }
+.santu-parties-add-dialog .modal-content { border-radius: 8px; overflow: hidden; }
+.santu-parties-add-dialog .modal-header {
+	border-bottom: 1px solid #eaeaef;
+	padding: 16px;
+}
+.santu-parties-add-dialog .modal-title {
+	font-size: 16px;
+	font-weight: 500;
+	color: #3f4155;
+}
+.santu-parties-add-dialog .modal-body { padding: 20px 16px 16px; }
+.santu-parties-add-dialog .modal-footer { padding: 16px; border-top: none; }
+.santu-parties-add-dialog .btn-primary {
+	background: #ed1a3b !important;
+	border-color: #ed1a3b !important;
+}
 
 @media (max-width: 800px) {
+	.santu-parties-page { height: auto; }
 	.santu-parties { flex-direction: column; height: auto; }
-	.santu-parties-list-panel { flex: 1 1 auto; width: 100%; height: 400px; }
+	.santu-parties-list-panel { flex: 1 1 auto; width: 100%; max-width: none; height: 400px; }
 	.santu-parties-detail-panel { width: 100%; height: auto; }
 }
+
+/* ---------- Cash & Bank (reuses list/detail layout) ---------- */
+.santu-cashbank-total-card {
+	background: #e4f2ff;
+	border-radius: 4px;
+	padding: 16px;
+	margin: 12px;
+}
+.santu-cashbank-total-label {
+	font-size: 12px;
+	color: #71748e;
+	font-weight: 400;
+}
+.santu-cashbank-total-amount {
+	font: 700 24px/1.3 inherit;
+	color: #0075e8;
+}
+.santu-cashbank-type-pill {
+	display: inline-block;
+	margin-left: 8px;
+	padding: 2px 8px;
+	border-radius: 999px;
+	background: #f3f3f3;
+	color: #71748e;
+	font-size: 11px;
+	font-weight: 500;
+	vertical-align: middle;
+}
+
+/* Balance stated in words in the detail panel. The list column carries the
+   same fact in colour alone (Vyapar's own convention, kept for the match) —
+   this is where it gets said out loud, for someone who hasn't been taught
+   that green means money coming in. */
+.santu-parties-balance {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	margin-top: 10px;
+	padding: 10px 12px;
+	border-radius: 6px;
+	font-size: 14px;
+}
+.santu-parties-balance-in { background: #eefaf4; border: 1px solid #b9e9d3; }
+.santu-parties-balance-out { background: #fff5f6; border: 1px solid #ffd3d9; }
+.santu-parties-balance-clear {
+	background: #f6f7f9;
+	border: 1px solid #eaeaef;
+	color: #71748e;
+}
+.santu-parties-balance-label { font-weight: 500; color: #3f4155; }
+.santu-parties-balance-in .santu-parties-balance-amount { color: #08bd7c; font-weight: 700; font-size: 16px; }
+.santu-parties-balance-out .santu-parties-balance-amount { color: #f45972; font-weight: 700; font-size: 16px; }

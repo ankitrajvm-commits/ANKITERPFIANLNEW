@@ -20,13 +20,13 @@
 
 .santu-wa-connect-header h1 {
 	margin: 0;
-	font-size: 18px;
+	font-size: 19px;
 	font-weight: 700;
 	flex: 1;
 }
 
 .santu-wa-state-badge {
-	font-size: 12px;
+	font-size: 13px;
 	font-weight: 600;
 	padding: 4px 12px;
 	border-radius: 12px;
@@ -57,8 +57,8 @@
 }
 
 .santu-wa-illustration { font-size: 64px; margin-bottom: 16px; }
-.santu-wa-setup-left h2 { font-size: 22px; font-weight: 700; }
-.santu-wa-muted { color: #667781; font-size: 13px; max-width: 360px; }
+.santu-wa-setup-left h2 { font-size: 24px; font-weight: 700; }
+.santu-wa-muted { color: #667781; font-size: 14px; max-width: 360px; }
 
 .santu-wa-setup-right {
 	padding: 48px 40px;
@@ -66,13 +66,13 @@
 	border-left: 1px solid #e9edef;
 }
 
-.santu-wa-setup-right h3 { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
-.santu-wa-steps { font-size: 14px; line-height: 1.8; margin-bottom: 20px; }
-.santu-wa-terms { display: block; margin-bottom: 16px; font-size: 13px; }
+.santu-wa-setup-right h3 { font-size: 19px; font-weight: 700; margin-bottom: 16px; }
+.santu-wa-steps { font-size: 15px; line-height: 1.8; margin-bottom: 20px; }
+.santu-wa-terms { display: block; margin-bottom: 16px; font-size: 14px; }
 .santu-wa-setup-actions { display: flex; gap: 10px; }
 .santu-wa-setup-actions .btn-primary { background: #e11d48; border-color: #e11d48; }
-.santu-wa-warn { color: #b45309; font-size: 13px; margin-top: 12px; }
-.santu-wa-error { background: #fef2f2; color: #b91c1c; padding: 10px; border-radius: 6px; margin-bottom: 12px; font-size: 13px; }
+.santu-wa-warn { color: #b45309; font-size: 14px; margin-top: 12px; }
+.santu-wa-error { background: #fef2f2; color: #b91c1c; padding: 10px; border-radius: 6px; margin-bottom: 12px; font-size: 14px; }
 
 /* Workspace */
 .santu-wa-workspace {
@@ -121,9 +121,9 @@
 }
 
 .santu-wa-chat-meta { flex: 1; min-width: 0; }
-.santu-wa-chat-top { display: flex; justify-content: space-between; font-size: 13px; }
-.santu-wa-chat-preview { font-size: 12px; color: #667781; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.santu-wa-unread { background: #25d366; color: #fff; border-radius: 10px; padding: 2px 7px; font-size: 11px; font-weight: 700; }
+.santu-wa-chat-top { display: flex; justify-content: space-between; font-size: 14px; }
+.santu-wa-chat-preview { font-size: 13px; color: #667781; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.santu-wa-unread { background: #25d366; color: #fff; border-radius: 10px; padding: 2px 7px; font-size: 12px; font-weight: 700; }
 
 /* Chat panel */
 .santu-wa-chat-panel {
@@ -160,7 +160,7 @@
 
 .santu-wa-date-divider {
 	text-align: center;
-	font-size: 12px;
+	font-size: 13px;
 	color: #667781;
 	margin: 12px 0;
 	background: #e1f2fa;
@@ -177,7 +177,7 @@
 	margin-bottom: 8px;
 	padding: 8px 12px;
 	border-radius: 8px;
-	font-size: 14px;
+	font-size: 15px;
 	line-height: 1.45;
 	box-shadow: 0 1px 1px rgba(0,0,0,0.06);
 }
@@ -194,7 +194,7 @@
 	border-top-left-radius: 0;
 }
 
-.santu-wa-bubble-meta { font-size: 10px; color: #667781; text-align: right; margin-top: 4px; }
+.santu-wa-bubble-meta { font-size: 11px; color: #667781; text-align: right; margin-top: 4px; }
 .santu-wa-bubble-meta .ticks { color: #53bdeb; }
 
 .santu-wa-quick-actions {
@@ -210,7 +210,7 @@
 	background: #fff;
 	border-radius: 20px;
 	padding: 6px 14px;
-	font-size: 12px;
+	font-size: 13px;
 	font-weight: 600;
 	cursor: pointer;
 }
@@ -224,10 +224,10 @@
 	background: #fff;
 	border-radius: 16px;
 	padding: 4px 12px;
-	font-size: 11px;
+	font-size: 12px;
 	cursor: pointer;
 }
-.santu-wa-regenerate { font-size: 11px; color: #667781; border: none; background: none; cursor: pointer; margin-left: auto; }
+.santu-wa-regenerate { font-size: 12px; color: #667781; border: none; background: none; cursor: pointer; margin-left: auto; }
 
 .santu-wa-composer {
 	display: flex;
@@ -252,8 +252,8 @@
 	display: flex; justify-content: space-between; align-items: center;
 	padding: 16px 20px; border-bottom: 1px solid #e9edef;
 }
-.santu-wa-drawer-header h3 { margin: 0; font-size: 16px; }
-.santu-wa-drawer-body { padding: 20px; font-size: 14px; }
+.santu-wa-drawer-header h3 { margin: 0; font-size: 17px; }
+.santu-wa-drawer-body { padding: 20px; font-size: 15px; }
 .santu-wa-drawer-body label { display: block; margin-bottom: 10px; }
 .santu-wa-drawer-body .btn-block { margin-bottom: 8px; text-align: left; }
 

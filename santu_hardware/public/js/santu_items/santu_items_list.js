@@ -4,20 +4,21 @@ frappe.provide("santu_items");
 santu_items.list = {
 	build_row(row) {
 		const u = santu_items.utils;
-		const qty = row.is_stock_item ? u.format_qty(row.available_qty, row.stock_uom) : "—";
+		const qty = row.is_stock_item ? u.format_qty_short(row.available_qty) : "—";
 		const qty_class = u.qty_class_for(row);
 
 		return $(`
 			<div class="santu-items-row" role="button" tabindex="0" data-code="${frappe.utils.escape_html(row.item_code)}">
 				<span class="santu-items-row-name" title="${frappe.utils.escape_html(row.item_name)}">${frappe.utils.escape_html(row.item_name)}</span>
 				<span class="santu-items-row-qty santu-figures ${qty_class}">${qty}</span>
+				<span class="santu-items-row-drag" aria-hidden="true">⋮⋮</span>
 			</div>
 		`);
 	},
 
-	build_category_row(row) {
+	build_category_row(row, is_uncategorized) {
 		return $(`
-			<div class="santu-items-row" role="button" tabindex="0">
+			<div class="santu-items-row${is_uncategorized ? " santu-items-row-uncategorized" : ""}" role="button" tabindex="0">
 				<span class="santu-items-row-name">${frappe.utils.escape_html(row.name)}</span>
 				<span class="santu-items-row-qty santu-figures">${row.item_count}</span>
 			</div>
@@ -25,11 +26,10 @@ santu_items.list = {
 	},
 
 	build_unit_row(row) {
-		const type_label = row.must_be_whole_number ? "Whole" : "Decimal";
 		return $(`
-			<div class="santu-items-row" role="button" tabindex="0">
-				<span class="santu-items-row-name">${frappe.utils.escape_html(row.uom_name || row.name)}</span>
-				<span class="santu-items-row-qty">${type_label}</span>
+			<div class="santu-items-row santu-items-unit-row" role="button" tabindex="0" data-uom="${frappe.utils.escape_html(row.name)}">
+				<span class="santu-items-row-name">${frappe.utils.escape_html((row.uom_name || row.name).toUpperCase())}</span>
+				<span class="santu-items-row-qty">${frappe.utils.escape_html(row.shortname || row.name)}</span>
 			</div>
 		`);
 	},

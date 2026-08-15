@@ -20,9 +20,12 @@ const SANTU_CHART_RANGES = [
 	"This Month",
 	"Last Month",
 	"This Quarter",
+	"Half Year",
 	"This Year",
 	"Custom Range",
 ];
+const SANTU_DASH_RECEIVE_ICON = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 3.5v11M5 10.5L9 14.5l4-4" stroke="#08bd7c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const SANTU_DASH_PAY_ICON = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 14.5v-11M5 7.5L9 3.5l4 4" stroke="#f45972" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const SANTU_DEFAULT_CHART_RANGE = "This Month";
 
 function render_dashboard(page) {
@@ -64,7 +67,6 @@ function render_dashboard_data($root, data) {
 	const $main = $layout.find(".santu-dash-main");
 	const $widgets = $layout.find(".santu-dash-widgets");
 
-	render_fast_actions($main, data);
 	render_receivable_payable($main, data);
 	render_daily_chart($main);
 	render_reports_row($main);
@@ -79,10 +81,10 @@ function render_receivable_payable($root, data) {
 			"Total Receivable",
 			data.total_receivable,
 			data.receivable_party_count,
-			"↓",
+			SANTU_DASH_RECEIVE_ICON,
 			"good",
 			() => frappe.set_route("santu-customer-dues"),
-			"No outstanding receivables."
+			"You don't have any pending amount to be received."
 		)
 	);
 	$row.append(
@@ -90,27 +92,32 @@ function render_receivable_payable($root, data) {
 			"Total Payable",
 			data.pending_supplier_payments,
 			data.payable_party_count,
-			"↑",
+			SANTU_DASH_PAY_ICON,
 			"warning",
-			() => frappe.set_route("query-report", "Accounts Payable"),
-			"No outstanding payables."
+			() => {
+				frappe.route_options = { party_type: "Supplier", only_with_balance: 1 };
+				frappe.set_route("santu-parties");
+			},
+			"You don't have to pay any amount."
 		)
 	);
 }
 
-function build_vy_summary_card(label, amount, party_count, arrow, tone, on_click, empty_text) {
+function build_vy_summary_card(label, amount, party_count, icon_html, tone, on_click, empty_text) {
 	const has_value = (amount || 0) !== 0 || (party_count || 0) > 0;
 	const sub_html = has_value
-		? `From <b>${party_count || 0}</b> ${party_count === 1 ? "Party" : "Parties"}`
+		? `From <span class="santu-dash-party-count-num">${party_count || 0}</span> ${party_count === 1 ? "Party" : "Parties"}`
 		: frappe.utils.escape_html(empty_text || "");
 	return $(`
 		<div class="santu-dash-vy-card" role="button" tabindex="0">
-			<div class="santu-dash-vy-card-main">
-				<div class="santu-dash-vy-card-label">${label}</div>
-				<div class="santu-dash-vy-card-amount santu-figures">₹ ${format_currency_plain(amount || 0)}</div>
-				<div class="santu-dash-vy-card-sub">${sub_html}</div>
+			<div class="santu-dash-vy-card-top">
+				<div class="santu-dash-vy-card-data">
+					<div class="santu-dash-vy-card-label">${label}</div>
+					<div class="santu-dash-vy-card-amount santu-figures">₹ ${format_currency_plain(amount || 0)}</div>
+				</div>
+				<div class="santu-dash-vy-card-icon santu-tone-${tone}">${icon_html}</div>
 			</div>
-			<div class="santu-dash-vy-card-icon santu-tone-${tone}">${arrow}</div>
+			<div class="santu-dash-vy-card-sub">${sub_html}</div>
 		</div>
 	`).on("click", on_click);
 }
@@ -122,7 +129,7 @@ function open_santu_report(report_id) {
 
 function render_reports_row($root) {
 	const $section = $(`
-		<div class="santu-dash-section">
+		<div class="santu-dash-reports-section">
 			<div class="santu-dash-section-head">
 				<div class="santu-dash-section-title santu-dash-section-kicker">Most Used Reports</div>
 				<button type="button" class="santu-dash-view-all">View All</button>
@@ -159,7 +166,10 @@ function render_daily_chart($root) {
 			<div class="santu-dash-vy-chart-head">
 				<div>
 					<div class="santu-dash-section-title santu-dash-sale-link">Total Sale</div>
-					<div class="santu-dash-vy-chart-amount santu-figures santu-dash-sale-link">₹ 0</div>
+					<div class="santu-dash-vy-chart-amount-row">
+						<div class="santu-dash-vy-chart-amount santu-figures santu-dash-sale-link">₹ 0</div>
+						<div class="santu-dash-vy-chart-pct is-same"></div>
+					</div>
 				</div>
 				<div class="santu-dash-vy-chart-dropdown">
 					<button type="button" class="santu-dash-vy-chart-badge">
@@ -226,8 +236,18 @@ function load_sale_chart($section, range, from_date, to_date) {
 		method: "santu_hardware.santu_hardware.api.get_sales_chart",
 		args: { range_key: range, from_date: from_date || null, to_date: to_date || null },
 		callback: (r) => {
-			const data = r.message || { total: 0, points: [], empty: true };
+			const data = r.message || { total: 0, points: [], empty: true, percent_change: 0 };
 			$section.find(".santu-dash-vy-chart-amount").text("₹ " + format_currency_plain(data.total));
+			const pct = Number(data.percent_change || 0);
+			const $pct = $section.find(".santu-dash-vy-chart-pct");
+			$pct.removeClass("is-up is-down is-same");
+			if (!pct) {
+				$pct.addClass("is-same").html("Same as last period");
+			} else if (pct > 0) {
+				$pct.addClass("is-up").html(`<b>↑ ${Math.abs(pct).toFixed(1)}%</b>`);
+			} else {
+				$pct.addClass("is-down").html(`<b>↓ ${Math.abs(pct).toFixed(1)}%</b>`);
+			}
 			$chart_el.empty();
 
 			if (!data.points || !data.points.length) {
@@ -235,14 +255,15 @@ function load_sale_chart($section, range, from_date, to_date) {
 				return;
 			}
 
+			const chart_h = Math.max(180, ($chart_el.height() || 220) - 8);
 			new frappe.Chart($chart_el[0], {
 				data: {
 					labels: data.points.map((p) => p.date),
 					datasets: [{ name: "Sales", values: data.points.map((p) => p.total) }],
 				},
 				type: "line",
-				height: 220,
-				colors: ["#5b8def"],
+				height: chart_h,
+				colors: ["#0075e8"],
 				axisOptions: { xIsSeries: true },
 				lineOptions: { regionFill: 1, hideDots: 0 },
 				tooltipOptions: {
@@ -282,67 +303,6 @@ function refresh_period_widgets(from_date, to_date, period) {
 	});
 }
 
-function render_fast_actions($root, data) {
-	const $section = $(`<div class="santu-dash-actions"></div>`).appendTo($root);
-
-	$section.append(
-		build_action_tile({ label: "Start New Sale", icon: "🧾", action: "sale" }, true)
-	);
-
-	const $row = $(`<div class="santu-dash-actions-row"></div>`).appendTo($section);
-	$row.append(build_action_tile({ label: "Receive Stock", icon: "📦", action: "receive" }));
-	$row.append(build_action_tile({ label: "Search Product", icon: "🔍", action: "search" }));
-	$row.append(
-		build_action_tile({
-			label: data.register_open ? "Close Counter" : "Open Counter",
-			icon: data.register_open ? "🔒" : "🔓",
-			action: data.register_open ? "close" : "open",
-		})
-	);
-}
-
-function build_action_tile(action, featured) {
-	return $(`
-		<div class="santu-dash-tile${featured ? " santu-dash-tile-featured" : ""}" role="button" tabindex="0">
-			<span class="santu-dash-tile-icon">${action.icon}</span>
-			<span class="santu-dash-tile-label">${action.label}</span>
-		</div>
-	`)
-		.on("click", () => run_dashboard_action(action.action))
-		.on("keydown", (e) => {
-			if (e.key === "Enter" || e.key === " ") {
-				e.preventDefault();
-				run_dashboard_action(action.action);
-			}
-		});
-}
-
-function run_dashboard_action(action) {
-	if (action === "sale" || action === "open") {
-		frappe.set_route("point-of-sale");
-		return;
-	}
-	if (action === "receive") {
-		frappe.set_route("santu-receive-stock");
-		return;
-	}
-	if (action === "search") {
-		frappe.set_route("product-search");
-		return;
-	}
-	if (action === "close") {
-		frappe.confirm(
-			"Close the counter for today? This opens the POS Closing Entry so you can count cash and submit.",
-			() => {
-				if (!frappe.model.can_create("POS Closing Entry")) {
-					frappe.msgprint("You do not have permission to close the counter.");
-					return;
-				}
-				frappe.set_route("pos-closing-entry", "new");
-			}
-		);
-	}
-}
 
 function render_widget_panel($panel, data) {
 	const catalog = data.widget_catalog || [];
@@ -398,7 +358,10 @@ function build_active_widget(w, selected) {
 	const $el = $(`
 		<div class="santu-dash-w-card" role="button" tabindex="0">
 			<button type="button" class="santu-dash-w-remove" title="Remove">×</button>
-			<div class="santu-dash-w-title">${frappe.utils.escape_html(w.title)}</div>
+			<div class="santu-dash-w-top">
+				<div class="santu-dash-w-title">${frappe.utils.escape_html(w.title)}</div>
+				${w.period ? `<div class="santu-dash-w-period">${frappe.utils.escape_html(w.period)}</div>` : ""}
+			</div>
 			${value_html}
 		</div>
 	`);
@@ -423,14 +386,9 @@ function open_widget_route(w) {
 		frappe.set_route("query-report", w.report_name);
 		return;
 	}
-	if (w.doctype) {
-		if (w.available === false) {
-			frappe.msgprint("Google Profile Manager is not configured in this site.");
-			return;
-		}
-		frappe.set_route("Form", w.doctype);
-		return;
-	}
+	// No `doctype` branch here any more: the Google Profile Manager card was
+	// the only catalog entry that carried one, and it existed purely to open
+	// a native Form. Every remaining widget targets one of our own screens.
 	if (w.route) frappe.set_route(w.route);
 }
 

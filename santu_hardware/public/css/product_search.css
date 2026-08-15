@@ -90,7 +90,7 @@
 .santu-result-subtitle {
 	font: var(--santu-text-body, 400 16px/1.5 inherit);
 	color: var(--santu-text-muted, #6b7280);
-	font-size: 14px;
+	font-size: 15px;
 }
 
 .santu-result-price {

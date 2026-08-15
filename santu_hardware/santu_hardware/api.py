@@ -1,6 +1,7 @@
 import base64
 import difflib
 import io
+import re
 
 import frappe
 from frappe import _
@@ -477,7 +478,7 @@ def get_dashboard_data():
 
 		widget_metrics = get_widget_metrics("This Month")
 		selected_widgets = get_user_widgets()
-		widget_catalog = build_widget_catalog(widget_metrics, low_stock_count)
+		widget_catalog = build_widget_catalog(widget_metrics, low_stock_count, "This Month")
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "Dashboard widget metrics failed")
 
@@ -622,8 +623,38 @@ def get_sales_chart(range_key: str = "This Month", from_date: str = None, to_dat
 			cursor = add_months(cursor, 1)
 
 	has_sales = any(p["total"] for p in points)
+	current_total = sum(p["total"] for p in points)
+	span = (end - start).days + 1
+	prev_end = add_days(start, -1)
+	prev_start = add_days(prev_end, -(span - 1))
+	prev_total = flt(
+		frappe.db.sql(
+			f"""
+			select sum(grand_total) from (
+				select grand_total from `tabPOS Invoice`
+				where docstatus = 1
+					and posting_date between %(start)s and %(end)s
+					and (consolidated_invoice is null or consolidated_invoice = '')
+					{company_clause}
+				union all
+				select grand_total from `tabSales Invoice`
+				where docstatus = 1
+					and posting_date between %(start)s and %(end)s
+					{company_clause}
+			) t
+			""",
+			{"start": prev_start, "end": prev_end, "company": company},
+		)[0][0]
+	)
+	percent_change = 0.0
+	if prev_total:
+		percent_change = ((current_total - prev_total) / abs(prev_total)) * 100.0
+	elif current_total:
+		percent_change = 100.0
 	return {
-		"total": sum(p["total"] for p in points),
+		"total": current_total,
+		"prev_total": prev_total,
+		"percent_change": percent_change,
 		"points": points if has_sales else [],
 		"from_date": str(start),
 		"to_date": str(end),
@@ -991,6 +1022,47 @@ def apply_billing_defaults(doc, method=None):
 		doc.due_date = max_due
 
 
+def title_case_a_name(name: str) -> str:
+	"""'manish kumar singh' / 'MANISH KUMAR SINGH' -> 'Manish Kumar Singh'.
+	First letter of every word capitalized, everything else lowercase —
+	direct request, 2026-08-14. Simple split-on-space title casing;
+	deliberately not using Python's str.title() since it also
+	uppercases the letter after an apostrophe (e.g. "O'Brien" ->
+	"O'Brien" is fine, but "D'souza's" -> "D'Souza'S" is not).
+	"""
+	if not name:
+		return name
+	words = name.split(" ")
+	return " ".join(w[:1].upper() + w[1:].lower() if w else w for w in words)
+
+
+def title_case_party_name(doc, method=None):
+	"""`doc_events` hook (Customer/Supplier `before_save`) — direct request
+	that every party name written anywhere in the system (this quick-sale
+	screen's quick-add, POS's customer capture, the standard Customer/
+	Supplier form, imports, everywhere) ends up "Manish Kumar Singh", not
+	"manish kumar singh" or "MANISH KUMAR SINGH"."""
+	field = "customer_name" if doc.doctype == "Customer" else "supplier_name"
+	value = doc.get(field)
+	if value:
+		doc.set(field, title_case_a_name(value))
+
+
+def title_case_address_fields(doc, method=None):
+	"""`doc_events` hook (Address `before_save`) — same request, extended to
+	address text (2026-08-14): "ishuapur / saran" typed lowercase on the
+	quick-sale screen's Add Party form should land as "Ishuapur / Saran",
+	regardless of how the cashier typed it in. Only the free-text line
+	fields are touched — `city` is a plain Data field too, but `state`/
+	`country` are Link fields tied to real master records (state names,
+	country names) and must keep their exact stored value or the link
+	breaks."""
+	for field in ("address_line1", "address_line2", "city"):
+		value = doc.get(field)
+		if value:
+			doc.set(field, title_case_a_name(value))
+
+
 def strip_gst_line_items(doc, method=None):
 	"""`doc_events` hook (POS Invoice / Sales Invoice `before_validate` +
 	`validate`) — 2026-07-30 direct request: no SGST/CGST/IGST lines
@@ -1096,6 +1168,147 @@ def get_or_create_customer_by_phone(customer_name: str, phone: str = None, villa
 	return customer.name
 
 
+# Bihar village + pincode lookup for the "Add Party" dialog's City/Village
+# field (2026-08-14 direct request). Sourced from India Post's official
+# All India Pincode Directory (data.gov.in), filtered to Bihar's 38
+# districts — 9,113 real villages/post offices, not invented data.
+_SANTU_BIHAR_VILLAGES_CACHE = None
+
+
+def _load_bihar_villages():
+	global _SANTU_BIHAR_VILLAGES_CACHE
+	if _SANTU_BIHAR_VILLAGES_CACHE is None:
+		import json
+
+		path = frappe.get_app_path("santu_hardware", "santu_hardware", "data", "bihar_villages.json")
+		with open(path, encoding="utf-8") as f:
+			_SANTU_BIHAR_VILLAGES_CACHE = json.load(f)
+	return _SANTU_BIHAR_VILLAGES_CACHE
+
+
+@frappe.whitelist()
+def search_bihar_villages(district: str, search: str = None):
+	"""Villages (with pincode) for one Bihar district, for the Add Party
+	dialog's City/Village autocomplete."""
+	data = _load_bihar_villages()
+	rows = data.get(district, [])
+	if search:
+		q = search.strip().lower()
+		rows = [r for r in rows if q in r["village"].lower()]
+	return rows[:300]
+
+
+@frappe.whitelist()
+def create_customer_full(party: str):
+	"""Full "Add Party" dialog (2026-08-14 direct request, pixel-matched to
+	a Vyapar screenshot) — beyond the quick name+phone capture above, this
+	covers GSTIN/GST category and a real Billing Address, exactly the
+	fields that screenshot's dialog collects. Address title-casing is
+	handled by the existing `title_case_address_fields` before_save hook,
+	not duplicated here.
+	"""
+	data = frappe.parse_json(party) if isinstance(party, str) else party
+	customer_name = (data.get("customer_name") or "").strip()
+	if not customer_name:
+		frappe.throw(_("Party Name is required."))
+
+	customer = frappe.new_doc("Customer")
+	customer.customer_name = customer_name
+	customer.customer_type = "Individual"
+	customer.mobile_no = data.get("phone")
+	customer.email_id = data.get("email")
+	if data.get("gstin"):
+		customer.gstin = data.get("gstin")
+	if data.get("gst_category"):
+		customer.gst_category = data.get("gst_category")
+	customer.customer_group = frappe.db.get_value("Customer Group", {}, "name") or "All Customer Groups"
+	customer.territory = frappe.db.get_value("Territory", {}, "name") or "All Territories"
+	if flt(data.get("credit_limit")) > 0:
+		company = frappe.defaults.get_user_default("Company")
+		if company:
+			customer.append("credit_limits", {"company": company, "credit_limit": flt(data.get("credit_limit"))})
+	customer.insert(ignore_permissions=True)
+
+	# Address doctype has no native "district" field — this app added the
+	# picker (default Bihar/Saran) purely to help the cashier find the
+	# right village faster; fold the choice into address_line2 rather than
+	# silently dropping it, unless the cashier already typed something there.
+	address_fields = ("address_line1", "address_line2", "city", "pincode", "country", "district")
+	if any(data.get(f) for f in address_fields):
+		# The City/Village picker shows "Village - PIN" (so the pincode is
+		# visible right in the option list); split that back apart here
+		# rather than on the client, where Frappe's Autocomplete control
+		# re-validates set_value() against its own option list and silently
+		# blanks anything that isn't an exact match.
+		city = (data.get("city") or "").strip()
+		pincode = data.get("pincode")
+		city_match = re.match(r"^(.*)\s-\s(\d{6})$", city)
+		if city_match:
+			city = city_match.group(1)
+			pincode = pincode or city_match.group(2)
+
+		address = frappe.new_doc("Address")
+		address.address_title = customer_name
+		address.address_type = "Billing"
+		address.address_line1 = data.get("address_line1") or customer_name
+		address.address_line2 = data.get("address_line2") or (
+			f"{data.get('district')} District" if data.get("district") else None
+		)
+		address.city = city
+		address.state = data.get("state")
+		address.pincode = pincode
+		address.country = data.get("country") or "India"
+		address.append("links", {"link_doctype": "Customer", "link_name": customer.name})
+		address.insert(ignore_permissions=True)
+		customer.customer_primary_address = address.name
+		customer.save(ignore_permissions=True)
+
+	if (data.get("shipping_address") or "").strip():
+		ship = frappe.new_doc("Address")
+		ship.address_title = customer_name
+		ship.address_type = "Shipping"
+		ship.address_line1 = data.get("shipping_address").strip()
+		ship.city = data.get("city") or (data.get("district") or "Saran")
+		ship.state = data.get("state")
+		ship.country = data.get("country") or "India"
+		ship.append("links", {"link_doctype": "Customer", "link_name": customer.name})
+		ship.insert(ignore_permissions=True)
+
+	return customer.name
+
+
+@frappe.whitelist()
+def search_transactions_topbar(query: str, limit: int = 10):
+	"""Top bar "Search Transactions" box — invoice number or party name,
+	across every transaction type a hardware shop actually issues."""
+	if not query or len(query) < 2:
+		return []
+
+	specs = [
+		("Sales Invoice", "customer"),
+		("POS Invoice", "customer"),
+		("Purchase Invoice", "supplier"),
+		("Sales Order", "customer"),
+		("Purchase Order", "supplier"),
+		("Quotation", "party_name"),
+		("Delivery Note", "customer"),
+	]
+	out = []
+	for doctype, party_field in specs:
+		rows = frappe.get_all(
+			doctype,
+			filters={"docstatus": ["!=", 2]},
+			or_filters={"name": ["like", f"%{query}%"], party_field: ["like", f"%{query}%"]},
+			fields=["name", party_field + " as party"],
+			order_by="modified desc",
+			limit_page_length=limit,
+		)
+		for r in rows:
+			out.append({"doctype": doctype, "name": r.name, "party": r.party})
+	out.sort(key=lambda r: r["name"], reverse=True)
+	return out[: int(limit)]
+
+
 @frappe.whitelist()
 def search_customers_by_name(query: str):
 	"""Live suggestions for the "Who's this sale for?" Name field
@@ -1110,10 +1323,20 @@ def search_customers_by_name(query: str):
 	return frappe.get_all(
 		"Customer",
 		filters={"customer_name": ["like", f"%{query}%"]},
-		fields=["name", "customer_name", "mobile_no", "santu_village"],
+		fields=["name", "customer_name", "mobile_no", "santu_village", "customer_details"],
 		order_by="modified desc",
 		limit_page_length=8,
 	)
+
+
+@frappe.whitelist()
+def update_customer_note(customer: str, note: str):
+	"""Set the identification note (Customer Details) used to tell apart
+	same-name customers in the Sale screen's search dropdown."""
+	if not customer or not frappe.db.exists("Customer", customer):
+		frappe.throw(_("Customer {0} not found").format(customer or ""))
+	frappe.db.set_value("Customer", customer, "customer_details", note or "")
+	return note or ""
 
 
 @frappe.whitelist()
@@ -1125,6 +1348,7 @@ def quick_create_item(
 	barcode: str = None,
 	gst_hsn_code: str = None,
 	price_list: str = None,
+	buying: int = 0,
 ):
 	"""Inline item creation from the POS billing screen (2026-07-31 direct
 	request) — "the cashier should never have to leave the billing screen
@@ -1179,11 +1403,12 @@ def quick_create_item(
 		item.append("barcodes", {"barcode": barcode})
 	item.insert(ignore_permissions=True)
 
-	price_list = price_list or "Standard Selling"
+	price_list = price_list or ("Standard Buying" if buying else "Standard Selling")
 	item_price = frappe.new_doc("Item Price")
 	item_price.item_code = item.item_code
 	item_price.price_list = price_list
-	item_price.selling = 1
+	item_price.buying = 1 if buying else 0
+	item_price.selling = 0 if buying else 1
 	item_price.price_list_rate = flt(selling_price)
 	item_price.insert(ignore_permissions=True)
 
@@ -1312,6 +1537,47 @@ def get_customer_dues(village: str = None, search: str = None):
 	return rows
 
 
+def _format_qty(qty) -> str:
+	qty = flt(qty)
+	return str(int(qty)) if qty == int(qty) else str(qty)
+
+
+def _summarize_items(item_rows, limit: int = 2) -> str:
+	"""Short "what did they buy" string for a transaction-list row — e.g.
+	"Fevicol SR998 x2, Anchor Roma x1 +3 more" — so a shop owner can see
+	what goods actually moved without opening every single bill (2026-08-15
+	direct request: "kab kab saman le gaya kitna baaki hai sab dikhna
+	chahiye" — the party/dues transaction lists only showed bill totals,
+	not what was in them)."""
+	if not item_rows:
+		return ""
+	parts = [f"{r.item_name} x{_format_qty(r.qty)}" for r in item_rows[:limit]]
+	summary = ", ".join(parts)
+	if len(item_rows) > limit:
+		summary += f" +{len(item_rows) - limit} more"
+	return summary
+
+
+def _attach_item_summaries(rows, doctype: str, item_doctype: str):
+	"""Batch-fetch and attach an `items_summary` string to each row in
+	`rows` (each already carrying its own `name`) — one query per doctype
+	instead of one per row."""
+	names = [r["name"] for r in rows]
+	if not names:
+		return
+	item_rows = frappe.get_all(
+		item_doctype,
+		filters={"parent": ["in", names]},
+		fields=["parent", "item_name", "qty"],
+		order_by="idx asc",
+	)
+	by_parent = {}
+	for it in item_rows:
+		by_parent.setdefault(it.parent, []).append(it)
+	for r in rows:
+		r["items_summary"] = _summarize_items(by_parent.get(r["name"], []))
+
+
 @frappe.whitelist()
 def get_customer_all_bills(customer: str):
 	"""Every bill for one customer — Sales Invoice (accounting-final) and
@@ -1326,6 +1592,7 @@ def get_customer_all_bills(customer: str):
 	)
 	for r in si_rows:
 		r["doctype"] = "Sales Invoice"
+	_attach_item_summaries(si_rows, "Sales Invoice", "Sales Invoice Item")
 
 	pos_rows = frappe.get_all(
 		"POS Invoice",
@@ -1338,6 +1605,7 @@ def get_customer_all_bills(customer: str):
 	)
 	for r in pos_rows:
 		r["doctype"] = "POS Invoice"
+	_attach_item_summaries(pos_rows, "POS Invoice", "POS Invoice Item")
 
 	rows = list(si_rows) + list(pos_rows)
 	rows.sort(key=lambda r: r["posting_date"], reverse=True)
@@ -1345,7 +1613,7 @@ def get_customer_all_bills(customer: str):
 
 
 @frappe.whitelist()
-def get_parties_list(search: str = None):
+def get_parties_list(search: str = None, party_type: str = None, only_with_balance: int = 0):
 	"""Combined Customer + Supplier list for the Vyapar-style "Parties"
 	screen (2026-08-06 direct request, matching Vyapar's own split-view
 	Parties page: one list of every party — customers and suppliers both
@@ -1353,12 +1621,25 @@ def get_parties_list(search: str = None):
 	is selected). ERPNext keeps Customer and Supplier as separate
 	doctypes; this merges them into one list only for this screen, same
 	balance math get_customer_dues/get_dashboard_data already use.
+
+	party_type/only_with_balance let the Dashboard's "Total Payable" card
+	drill down to just the suppliers actually owed money (2026-08-14
+	request: "total payable ke time kewaal payable wala hi dikhe" — only
+	payable parties should show, not the full mixed directory).
 	"""
 	customer_filters = {"customer_name": ["like", f"%{search}%"]} if search else {}
 	supplier_filters = {"supplier_name": ["like", f"%{search}%"]} if search else {}
 
-	customers = frappe.get_all("Customer", filters=customer_filters, fields=["name", "customer_name"])
-	suppliers = frappe.get_all("Supplier", filters=supplier_filters, fields=["name", "supplier_name"])
+	customers = (
+		frappe.get_all("Customer", filters=customer_filters, fields=["name", "customer_name"])
+		if party_type != "Supplier"
+		else []
+	)
+	suppliers = (
+		frappe.get_all("Supplier", filters=supplier_filters, fields=["name", "supplier_name"])
+		if party_type != "Customer"
+		else []
+	)
 
 	rows = []
 	for c in customers:
@@ -1391,7 +1672,14 @@ def get_parties_list(search: str = None):
 			{"party_type": "Supplier", "party": s.name, "party_name": s.supplier_name, "amount": balance}
 		)
 
-	rows.sort(key=lambda r: (r["party_name"] or "").lower())
+	if only_with_balance:
+		rows = [r for r in rows if (r["amount"] or 0) > 0]
+
+	# Parties with money owed either way surface first (largest balance
+	# first) — same as the Total Payable dashboard card, which lands here:
+	# the point of clicking through is "who do I owe/who owes me the
+	# most", not an alphabetical directory.
+	rows.sort(key=lambda r: (-(r["amount"] or 0), (r["party_name"] or "").lower()))
 	return rows
 
 
@@ -1529,6 +1817,8 @@ def get_item_detail(item_code: str):
 	)
 
 	available_qty = None
+	actual_qty = None
+	reserved_qty = None
 	reorder_level = None
 	valuation_rate = None
 	stock_status = "na"
@@ -1545,7 +1835,8 @@ def get_item_detail(item_code: str):
 		valuation_rate = flt(
 			frappe.db.get_value("Bin", {"item_code": item_code, "warehouse": warehouse}, "valuation_rate")
 		)
-		available_qty = actual_qty - flt(get_pos_reserved_qty(item_code, warehouse))
+		reserved_qty = flt(get_pos_reserved_qty(item_code, warehouse))
+		available_qty = actual_qty - reserved_qty
 		if available_qty <= 0:
 			stock_status = "out"
 		elif available_qty <= reorder_level:
@@ -1569,6 +1860,8 @@ def get_item_detail(item_code: str):
 		"purchase_rate": purchase_rate,
 		"valuation_rate": valuation_rate,
 		"available_qty": available_qty,
+		"actual_qty": actual_qty,
+		"reserved_qty": reserved_qty,
 		"reorder_level": reorder_level,
 		"stock_status": stock_status,
 		"rack_number": item.get("custom_rack_number"),
@@ -1576,7 +1869,7 @@ def get_item_detail(item_code: str):
 		"bin_location": item.get("custom_bin_location"),
 		"barcodes": barcodes,
 		"warehouse": warehouse,
-		"stock_value": flt(available_qty) * flt(valuation_rate or purchase_rate) if item.is_stock_item else 0,
+		"stock_value": flt(actual_qty) * flt(valuation_rate or purchase_rate) if item.is_stock_item else 0,
 	}
 
 
@@ -1695,8 +1988,18 @@ def get_item_transactions(item_code: str, limit: int = 100):
 
 @frappe.whitelist()
 def get_item_groups_list(search: str = None):
-	"""Item groups for the Category tab."""
-	filters = {"is_group": 0}
+	"""Item groups for the Category tab. The site's default item group (the
+	generic bucket new items land in until someone picks a real category) is
+	surfaced separately as "Items not in any Category", matching the
+	Vyapar reference — everything else the shop actually created is a real
+	category row."""
+	default_group = (
+		frappe.db.get_single_value("Stock Settings", "item_group")
+		or ("Products" if frappe.db.exists("Item Group", "Products") else None)
+		or "All Item Groups"
+	)
+
+	filters = {"is_group": 0, "name": ["!=", default_group]}
 	or_filters = None
 	if search:
 		or_filters = {"name": ["like", f"%{search}%"]}
@@ -1710,22 +2013,135 @@ def get_item_groups_list(search: str = None):
 	)
 	for g in groups:
 		g["item_count"] = frappe.db.count("Item", {"item_group": g.name, "disabled": 0})
-	return groups
+
+	uncategorized_count = frappe.db.count("Item", {"item_group": default_group, "disabled": 0})
+
+	return {
+		"uncategorized": {"name": default_group, "item_count": uncategorized_count},
+		"categories": groups,
+	}
+
+
+@frappe.whitelist()
+def get_category_items(item_group: str, search: str = None):
+	"""Items inside one category, for the Category tab's right-hand panel."""
+	filters = {"item_group": item_group, "disabled": 0}
+	or_filters = None
+	if search:
+		or_filters = {"item_name": ["like", f"%{search}%"], "item_code": ["like", f"%{search}%"]}
+	items = frappe.get_all(
+		"Item",
+		filters=filters,
+		or_filters=or_filters,
+		fields=["item_code", "item_name", "is_stock_item", "stock_uom"],
+		order_by="item_name asc",
+		limit_page_length=0,
+	)
+	warehouse = frappe.db.get_value("Warehouse", {"is_group": 0, "disabled": 0}, "name")
+	for it in items:
+		qty = 0
+		value = 0
+		if it.is_stock_item and warehouse:
+			bin_row = frappe.db.get_value(
+				"Bin", {"item_code": it.item_code, "warehouse": warehouse}, ["actual_qty", "valuation_rate"], as_dict=True
+			)
+			if bin_row:
+				qty = flt(bin_row.actual_qty)
+				value = flt(bin_row.actual_qty) * flt(bin_row.valuation_rate)
+		it["quantity"] = qty
+		it["stock_value"] = value
+	return items
+
+
+# Curated shortlist for the Items > Units tab (2026-08-14 direct request:
+# "units me bas yahi daal" — show only this list, not ERPNext's full
+# 200+ entry scientific UOM master). Each shortname is the real UOM
+# document's name (what item forms actually pick); the full name is
+# display-only, since standard UOM has no separate "full name" field.
+SANTU_UOM_WHITELIST = [
+	("Bags", "Bag"),
+	("Bottles", "Btl"),
+	("Box", "Box"),
+	("Bundles", "Bdl"),
+	("Cans", "Can"),
+	("Cartons", "Ctn"),
+	("Cubic Meter", "Mtq"),
+	("Day", "Day"),
+	("Dozens", "Dzn"),
+	("Grammes", "Gm"),
+	("Hour", "Hur"),
+	("Kilograms", "Kg"),
+	("Kilometer", "Kmt"),
+	("Litre", "Ltr"),
+	("Meters", "Mtr"),
+	("Mililitre", "Ml"),
+	("Numbers", "Nos"),
+	("Packs", "Pac"),
+	("Pairs", "Prs"),
+	("Pieces", "Pcs"),
+	("Quintal", "Qtl"),
+	("Rolls", "Rol"),
+	("Service", "Ser"),
+	("Set", "Set"),
+	("Square Feet", "Sqf"),
+	("Square Meters", "Sqm"),
+	("Tablets", "Tbs"),
+	("Ton / Metric Ton", "Ton"),
+	("Unit", "Unit"),
+]
 
 
 @frappe.whitelist()
 def get_uom_list(search: str = None):
-	"""UOM list for the Units tab."""
-	or_filters = None
-	if search:
-		or_filters = {"uom_name": ["like", f"%{search}%"]}
-	return frappe.get_all(
-		"UOM",
-		or_filters=or_filters,
-		fields=["name", "uom_name", "must_be_whole_number"],
-		order_by="name asc",
+	"""Curated Units tab list — see SANTU_UOM_WHITELIST."""
+	q = (search or "").strip().lower()
+	rows = []
+	for full_name, shortname in SANTU_UOM_WHITELIST:
+		if q and q not in full_name.lower() and q not in shortname.lower():
+			continue
+		if not frappe.db.exists("UOM", shortname):
+			frappe.get_doc({
+				"doctype": "UOM",
+				"uom_name": shortname,
+				"must_be_whole_number": 0,
+			}).insert(ignore_permissions=True)
+		rows.append({"name": shortname, "uom_name": full_name, "shortname": shortname})
+	return rows
+
+
+@frappe.whitelist()
+def get_uom_conversions(uom: str):
+	"""Conversion rows for the selected unit's sub-panel (UOM Conversion Factor)."""
+	rows = frappe.get_all(
+		"UOM Conversion Factor",
+		filters={"from_uom": uom},
+		fields=["name", "from_uom", "to_uom", "value"],
+		order_by="to_uom asc",
 		limit_page_length=0,
 	)
+	rows += frappe.get_all(
+		"UOM Conversion Factor",
+		filters={"to_uom": uom},
+		fields=["name", "from_uom", "to_uom", "value"],
+		order_by="from_uom asc",
+		limit_page_length=0,
+	)
+	return rows
+
+
+@frappe.whitelist()
+def add_uom_conversion(from_uom: str, to_uom: str, value: float):
+	"""Add a conversion row from the Units tab's "Add Conversion" dialog."""
+	if not (from_uom and to_uom and value):
+		frappe.throw(_("From Unit, To Unit and Value are all required."))
+	doc = frappe.get_doc({
+		"doctype": "UOM Conversion Factor",
+		"from_uom": from_uom,
+		"to_uom": to_uom,
+		"value": flt(value),
+	})
+	doc.insert(ignore_permissions=True)
+	return doc.name
 
 
 def _sale_resolve_date_range(period: str = "This Month", from_date=None, to_date=None):
@@ -1866,19 +2282,13 @@ def _sale_fetch_si_rows(start, end, company, is_return=None, drafts_only=False, 
 	return out
 
 
-@frappe.whitelist()
-def get_sale_dashboard_data(
-	period: str = "This Month",
-	from_date: str = None,
-	to_date: str = None,
-	company: str = None,
-	view: str = "invoices",
-	search: str = None,
-):
-	"""Sale dashboard summary + transactions for the Santu Sale page."""
-	start, end = _sale_resolve_date_range(period, from_date, to_date)
-	company = _sale_company_filter(company)
-
+def _sale_view_transactions(view, start, end, company, search=None):
+	"""Fetch just the transaction rows for one view + date range, with no
+	summary/last-month math — the piece shared by the current period and
+	the "vs last month" comparison, kept separate so the comparison can't
+	recurse into computing its own "last month" (get_sale_dashboard_data
+	itself does that, and calling it again from inside would recurse
+	forever)."""
 	transactions = []
 	if view in ("invoices", "dashboard", ""):
 		transactions = _sale_fetch_pos_rows(start, end, company, is_return=0, search=search)
@@ -2009,28 +2419,112 @@ def get_sale_dashboard_data(
 		transactions = _sale_fetch_pos_rows(start, end, company, is_return=1, search=search)
 		transactions += _sale_fetch_si_rows(start, end, company, is_return=1, search=search)
 
+	return transactions
+
+
+@frappe.whitelist()
+def get_sale_dashboard_data(
+	period: str = "This Month",
+	from_date: str = None,
+	to_date: str = None,
+	company: str = None,
+	view: str = "invoices",
+	search: str = None,
+):
+	"""Sale dashboard summary + transactions for the Santu Sale page."""
+	start, end = _sale_resolve_date_range(period, from_date, to_date)
+	company = _sale_company_filter(company)
+
+	transactions = _sale_view_transactions(view, start, end, company, search=search)
 	transactions.sort(key=lambda r: (r.get("posting_date") or "", r.get("invoice_no") or ""), reverse=True)
 
-	# Summary — POS + non-POS Sales Invoice only (no double-count)
-	sale_rows = _sale_fetch_pos_rows(start, end, company, is_return=0)
-	sale_rows += _sale_fetch_si_rows(start, end, company, is_return=0)
-	total_sales = sum(flt(r["amount"]) for r in sale_rows)
-	received = sum(flt(r["amount"]) - flt(r["balance"]) for r in sale_rows)
-	balance = sum(flt(r["balance"]) for r in sale_rows)
-
-	# vs last month
+	# Summary — view-specific title/total/breakdown, matching what each
+	# view actually represents (e.g. Quotations show Converted/Open, not
+	# Received/Balance, which only makes sense for real invoices).
 	from frappe.utils import add_months, get_first_day, get_last_day, getdate, today
 
+	CONVERTED_STATUS = {
+		"quotation": {"Ordered"},
+		"sales_order": {"Completed", "Closed"},
+	}
+	SUMMARY_TITLE = {
+		"quotation": "Total Quotations",
+		"sales_order": "Total Sales Orders",
+		"delivery_challan": "Total Delivery Challans",
+		"payment_in": "Total Payment Received",
+		"sales_return": "Total Sales Return",
+	}
+
+	if view in CONVERTED_STATUS:
+		total_sales = sum(flt(r["amount"]) for r in transactions)
+		converted = sum(flt(r["amount"]) for r in transactions if r.get("status") in CONVERTED_STATUS[view])
+		open_amt = total_sales - converted
+		summary = {
+			"title": SUMMARY_TITLE.get(view, "Total Sales Amount"),
+			"total_sales": total_sales,
+			"label1": "Converted",
+			"value1": converted,
+			"label2": "Open",
+			"value2": open_amt,
+			"value2_danger": False,
+		}
+	elif view == "payment_in":
+		total_sales = sum(flt(r["amount"]) for r in transactions)
+		summary = {
+			"title": SUMMARY_TITLE.get(view, "Total Sales Amount"),
+			"total_sales": total_sales,
+			"label1": None,
+			"value1": None,
+			"label2": None,
+			"value2": None,
+			"value2_danger": False,
+		}
+	elif view == "delivery_challan":
+		total_sales = sum(flt(r["amount"]) for r in transactions)
+		summary = {
+			"title": SUMMARY_TITLE.get(view, "Total Sales Amount"),
+			"total_sales": total_sales,
+			"label1": "Challans",
+			"value1": len(transactions),
+			"label2": None,
+			"value2": None,
+			"value2_danger": False,
+		}
+	else:
+		# invoices / proforma / sales_return / default: real sales, so
+		# Received/Balance from POS + non-POS Sales Invoice (no double-count).
+		sale_rows = _sale_fetch_pos_rows(start, end, company, is_return=(1 if view == "sales_return" else 0))
+		sale_rows += _sale_fetch_si_rows(start, end, company, is_return=(1 if view == "sales_return" else 0))
+		total_sales = sum(flt(r["amount"]) for r in sale_rows)
+		received = sum(flt(r["amount"]) - flt(r["balance"]) for r in sale_rows)
+		balance = sum(flt(r["balance"]) for r in sale_rows)
+		summary = {
+			"title": SUMMARY_TITLE.get(view, "Total Sales Amount"),
+			"total_sales": total_sales,
+			"label1": "Received",
+			"value1": received,
+			"label2": "Balance",
+			"value2": balance,
+			"value2_danger": balance > 0,
+		}
+
+	# vs last month (generic: same view logic, previous calendar month)
 	today_date = getdate(today())
 	last_month_ref = add_months(today_date, -1)
 	lm_start, lm_end = get_first_day(last_month_ref), get_last_day(last_month_ref)
-	lm_rows = _sale_fetch_pos_rows(lm_start, lm_end, company, is_return=0)
-	lm_rows += _sale_fetch_si_rows(lm_start, lm_end, company, is_return=0)
-	last_month_total = sum(flt(r["amount"]) for r in lm_rows)
+	if view in CONVERTED_STATUS or view in ("payment_in", "delivery_challan"):
+		lm_transactions = _sale_view_transactions(view, lm_start, lm_end, company)
+		last_month_total = sum(flt(r["amount"]) for r in lm_transactions)
+	else:
+		lm_rows = _sale_fetch_pos_rows(lm_start, lm_end, company, is_return=(1 if view == "sales_return" else 0))
+		lm_rows += _sale_fetch_si_rows(lm_start, lm_end, company, is_return=(1 if view == "sales_return" else 0))
+		last_month_total = sum(flt(r["amount"]) for r in lm_rows)
 	if last_month_total:
 		pct_vs_last_month = round((total_sales - last_month_total) / last_month_total * 100, 1)
 	else:
 		pct_vs_last_month = 100.0 if total_sales else 0.0
+
+	summary["pct_vs_last_month"] = pct_vs_last_month
 
 	companies = frappe.get_all("Company", fields=["name"], order_by="name asc")
 
@@ -2040,12 +2534,7 @@ def get_sale_dashboard_data(
 		"to_date": str(end),
 		"company": company,
 		"view": view,
-		"summary": {
-			"total_sales": total_sales,
-			"received": received,
-			"balance": balance,
-			"pct_vs_last_month": pct_vs_last_month,
-		},
+		"summary": summary,
 		"transactions": transactions,
 		"companies": [c.name for c in companies],
 	}
@@ -2657,10 +3146,16 @@ def get_reports_init():
 	from frappe.utils import get_first_day, today
 
 	today_date = today()
+	fiscal_year = frappe.db.get_value(
+		"Fiscal Year",
+		{"year_start_date": ("<=", today_date), "year_end_date": (">=", today_date)},
+		"name",
+	)
 	return {
 		"company": company,
 		"from_date": str(get_first_day(today_date)),
 		"to_date": str(today_date),
+		"fiscal_year": fiscal_year,
 		"companies": [c.name for c in frappe.get_all("Company", fields=["name"], order_by="name asc")],
 	}
 
@@ -2725,12 +3220,29 @@ def get_sale_invoice_init():
 		fields=["name", "type"],
 		order_by="name asc",
 	)
+	# Put modes with a real Cash/Bank Account configured for this company
+	# first, same fix already applied to the Purchase Invoice screen — a
+	# mode can be enabled without ever being wired up, and the default
+	# selection should be one that actually works.
+	configured = set(
+		frappe.get_all("Mode of Payment Account", filters={"company": company}, pluck="parent")
+	)
+	payment_modes.sort(key=lambda m: m.name not in configured)
+	naming_series = frappe.get_meta("Sales Invoice").get_field("naming_series")
+	series_options = (naming_series.options or "").split("\n") if naming_series else []
+	place_of_supply_field = frappe.db.get_value(
+		"Custom Field", {"dt": "Sales Invoice", "fieldname": "place_of_supply"}, "options"
+	)
+	place_of_supply_options = [o for o in (place_of_supply_field or "").split("\n") if o]
 	return {
 		"company": company,
 		"warehouse": warehouse,
 		"selling_price_list": price_list,
 		"posting_date": frappe.utils.today(),
 		"payment_modes": payment_modes,
+		"naming_series_options": series_options,
+		"naming_series_default": naming_series.default if naming_series else None,
+		"place_of_supply_options": place_of_supply_options,
 	}
 
 
@@ -2749,12 +3261,39 @@ def get_customer_details_for_sale(customer: str):
 		)
 		if addr:
 			address_line = ", ".join(filter(None, [addr.address_line1, addr.city, addr.state, addr.pincode]))
+
+	company = frappe.defaults.get_user_default("Company")
+	outstanding = flt(
+		frappe.db.sql(
+			"""
+			select sum(outstanding_amount) from (
+				select outstanding_amount from `tabSales Invoice` where customer = %(customer)s and docstatus = 1
+				union all
+				select outstanding_amount from `tabPOS Invoice`
+				where customer = %(customer)s and docstatus = 1
+					and (consolidated_invoice is null or consolidated_invoice = '')
+			) t
+			""",
+			{"customer": customer},
+		)[0][0]
+	)
+
+	credit_limit = 0
+	if cust.credit_limits:
+		row = next((r for r in cust.credit_limits if r.company == company), None)
+		if not row and len(cust.credit_limits) == 1 and not cust.credit_limits[0].company:
+			row = cust.credit_limits[0]
+		if row:
+			credit_limit = flt(row.credit_limit)
+
 	return {
 		"name": cust.name,
 		"customer_name": cust.customer_name,
 		"mobile_no": cust.mobile_no,
 		"village": cust.get("santu_village"),
 		"address": address_line,
+		"outstanding_amount": outstanding,
+		"credit_limit": credit_limit,
 	}
 
 
@@ -2768,6 +3307,7 @@ def get_sale_item_row(customer: str, item_code: str, warehouse: str = None, qty:
 		warehouse = frappe.db.get_value(
 			"Warehouse", {"is_group": 0, "disabled": 0, "company": company}, "name"
 		)
+	price_list = frappe.db.get_single_value("Selling Settings", "selling_price_list") or "Standard Selling"
 	args = frappe._dict(
 		{
 			"doctype": "Sales Invoice",
@@ -2777,6 +3317,9 @@ def get_sale_item_row(customer: str, item_code: str, warehouse: str = None, qty:
 			"qty": flt(qty) or 1,
 			"company": company,
 			"conversion_rate": 1,
+			"price_list": price_list,
+			"selling_price_list": price_list,
+			"plc_conversion_rate": 1,
 		}
 	)
 	row = get_item_details(args)
@@ -2789,7 +3332,69 @@ def get_sale_item_row(customer: str, item_code: str, warehouse: str = None, qty:
 		)
 		available_qty = actual_qty - flt(get_pos_reserved_qty(item_code, warehouse))
 	row["available_qty"] = available_qty
+
+	# Display-only effective tax rate, resolved from the item's own real
+	# GST/Item Tax Template — not a value the quick-sale UI can override.
+	# Summing every rate in the map is correct either way GST is split for
+	# this item (CGST 9 + SGST 9, or IGST 18 alone both sum to 18).
+	try:
+		tax_map = frappe.parse_json(row.get("item_tax_rate") or "{}")
+		row["tax_rate"] = sum(flt(v) for v in tax_map.values())
+	except Exception:
+		row["tax_rate"] = 0
 	return row
+
+
+@frappe.whitelist()
+def get_recent_sale_items(limit: int = 12):
+	"""Most recently billed items (across Sales + POS Invoice), for the
+	quick-sale screen's "Recent Items" panel shown when no search is
+	active — distinct items, most recent first."""
+	rows = frappe.db.sql(
+		"""
+		select item_code, max(t.created) as last_sold from (
+			select sii.item_code as item_code, si.creation as created
+			from `tabSales Invoice Item` sii
+			inner join `tabSales Invoice` si on si.name = sii.parent
+			where si.docstatus = 1
+			union all
+			select pii.item_code as item_code, pi.creation as created
+			from `tabPOS Invoice Item` pii
+			inner join `tabPOS Invoice` pi on pi.name = pii.parent
+			where pi.docstatus = 1
+		) t
+		group by item_code
+		order by last_sold desc
+		limit %(limit)s
+		""",
+		{"limit": cint(limit)},
+		as_dict=True,
+	)
+	if not rows:
+		return []
+	item_codes = [r.item_code for r in rows]
+	items = {
+		i.name: i
+		for i in frappe.get_all(
+			"Item",
+			filters={"item_code": ["in", item_codes], "disabled": 0},
+			fields=["name", "item_name", "stock_uom", "brand"],
+		)
+	}
+	out = []
+	for r in rows:
+		item = items.get(r.item_code)
+		if not item:
+			continue
+		price = frappe.db.get_value("Item Price", {"item_code": r.item_code, "selling": 1}, "price_list_rate")
+		out.append({
+			"item_code": r.item_code,
+			"item_name": item.item_name,
+			"stock_uom": item.stock_uom,
+			"brand": item.brand,
+			"price": price,
+		})
+	return out
 
 
 @frappe.whitelist()
@@ -2812,7 +3417,19 @@ def save_sale_invoice(invoice_json: str, submit: int = 0):
 		"Warehouse", {"is_group": 0, "disabled": 0, "company": company}, "name"
 	)
 
+	payment_mode = (data.get("payment_mode") or "credit").lower()
+
 	doc = frappe.new_doc("Sales Invoice")
+	# A default POS Profile auto-attaches itself the moment is_pos=1 and
+	# set_missing_values() runs (see set_pos_fields in ERPNext core) — and
+	# once attached, update_multi_mode_option() *replaces* whatever this
+	# screen appended to `payments` with the POS Profile's OWN configured
+	# payment methods, throwing "Missing Account" for any of THOSE that
+	# aren't set up, regardless of which mode_of_payment was actually
+	# picked here (confirmed live 2026-08-15: failed on "Bank Draft" even
+	# though "Cash" was selected). This screen builds its own payments
+	# from scratch every time, so no POS Profile should ever be involved.
+	doc.flags.ignore_pos_profile = True
 	doc.customer = customer
 	doc.company = company
 	doc.posting_date = data.get("posting_date") or frappe.utils.today()
@@ -2822,6 +3439,15 @@ def save_sale_invoice(invoice_json: str, submit: int = 0):
 	)
 	doc.update_stock = 1
 	doc.set_warehouse = warehouse
+	if data.get("naming_series"):
+		doc.naming_series = data.get("naming_series")
+	if data.get("place_of_supply"):
+		doc.place_of_supply = data.get("place_of_supply")
+	if data.get("terms"):
+		doc.tc_name = None
+		doc.terms = data.get("terms")
+	if data.get("description"):
+		doc.remarks = data.get("description")
 
 	for row in items:
 		qty = flt(row.get("qty"))
@@ -2842,14 +3468,76 @@ def save_sale_invoice(invoice_json: str, submit: int = 0):
 		}
 		doc.append("items", item_row)
 
+	# Invoice-level ("whole bill") discount, on top of any per-item discount
+	# already applied above — ERPNext's own apply_discount_on/discount_amount
+	# fields, not a custom calculation.
+	invoice_discount = flt(data.get("additional_discount_amount"))
+	if invoice_discount:
+		doc.apply_discount_on = "Grand Total"
+		doc.discount_amount = invoice_discount
+
 	doc.run_method("set_missing_values")
 	doc.run_method("calculate_taxes_and_totals")
 
-	if payments:
+	# Cash sale: mark as POS so the payment is recorded against the chosen
+	# Mode of Payment's real ledger account on submit (standard ERPNext
+	# Sales Invoice + Payments flow) — outstanding_amount becomes 0.
+	# Credit sale: leave as a normal invoice, nothing paid yet, due_date
+	# stands — this *is* "the customer owes the amount", no separate flag
+	# needed since that's just what an unpaid Sales Invoice already means.
+	if payment_mode == "cash":
+		doc.is_pos = 1
+
+		def _payment_account(mode_of_payment):
+			# Same fallback already proven for Purchase Invoice's
+			# cash_bank_account: a Mode of Payment can be enabled without
+			# ever having its account configured for this company — fall
+			# back to the company's own default cash account instead of
+			# leaving `account` blank (which breaks GL posting on submit).
+			account = frappe.db.get_value(
+				"Mode of Payment Account", {"parent": mode_of_payment, "company": company}, "default_account"
+			) or frappe.db.get_value("Company", company, "default_cash_account")
+			if not account:
+				frappe.throw(
+					_("{0} has no Cash/Bank Account configured for {1}. Set one on the Mode of Payment, or choose a different one.").format(
+						mode_of_payment, company
+					)
+				)
+			return account
+
+		added_payment = False
+		for p in payments:
+			# amount omitted/null from the quick-sale UI means "the full
+			# grand total, whatever that resolves to server-side" — the
+			# UI doesn't try to duplicate ERPNext's own tax/discount math
+			# just to pre-fill this number.
+			amt = flt(p.get("amount")) if p.get("amount") not in (None, "") else doc.grand_total
+			if amt > 0:
+				doc.append("payments", {
+					"mode_of_payment": p.get("mode_of_payment"),
+					"amount": amt,
+					"account": _payment_account(p.get("mode_of_payment")),
+				})
+				added_payment = True
+		if not added_payment and doc.grand_total:
+			default_mode = (payments[0].get("mode_of_payment") if payments else None) or frappe.db.get_value(
+				"Mode of Payment", {"enabled": 1}, "name"
+			)
+			if default_mode:
+				doc.append("payments", {
+					"mode_of_payment": default_mode,
+					"amount": doc.grand_total,
+					"account": _payment_account(default_mode),
+				})
+	elif payments:
 		for p in payments:
 			amt = flt(p.get("amount"))
 			if amt > 0:
 				doc.append("payments", {"mode_of_payment": p.get("mode_of_payment"), "amount": amt})
+
+	would_be_outstanding = flt(doc.grand_total) - sum(flt(p.amount) for p in doc.payments)
+	if would_be_outstanding > 0:
+		_validate_credit_customer(customer, would_be_outstanding)
 
 	doc.insert()
 	if cint(submit):
@@ -2861,6 +3549,1721 @@ def save_sale_invoice(invoice_json: str, submit: int = 0):
 		"grand_total": doc.grand_total,
 		"outstanding_amount": doc.outstanding_amount,
 	}
+
+
+# ---------------------------------------------------------------------------
+# Quick Purchase Invoice screen (2026-08-15 direct request: reuse the exact
+# same UI/UX as the quick Sale Invoice screen for Purchase Bills and for
+# Proforma Invoice, instead of falling back to ERPNext's native New
+# Purchase/Sales Invoice form). Mirrors the Sale Invoice API functions above
+# 1:1 — Customer -> Supplier, selling price list -> buying price list.
+# ---------------------------------------------------------------------------
+
+
+@frappe.whitelist()
+def get_purchase_invoice_init():
+	"""Defaults for the quick Purchase Invoice screen."""
+	company = frappe.defaults.get_user_default("Company")
+	warehouse = frappe.db.get_value(
+		"Warehouse", {"is_group": 0, "disabled": 0, "company": company}, "name"
+	)
+	price_list = frappe.db.get_single_value("Buying Settings", "buying_price_list") or "Standard Buying"
+	payment_modes = frappe.get_all(
+		"Mode of Payment",
+		filters={"enabled": 1},
+		fields=["name", "type"],
+		order_by="name asc",
+	)
+	# Cash-mode purchases need a real Cash/Bank Account configured for this
+	# company on the chosen Mode of Payment — put configured ones first so
+	# the screen's default selection is actually usable, instead of
+	# whichever mode happens to sort first alphabetically.
+	configured = set(
+		frappe.get_all(
+			"Mode of Payment Account", filters={"company": company}, pluck="parent"
+		)
+	)
+	payment_modes.sort(key=lambda m: m.name not in configured)
+	naming_series = frappe.get_meta("Purchase Invoice").get_field("naming_series")
+	series_options = (naming_series.options or "").split("\n") if naming_series else []
+	place_of_supply_field = frappe.db.get_value(
+		"Custom Field", {"dt": "Purchase Invoice", "fieldname": "place_of_supply"}, "options"
+	)
+	place_of_supply_options = [o for o in (place_of_supply_field or "").split("\n") if o]
+	return {
+		"company": company,
+		"warehouse": warehouse,
+		"buying_price_list": price_list,
+		"posting_date": frappe.utils.today(),
+		"payment_modes": payment_modes,
+		"naming_series_options": series_options,
+		"naming_series_default": naming_series.default if naming_series else None,
+		"place_of_supply_options": place_of_supply_options,
+	}
+
+
+@frappe.whitelist()
+def search_suppliers_by_name(query: str):
+	"""Live suggestions for the "Who's this purchase from?" Name field —
+	mirrors search_customers_by_name for Supplier."""
+	if not query or len(query) < 2:
+		return []
+	return frappe.get_all(
+		"Supplier",
+		filters={"supplier_name": ["like", f"%{query}%"]},
+		fields=["name", "supplier_name", "mobile_no", "supplier_details"],
+		order_by="modified desc",
+		limit_page_length=8,
+	)
+
+
+@frappe.whitelist()
+def get_supplier_details_for_purchase(supplier: str):
+	if not supplier or not frappe.db.exists("Supplier", supplier):
+		return {}
+	sup = frappe.get_doc("Supplier", supplier)
+	address_line = None
+	if sup.supplier_primary_address:
+		addr = frappe.db.get_value(
+			"Address",
+			sup.supplier_primary_address,
+			["address_line1", "city", "state", "pincode"],
+			as_dict=True,
+		)
+		if addr:
+			address_line = ", ".join(filter(None, [addr.address_line1, addr.city, addr.state, addr.pincode]))
+
+	outstanding = flt(
+		frappe.db.sql(
+			"select sum(outstanding_amount) from `tabPurchase Invoice` where supplier = %(supplier)s and docstatus = 1",
+			{"supplier": supplier},
+		)[0][0]
+	)
+
+	return {
+		"name": sup.name,
+		"supplier_name": sup.supplier_name,
+		"mobile_no": sup.mobile_no,
+		"address": address_line,
+		"outstanding_amount": outstanding,
+	}
+
+
+@frappe.whitelist()
+def update_supplier_note(supplier: str, note: str):
+	"""Set the identification note (Supplier Details) — mirrors
+	update_customer_note."""
+	if not supplier or not frappe.db.exists("Supplier", supplier):
+		frappe.throw(_("Supplier {0} not found").format(supplier or ""))
+	frappe.db.set_value("Supplier", supplier, "supplier_details", note or "")
+	return note or ""
+
+
+@frappe.whitelist()
+def create_supplier_full(party: str):
+	"""Full "Add Party" dialog for the Purchase Invoice screen — mirrors
+	create_customer_full. Supplier's mobile_no/email_id are Read Only
+	fields fetched from a linked Contact (unlike Customer, where they're
+	direct fields) — so phone/email here go through a real Contact
+	document instead of being set straight on the Supplier."""
+	data = frappe.parse_json(party) if isinstance(party, str) else party
+	supplier_name = (data.get("customer_name") or "").strip()
+	if not supplier_name:
+		frappe.throw(_("Party Name is required."))
+
+	supplier = frappe.new_doc("Supplier")
+	supplier.supplier_name = supplier_name
+	supplier.supplier_group = frappe.db.get_value("Supplier Group", {}, "name") or "All Supplier Groups"
+	supplier.supplier_type = "Company"
+	if data.get("gstin"):
+		supplier.gstin = data.get("gstin")
+	if data.get("gst_category"):
+		supplier.gst_category = data.get("gst_category")
+	supplier.insert(ignore_permissions=True)
+
+	if data.get("phone") or data.get("email"):
+		contact = frappe.new_doc("Contact")
+		contact.first_name = supplier_name
+		if data.get("phone"):
+			contact.append("phone_nos", {"phone": data.get("phone"), "is_primary_mobile_no": 1})
+		if data.get("email"):
+			contact.append("email_ids", {"email_id": data.get("email"), "is_primary": 1})
+		contact.append("links", {"link_doctype": "Supplier", "link_name": supplier.name})
+		contact.insert(ignore_permissions=True)
+		supplier.supplier_primary_contact = contact.name
+		supplier.save(ignore_permissions=True)
+
+	address_fields = ("address_line1", "address_line2", "city", "pincode", "country", "district")
+	if any(data.get(f) for f in address_fields):
+		city = (data.get("city") or "").strip()
+		pincode = data.get("pincode")
+		city_match = re.match(r"^(.*)\s-\s(\d{6})$", city)
+		if city_match:
+			city = city_match.group(1)
+			pincode = pincode or city_match.group(2)
+
+		address = frappe.new_doc("Address")
+		address.address_title = supplier_name
+		address.address_type = "Billing"
+		address.address_line1 = data.get("address_line1") or supplier_name
+		address.address_line2 = data.get("address_line2") or (
+			f"{data.get('district')} District" if data.get("district") else None
+		)
+		address.city = city
+		address.state = data.get("state")
+		address.pincode = pincode
+		address.country = data.get("country") or "India"
+		address.append("links", {"link_doctype": "Supplier", "link_name": supplier.name})
+		address.insert(ignore_permissions=True)
+		supplier.supplier_primary_address = address.name
+		supplier.save(ignore_permissions=True)
+
+	if (data.get("shipping_address") or "").strip():
+		ship = frappe.new_doc("Address")
+		ship.address_title = supplier_name
+		ship.address_type = "Shipping"
+		ship.address_line1 = data.get("shipping_address").strip()
+		ship.city = data.get("city") or (data.get("district") or "Saran")
+		ship.state = data.get("state")
+		ship.country = data.get("country") or "India"
+		ship.append("links", {"link_doctype": "Supplier", "link_name": supplier.name})
+		ship.insert(ignore_permissions=True)
+
+	return supplier.name
+
+
+@frappe.whitelist()
+def get_purchase_item_row(supplier: str, item_code: str, warehouse: str = None, qty: float = 1):
+	"""Fetch ERPNext item row details for Purchase Invoice — mirrors
+	get_sale_item_row."""
+	from erpnext.stock.get_item_details import get_item_details
+
+	company = frappe.defaults.get_user_default("Company")
+	if not warehouse:
+		warehouse = frappe.db.get_value(
+			"Warehouse", {"is_group": 0, "disabled": 0, "company": company}, "name"
+		)
+	price_list = frappe.db.get_single_value("Buying Settings", "buying_price_list") or "Standard Buying"
+	args = frappe._dict(
+		{
+			"doctype": "Purchase Invoice",
+			"item_code": item_code,
+			"supplier": supplier,
+			"warehouse": warehouse,
+			"qty": flt(qty) or 1,
+			"company": company,
+			"conversion_rate": 1,
+			"price_list": price_list,
+			"buying_price_list": price_list,
+			"plc_conversion_rate": 1,
+			"transaction_type": "buying",
+			"is_subcontracted": 0,
+		}
+	)
+	row = get_item_details(args)
+	available_qty = None
+	if warehouse:
+		available_qty = flt(
+			frappe.db.get_value("Bin", {"item_code": item_code, "warehouse": warehouse}, "actual_qty")
+		)
+	row["available_qty"] = available_qty
+
+	try:
+		tax_map = frappe.parse_json(row.get("item_tax_rate") or "{}")
+		row["tax_rate"] = sum(flt(v) for v in tax_map.values())
+	except Exception:
+		row["tax_rate"] = 0
+	return row
+
+
+@frappe.whitelist()
+def get_recent_purchase_items(limit: int = 12):
+	"""Most recently purchased items, for the quick-purchase screen's
+	"Recent Items" panel — mirrors get_recent_sale_items."""
+	rows = frappe.db.sql(
+		"""
+		select pii.item_code as item_code, max(pi.creation) as last_bought
+		from `tabPurchase Invoice Item` pii
+		inner join `tabPurchase Invoice` pi on pi.name = pii.parent
+		where pi.docstatus = 1
+		group by pii.item_code
+		order by last_bought desc
+		limit %(limit)s
+		""",
+		{"limit": cint(limit)},
+		as_dict=True,
+	)
+	if not rows:
+		return []
+	item_codes = [r.item_code for r in rows]
+	items = {
+		i.name: i
+		for i in frappe.get_all(
+			"Item",
+			filters={"item_code": ["in", item_codes], "disabled": 0},
+			fields=["name", "item_name", "stock_uom", "brand"],
+		)
+	}
+	out = []
+	for r in rows:
+		item = items.get(r.item_code)
+		if not item:
+			continue
+		price = frappe.db.get_value("Item Price", {"item_code": r.item_code, "buying": 1}, "price_list_rate")
+		out.append({
+			"item_code": r.item_code,
+			"item_name": item.item_name,
+			"stock_uom": item.stock_uom,
+			"brand": item.brand,
+			"price": price,
+		})
+	return out
+
+
+@frappe.whitelist()
+def save_purchase_invoice(invoice_json: str, submit: int = 0):
+	"""Create (and optionally submit) a real Purchase Invoice from the
+	quick-purchase UI — mirrors save_sale_invoice."""
+	import json
+
+	data = json.loads(invoice_json) if isinstance(invoice_json, str) else invoice_json
+	supplier = data.get("supplier")
+	items = data.get("items") or []
+	payments = data.get("payments") or []
+
+	if not supplier:
+		frappe.throw(_("Please select a supplier."))
+	if not items:
+		frappe.throw(_("Please add at least one item."))
+
+	company = data.get("company") or frappe.defaults.get_user_default("Company")
+	warehouse = data.get("warehouse") or frappe.db.get_value(
+		"Warehouse", {"is_group": 0, "disabled": 0, "company": company}, "name"
+	)
+
+	payment_mode = (data.get("payment_mode") or "credit").lower()
+
+	doc = frappe.new_doc("Purchase Invoice")
+	doc.supplier = supplier
+	doc.company = company
+	doc.posting_date = data.get("posting_date") or frappe.utils.today()
+	doc.due_date = data.get("due_date") or frappe.utils.add_days(doc.posting_date, 2)
+	doc.buying_price_list = data.get("buying_price_list") or (
+		frappe.db.get_single_value("Buying Settings", "buying_price_list") or "Standard Buying"
+	)
+	doc.update_stock = 1
+	doc.set_warehouse = warehouse
+	if data.get("naming_series"):
+		doc.naming_series = data.get("naming_series")
+	if data.get("place_of_supply"):
+		doc.place_of_supply = data.get("place_of_supply")
+	if data.get("terms"):
+		doc.tc_name = None
+		doc.terms = data.get("terms")
+	if data.get("description"):
+		doc.remarks = data.get("description")
+
+	for row in items:
+		qty = flt(row.get("qty"))
+		if qty <= 0:
+			frappe.throw(_("Please enter a valid quantity for {0}.").format(row.get("item_code")))
+		rate = flt(row.get("rate"))
+		if rate < 0:
+			frappe.throw(_("Please enter a valid rate for {0}.").format(row.get("item_code")))
+
+		item_row = {
+			"item_code": row.get("item_code"),
+			"qty": qty,
+			"rate": rate,
+			"warehouse": row.get("warehouse") or warehouse,
+			"uom": row.get("uom"),
+			"discount_percentage": flt(row.get("discount_percentage")),
+			"discount_amount": flt(row.get("discount_amount")),
+		}
+		doc.append("items", item_row)
+
+	invoice_discount = flt(data.get("additional_discount_amount"))
+	if invoice_discount:
+		doc.apply_discount_on = "Grand Total"
+		doc.discount_amount = invoice_discount
+
+	doc.run_method("set_missing_values")
+	doc.run_method("calculate_taxes_and_totals")
+
+	# Cash purchase: mark paid immediately via the chosen Mode of Payment.
+	# Credit purchase: leave as a normal invoice, nothing paid yet — that's
+	# just what an unpaid Purchase Invoice already means (adds to Accounts
+	# Payable), no separate flag needed.
+	if payment_mode == "cash":
+		doc.is_paid = 1
+		added_payment = False
+		for p in payments:
+			amt = flt(p.get("amount")) if p.get("amount") not in (None, "") else doc.grand_total
+			if amt > 0:
+				doc.mode_of_payment = p.get("mode_of_payment")
+				doc.paid_amount = amt
+				added_payment = True
+				break
+		if not added_payment and doc.grand_total:
+			default_mode = (payments[0].get("mode_of_payment") if payments else None) or frappe.db.get_value(
+				"Mode of Payment", {"enabled": 1}, "name"
+			)
+			if default_mode:
+				doc.mode_of_payment = default_mode
+				doc.paid_amount = doc.grand_total
+
+		# The chosen Mode of Payment may be enabled but have no account
+		# configured for this company (e.g. "Bank Draft" left enabled without
+		# ever being wired up) — fall back to the company's own default cash
+		# account rather than letting Purchase Invoice's own validation throw
+		# a raw "Cash or Bank Account was not specified" mid-save.
+		doc.cash_bank_account = frappe.db.get_value(
+			"Mode of Payment Account", {"parent": doc.mode_of_payment, "company": company}, "default_account"
+		) or frappe.db.get_value("Company", company, "default_cash_account")
+		if not doc.cash_bank_account:
+			frappe.throw(
+				_("{0} has no Cash/Bank Account configured for {1}. Set one on the Mode of Payment, or choose a different one.").format(
+					doc.mode_of_payment, company
+				)
+			)
+
+	doc.insert()
+	if cint(submit):
+		doc.submit()
+
+	return {
+		"name": doc.name,
+		"docstatus": doc.docstatus,
+		"grand_total": doc.grand_total,
+		"outstanding_amount": doc.outstanding_amount,
+	}
+
+
+@frappe.whitelist()
+def get_payment_entry_init(party_type: str = "Customer"):
+	"""Defaults for the Vyapar-style Payment-In / Payment-Out screen.
+
+	Mode of Payment ordering matters here for a real reason: the old
+	Collect Payment dialog just took `rows[0]` off an alphabetical list,
+	which made "Bank Draft" the standing default and quietly mis-recorded
+	every counter cash collection (confirmed live 2026-08-15 — real saved
+	Payment Entries carry "Bank Draft"). A hardware shop collects in cash
+	by default, so Cash leads, then the modes that actually have a
+	Cash/Bank Account configured for this company (an unconfigured one
+	throws on save), then the rest.
+	"""
+	company = frappe.defaults.get_user_default("Company")
+	modes = frappe.get_all(
+		"Mode of Payment", filters={"enabled": 1}, fields=["name", "type"], order_by="name asc"
+	)
+	configured = set(
+		frappe.get_all("Mode of Payment Account", filters={"company": company}, pluck="parent")
+	)
+	modes.sort(key=lambda m: (m.name != "Cash", m.name not in configured, m.name))
+	return {
+		"company": company,
+		"party_type": party_type,
+		"posting_date": frappe.utils.today(),
+		"payment_modes": modes,
+		"default_mode": modes[0].name if modes else None,
+	}
+
+
+@frappe.whitelist()
+def get_party_outstanding(party_type: str, party: str):
+	"""The party's unpaid invoices, oldest first, for the Payment screen's
+	settlement table.
+
+	The old dialog asked for a bare amount with nothing on screen about
+	what was actually owed — the cashier typed blind and the backend
+	auto-allocated oldest-first with no way to see or change it. This is
+	what makes the amount reviewable before saving.
+	"""
+	if not party:
+		return {"invoices": [], "total_outstanding": 0}
+
+	doctype = "Sales Invoice" if party_type == "Customer" else "Purchase Invoice"
+	party_field = "customer" if party_type == "Customer" else "supplier"
+	company = frappe.defaults.get_user_default("Company")
+
+	filters = {party_field: party, "docstatus": 1, "outstanding_amount": (">", 0)}
+	if company:
+		filters["company"] = company
+
+	rows = frappe.get_all(
+		doctype,
+		filters=filters,
+		fields=["name", "posting_date", "due_date", "grand_total", "outstanding_amount"],
+		order_by="posting_date asc, name asc",
+	)
+	return {
+		"invoices": [
+			{
+				"doctype": doctype,
+				"name": r.name,
+				"posting_date": str(r.posting_date) if r.posting_date else None,
+				"due_date": str(r.due_date) if r.due_date else None,
+				"grand_total": flt(r.grand_total),
+				"outstanding_amount": flt(r.outstanding_amount),
+			}
+			for r in rows
+		],
+		"total_outstanding": sum(flt(r.outstanding_amount) for r in rows),
+	}
+
+
+@frappe.whitelist()
+def create_payment_entry(
+	party_type: str,
+	party: str,
+	amount: float,
+	mode_of_payment: str,
+	posting_date: str = None,
+	reference_no: str = None,
+	allocations_json: str = None,
+	remarks: str = None,
+):
+	"""Record a real, submitted Payment Entry against a party's outstanding
+	invoices — the "Collect Payment" (Customer) / "Payment Out" (Supplier)
+	quick action (2026-08-15 direct request: nowhere to actually record
+	money received against Total Receivable). Allocates the amount across
+	their outstanding Sales/Purchase Invoices oldest-first, same as a
+	cashier collecting against the oldest bills first, rather than leaving
+	it sitting as an unallocated advance.
+
+	`allocations_json` overrides that auto-split with explicit per-invoice
+	amounts, which is what the Payment screen's settlement table sends once
+	the cashier has adjusted a row (part-paying one bill while clearing
+	another is a real counter situation the oldest-first rule can't
+	express). Each allocation is still clamped to that invoice's actual
+	outstanding so a stale screen can't over-allocate a bill that was
+	settled in another tab meanwhile.
+
+	Doesn't call Payment Entry's own set_missing_values() — that only
+	resolves the PARTY's own receivable/payable account, and only once
+	setup_party_account_field() has run, which for a brand new document
+	only happens inside validate() (see payment_entry.py's __init__ vs
+	validate()). The bank/cash side (paid_to for Receive, paid_from for
+	Pay) isn't derived from mode_of_payment server-side at all — that's
+	normally a client-side JS lookup — so it's set explicitly here, same
+	pattern as save_purchase_invoice's cash_bank_account fallback.
+	"""
+	payment_type = "Receive" if party_type == "Customer" else "Pay"
+	company = frappe.defaults.get_user_default("Company")
+	posting_date = posting_date or frappe.utils.today()
+	amount = flt(amount)
+	if amount <= 0:
+		frappe.throw(_("Enter a valid amount."))
+
+	bank_cash_account = frappe.db.get_value(
+		"Mode of Payment Account", {"parent": mode_of_payment, "company": company}, "default_account"
+	) or frappe.db.get_value("Company", company, "default_cash_account")
+	if not bank_cash_account:
+		frappe.throw(
+			_("{0} has no Cash/Bank Account configured for {1}. Set one on the Mode of Payment, or choose a different one.").format(
+				mode_of_payment, company
+			)
+		)
+
+	doc = frappe.new_doc("Payment Entry")
+	doc.payment_type = payment_type
+	doc.party_type = party_type
+	doc.party = party
+	doc.company = company
+	doc.posting_date = posting_date
+	doc.mode_of_payment = mode_of_payment
+	doc.paid_amount = amount
+	doc.received_amount = amount
+	if payment_type == "Receive":
+		doc.paid_to = bank_cash_account
+	else:
+		doc.paid_from = bank_cash_account
+	if reference_no:
+		doc.reference_no = reference_no
+		doc.reference_date = posting_date
+
+	if remarks:
+		doc.remarks = remarks
+
+	outstanding_doctype = "Sales Invoice" if party_type == "Customer" else "Purchase Invoice"
+	party_field = "customer" if party_type == "Customer" else "supplier"
+	rows = frappe.get_all(
+		outstanding_doctype,
+		filters={party_field: party, "docstatus": 1, "outstanding_amount": (">", 0)},
+		fields=["name", "outstanding_amount"],
+		order_by="posting_date asc",
+	)
+	outstanding_by_name = {r.name: flt(r.outstanding_amount) for r in rows}
+
+	requested = {}
+	if allocations_json:
+		import json
+
+		parsed = json.loads(allocations_json) if isinstance(allocations_json, str) else allocations_json
+		for entry in parsed or []:
+			name = entry.get("name") or entry.get("reference_name")
+			alloc = flt(entry.get("allocated_amount") or entry.get("amount"))
+			if name and alloc > 0:
+				requested[name] = alloc
+
+	remaining = amount
+	for row in rows:
+		if remaining <= 0:
+			break
+		# An explicit allocation set means "only these rows, these amounts";
+		# rows the cashier zeroed out stay untouched rather than silently
+		# soaking up the leftover the way oldest-first would.
+		if requested:
+			if row.name not in requested:
+				continue
+			alloc = min(requested[row.name], outstanding_by_name[row.name], remaining)
+		else:
+			alloc = min(outstanding_by_name[row.name], remaining)
+		if alloc <= 0:
+			continue
+		doc.append(
+			"references",
+			{
+				"reference_doctype": outstanding_doctype,
+				"reference_name": row.name,
+				"total_amount": outstanding_by_name[row.name],
+				"outstanding_amount": outstanding_by_name[row.name],
+				"allocated_amount": alloc,
+			},
+		)
+		remaining -= alloc
+
+	doc.insert()
+	doc.submit()
+
+	return {
+		"name": doc.name,
+		"allocated": amount - remaining,
+		"unallocated": remaining,
+		"party": party,
+		"party_type": party_type,
+	}
+
+
+_INVOICE_VIEW_ITEM_DOCTYPES = (
+	"Sales Invoice",
+	"POS Invoice",
+	"Purchase Invoice",
+	"Quotation",
+	"Sales Order",
+	"Purchase Order",
+	"Delivery Note",
+)
+
+
+def _invoice_view_status(doc):
+	if doc.docstatus == 2:
+		return "Cancelled"
+	if doc.docstatus == 0:
+		return "Draft"
+	# Journal Entry (and some other non-invoice doctypes) have no `status`
+	# field at all — doc.status would raise AttributeError, confirmed via a
+	# live bench console test (2026-08-15).
+	return doc.get("status") or "Submitted"
+
+
+@frappe.whitelist()
+def get_invoice_view_data(doctype: str, name: str):
+	"""Everything the Vyapar-style "View Invoice" screen needs to display an
+	already-saved document — the counterpart to
+	save_sale_invoice/save_purchase_invoice/save_quotation's create screens,
+	so opening a saved document never has to fall back to ERPNext's native
+	Form view (2026-08-15 direct request: "ye koi old wala nh aana
+	chahiye... sab jagah sudhar, vyapaar wala sab follow hoga" — the native
+	form must never appear anywhere, not even for viewing — then again
+	2026-08-15 later the same day, "sabka kr, harek part ka" after a
+	Payment Entry still fell through to the native form: every doctype
+	reachable via santu_open_invoice_view() needs a real branch here, not
+	just the original three).
+	"""
+	if not frappe.db.exists(doctype, name):
+		frappe.throw(_("{0} {1} not found").format(doctype, name))
+
+	doc = frappe.get_doc(doctype, name)
+
+	if doctype == "Payment Entry":
+		allocations = [
+			{
+				"reference_doctype": r.reference_doctype,
+				"reference_name": r.reference_name,
+				"allocated_amount": r.allocated_amount,
+			}
+			for r in (doc.references or [])
+		]
+		return {
+			"doctype": doctype,
+			"name": doc.name,
+			"kind": "payment",
+			"docstatus": doc.docstatus,
+			"status": _invoice_view_status(doc),
+			"party_type": doc.party_type,
+			"party": doc.party,
+			"party_name": doc.party_name or doc.party,
+			"posting_date": doc.posting_date,
+			"payment_type": doc.payment_type,
+			"mode_of_payment": doc.mode_of_payment,
+			"reference_no": doc.reference_no,
+			"reference_date": doc.reference_date,
+			"paid_amount": doc.paid_amount,
+			"allocations": allocations,
+			"grand_total": doc.paid_amount,
+		}
+
+	if doctype == "Journal Entry":
+		accounts = [
+			{
+				"account": a.account,
+				"party": a.party,
+				"debit": a.debit_in_account_currency,
+				"credit": a.credit_in_account_currency,
+			}
+			for a in (doc.accounts or [])
+		]
+		return {
+			"doctype": doctype,
+			"name": doc.name,
+			"kind": "journal",
+			"docstatus": doc.docstatus,
+			"status": _invoice_view_status(doc),
+			"posting_date": doc.posting_date,
+			"user_remark": doc.user_remark,
+			"accounts": accounts,
+			"grand_total": doc.total_debit,
+		}
+
+	if doctype not in _INVOICE_VIEW_ITEM_DOCTYPES:
+		frappe.throw(_("Unsupported document type for this view: {0}").format(doctype))
+
+	if doctype in ("Sales Invoice", "POS Invoice", "Sales Order", "Delivery Note"):
+		party_name = doc.customer_name or doc.customer
+		party_type = "Customer"
+		party = doc.customer
+	elif doctype == "Purchase Invoice" or doctype == "Purchase Order":
+		party_name = doc.supplier_name or doc.supplier
+		party_type = "Supplier"
+		party = doc.supplier
+	else:
+		party_name = doc.customer_name or doc.party_name
+		party_type = "Customer"
+		party = doc.party_name
+
+	items = [
+		{
+			"item_code": row.item_code,
+			"item_name": row.item_name,
+			"qty": row.qty,
+			"uom": row.uom,
+			"rate": row.rate,
+			"amount": row.amount,
+		}
+		for row in doc.items
+	]
+
+	payments = []
+	if doctype in ("Sales Invoice", "POS Invoice"):
+		payments = [{"mode_of_payment": p.mode_of_payment, "amount": p.amount} for p in (doc.payments or [])]
+	elif doctype == "Purchase Invoice" and doc.is_paid:
+		payments = [{"mode_of_payment": doc.mode_of_payment, "amount": doc.paid_amount}]
+
+	return {
+		"doctype": doctype,
+		"name": doc.name,
+		"kind": "item",
+		"docstatus": doc.docstatus,
+		"status": _invoice_view_status(doc),
+		"party_type": party_type,
+		"party": party,
+		"party_name": party_name,
+		"posting_date": doc.get("posting_date") or doc.get("transaction_date"),
+		"due_date": doc.get("due_date"),
+		"place_of_supply": doc.get("place_of_supply"),
+		"is_return": bool(doc.get("is_return")),
+		"is_pos": bool(doc.get("is_pos")),
+		"is_paid": bool(doc.get("is_paid")),
+		"items": items,
+		"payments": payments,
+		"subtotal": doc.net_total,
+		"tax": doc.total_taxes_and_charges or 0,
+		"discount_amount": doc.discount_amount or 0,
+		"grand_total": doc.grand_total,
+		"outstanding_amount": doc.get("outstanding_amount"),
+		"terms": doc.terms,
+		"description": doc.get("remarks"),
+	}
+
+
+@frappe.whitelist()
+def save_quotation(quotation_json: str, submit: int = 1):
+	"""Create (and by default submit) a real Quotation from the quick
+	Estimate/Quotation screen — same shape as save_sale_invoice, minus
+	payments/POS/credit-limit concerns that don't apply to a quotation."""
+	import json
+
+	data = json.loads(quotation_json) if isinstance(quotation_json, str) else quotation_json
+	customer = data.get("customer")
+	items = data.get("items") or []
+
+	if not customer:
+		frappe.throw(_("Please select a customer."))
+	if not items:
+		frappe.throw(_("Please add at least one item."))
+
+	company = data.get("company") or frappe.defaults.get_user_default("Company")
+
+	doc = frappe.new_doc("Quotation")
+	doc.quotation_to = "Customer"
+	doc.party_name = customer
+	doc.company = company
+	doc.transaction_date = data.get("posting_date") or frappe.utils.today()
+	doc.selling_price_list = data.get("selling_price_list") or (
+		frappe.db.get_single_value("Selling Settings", "selling_price_list") or "Standard Selling"
+	)
+	if data.get("place_of_supply"):
+		doc.place_of_supply = data.get("place_of_supply")
+	terms = data.get("terms") or ""
+	description = data.get("description") or ""
+	# Quotation has no dedicated "description"/remarks field — fold it into
+	# Term Details (still shown to the user, just under one heading) rather
+	# than silently dropping it.
+	combined_terms = "\n\n".join(t for t in (description, terms) if t)
+	if combined_terms:
+		doc.tc_name = None
+		doc.terms = combined_terms
+
+	for row in items:
+		qty = flt(row.get("qty"))
+		if qty <= 0:
+			frappe.throw(_("Please enter a valid quantity for {0}.").format(row.get("item_code")))
+		rate = flt(row.get("rate"))
+		if rate < 0:
+			frappe.throw(_("Please enter a valid rate for {0}.").format(row.get("item_code")))
+
+		doc.append(
+			"items",
+			{
+				"item_code": row.get("item_code"),
+				"qty": qty,
+				"rate": rate,
+				"uom": row.get("uom"),
+				"discount_percentage": flt(row.get("discount_percentage")),
+				"discount_amount": flt(row.get("discount_amount")),
+			},
+		)
+
+	invoice_discount = flt(data.get("additional_discount_amount"))
+	if invoice_discount:
+		doc.apply_discount_on = "Grand Total"
+		doc.discount_amount = invoice_discount
+
+	doc.run_method("set_missing_values")
+	doc.run_method("calculate_taxes_and_totals")
+
+	doc.insert()
+	if cint(submit):
+		doc.submit()
+
+	return {
+		"name": doc.name,
+		"docstatus": doc.docstatus,
+		"grand_total": doc.grand_total,
+		"status": doc.status,
+	}
+
+
+@frappe.whitelist()
+def save_sales_order(order_json: str, submit: int = 1):
+	"""Create (and by default submit) a real Sales Order from the quick
+	Sales Order screen — same shape as save_quotation. Sales Order Item
+	requires delivery_date; the quick screen doesn't surface a separate
+	field for it (Vyapar doesn't either), so it defaults to the order date
+	itself (2026-08-15 direct request: "selling- sales order- new sale
+	order ka abhi v old ui hai, vyapar ui lao" — this screen replaces the
+	native Sales Order creation form)."""
+	import json
+
+	data = json.loads(order_json) if isinstance(order_json, str) else order_json
+	customer = data.get("customer")
+	items = data.get("items") or []
+
+	if not customer:
+		frappe.throw(_("Please select a customer."))
+	if not items:
+		frappe.throw(_("Please add at least one item."))
+
+	company = data.get("company") or frappe.defaults.get_user_default("Company")
+	transaction_date = data.get("posting_date") or frappe.utils.today()
+	delivery_date = data.get("delivery_date") or transaction_date
+
+	doc = frappe.new_doc("Sales Order")
+	doc.customer = customer
+	doc.company = company
+	doc.transaction_date = transaction_date
+	doc.delivery_date = delivery_date
+	doc.selling_price_list = data.get("selling_price_list") or (
+		frappe.db.get_single_value("Selling Settings", "selling_price_list") or "Standard Selling"
+	)
+	if data.get("place_of_supply"):
+		doc.place_of_supply = data.get("place_of_supply")
+	terms = data.get("terms") or ""
+	description = data.get("description") or ""
+	combined_terms = "\n\n".join(t for t in (description, terms) if t)
+	if combined_terms:
+		doc.tc_name = None
+		doc.terms = combined_terms
+
+	for row in items:
+		qty = flt(row.get("qty"))
+		if qty <= 0:
+			frappe.throw(_("Please enter a valid quantity for {0}.").format(row.get("item_code")))
+		rate = flt(row.get("rate"))
+		if rate < 0:
+			frappe.throw(_("Please enter a valid rate for {0}.").format(row.get("item_code")))
+
+		doc.append(
+			"items",
+			{
+				"item_code": row.get("item_code"),
+				"qty": qty,
+				"rate": rate,
+				"uom": row.get("uom"),
+				"delivery_date": delivery_date,
+				"discount_percentage": flt(row.get("discount_percentage")),
+				"discount_amount": flt(row.get("discount_amount")),
+			},
+		)
+
+	invoice_discount = flt(data.get("additional_discount_amount"))
+	if invoice_discount:
+		doc.apply_discount_on = "Grand Total"
+		doc.discount_amount = invoice_discount
+
+	doc.run_method("set_missing_values")
+	doc.run_method("calculate_taxes_and_totals")
+
+	doc.insert()
+	if cint(submit):
+		doc.submit()
+
+	return {
+		"name": doc.name,
+		"docstatus": doc.docstatus,
+		"grand_total": doc.grand_total,
+		"status": doc.status,
+	}
+
+
+@frappe.whitelist()
+def get_party_balance(party_type: str, party: str):
+	"""One party's current balance, for the Party Transfer screen.
+
+	Returned as a plain positive number plus a direction, because "owes you"
+	and "you owe" is what a shopkeeper reads — not a signed figure whose
+	meaning flips depending on whether the account is a receivable or a
+	payable.
+	"""
+	if not party_type or not party:
+		return {"balance": 0, "direction": None}
+
+	from erpnext.accounts.utils import get_balance_on
+
+	company = frappe.defaults.get_user_default("Company")
+	balance = flt(get_balance_on(party_type=party_type, party=party, company=company))
+	# Debtors carry a debit balance when a customer owes us; Creditors carry
+	# a credit balance (negative here) when we owe a supplier.
+	if party_type == "Customer":
+		direction = "owes_you" if balance > 0 else ("you_owe" if balance < 0 else None)
+	else:
+		direction = "you_owe" if balance < 0 else ("owes_you" if balance > 0 else None)
+	return {"balance": abs(balance), "direction": direction}
+
+
+@frappe.whitelist()
+def save_party_transfer(transfer_json: str, submit: int = 1):
+	"""Move a balance from one party to another as a real Journal Entry
+	(2026-08-15: the "+" menu's "Party To Party Transfer" pointed at the raw
+	Journal Entry form and, after new-<doctype> routes started redirecting,
+	landed on the Expense screen — which a transfer is not).
+
+	Two real cases this covers, both routine in a hardware shop:
+	  * one party settles another's dues (a relative pays the bill);
+	  * the same person is both customer and supplier, and the receivable
+	    needs netting off against the payable.
+
+	The posting is the same either way: CREDIT the "from" party's account
+	(their balance in our favour goes down) and DEBIT the "to" party's
+	(theirs goes up). For the netting case that reads correctly too —
+	debiting Creditors reduces what we owe. Each side's real account comes
+	from ERPNext's own get_party_account, so a party with a non-default
+	receivable/payable account still posts to the right place.
+	"""
+	import json
+
+	from erpnext.accounts.party import get_party_account
+
+	data = json.loads(transfer_json) if isinstance(transfer_json, str) else transfer_json
+	from_type = data.get("from_party_type")
+	from_party = data.get("from_party")
+	to_type = data.get("to_party_type")
+	to_party = data.get("to_party")
+	amount = flt(data.get("amount"))
+
+	if not from_party or not to_party:
+		frappe.throw(_("Select both parties."))
+	if from_type == to_type and from_party == to_party:
+		frappe.throw(_("Pick two different parties — a transfer to the same party does nothing."))
+	if amount <= 0:
+		frappe.throw(_("Enter an amount greater than zero."))
+
+	company = data.get("company") or frappe.defaults.get_user_default("Company")
+	posting_date = data.get("posting_date") or frappe.utils.today()
+
+	from_account = get_party_account(from_type, from_party, company)
+	to_account = get_party_account(to_type, to_party, company)
+	if not from_account or not to_account:
+		frappe.throw(_("Could not resolve an account for one of the parties."))
+
+	doc = frappe.new_doc("Journal Entry")
+	doc.voucher_type = "Journal Entry"
+	doc.company = company
+	doc.posting_date = posting_date
+	if data.get("notes"):
+		doc.user_remark = data.get("notes")
+
+	doc.append(
+		"accounts",
+		{
+			"account": from_account,
+			"party_type": from_type,
+			"party": from_party,
+			"credit_in_account_currency": amount,
+		},
+	)
+	doc.append(
+		"accounts",
+		{
+			"account": to_account,
+			"party_type": to_type,
+			"party": to_party,
+			"debit_in_account_currency": amount,
+		},
+	)
+
+	doc.insert()
+	if cint(submit):
+		doc.submit()
+
+	return {"name": doc.name, "docstatus": doc.docstatus, "amount": amount}
+
+
+@frappe.whitelist()
+def get_expense_init():
+	"""Defaults for the Vyapar-style Expense screen.
+
+	Expense "categories" here are just the company's leaf Expense accounts,
+	surfaced by their friendly `account_name` — a shopkeeper picks "Office
+	Rent", not "Office Rent - SH". A few accounts under Expense exist for
+	the system's own postings rather than for someone to spend money into
+	(Cost of Goods Sold and Stock Adjustment are written by stock entries,
+	Round Off / Exchange Gain-Loss by the rounding logic); offering them as
+	an expense category invites postings that quietly corrupt stock
+	valuation or reconciliation, so they're filtered out.
+	"""
+	company = frappe.defaults.get_user_default("Company")
+
+	system_owned = {
+		"Cost of Goods Sold",
+		"Stock Adjustment",
+		"Round Off",
+		"Exchange Gain/Loss",
+		"Expenses Included In Valuation",
+		"Expenses Included In Asset Valuation",
+		"Gain/Loss on Asset Disposal",
+		"Impairment",
+		"Depreciation",
+	}
+	filters = {"root_type": "Expense", "is_group": 0, "disabled": 0}
+	if company:
+		filters["company"] = company
+	accounts = [
+		{"name": a.name, "label": a.account_name}
+		for a in frappe.get_all(
+			"Account", filters=filters, fields=["name", "account_name"], order_by="account_name asc"
+		)
+		if a.account_name not in system_owned
+	]
+
+	modes = frappe.get_all(
+		"Mode of Payment", filters={"enabled": 1}, fields=["name", "type"], order_by="name asc"
+	)
+	configured = set(
+		frappe.get_all("Mode of Payment Account", filters={"company": company}, pluck="parent")
+	)
+	# Cash first, then modes that actually have an account wired up for this
+	# company — same ordering fix as get_payment_entry_init, for the same
+	# reason: an alphabetical default silently mis-records cash spending.
+	modes.sort(key=lambda m: (m.name != "Cash", m.name not in configured, m.name))
+
+	return {
+		"company": company,
+		"posting_date": frappe.utils.today(),
+		"expense_accounts": accounts,
+		"payment_modes": modes,
+		"default_mode": modes[0].name if modes else None,
+	}
+
+
+@frappe.whitelist()
+def save_expense(expense_json: str, submit: int = 1):
+	"""Record a shop expense as a real, submitted Journal Entry (2026-08-15
+	direct request: "expene- New Journal Entry isko vyapaar type banao" —
+	"+ Add Expense" opened ERPNext's native Journal Entry form, whose
+	"Accounting Entries" grid asks for Account / Party Type / Debit / Credit
+	per row).
+
+	The double entry is derived here rather than typed by the user: each
+	category row is a debit to that expense account, and one balancing
+	credit posts the total against the Cash/Bank account behind the chosen
+	payment mode. That's the same Journal Entry the native form would
+	produce — the screen just stops asking a shopkeeper to know which side
+	of the ledger money leaves from.
+	"""
+	import json
+
+	data = json.loads(expense_json) if isinstance(expense_json, str) else expense_json
+	rows = data.get("rows") or []
+	mode_of_payment = data.get("mode_of_payment")
+
+	valid_rows = [r for r in rows if r.get("expense_account") and flt(r.get("amount")) > 0]
+	if not valid_rows:
+		frappe.throw(_("Add at least one expense category with an amount."))
+	if not mode_of_payment:
+		frappe.throw(_("Select how this was paid."))
+
+	company = data.get("company") or frappe.defaults.get_user_default("Company")
+	posting_date = data.get("posting_date") or frappe.utils.today()
+
+	paid_from = frappe.db.get_value(
+		"Mode of Payment Account", {"parent": mode_of_payment, "company": company}, "default_account"
+	) or frappe.db.get_value("Company", company, "default_cash_account")
+	if not paid_from:
+		frappe.throw(
+			_("{0} has no Cash/Bank Account configured for {1}. Set one on the Mode of Payment, or choose a different one.").format(
+				mode_of_payment, company
+			)
+		)
+
+	total = sum(flt(r.get("amount")) for r in valid_rows)
+
+	doc = frappe.new_doc("Journal Entry")
+	doc.voucher_type = "Journal Entry"
+	doc.company = company
+	doc.posting_date = posting_date
+	doc.mode_of_payment = mode_of_payment
+	if data.get("reference_no"):
+		doc.cheque_no = data.get("reference_no")
+		doc.cheque_date = posting_date
+	if data.get("notes"):
+		doc.user_remark = data.get("notes")
+
+	party_type = data.get("party_type")
+	party = data.get("party")
+
+	for row in valid_rows:
+		line = {
+			"account": row.get("expense_account"),
+			"debit_in_account_currency": flt(row.get("amount")),
+			# The expenses list shows this as the row's Reference, so the
+			# per-row note is worth keeping rather than folding into one
+			# voucher-level remark.
+			"user_remark": row.get("description") or data.get("notes") or None,
+		}
+		if party_type and party:
+			line["party_type"] = party_type
+			line["party"] = party
+		doc.append("accounts", line)
+
+	doc.append(
+		"accounts",
+		{"account": paid_from, "credit_in_account_currency": total},
+	)
+
+	doc.insert()
+	if cint(submit):
+		doc.submit()
+
+	return {"name": doc.name, "docstatus": doc.docstatus, "total": total}
+
+
+@frappe.whitelist()
+def get_returnable_purchase_bills(supplier: str):
+	"""Submitted Purchase Invoices a debit note can be booked against.
+	Buying-side mirror of get_returnable_invoices."""
+	if not supplier:
+		return []
+
+	company = frappe.defaults.get_user_default("Company")
+	filters = {"supplier": supplier, "docstatus": 1, "is_return": 0}
+	if company:
+		filters["company"] = company
+
+	rows = frappe.get_all(
+		"Purchase Invoice",
+		filters=filters,
+		fields=["name", "posting_date", "grand_total"],
+		order_by="posting_date desc, name desc",
+		limit_page_length=50,
+	)
+	return [
+		{
+			"name": r.name,
+			"posting_date": str(r.posting_date) if r.posting_date else None,
+			"grand_total": flt(r.grand_total),
+		}
+		for r in rows
+	]
+
+
+@frappe.whitelist()
+def get_purchase_items_for_return(invoice: str):
+	"""Line items of one Purchase Invoice with how much of each is still
+	returnable. Buying-side mirror of get_invoice_items_for_return."""
+	if not invoice or not frappe.db.exists("Purchase Invoice", invoice):
+		frappe.throw(_("Bill {0} not found").format(invoice or ""))
+
+	returned = frappe.db.sql(
+		"""
+		select child.item_code, sum(child.qty) as qty
+		from `tabPurchase Invoice Item` child
+		inner join `tabPurchase Invoice` parent on parent.name = child.parent
+		where parent.docstatus = 1 and parent.is_return = 1 and parent.return_against = %s
+		group by child.item_code
+		""",
+		(invoice,),
+		as_dict=True,
+	)
+	returned_by_item = {r.item_code: abs(flt(r.qty)) for r in returned}
+
+	doc = frappe.get_doc("Purchase Invoice", invoice)
+	out = []
+	for row in doc.items:
+		bought = flt(row.qty)
+		already = returned_by_item.get(row.item_code, 0)
+		out.append(
+			{
+				"item_code": row.item_code,
+				"item_name": row.item_name,
+				"row_name": row.name,
+				"qty": bought,
+				"already_returned": already,
+				"returnable_qty": max(bought - already, 0),
+				"rate": flt(row.rate),
+				"uom": row.uom,
+				"stock_uom": row.stock_uom,
+				"discount_percentage": flt(row.discount_percentage),
+				"discount_amount": flt(row.discount_amount),
+			}
+		)
+	return {"invoice": invoice, "items": out}
+
+
+@frappe.whitelist()
+def save_purchase_return(return_json: str, submit: int = 1):
+	"""Create (and by default submit) a Purchase Return / Debit Note.
+
+	Buying-side mirror of save_sales_return, and the fix for a real
+	regression: the three "Purchase Return" entry points all went through
+	frappe.new_doc("Purchase Invoice") plus cur_frm.set_value("is_return", 1)
+	— a two-step dance needed because is_return is no_copy. Once new-<doctype>
+	routes started redirecting to their own quick screens there was no
+	cur_frm left to set the flag on, so returns were silently saving as
+	ordinary purchase bills (found 2026-08-15 while auditing the topbar).
+
+	Quantities arrive positive from the screen and are negated here, the
+	same single boundary save_sales_return uses.
+	"""
+	import json
+
+	data = json.loads(return_json) if isinstance(return_json, str) else return_json
+	supplier = data.get("supplier")
+	items = data.get("items") or []
+
+	if not supplier:
+		frappe.throw(_("Please select a supplier."))
+	if not items:
+		frappe.throw(_("Please add at least one item."))
+
+	company = data.get("company") or frappe.defaults.get_user_default("Company")
+	warehouse = data.get("warehouse") or frappe.db.get_value(
+		"Warehouse", {"is_group": 0, "disabled": 0, "company": company}, "name"
+	)
+
+	doc = frappe.new_doc("Purchase Invoice")
+	doc.supplier = supplier
+	doc.company = company
+	doc.is_return = 1
+	doc.posting_date = data.get("posting_date") or frappe.utils.today()
+	doc.due_date = doc.posting_date
+	doc.buying_price_list = data.get("buying_price_list") or (
+		frappe.db.get_single_value("Buying Settings", "buying_price_list") or "Standard Buying"
+	)
+	# Goods going back to the supplier leave our shelf.
+	doc.update_stock = 1
+	doc.set_warehouse = warehouse
+	if data.get("return_against"):
+		doc.return_against = data.get("return_against")
+	if data.get("place_of_supply"):
+		doc.place_of_supply = data.get("place_of_supply")
+	if data.get("reason"):
+		doc.remarks = data.get("reason")
+
+	for row in items:
+		qty = flt(row.get("qty"))
+		if qty <= 0:
+			frappe.throw(_("Please enter a valid quantity for {0}.").format(row.get("item_code")))
+		rate = flt(row.get("rate"))
+		if rate < 0:
+			frappe.throw(_("Please enter a valid rate for {0}.").format(row.get("item_code")))
+
+		item_row = {
+			"item_code": row.get("item_code"),
+			"qty": -abs(qty),
+			"rate": rate,
+			"warehouse": row.get("warehouse") or warehouse,
+			"uom": row.get("uom"),
+			"discount_percentage": flt(row.get("discount_percentage")),
+			"discount_amount": flt(row.get("discount_amount")),
+		}
+		if row.get("purchase_invoice_item"):
+			item_row["purchase_invoice_item"] = row.get("purchase_invoice_item")
+		doc.append("items", item_row)
+
+	doc.run_method("set_missing_values")
+	doc.run_method("calculate_taxes_and_totals")
+
+	doc.insert()
+	if cint(submit):
+		doc.submit()
+
+	return {
+		"name": doc.name,
+		"docstatus": doc.docstatus,
+		"grand_total": doc.grand_total,
+		"status": doc.status,
+	}
+
+
+@frappe.whitelist()
+def get_returnable_invoices(customer: str):
+	"""Submitted Sales Invoices a return can be booked against, newest first.
+
+	Deliberately NOT filtered to unpaid invoices the way get_party_outstanding
+	is — goods come back just as often from a bill that was paid in cash on
+	the spot, and that's exactly the case where a credit note matters.
+	Existing returns (is_return=1) are excluded: you can't return a return.
+	"""
+	if not customer:
+		return []
+
+	company = frappe.defaults.get_user_default("Company")
+	filters = {"customer": customer, "docstatus": 1, "is_return": 0}
+	if company:
+		filters["company"] = company
+
+	rows = frappe.get_all(
+		"Sales Invoice",
+		filters=filters,
+		fields=["name", "posting_date", "grand_total"],
+		order_by="posting_date desc, name desc",
+		limit_page_length=50,
+	)
+	return [
+		{
+			"name": r.name,
+			"posting_date": str(r.posting_date) if r.posting_date else None,
+			"grand_total": flt(r.grand_total),
+		}
+		for r in rows
+	]
+
+
+@frappe.whitelist()
+def get_invoice_items_for_return(invoice: str):
+	"""The line items of one Sales Invoice, with how much of each is still
+	returnable, for the Sale Return screen's "return against" prefill.
+
+	`already_returned` sums the qty on every submitted return already booked
+	against this invoice (stored negative in ERPNext, so it's negated back to
+	a positive here). Without it, a second partial return would offer the
+	full original quantity again and only fail later inside ERPNext's own
+	validation.
+	"""
+	if not invoice or not frappe.db.exists("Sales Invoice", invoice):
+		frappe.throw(_("Invoice {0} not found").format(invoice or ""))
+
+	returned = frappe.db.sql(
+		"""
+		select child.item_code, sum(child.qty) as qty
+		from `tabSales Invoice Item` child
+		inner join `tabSales Invoice` parent on parent.name = child.parent
+		where parent.docstatus = 1 and parent.is_return = 1 and parent.return_against = %s
+		group by child.item_code
+		""",
+		(invoice,),
+		as_dict=True,
+	)
+	returned_by_item = {r.item_code: abs(flt(r.qty)) for r in returned}
+
+	doc = frappe.get_doc("Sales Invoice", invoice)
+	out = []
+	for row in doc.items:
+		sold = flt(row.qty)
+		already = returned_by_item.get(row.item_code, 0)
+		out.append(
+			{
+				"item_code": row.item_code,
+				"item_name": row.item_name,
+				# The source ROW's id, not just the item code. A return has to
+				# point at the exact line it reverses (`sales_invoice_item`);
+				# without it ERPNext can't tie the credit note back to the
+				# original line and warns "Returned Item X does not exist in
+				# <invoice>" even though the item plainly does.
+				"row_name": row.name,
+				"qty": sold,
+				"already_returned": already,
+				"returnable_qty": max(sold - already, 0),
+				"rate": flt(row.rate),
+				"uom": row.uom,
+				"stock_uom": row.stock_uom,
+				"discount_percentage": flt(row.discount_percentage),
+				"discount_amount": flt(row.discount_amount),
+			}
+		)
+	return {"invoice": invoice, "items": out}
+
+
+@frappe.whitelist()
+def save_sales_return(return_json: str, submit: int = 1):
+	"""Create (and by default submit) a real Sales Return / Credit Note
+	(2026-08-15 direct request: "sale return ka v same vyapaar ui kro" —
+	this replaces the native Sales Invoice form with Is Return ticked).
+
+	A return IS a Sales Invoice with is_return=1 and NEGATIVE quantities —
+	that's ERPNext's own representation, not a choice made here. The screen
+	collects plain positive quantities ("2 pieces came back", which is how a
+	shopkeeper thinks and how Vyapar asks for it) and this negates them at
+	the boundary; asking a counter user to type -2 is a real source of
+	mistakes.
+
+	`return_against` is optional but strongly preferred: with it, ERPNext
+	validates the return against what was actually sold and links the credit
+	note to the original bill. Without it the return still books, which is
+	what a shop needs when goods come back with no bill to hand.
+	"""
+	import json
+
+	data = json.loads(return_json) if isinstance(return_json, str) else return_json
+	customer = data.get("customer")
+	items = data.get("items") or []
+
+	if not customer:
+		frappe.throw(_("Please select a customer."))
+	if not items:
+		frappe.throw(_("Please add at least one item."))
+
+	company = data.get("company") or frappe.defaults.get_user_default("Company")
+	warehouse = data.get("warehouse") or frappe.db.get_value(
+		"Warehouse", {"is_group": 0, "disabled": 0, "company": company}, "name"
+	)
+
+	doc = frappe.new_doc("Sales Invoice")
+	# Same reason as save_sale_invoice: a default POS Profile would replace
+	# this screen's own payment rows the moment set_missing_values() runs.
+	doc.flags.ignore_pos_profile = True
+	doc.customer = customer
+	doc.company = company
+	doc.is_return = 1
+	doc.posting_date = data.get("posting_date") or frappe.utils.today()
+	doc.due_date = doc.posting_date
+	doc.selling_price_list = data.get("selling_price_list") or (
+		frappe.db.get_single_value("Selling Settings", "selling_price_list") or "Standard Selling"
+	)
+	# Returned goods go back on the shelf — same update_stock/warehouse pair
+	# the Sale Invoice screen uses, just moving the other way.
+	doc.update_stock = 1
+	doc.set_warehouse = warehouse
+	if data.get("return_against"):
+		doc.return_against = data.get("return_against")
+	if data.get("place_of_supply"):
+		doc.place_of_supply = data.get("place_of_supply")
+	if data.get("reason"):
+		doc.remarks = data.get("reason")
+
+	for row in items:
+		qty = flt(row.get("qty"))
+		if qty <= 0:
+			frappe.throw(_("Please enter a valid quantity for {0}.").format(row.get("item_code")))
+		rate = flt(row.get("rate"))
+		if rate < 0:
+			frappe.throw(_("Please enter a valid rate for {0}.").format(row.get("item_code")))
+
+		item_row = {
+			"item_code": row.get("item_code"),
+			# Negated here, at the one boundary between the screen's
+			# plain-language quantities and ERPNext's representation.
+			"qty": -abs(qty),
+			"rate": rate,
+			"warehouse": row.get("warehouse") or warehouse,
+			"uom": row.get("uom"),
+			"discount_percentage": flt(row.get("discount_percentage")),
+			"discount_amount": flt(row.get("discount_amount")),
+		}
+		# Links this line back to the exact row it reverses on the original
+		# bill. Only present for rows prefilled from a return_against
+		# invoice; a bill-less return has nothing to point at.
+		if row.get("sales_invoice_item"):
+			item_row["sales_invoice_item"] = row.get("sales_invoice_item")
+		doc.append("items", item_row)
+
+	doc.run_method("set_missing_values")
+	doc.run_method("calculate_taxes_and_totals")
+
+	doc.insert()
+	if cint(submit):
+		doc.submit()
+
+	return {
+		"name": doc.name,
+		"docstatus": doc.docstatus,
+		"grand_total": doc.grand_total,
+		"status": doc.status,
+	}
+
+
+@frappe.whitelist()
+def save_delivery_note(challan_json: str, submit: int = 1):
+	"""Create (and by default submit) a real Delivery Note from the quick
+	Delivery Challan screen (2026-08-15 direct request: "make the ui of
+	delivery chalan vyapaar like" — this replaces the native Delivery Note
+	creation form). Same shape as save_sales_order.
+
+	Unlike Sales Order / Quotation, a Delivery Note is a STOCK document:
+	submitting it actually moves goods out of the warehouse. Two things
+	follow from that, and neither is optional:
+
+	  * every item row needs a source warehouse — the screen has no
+	    per-row warehouse picker (Vyapar's challan doesn't either, a small
+	    shop has one godown), so the company's single active warehouse is
+	    stamped on each row, same default the Sale Invoice screen uses.
+	  * `po_no` carries the customer's own reference/order number, which is
+	    what a real challan is filed against at the receiving end.
+
+	Insufficient stock raises ERPNext's own negative-stock error rather
+	than being worked around here — a challan for goods that aren't there
+	is a real problem to surface, not to paper over.
+	"""
+	import json
+
+	data = json.loads(challan_json) if isinstance(challan_json, str) else challan_json
+	customer = data.get("customer")
+	items = data.get("items") or []
+
+	if not customer:
+		frappe.throw(_("Please select a customer."))
+	if not items:
+		frappe.throw(_("Please add at least one item."))
+
+	company = data.get("company") or frappe.defaults.get_user_default("Company")
+	posting_date = data.get("posting_date") or frappe.utils.today()
+	warehouse = data.get("warehouse") or frappe.db.get_value(
+		"Warehouse", {"is_group": 0, "disabled": 0, "company": company}, "name"
+	)
+	if not warehouse:
+		frappe.throw(_("No active warehouse found. Set one up in Admin Mode first."))
+
+	doc = frappe.new_doc("Delivery Note")
+	doc.customer = customer
+	doc.company = company
+	doc.posting_date = posting_date
+	doc.set_warehouse = warehouse
+	doc.selling_price_list = data.get("selling_price_list") or (
+		frappe.db.get_single_value("Selling Settings", "selling_price_list") or "Standard Selling"
+	)
+	if data.get("place_of_supply"):
+		doc.place_of_supply = data.get("place_of_supply")
+	if data.get("po_no"):
+		doc.po_no = data.get("po_no")
+
+	terms = data.get("terms") or ""
+	description = data.get("description") or ""
+	combined_terms = "\n\n".join(t for t in (description, terms) if t)
+	if combined_terms:
+		doc.tc_name = None
+		doc.terms = combined_terms
+
+	for row in items:
+		qty = flt(row.get("qty"))
+		if qty <= 0:
+			frappe.throw(_("Please enter a valid quantity for {0}.").format(row.get("item_code")))
+		rate = flt(row.get("rate"))
+		if rate < 0:
+			frappe.throw(_("Please enter a valid rate for {0}.").format(row.get("item_code")))
+
+		doc.append(
+			"items",
+			{
+				"item_code": row.get("item_code"),
+				"qty": qty,
+				"rate": rate,
+				"uom": row.get("uom"),
+				"warehouse": warehouse,
+				"discount_percentage": flt(row.get("discount_percentage")),
+				"discount_amount": flt(row.get("discount_amount")),
+			},
+		)
+
+	challan_discount = flt(data.get("additional_discount_amount"))
+	if challan_discount:
+		doc.apply_discount_on = "Grand Total"
+		doc.discount_amount = challan_discount
+
+	doc.run_method("set_missing_values")
+	doc.run_method("calculate_taxes_and_totals")
+
+	doc.insert()
+	if cint(submit):
+		doc.submit()
+
+	return {
+		"name": doc.name,
+		"docstatus": doc.docstatus,
+		"grand_total": doc.grand_total,
+		"status": doc.status,
+	}
+
+
+@frappe.whitelist()
+def save_purchase_order(order_json: str, submit: int = 1):
+	"""Create (and by default submit) a real Purchase Order from the quick
+	Purchase Order screen — mirrors save_sales_order (Customer -> Supplier,
+	selling -> buying). Purchase Order Item requires schedule_date (Sales
+	Order's equivalent of delivery_date); the quick screen doesn't surface
+	a separate field for it (Vyapar doesn't either), so it defaults to the
+	order date itself (2026-08-15 direct request: "purchase order- add ur
+	first purchase order... jo ui hai use delete krke vyapaar type ui add
+	kro" — this screen replaces the native Purchase Order creation form).
+	"""
+	import json
+
+	data = json.loads(order_json) if isinstance(order_json, str) else order_json
+	supplier = data.get("supplier")
+	items = data.get("items") or []
+
+	if not supplier:
+		frappe.throw(_("Please select a supplier."))
+	if not items:
+		frappe.throw(_("Please add at least one item."))
+
+	company = data.get("company") or frappe.defaults.get_user_default("Company")
+	transaction_date = data.get("posting_date") or frappe.utils.today()
+	schedule_date = data.get("schedule_date") or transaction_date
+
+	doc = frappe.new_doc("Purchase Order")
+	doc.supplier = supplier
+	doc.company = company
+	doc.transaction_date = transaction_date
+	doc.schedule_date = schedule_date
+	doc.buying_price_list = data.get("buying_price_list") or (
+		frappe.db.get_single_value("Buying Settings", "buying_price_list") or "Standard Buying"
+	)
+	if data.get("place_of_supply"):
+		doc.place_of_supply = data.get("place_of_supply")
+	terms = data.get("terms") or ""
+	description = data.get("description") or ""
+	combined_terms = "\n\n".join(t for t in (description, terms) if t)
+	if combined_terms:
+		doc.tc_name = None
+		doc.terms = combined_terms
+
+	for row in items:
+		qty = flt(row.get("qty"))
+		if qty <= 0:
+			frappe.throw(_("Please enter a valid quantity for {0}.").format(row.get("item_code")))
+		rate = flt(row.get("rate"))
+		if rate < 0:
+			frappe.throw(_("Please enter a valid rate for {0}.").format(row.get("item_code")))
+
+		doc.append(
+			"items",
+			{
+				"item_code": row.get("item_code"),
+				"qty": qty,
+				"rate": rate,
+				"uom": row.get("uom"),
+				"schedule_date": schedule_date,
+				"discount_percentage": flt(row.get("discount_percentage")),
+				"discount_amount": flt(row.get("discount_amount")),
+			},
+		)
+
+	invoice_discount = flt(data.get("additional_discount_amount"))
+	if invoice_discount:
+		doc.apply_discount_on = "Grand Total"
+		doc.discount_amount = invoice_discount
+
+	doc.run_method("set_missing_values")
+	doc.run_method("calculate_taxes_and_totals")
+
+	doc.insert()
+	if cint(submit):
+		doc.submit()
+
+	return {
+		"name": doc.name,
+		"docstatus": doc.docstatus,
+		"grand_total": doc.grand_total,
+		"status": doc.status,
+	}
+
+
+def _validate_credit_customer(customer_name: str, outstanding: float):
+	"""2026-08-14 direct request: Walk-in Customer can never carry a
+	balance ("baaki") — cash-in-full only, since there's no way to
+	actually collect from a walk-in later. Any *other* customer left with
+	an outstanding balance (a credit sale, or a partial "Paid Now" less
+	than the total) must have phone + address on file — same reasoning,
+	just short of an outright ban: you need a way to reach them for the
+	rest of the money. Checked here, not just client-side, since this
+	quick-sale screen isn't the only caller of `save_sale_invoice`."""
+	cust = frappe.db.get_value(
+		"Customer", customer_name, ["customer_name", "mobile_no", "customer_primary_address"], as_dict=True
+	)
+	if not cust:
+		return
+
+	if (cust.customer_name or "").strip().lower() == "walk-in customer":
+		frappe.throw(
+			_(
+				"Walk-in Customer cannot have an outstanding balance of {0}. "
+				"Select or add a proper customer for a credit/baaki sale."
+			).format(frappe.utils.fmt_money(outstanding, currency="INR"))
+		)
+
+	missing = []
+	if not cust.mobile_no:
+		missing.append(_("Phone Number"))
+	if not cust.customer_primary_address:
+		missing.append(_("Address"))
+	if missing:
+		frappe.throw(
+			_("{0} is required for {1} to have an outstanding balance (baaki) of {2}.").format(
+				" and ".join(missing), cust.customer_name, frappe.utils.fmt_money(outstanding, currency="INR")
+			)
+		)
 
 
 @frappe.whitelist()
@@ -2879,6 +5282,9 @@ def get_party_transactions(party_type: str, party: str):
 		)
 		for r in si_rows:
 			r["type"] = "Sale"
+			r["doctype"] = "Sales Invoice"
+		_attach_item_summaries(si_rows, "Sales Invoice", "Sales Invoice Item")
+
 		pos_rows = frappe.get_all(
 			"POS Invoice",
 			filters={"customer": party, "docstatus": 1, "consolidated_invoice": ["in", ["", None]]},
@@ -2886,6 +5292,9 @@ def get_party_transactions(party_type: str, party: str):
 		)
 		for r in pos_rows:
 			r["type"] = "Sale"
+			r["doctype"] = "POS Invoice"
+		_attach_item_summaries(pos_rows, "POS Invoice", "POS Invoice Item")
+
 		rows = list(si_rows) + list(pos_rows)
 	else:
 		rows = frappe.get_all(
@@ -2895,6 +5304,8 @@ def get_party_transactions(party_type: str, party: str):
 		)
 		for r in rows:
 			r["type"] = "Purchase"
+			r["doctype"] = "Purchase Invoice"
+		_attach_item_summaries(rows, "Purchase Invoice", "Purchase Invoice Item")
 
 	rows.sort(key=lambda r: r["posting_date"], reverse=True)
 	return rows
@@ -3689,3 +6100,202 @@ def create_purchase_invoices_from_bills(bills):
 		})
 
 	return results
+
+
+@frappe.whitelist()
+def get_cash_bank_accounts():
+	"""Vyapar-style Cash & Bank balances — every Cash/Bank leaf account for
+	the company with its current balance (2026-08-15 direct request:
+	"Chart of Accounts me kya kaam h? use acche se dekho" — the native
+	Chart of Accounts is the full double-entry ledger tree, which Vyapar
+	itself never shows a shop owner; this is the Vyapar-equivalent —
+	just the cash/bank balances, same concept as the app's own Cash In
+	Hand/Bank Accounts entries under Current Assets).
+	"""
+	from erpnext.accounts.utils import get_balance_on
+
+	company = frappe.defaults.get_user_default("Company") or frappe.db.get_single_value(
+		"Global Defaults", "default_company"
+	)
+	accounts = frappe.get_all(
+		"Account",
+		filters={"company": company, "account_type": ["in", ["Cash", "Bank"]], "is_group": 0, "disabled": 0},
+		fields=["name", "account_name", "account_type"],
+		order_by="account_name asc",
+	)
+
+	rows = []
+	total = 0.0
+	for a in accounts:
+		balance = flt(get_balance_on(a.name))
+		rows.append(
+			{
+				"account": a.name,
+				"account_name": a.account_name,
+				"account_type": a.account_type,
+				"balance": balance,
+			}
+		)
+		total += balance
+
+	rows.sort(key=lambda r: -r["balance"])
+	return {"accounts": rows, "total": total}
+
+
+@frappe.whitelist()
+def get_account_ledger(account: str, limit: int = 50):
+	"""Recent GL Entries for one Cash/Bank account — the "statement" behind
+	a balance in get_cash_bank_accounts(), same idea as a Party's
+	transaction list elsewhere in this app."""
+	rows = frappe.get_all(
+		"GL Entry",
+		filters={"account": account, "is_cancelled": 0},
+		fields=["posting_date", "voucher_type", "voucher_no", "against", "party", "party_type", "debit", "credit"],
+		order_by="posting_date desc, creation desc",
+		limit_page_length=cint(limit) or 50,
+	)
+	return rows
+
+
+@frappe.whitelist()
+def get_party_contact_info(party_type: str, party: str):
+	"""Phone + billing address for the Parties detail panel header
+	(2026-08-15 direct request, matching a real Vyapar screenshot pixel for
+	pixel: "Phone Number"/"Billing Address" shown right under the party
+	name — the panel previously showed a bare Customer/Supplier type pill
+	instead)."""
+	address_field = "customer_primary_address" if party_type == "Customer" else "supplier_primary_address"
+	doc = frappe.get_doc(party_type, party)
+	phone = doc.mobile_no
+	address_name = doc.get(address_field)
+
+	address_display = None
+	if address_name and frappe.db.exists("Address", address_name):
+		addr = frappe.get_doc("Address", address_name)
+		parts = [addr.address_line1, addr.address_line2, addr.city, addr.state, addr.pincode, addr.country]
+		address_display = ", ".join(p for p in parts if p)
+
+	gstin = doc.get("gstin")
+	email = doc.get("email_id")
+	credit_limit = 0
+	if party_type == "Customer":
+		for row in doc.get("credit_limits") or []:
+			credit_limit = flt(row.credit_limit)
+			if credit_limit:
+				break
+	return {
+		"phone": phone,
+		"address": address_display,
+		"gstin": gstin,
+		"email": email,
+		"credit_limit": credit_limit,
+	}
+
+
+@frappe.whitelist()
+def update_party_phone(party_type: str, party: str, phone: str):
+	"""Update a party's phone number from the Parties detail panel's Edit
+	dialog. A plain frappe.client.set_value("mobile_no", ...) silently
+	no-ops (confirmed live 2026-08-15) — Customer/Supplier auto-link a
+	primary Contact the first time a phone is set (create_customer_full/
+	create_supplier_full above), and mobile_no reads back from that linked
+	Contact afterward rather than staying a plain field, so the Contact's
+	own phone row has to be the one that changes.
+	"""
+	contact_field = "customer_primary_contact" if party_type == "Customer" else "supplier_primary_contact"
+	doc = frappe.get_doc(party_type, party)
+	contact_name = doc.get(contact_field)
+
+	if contact_name and frappe.db.exists("Contact", contact_name):
+		contact = frappe.get_doc("Contact", contact_name)
+	else:
+		contact = frappe.new_doc("Contact")
+		contact.first_name = doc.get("customer_name") or doc.get("supplier_name") or party
+		contact.append("links", {"link_doctype": party_type, "link_name": party})
+
+	primary_rows = [p for p in contact.phone_nos if p.is_primary_mobile_no]
+	if primary_rows:
+		primary_rows[0].phone = phone
+	else:
+		contact.append("phone_nos", {"phone": phone, "is_primary_mobile_no": 1})
+	contact.save(ignore_permissions=True)
+
+	if not contact_name:
+		frappe.db.set_value(party_type, party, contact_field, contact.name)
+	frappe.db.set_value(party_type, party, "mobile_no", phone)
+
+	return {"phone": phone}
+
+
+@frappe.whitelist()
+def update_party_details(
+	party_type: str,
+	party: str,
+	party_name: str = None,
+	phone: str = None,
+	email: str = None,
+	gstin: str = None,
+	address: str = None,
+):
+	"""Save every field the Parties Edit dialog shows.
+
+	The dialog used to collect Phone, Email and Address but only ever call
+	update_party_phone — Email was typed in, accepted, and silently thrown
+	away on save, and Address was read-only with a note telling the user to
+	"edit the full address from the party's own record", i.e. the native
+	form this app deliberately hides. Party Name and GSTIN weren't offered
+	at all, so a name typed wrong at creation could never be corrected;
+	people just made a second party instead (the duplicate pairs sitting in
+	this shop's list — "chandra"/"Chandra Prakash", "ansh babu"/"Ansh Babu"
+	— are what that produces).
+
+	Renaming goes through frappe.rename_doc so every linked invoice, payment
+	and ledger entry follows the new name rather than pointing at a party
+	that no longer exists. Customer/Supplier are named by their own name
+	field in this site, so a name change genuinely is a rename.
+	"""
+	if not frappe.db.exists(party_type, party):
+		frappe.throw(_("{0} {1} not found").format(party_type, party))
+
+	name_field = "customer_name" if party_type == "Customer" else "supplier_name"
+	current = frappe.get_doc(party_type, party)
+	new_name = (party_name or "").strip()
+
+	# Rename first: everything below addresses the party by name.
+	if new_name and new_name != current.get(name_field):
+		new_name = title_case_a_name(new_name)
+		if frappe.db.exists(party_type, new_name) and new_name != party:
+			frappe.throw(_("A {0} named {1} already exists.").format(party_type.lower(), new_name))
+		frappe.rename_doc(party_type, party, new_name, force=True, show_alert=False)
+		party = new_name
+		frappe.db.set_value(party_type, party, name_field, new_name)
+
+	if phone is not None:
+		update_party_phone(party_type, party, phone)
+
+	if email is not None:
+		frappe.db.set_value(party_type, party, "email_id", email or None)
+
+	if gstin is not None:
+		# gstin lives on the party in india_compliance; guard so a site
+		# without it doesn't blow up the whole save.
+		if frappe.get_meta(party_type).has_field("gstin"):
+			frappe.db.set_value(party_type, party, "gstin", gstin or None)
+
+	if address is not None:
+		address_field = "customer_primary_address" if party_type == "Customer" else "supplier_primary_address"
+		address_name = frappe.db.get_value(party_type, party, address_field)
+		if address_name and frappe.db.exists("Address", address_name):
+			frappe.db.set_value("Address", address_name, "address_line1", address or None)
+		elif address:
+			doc = frappe.new_doc("Address")
+			doc.address_title = party
+			doc.address_type = "Billing"
+			doc.address_line1 = address
+			doc.country = "India"
+			doc.append("links", {"link_doctype": party_type, "link_name": party})
+			doc.insert(ignore_permissions=True)
+			frappe.db.set_value(party_type, party, address_field, doc.name)
+
+	frappe.db.commit()
+	return {"party": party}

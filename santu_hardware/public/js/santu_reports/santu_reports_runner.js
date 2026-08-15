@@ -8,6 +8,18 @@ santu_reports.runner = {
 		this._init = init;
 		this._filters = {};
 
+		const $generic = $workspace.find(".santu-reports-generic-area");
+		const $embed = $workspace.find(".santu-reports-embed-area");
+
+		if (report.type === "embed") {
+			$generic.hide();
+			$embed.show();
+			await this._load_embed(report, $embed);
+			return;
+		}
+		$embed.hide().empty();
+		$generic.show();
+
 		$workspace.find(".santu-reports-ws-title").text(report.label);
 		const $filters = $workspace.find(".santu-reports-filters");
 		const $table = $workspace.find(".santu-reports-table-area");
@@ -34,7 +46,7 @@ santu_reports.runner = {
 				const script = await santu_reports.api.get_script(report.report_name);
 				const filter_defs = script.filters || [];
 				this._filters = santu_reports.filters.build_defaults(filter_defs, init);
-				santu_reports.filters.merge_extra(this._filters, report);
+				santu_reports.filters.merge_extra(this._filters, report, init);
 				santu_reports.filters.render($filters, filter_defs, this._filters, (vals, run_now) => {
 					this._filters = vals;
 					if (run_now) this._run();
@@ -58,6 +70,45 @@ santu_reports.runner = {
 			}
 		} catch (e) {
 			$table.html(`<div class="santu-reports-error">Could not load report: ${frappe.utils.escape_html(e.message || String(e))}</div>`);
+			console.error(e);
+		}
+	},
+
+	async _load_embed(report, $embed) {
+		$embed.html(`<div class="santu-reports-loading">Loading…</div>`);
+
+		const EMBED_ASSETS = {
+			sale: [
+				"/assets/santu_hardware/js/santu_sale/santu_sale_utils.js",
+				"/assets/santu_hardware/js/santu_sale/santu_sale_api.js",
+				"/assets/santu_hardware/js/santu_sale/santu_sale_summary.js",
+				"/assets/santu_hardware/js/santu_sale/santu_sale_transactions.js",
+				"/assets/santu_hardware/js/santu_sale/santu_sale_page.js",
+			],
+			purchase: [
+				"/assets/santu_hardware/js/santu_purchase/santu_purchase_utils.js",
+				"/assets/santu_hardware/js/santu_purchase/santu_purchase_api.js",
+				"/assets/santu_hardware/js/santu_purchase/santu_purchase_summary.js",
+				"/assets/santu_hardware/js/santu_purchase/santu_purchase_transactions.js",
+				"/assets/santu_hardware/js/santu_purchase/santu_purchase_page.js",
+			],
+		};
+		const assets = EMBED_ASSETS[report.embed];
+		if (!assets) {
+			$embed.html(`<div class="santu-reports-error">Unknown embedded report.</div>`);
+			return;
+		}
+
+		try {
+			await new Promise((resolve) => frappe.require(assets, resolve));
+			$embed.empty();
+			if (report.embed === "sale") {
+				santu_sale.create_page().init($embed, { view: report.view || "invoices", enable_view_switch: false, show_trend: false });
+			} else if (report.embed === "purchase") {
+				santu_purchase.create_page().init($embed, { view: report.view || "bills", enable_view_switch: false });
+			}
+		} catch (e) {
+			$embed.html(`<div class="santu-reports-error">Could not load report: ${frappe.utils.escape_html(e.message || String(e))}</div>`);
 			console.error(e);
 		}
 	},

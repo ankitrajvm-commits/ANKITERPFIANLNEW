@@ -4,6 +4,12 @@ frappe.provide("santu_items");
 santu_items.utils = {
 	SELECTED_KEY: "santu_items_selected",
 
+	format_qty_short(qty) {
+		if (qty === null || qty === undefined) return "—";
+		const n = parseFloat(qty);
+		return Number.isInteger(n) ? String(n) : n.toFixed(2);
+	},
+
 	format_qty(qty, uom) {
 		if (qty === null || qty === undefined) return "—";
 		const n = parseFloat(qty);

@@ -6,7 +6,13 @@
  * color never gets misread as one of those meanings. One variable to
  * change if a different color is ever wanted.
  */
-:root {
+/* Scoped to kiosk mode only — this used to be a bare :root rule, which
+   meant it clobbered the site-wide Vyapar red (--santu-brand: #e0393e,
+   set in vyapar_theme.css) on EVERY page, not just kiosk screens, purely
+   because this file happened to load after vyapar_theme.css in hooks.py.
+   Discovered 2026-08-14 chasing a "+Add Estimate" button rendering indigo
+   instead of brand red. */
+.santu-kiosk-mode {
 	--santu-brand: #3730a3;
 	--santu-brand-dark: #2c2483;
 }
@@ -46,13 +52,13 @@ body.santu-kiosk-mode .navbar {
  */
 .santu-status-bar {
 	display: flex;
-	gap: 24px;
+	gap: 4px;
 	align-items: center;
-	padding: 10px 20px;
+	padding: 6px 12px;
 	background: var(--fg-color, #fff);
 	border-bottom: 1px solid var(--border-color, #d1d8dd);
-	font-size: 15px;
-	font-weight: 600;
+	font-size: 13px;
+	font-weight: 500;
 	color: var(--text-color, #1f272e);
 }
 
@@ -67,22 +73,27 @@ body.santu-kiosk-mode .navbar {
 	font-weight: 400;
 }
 
+/* Simple, quiet icon-only nav buttons (2026-08-15: first "simple sa" toned
+ * down the bold-red text links, then "just cross and minus rakho na"
+ * dropped the text/emoji entirely for plain − / ✕ glyphs) — small round
+ * buttons, muted gray, a soft gray hover background. */
 .santu-status-back,
-.santu-status-home,
-.santu-status-privacy {
+.santu-status-home {
 	cursor: pointer;
-	color: var(--santu-brand, #4f46e5);
+	color: var(--text-muted, #6b7280);
+	width: 28px;
+	height: 28px;
+	border-radius: 999px;
+	font-size: 16px;
+	font-weight: 600;
+	line-height: 1;
+	justify-content: center;
 }
 
 .santu-status-back:hover,
-.santu-status-home:hover,
-.santu-status-privacy:hover {
-	text-decoration: underline;
-}
-
-.santu-status-privacy.santu-privacy-active {
-	color: var(--santu-danger, #dc2626);
-	font-weight: 700;
+.santu-status-home:hover {
+	background: var(--control-bg, #f3f4f6);
+	color: var(--text-color, #1f272e);
 }
 
 /* Item Details panel's own field rows already have this margin via core

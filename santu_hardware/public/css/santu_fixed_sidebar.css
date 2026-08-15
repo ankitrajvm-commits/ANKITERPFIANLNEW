@@ -1,9 +1,21 @@
 /*
  * Fixed global sidebar — always visible left nav; main content opens to the right.
+ * Dark navy Vyapar-match theme (2026-08-14 direct request: pixel-match a
+ * Vyapar screenshot, "line by line, inch by inch"). Trial/"Get Premium"
+ * widget from the reference deliberately dropped — this app has no
+ * subscription/trial concept, so copying that would just be a fake
+ * notice with no meaning here (explicit instruction, not an oversight).
  */
 
 :root {
-	--santu-sidebar-width: 220px;
+	--santu-sidebar-width: 260px;
+	--santu-sidebar-bg: #1b2338;
+	--santu-sidebar-bg-hover: #262f47;
+	--santu-sidebar-bg-active: #3a1b22;
+	--santu-sidebar-text: #b7bdcc;
+	--santu-sidebar-text-dim: #7d8499;
+	--santu-sidebar-text-active: #ff6b6f;
+	--santu-sidebar-border: #2a3450;
 }
 
 #santu-app-sidebar {
@@ -12,49 +24,52 @@
 	left: 0;
 	width: var(--santu-sidebar-width);
 	height: calc(100vh - 56px);
-	background: #ffffff;
-	border-right: 1px solid #e5e7eb;
+	background: var(--santu-sidebar-bg);
+	border-right: 1px solid var(--santu-sidebar-border);
 	z-index: 1020;
 	overflow-y: auto;
 	overflow-x: hidden;
 	flex-shrink: 0;
+	display: flex;
+	flex-direction: column;
 }
 
 .santu-app-sidebar-list {
-	padding: 8px 0 24px;
+	padding: 8px 0 12px;
+	flex: 1;
 }
 
 .santu-app-sidebar-label {
 	padding: 12px 16px 6px;
-	font-size: 11px;
+	font-size: 12px;
 	font-weight: 700;
 	letter-spacing: 0.06em;
-	color: #9ca3af;
+	color: var(--santu-sidebar-text-dim);
 	text-transform: uppercase;
 }
 
 .santu-app-sidebar-item {
 	display: flex;
 	align-items: center;
-	gap: 10px;
+	gap: 12px;
 	width: 100%;
-	padding: 10px 16px;
+	padding: 11px 16px;
 	border: none;
 	background: transparent;
 	text-align: left;
-	font-size: 14px;
-	font-weight: 500;
-	color: #374151;
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--santu-sidebar-text);
 	cursor: pointer;
 	border-left: 3px solid transparent;
 }
 .santu-app-sidebar-item:hover {
-	background: #f3f4f6;
+	background: var(--santu-sidebar-bg-hover);
 }
 .santu-app-sidebar-item.is-active {
-	background: #fdeceb;
-	border-left-color: #e0393e;
-	color: #e0393e;
+	background: var(--santu-sidebar-bg-active);
+	border-left-color: var(--santu-brand, #e0393e);
+	color: var(--santu-sidebar-text-active);
 	font-weight: 600;
 }
 
@@ -62,7 +77,7 @@
 	width: 18px;
 	text-align: center;
 	flex-shrink: 0;
-	font-size: 15px;
+	font-size: 16px;
 	line-height: 1;
 }
 
@@ -74,41 +89,132 @@
 	text-overflow: ellipsis;
 }
 
-.santu-app-sidebar-chevron {
-	font-size: 10px;
-	opacity: 0.5;
+.santu-app-sidebar-quickadd {
 	flex-shrink: 0;
+	width: 20px;
+	height: 20px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 4px;
+	color: var(--santu-sidebar-text-dim);
+	font-size: 15px;
+	line-height: 1;
+}
+.santu-app-sidebar-quickadd:hover {
+	background: rgba(255, 255, 255, 0.1);
+	color: #fff;
+}
+
+.santu-app-sidebar-chevron {
+	font-size: 11px;
+	opacity: 0.6;
+	flex-shrink: 0;
+	color: var(--santu-sidebar-text-dim);
 }
 
 .santu-app-sidebar-children {
 	display: none;
+	background: rgba(0, 0, 0, 0.15);
 }
 .santu-app-sidebar-group.is-expanded .santu-app-sidebar-children {
 	display: block;
 }
 
 .santu-app-sidebar-child {
-	padding-left: 36px !important;
-	font-size: 13px;
+	padding-left: 40px !important;
+	font-size: 14.5px;
 	border-left: 3px solid transparent;
 }
 .santu-app-sidebar-child .santu-app-sidebar-icon {
-	font-size: 10px;
-	opacity: 0.5;
+	font-size: 9px;
+	opacity: 0.6;
 }
 .santu-app-sidebar-child.is-active {
-	background: #fdeceb !important;
-	border-left-color: #e0393e !important;
-	color: #e0393e !important;
+	background: var(--santu-sidebar-bg-active) !important;
+	border-left-color: var(--santu-brand, #e0393e) !important;
+	color: var(--santu-sidebar-text-active) !important;
 	font-weight: 600;
 }
 .santu-app-sidebar-child.is-active .santu-app-sidebar-icon {
 	opacity: 0.9;
-	color: #e0393e;
+	color: var(--santu-sidebar-text-active);
 }
 .santu-app-sidebar-group.is-active > .santu-app-sidebar-parent {
-	color: #e0393e;
+	color: #fff;
 	font-weight: 600;
+}
+
+/* ---------- Bottom company pill (replaces the reference's trial/premium
+   block — see file header) ---------- */
+.santu-app-sidebar-company {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 14px 16px;
+	border-top: 1px solid var(--santu-sidebar-border);
+	color: #fff;
+	font-size: 14px;
+	font-weight: 700;
+	letter-spacing: 0.02em;
+	cursor: pointer;
+}
+.santu-app-sidebar-company:hover {
+	background: var(--santu-sidebar-bg-hover);
+}
+.santu-app-sidebar-company-badge {
+	width: 26px;
+	height: 26px;
+	border-radius: 6px;
+	background: var(--santu-brand, #e0393e);
+	color: #fff;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 13px;
+	font-weight: 700;
+	flex-shrink: 0;
+}
+
+/* ---------- Collapse/expand toggle ---------- */
+.santu-app-sidebar-collapse-toggle {
+	position: absolute;
+	top: 10px;
+	right: -12px;
+	width: 24px;
+	height: 24px;
+	border-radius: 50%;
+	border: 1px solid var(--santu-sidebar-border);
+	background: var(--santu-sidebar-bg-hover);
+	color: #fff;
+	font-size: 15px;
+	line-height: 1;
+	cursor: pointer;
+	z-index: 5;
+}
+.santu-app-sidebar-collapse-toggle:hover {
+	background: var(--santu-brand, #e0393e);
+	border-color: var(--santu-brand, #e0393e);
+}
+
+body.santu-sidebar-collapsed #santu-app-sidebar {
+	width: var(--santu-sidebar-width);
+}
+body.santu-sidebar-collapsed .santu-app-sidebar-text,
+body.santu-sidebar-collapsed .santu-app-sidebar-chevron,
+body.santu-sidebar-collapsed .santu-app-sidebar-quickadd,
+body.santu-sidebar-collapsed .santu-app-sidebar-label,
+body.santu-sidebar-collapsed .santu-app-sidebar-children,
+body.santu-sidebar-collapsed .santu-app-sidebar-company span:not(.santu-app-sidebar-company-badge) {
+	display: none !important;
+}
+body.santu-sidebar-collapsed .santu-app-sidebar-item {
+	justify-content: center;
+	padding: 10px 0;
+}
+body.santu-sidebar-collapsed .santu-app-sidebar-company {
+	justify-content: center;
+	padding: 14px 0;
 }
 
 /* Push all main content to the right of fixed sidebar */
@@ -166,17 +272,73 @@ body.santu-fixed-sidebar:not(.santu-kiosk-mode) .page-head .container {
 	margin-left: 0 !important;
 }
 
-/* Navbar spans full width; only content below is offset */
+/* Navbar spans full width; only content below is offset.
+ * The navbar lives inside `.main-section` in Frappe's own DOM (confirmed
+ * live), which is exactly the element .main-section's own margin-left
+ * rule above pushes right to clear the sidebar — so without canceling it
+ * back out here specifically for the navbar, the logo/topbar row gets
+ * shoved in by the same 240px meant only for the page content beneath
+ * it (2026-08-14 direct report: logo wasn't flush against the screen
+ * edge). */
 body.santu-fixed-sidebar:not(.santu-kiosk-mode) .navbar {
-	width: 100% !important;
+	/* Parent (.main-section) is already narrowed by the sidebar width, so
+	   "full width" here means 100% of that narrowed parent PLUS the
+	   sidebar width back — not literal 100%, or the navbar falls short of
+	   the real right edge by exactly the sidebar's width. */
+	width: calc(100% + var(--santu-sidebar-width)) !important;
+	margin-left: calc(-1 * var(--santu-sidebar-width)) !important;
 }
 
-@media (max-width: 768px) {
+/* ---------- Mobile toggle button + backdrop (hidden on desktop) ---------- */
+#santu-app-sidebar-toggle {
+	display: none;
+}
+#santu-app-sidebar-backdrop {
+	display: none;
+}
+
+@media (max-width: 900px) {
+	/* Sidebar becomes an off-canvas drawer instead of squeezing content */
 	#santu-app-sidebar {
-		width: 200px;
+		width: 260px;
+		transform: translateX(-100%);
+		transition: transform 0.2s ease;
+		box-shadow: 2px 0 12px rgba(0, 0, 0, 0.35);
+		z-index: 1090;
 	}
+	body.santu-sidebar-open #santu-app-sidebar {
+		transform: translateX(0);
+	}
+
 	body.santu-fixed-sidebar:not(.santu-kiosk-mode) .main-section {
-		margin-left: 200px !important;
-		width: calc(100% - 200px) !important;
+		margin-left: 0 !important;
+		width: 100% !important;
+	}
+
+	body.santu-fixed-sidebar:not(.santu-kiosk-mode) #santu-app-sidebar-toggle {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		position: fixed;
+		top: 64px;
+		left: 10px;
+		width: 36px;
+		height: 36px;
+		border-radius: 8px;
+		border: 1px solid #e5e7eb;
+		background: #ffffff;
+		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+		font-size: 19px;
+		line-height: 1;
+		z-index: 1095;
+		cursor: pointer;
+	}
+
+	body.santu-sidebar-open:not(.santu-kiosk-mode) #santu-app-sidebar-backdrop {
+		display: block;
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.35);
+		z-index: 1080;
 	}
 }

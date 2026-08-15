@@ -1,101 +1,21 @@
 /*
- * Items page — Vyapar-style: top tabs (Products/Services/Category/Units),
- * left list (ITEM + QUANTITY), right detail with prices, stock, transactions.
+ * Items page — layout/copy from Vyapar Items pack (2026-08-15):
+ * AppLayout …fd1705 + AddConversionButton …bf7249 + screenshot/03-items.png
+ * Tokens match Parties: TEXT #3f4155, BLUE #0075e8, GREEN #08bd7c, RED #f45972,
+ * MUTED #71748e, PAGE #f3f4f8.
  */
 
 .santu-items-page-main {
 	padding: 0 !important;
+	background: #f3f4f8;
 }
 
 .santu-items {
 	display: flex;
 	flex-direction: column;
-	height: calc(100vh - 60px);
-	background: #fff;
+	height: calc(100vh - 56px);
+	background: #f3f4f8;
 }
-
-/* ---------- Action bar (Add Sale / Add Purchase) ---------- */
-.santu-items-topbar {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 16px;
-	padding: 10px 20px;
-	background: #fff;
-	border-bottom: 1px solid #e5e7eb;
-	flex-shrink: 0;
-}
-
-.santu-items-topbar-search {
-	flex: 1 1 auto;
-	max-width: 420px;
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	border: 1px solid #e5e7eb;
-	border-radius: 8px;
-	padding: 8px 14px;
-	background: #fff;
-}
-.santu-items-topbar-search-icon { font-size: 14px; opacity: 0.45; }
-.santu-items-top-search {
-	border: none;
-	outline: none;
-	flex: 1;
-	font-size: 14px;
-	background: transparent;
-	color: #374151;
-}
-
-.santu-items-topbar-actions {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	flex-shrink: 0;
-}
-
-.santu-items-btn-sale {
-	padding: 8px 18px;
-	border: none;
-	border-radius: 8px;
-	background: #fdeceb;
-	color: var(--santu-brand, #e0393e);
-	font-size: 14px;
-	font-weight: 700;
-	cursor: pointer;
-	white-space: nowrap;
-}
-.santu-items-btn-sale:hover { background: #fad4d2; }
-
-.santu-items-btn-purchase {
-	padding: 8px 18px;
-	border: none;
-	border-radius: 8px;
-	background: #eaf1fe;
-	color: var(--santu-brand-secondary, #2f6fed);
-	font-size: 14px;
-	font-weight: 700;
-	cursor: pointer;
-	white-space: nowrap;
-}
-.santu-items-btn-purchase:hover { background: #d6e4fd; }
-
-.santu-items-btn-quick {
-	width: 36px;
-	height: 36px;
-	border: none;
-	border-radius: 50%;
-	background: #eaf1fe;
-	color: var(--santu-brand-secondary, #2f6fed);
-	font-size: 20px;
-	font-weight: 700;
-	cursor: pointer;
-	line-height: 1;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-}
-.santu-items-btn-quick:hover { background: #d6e4fd; }
 
 .santu-items-btn-menu {
 	width: 36px;
@@ -104,15 +24,15 @@
 	border-radius: 8px;
 	background: transparent;
 	color: #6b7280;
-	font-size: 20px;
+	font-size: 22px;
 	cursor: pointer;
 	line-height: 1;
 }
 .santu-items-btn-menu:hover { background: #f3f4f6; }
 
-/* ---------- Top tabs (Vyapar underline style, centered) ---------- */
+/* ---------- Top tabs (Vyapar underline style, left-aligned) ---------- */
 .santu-items-tabs-wrap {
-	background: #f8f9fb;
+	background: #fff;
 	border-bottom: 1px solid #e5e7eb;
 	flex-shrink: 0;
 }
@@ -120,28 +40,29 @@
 .santu-items-tabs {
 	display: flex;
 	gap: 0;
-	justify-content: center;
+	justify-content: flex-start;
 	padding: 0 24px;
-	background: #f8f9fb;
+	background: #fff;
 }
 
 .santu-items-tab {
-	padding: 14px 28px;
+	padding: 14px 20px;
 	border: none;
 	background: none;
 	font-size: 13px;
 	font-weight: 700;
-	letter-spacing: 0.06em;
-	color: #9ca3af;
+	letter-spacing: 0.04em;
+	color: #9ea0b1;
 	cursor: pointer;
 	border-bottom: 3px solid transparent;
 	margin-bottom: -1px;
 	text-transform: uppercase;
+	font-family: Roboto, sans-serif;
 }
-.santu-items-tab:hover { color: #4b5563; }
+.santu-items-tab:hover { color: #3f4155; }
 .santu-items-tab-active {
-	color: #4c1d95;
-	border-bottom-color: var(--santu-brand-secondary, #2f6fed);
+	color: #3f4155;
+	border-bottom-color: #0075e8;
 }
 
 /* ---------- Body split ---------- */
@@ -149,17 +70,65 @@
 	display: flex;
 	flex: 1 1 auto;
 	min-height: 0;
+	gap: 4px;
+	margin: 0 4px 4px;
 }
 
 /* ---------- Left list panel (compact) ---------- */
 .santu-items-list-panel {
-	flex: 0 0 340px;
-	max-width: 380px;
+	flex: 0 0 320px;
+	max-width: 360px;
 	display: flex;
 	flex-direction: column;
-	border-right: 1px solid #e5e7eb;
 	min-height: 0;
 	background: #fff;
+	border-radius: 4px;
+}
+
+/* ---------- Bulk Items Update card ---------- */
+.santu-items-bulk-card {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin: 12px 16px 0;
+	padding: 12px 14px;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	background: #fafbfc;
+	cursor: pointer;
+	position: relative;
+}
+.santu-items-bulk-card:hover { background: #f3f4f6; }
+.santu-items-bulk-icon {
+	flex-shrink: 0;
+	width: 34px;
+	height: 34px;
+	border-radius: 8px;
+	background: #fdeceb;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 17px;
+}
+.santu-items-bulk-text {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+.santu-items-bulk-title {
+	font-size: 14px;
+	font-weight: 700;
+	color: #111827;
+}
+.santu-items-bulk-sub {
+	font-size: 12px;
+	color: #6b7280;
+}
+.santu-items-bulk-arrow {
+	margin-left: auto;
+	color: #9ca3af;
+	font-size: 19px;
 }
 
 .santu-items-toolbar {
@@ -171,38 +140,84 @@
 	flex-shrink: 0;
 }
 
+.santu-items-search-toggle {
+	flex-shrink: 0;
+	width: 32px;
+	height: 32px;
+	border: 1px solid #e5e7eb;
+	border-radius: 6px;
+	background: #fff;
+	color: #6b7280;
+	font-size: 15px;
+	cursor: pointer;
+}
+.santu-items-search-toggle:hover { background: #f3f4f6; }
+
 .santu-items-toolbar-search {
-	flex: 1 1 auto;
+	flex: 0 0 0;
+	width: 0;
+	overflow: hidden;
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	border: 1px solid #e5e7eb;
+	border: 1px solid transparent;
 	border-radius: 6px;
-	padding: 6px 10px;
+	padding: 0;
 	background: #fff;
+	transition: flex-basis 0.15s ease, width 0.15s ease, padding 0.15s ease;
 }
-.santu-items-search-icon { font-size: 14px; opacity: 0.5; }
+.santu-items-toolbar-search.santu-items-search-open {
+	flex: 1 1 auto;
+	width: auto;
+	border-color: #e5e7eb;
+	padding: 6px 10px;
+}
+.santu-items-search-icon { font-size: 15px; opacity: 0.5; }
 .santu-items-search {
 	border: none;
 	outline: none;
 	flex: 1;
-	font-size: 14px;
+	font-size: 15px;
 	background: transparent;
+	min-width: 0;
 }
 
+.santu-items-add-split {
+	flex-shrink: 0;
+	display: flex;
+	align-items: stretch;
+	border-radius: 8px;
+	overflow: hidden;
+}
 .santu-items-add-btn {
 	flex-shrink: 0;
 	font-weight: 700;
-	font-size: 13px;
-	padding: 8px 16px;
+	font-size: 14px;
+	padding: 8px 14px;
 	white-space: nowrap;
+	border: none;
+	background: #f97316;
+	color: #fff;
+	cursor: pointer;
 }
+.santu-items-add-btn:hover { background: #ea580c; }
+.santu-items-add-caret {
+	flex-shrink: 0;
+	border: none;
+	border-left: 1px solid rgba(255, 255, 255, 0.35);
+	background: #f97316;
+	color: #fff;
+	font-size: 12px;
+	padding: 8px 10px;
+	cursor: pointer;
+}
+.santu-items-add-caret:hover { background: #ea580c; }
 
 .santu-items-table-head {
 	display: flex;
 	justify-content: space-between;
 	padding: 10px 16px;
-	font-size: 11px;
+	font-size: 12px;
 	font-weight: 700;
 	letter-spacing: 0.05em;
 	color: #9ca3af;
@@ -212,7 +227,16 @@
 	flex-shrink: 0;
 }
 .santu-items-col-item { flex: 1; }
-.santu-items-col-qty { flex: 0 0 100px; text-align: right; }
+.santu-items-col-qty { flex: 0 0 130px; text-align: right; }
+.santu-items-qty-filter {
+	cursor: pointer;
+	color: #ed1a3b;
+	font-size: 11px;
+	display: inline-block;
+	transform: scaleX(1.4);
+	margin-left: 2px;
+}
+.santu-items-qty-filter:hover { opacity: 0.7; }
 
 .santu-items-list {
 	flex: 1 1 auto;
@@ -230,32 +254,38 @@
 }
 .santu-items-row:hover { background: #f9fafb; }
 .santu-items-row-active {
-	background: #eaf1fe !important;
-	border-left: 3px solid var(--santu-brand-secondary, #2f6fed);
-	padding-left: 13px;
+	background: #e4f2ff !important;
 }
 
 .santu-items-row-name {
 	flex: 1 1 auto;
 	font-size: 14px;
-	font-weight: 500;
-	color: #1f2937;
+	font-weight: 400;
+	color: #3f4155;
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	min-width: 0;
 }
 .santu-items-row-qty {
-	flex: 0 0 100px;
+	flex: 0 0 72px;
 	text-align: right;
 	font-size: 14px;
-	font-weight: 600;
+	font-weight: 500;
+}
+.santu-items-row-drag {
+	flex: 0 0 16px;
+	color: #c5c7d3;
+	letter-spacing: -2px;
+	font-size: 12px;
+	line-height: 1;
+	cursor: grab;
 }
 
-.santu-items-qty-ok { color: #15803d; }
-.santu-items-qty-low { color: #b45309; }
-.santu-items-qty-out { color: #b91c1c; }
-.santu-items-qty-na { color: #9ca3af; }
+.santu-items-qty-ok { color: #08bd7c; }
+.santu-items-qty-low { color: #d97706; }
+.santu-items-qty-out { color: #f45972; }
+.santu-items-qty-na { color: #9ea0b1; }
 
 /* ---------- Right detail panel (large) ---------- */
 .santu-items-detail-panel {
@@ -264,6 +294,7 @@
 	min-height: 0;
 	padding: 0;
 	background: #fff;
+	border-radius: 4px;
 }
 
 .santu-items-detail-loading {
@@ -286,7 +317,7 @@
 	border-radius: 6px;
 	background: #fff;
 	color: #6b7280;
-	font-size: 16px;
+	font-size: 17px;
 	cursor: pointer;
 	line-height: 1;
 }
@@ -299,7 +330,7 @@
 	color: #9ca3af;
 	padding: 48px 32px;
 	text-align: center;
-	font-size: 15px;
+	font-size: 16px;
 }
 
 .santu-items-detail-top {
@@ -308,92 +339,231 @@
 }
 
 .santu-items-detail-name {
-	font-size: 20px;
+	font-size: 18px;
 	font-weight: 700;
-	color: #111827;
+	color: #3f4155;
 	margin: 0;
 	line-height: 1.3;
-	flex: 1;
+	flex: 0 1 auto;
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
 }
 
 .santu-items-detail-sub {
-	font-size: 14px;
+	font-size: 15px;
 	color: #6b7280;
 	margin: -8px 0 16px;
 }
 
+.santu-items-unit-top {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+}
+
+.santu-items-unit-conv-section {
+	padding: 0 24px 24px;
+}
+
+.santu-items-unit-conv-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 20px 0 12px;
+}
+
+.santu-items-unit-conv-title {
+	font-size: 13px;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	color: #6b7280;
+}
+
+.santu-items-unit-conv-search {
+	max-width: 220px;
+}
+
+.santu-items-unit-conv-table-head {
+	display: flex;
+	justify-content: space-between;
+	padding: 8px 4px;
+	border-bottom: 1px solid #e5e7eb;
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	color: #9ca3af;
+}
+
+.santu-items-unit-conv-row {
+	display: flex;
+	justify-content: space-between;
+	padding: 12px 4px;
+	border-bottom: 1px solid #f3f4f6;
+	font-size: 15px;
+	color: #111827;
+}
+
+.santu-items-unit-conv-empty {
+	padding: 40px 4px;
+	text-align: center;
+	color: #9ca3af;
+	font-size: 15px;
+}
+
+.santu-items-unit-row .santu-items-row-qty {
+	font-weight: 700;
+	color: #6b7280;
+}
+
 .santu-items-price-row {
 	display: flex;
-	gap: 32px;
-	margin-bottom: 16px;
+	flex-direction: column;
+	gap: 6px;
+	margin-bottom: 0;
 }
 
 .santu-items-price-block {
 	display: flex;
-	flex-direction: column;
-	gap: 4px;
+	align-items: baseline;
+	gap: 8px;
 }
 .santu-items-price-label {
 	font-size: 11px;
 	font-weight: 700;
 	letter-spacing: 0.04em;
-	color: #6b7280;
+	color: #71748e;
 	text-transform: uppercase;
 }
 .santu-items-price-value {
-	font-size: 16px;
-	font-weight: 700;
-	color: #111827;
+	font-size: 14px;
+	font-weight: 500;
+	color: #3f4155;
 }
 .santu-items-price-value small {
-	font-size: 12px;
+	font-size: 13px;
 	font-weight: 400;
 	color: #9ca3af;
 }
 
-.santu-items-stock-row {
+.santu-items-detail-top-split {
 	display: flex;
-	align-items: center;
-	gap: 32px;
-	flex-wrap: wrap;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 24px;
+}
+.santu-items-detail-left {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+.santu-items-detail-right {
+	flex: 0 0 auto;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 8px;
+}
+
+.santu-items-avail-row {
+	font-size: 13px;
+	font-weight: 700;
+	letter-spacing: 0.02em;
+	color: #6b7280;
+	text-transform: uppercase;
 }
 
 .santu-items-stock-block {
 	display: flex;
-	flex-direction: column;
-	gap: 4px;
+	align-items: baseline;
+	gap: 6px;
 }
 .santu-items-stock-label {
-	font-size: 11px;
+	font-size: 13px;
 	font-weight: 700;
-	letter-spacing: 0.04em;
+	letter-spacing: 0.02em;
 	color: #6b7280;
 }
 .santu-items-stock-value {
-	font-size: 18px;
+	font-size: 15px;
 	font-weight: 700;
 }
 
 .santu-items-adjust-btn {
-	margin-left: auto;
-	font-size: 13px;
+	font-size: 12px;
 	font-weight: 700;
-	padding: 10px 20px;
+	letter-spacing: 0.04em;
+	padding: 8px 16px;
 	border: none;
-	border-radius: 8px;
-	background: #f97316;
-	color: #fff;
+	border-radius: 4px;
+	background: #0075e8 !important;
+	border-color: #0075e8 !important;
+	color: #fff !important;
 	white-space: nowrap;
+	margin-bottom: 8px;
+	text-transform: uppercase;
 }
 .santu-items-adjust-btn:hover {
-	background: #ea580c;
-	color: #fff;
+	background: #0066cc !important;
+	border-color: #0066cc !important;
+	color: #fff !important;
 }
 
 .santu-items-service-tag {
-	font-size: 13px;
+	font-size: 14px;
 	color: #6b7280;
 	font-weight: 600;
+}
+
+/* ---------- Category tab ---------- */
+.santu-items-row-uncategorized .santu-items-row-name {
+	font-weight: 700;
+}
+
+.santu-items-cat-top {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+}
+.santu-items-cat-heading {
+	font-size: 16px;
+	font-weight: 700;
+	letter-spacing: 0.02em;
+	color: #111827;
+	margin: 0 0 4px;
+	text-transform: uppercase;
+}
+.santu-items-cat-count {
+	font-size: 15px;
+	font-weight: 700;
+	color: #374151;
+}
+
+.santu-items-cat-items-section {
+	padding: 0 24px 24px;
+}
+.santu-items-cat-items-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 20px 0 12px;
+}
+.santu-items-cat-items-title {
+	font-size: 13px;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	color: #374151;
+}
+.santu-items-cat-items-search {
+	max-width: 220px;
+	font-size: 14px;
+	height: auto;
+	padding: 6px 12px;
+}
+.santu-items-cat-items-table th {
+	white-space: nowrap;
 }
 
 /* ---------- Transactions ---------- */
@@ -410,7 +580,7 @@
 	flex-wrap: wrap;
 }
 .santu-items-txn-title {
-	font-size: 12px;
+	font-size: 13px;
 	font-weight: 700;
 	letter-spacing: 0.06em;
 	color: #374151;
@@ -422,7 +592,7 @@
 }
 .santu-items-txn-type-filter {
 	width: 140px;
-	font-size: 13px;
+	font-size: 14px;
 	padding: 6px 10px;
 	height: auto;
 }
@@ -430,10 +600,22 @@
 	border: 1px solid #e5e7eb;
 	border-radius: 6px;
 	padding: 6px 12px;
-	font-size: 13px;
+	font-size: 14px;
 	width: 180px;
 	height: auto;
 }
+.santu-items-txn-export {
+	flex-shrink: 0;
+	width: 32px;
+	height: 32px;
+	border: 1px solid #e5e7eb;
+	border-radius: 6px;
+	background: #eaf1fe;
+	color: var(--santu-brand-secondary, #2f6fed);
+	font-size: 15px;
+	cursor: pointer;
+}
+.santu-items-txn-export:hover { background: #d6e4fd; }
 
 .santu-items-txn-table-wrap {
 	overflow-x: auto;
@@ -442,12 +624,12 @@
 .santu-items-txn-table {
 	width: 100%;
 	border-collapse: collapse;
-	font-size: 13px;
+	font-size: 14px;
 }
 .santu-items-txn-table thead th {
 	text-align: left;
 	padding: 10px 12px;
-	font-size: 11px;
+	font-size: 12px;
 	font-weight: 700;
 	letter-spacing: 0.04em;
 	color: #9ca3af;
@@ -476,9 +658,53 @@
 .santu-items-txn-row { cursor: pointer; }
 .santu-items-txn-row:hover { background: #f9fafb; }
 
-.santu-items-status-unpaid { color: #b91c1c; font-weight: 600; }
-.santu-items-status-paid { color: #15803d; font-weight: 600; }
-.santu-items-status-done { color: #6b7280; font-weight: 600; }
+.santu-items-status-unpaid { color: #f45972; font-weight: 600; }
+.santu-items-status-paid { color: #08bd7c; font-weight: 600; }
+.santu-items-status-done { color: #71748e; font-weight: 600; }
+
+.santu-items-type-dot {
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	margin-right: 8px;
+	vertical-align: middle;
+}
+.santu-items-type-sale { background: #08bd7c; }
+.santu-items-type-purchase { background: #0075e8; }
+.santu-items-type-other { background: #9ea0b1; }
+
+.santu-items-col-filter {
+	color: #c5c7d3;
+	font-size: 10px;
+	display: inline-block;
+	transform: scaleX(1.3);
+}
+.santu-items-col-filter.is-active { color: #ed1a3b; }
+
+.santu-items-txn-kebab-col {
+	width: 28px;
+	text-align: right;
+}
+.santu-items-row-menu {
+	border: none;
+	background: transparent;
+	color: #9ea0b1;
+	cursor: pointer;
+	font-size: 16px;
+	line-height: 1;
+	padding: 0 4px;
+}
+.santu-items-stock-warn {
+	margin-right: 4px;
+	vertical-align: middle;
+}
+
+.santu-items-empty img {
+	display: block;
+	margin: 0 auto 12px;
+	opacity: 0.85;
+}
 
 .santu-items-actions {
 	padding: 16px 24px;
@@ -497,4 +723,6 @@
 		border-bottom: 1px solid #e5e7eb;
 	}
 	.santu-items-detail-panel { height: auto; }
+	.santu-items-detail-top-split { flex-direction: column; }
+	.santu-items-detail-right { align-items: flex-start; width: 100%; }
 }

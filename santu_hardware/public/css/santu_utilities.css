@@ -14,14 +14,14 @@
 }
 
 .santu-utilities-title {
-	font-size: 22px;
+	font-size: 24px;
 	font-weight: 700;
 	margin: 0;
 	color: #1a1a2e;
 }
 
 .santu-utilities-subtitle {
-	font-size: 18px;
+	font-size: 19px;
 	font-weight: 600;
 	margin: 0 0 20px;
 }
@@ -41,13 +41,13 @@
 
 .santu-utilities-card h3 {
 	margin: 0 0 12px;
-	font-size: 16px;
+	font-size: 17px;
 	font-weight: 600;
 }
 
 .santu-utilities-muted {
 	color: #6b7280;
-	font-size: 13px;
+	font-size: 14px;
 }
 
 .santu-utilities-loading,
@@ -104,7 +104,7 @@
 	left: 12px;
 	background: #22c55e;
 	color: #fff;
-	font-size: 10px;
+	font-size: 11px;
 	font-weight: 700;
 	padding: 2px 8px;
 	border-radius: 4px;
@@ -117,12 +117,12 @@
 
 .santu-utilities-method-card h3 {
 	margin: 0 0 8px;
-	font-size: 16px;
+	font-size: 17px;
 }
 
 .santu-utilities-method-card p {
 	margin: 0;
-	font-size: 13px;
+	font-size: 14px;
 	color: #6b7280;
 }
 
@@ -172,7 +172,7 @@
 .santu-utilities-table {
 	width: 100%;
 	border-collapse: collapse;
-	font-size: 13px;
+	font-size: 14px;
 }
 
 .santu-utilities-table thead th {
@@ -197,7 +197,7 @@
 
 .santu-utilities-table .form-control.input-sm {
 	padding: 4px 8px;
-	font-size: 12px;
+	font-size: 13px;
 	min-width: 80px;
 }
 
@@ -228,7 +228,7 @@
 }
 
 .summary-card span {
-	font-size: 13px;
+	font-size: 14px;
 	color: #6b7280;
 }
 
@@ -248,7 +248,7 @@
 	padding: 6px 14px;
 	border-radius: 20px;
 	background: #f3f4f6;
-	font-size: 12px;
+	font-size: 13px;
 	font-weight: 600;
 	color: #6b7280;
 }
@@ -285,7 +285,7 @@
 
 .santu-utilities-form-grid label {
 	display: block;
-	font-size: 12px;
+	font-size: 13px;
 	font-weight: 600;
 	color: #374151;
 }
@@ -327,17 +327,17 @@
 
 .preview-header {
 	font-weight: 700;
-	font-size: 12px;
+	font-size: 13px;
 	margin-bottom: 4px;
 }
 
 .preview-code {
-	font-size: 11px;
+	font-size: 12px;
 	color: #6b7280;
 }
 
 .preview-lines {
-	font-size: 11px;
+	font-size: 12px;
 	margin-top: 4px;
 }
 
@@ -352,7 +352,7 @@
 }
 
 .map-row label {
-	font-size: 12px;
+	font-size: 13px;
 	font-weight: 600;
 	display: block;
 	margin-bottom: 4px;
@@ -369,7 +369,7 @@
 	background: #f9fafb;
 	padding: 10px;
 	border-radius: 6px;
-	font-size: 12px;
+	font-size: 13px;
 }
 
 /* Bulk modes */
@@ -380,7 +380,7 @@
 }
 
 .santu-bulk-modes label {
-	font-size: 13px;
+	font-size: 14px;
 	font-weight: 600;
 	cursor: pointer;
 }
@@ -395,7 +395,7 @@
 
 .santu-tally-type-filters {
 	margin-bottom: 12px;
-	font-size: 13px;
+	font-size: 14px;
 	font-weight: 600;
 }
 
@@ -411,12 +411,12 @@
 	border-radius: 8px;
 	padding: 14px 16px;
 	margin-bottom: 16px;
-	font-size: 13px;
+	font-size: 14px;
 }
 
 .fy-check {
 	padding: 8px 0;
-	font-size: 14px;
+	font-size: 15px;
 }
 
 .fy-check.ok { color: #15803d; }
@@ -430,14 +430,14 @@
 	align-items: center;
 	gap: 12px;
 	margin-top: 12px;
-	font-size: 13px;
+	font-size: 14px;
 }
 
 .santu-utilities-preview {
 	background: #f9fafb;
 	padding: 12px;
 	border-radius: 6px;
-	font-size: 11px;
+	font-size: 12px;
 	max-height: 200px;
 	overflow: auto;
 }

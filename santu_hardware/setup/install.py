@@ -16,6 +16,7 @@ def after_install():
 	create_purchase_bill_pdf_field()
 	create_transaction_message_fields()
 	create_transaction_message_defaults()
+	hide_vendor_navbar_items()
 
 
 def create_hardware_uoms():
@@ -231,3 +232,53 @@ def create_transaction_message_defaults():
 	ensure_default_templates(msg)
 	msg.save(ignore_permissions=True)
 	frappe.db.commit()
+
+
+# Which navbar dropdown entries a hardware shop owner should never be shown.
+# All of these are Frappe/ERPNext vendor or developer surface, not shop
+# features (2026-08-15 direct request, after auditing the topbar: "if
+# hardware shop owner has no use for this then remove it naa, delete it").
+#
+# Deliberately NOT hidden, and why:
+#   My Profile / My Settings — the only place a user can change their own
+#     password and notification preferences.
+#   Reload — clears the client cache; the honest fix when a screen is stale,
+#     which is otherwise a support call.
+#   Toggle Theme, Log out — plain preferences a shop owner does use.
+SANTU_HIDDEN_NAVBAR_ITEMS = {
+	# Help dropdown — every entry points at Frappe's own docs/forum/school/
+	# GitHub/paid support. None of it is about this shop's software.
+	"Documentation",
+	"User Forum",
+	"Frappe School",
+	"Report an Issue",
+	"About",
+	"Keyboard Shortcuts",
+	"Frappe Support",
+	# Settings dropdown — developer/multi-app concepts.
+	"Session Defaults",
+	"View Website",
+	"Apps",
+	"Toggle Full Width",
+}
+
+
+def hide_vendor_navbar_items():
+	"""Hide Frappe's vendor/developer navbar entries.
+
+	Uses Navbar Settings' own `hidden` flag rather than removing rows or
+	patching the DOM, so a Frappe upgrade that re-seeds the table just gets
+	re-hidden on the next migrate instead of silently reappearing.
+	"""
+	settings = frappe.get_single("Navbar Settings")
+	changed = False
+	for table in ("help_dropdown", "settings_dropdown"):
+		for row in settings.get(table) or []:
+			should_hide = row.item_label in SANTU_HIDDEN_NAVBAR_ITEMS
+			if should_hide and not row.hidden:
+				row.hidden = 1
+				changed = True
+	if changed:
+		settings.save(ignore_permissions=True)
+		frappe.db.commit()
+	return changed

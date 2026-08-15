@@ -16,7 +16,7 @@
 	margin-bottom: var(--santu-space-4, 16px);
 }
 .santu-dues-summary-label {
-	font-size: 12px;
+	font-size: 13px;
 	color: var(--santu-text-muted, #6b7280);
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
@@ -42,19 +42,23 @@
 }
 .santu-dues-row:last-child { border-bottom: none; }
 .santu-dues-row:hover { background: var(--santu-gray-50, #f9fafb); }
-.santu-dues-row-name { font-weight: 600; font-size: 14px; }
-.santu-dues-row-meta { font-size: 12px; color: var(--santu-text-muted, #6b7280); margin-top: 2px; }
+.santu-dues-row-name { font-weight: 600; font-size: 15px; }
+.santu-dues-row-meta { font-size: 13px; color: var(--santu-text-muted, #6b7280); margin-top: 2px; }
 .santu-dues-row-amount {
-	font-size: 16px;
+	font-size: 17px;
 	font-weight: 700;
 	color: var(--santu-danger, #b91c1c);
+	white-space: nowrap;
+}
+.santu-dues-collect-btn {
+	margin-left: 16px;
 	white-space: nowrap;
 }
 
 .santu-dues-bills-table { width: 100%; border-collapse: collapse; }
 .santu-dues-bills-table th {
 	text-align: left;
-	font-size: 11px;
+	font-size: 12px;
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 	color: var(--santu-text-muted, #6b7280);
@@ -62,10 +66,17 @@
 	padding: 6px 8px;
 }
 .santu-dues-bills-table th.num { text-align: right; }
-.santu-dues-bill-row td { padding: 8px; border-bottom: 1px solid var(--santu-border, #e5e7eb); font-size: 13px; }
+.santu-dues-bill-row td { padding: 8px; border-bottom: 1px solid var(--santu-border, #e5e7eb); font-size: 14px; }
 .santu-dues-bill-row td.num { text-align: right; }
 .santu-dues-bill-row { cursor: pointer; }
 .santu-dues-bill-row:hover { background: var(--santu-gray-50, #f9fafb); }
+.santu-dues-bill-items {
+	max-width: 220px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--santu-text-muted, #6b7280);
+}
 
 @media (max-width: 700px) {
 	.santu-dues-filters { flex-direction: column; }

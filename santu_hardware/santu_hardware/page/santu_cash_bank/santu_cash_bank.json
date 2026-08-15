@@ -1,0 +1,16 @@
+{
+ "content": null,
+ "doctype": "Page",
+ "icon": "octicon octicon-file-text",
+ "idx": 0,
+ "module": "Santu Hardware",
+ "name": "santu-cash-bank",
+ "page_name": "santu-cash-bank",
+ "restrict_to_domain": null,
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Cash & Bank"
+}

@@ -1,0 +1,16 @@
+{
+ "content": null,
+ "doctype": "Page",
+ "icon": "octicon octicon-reply",
+ "idx": 0,
+ "module": "Santu Hardware",
+ "name": "santu-sales-return",
+ "page_name": "santu-sales-return",
+ "restrict_to_domain": null,
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Sales Return"
+}

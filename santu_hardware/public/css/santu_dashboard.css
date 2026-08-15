@@ -1,224 +1,153 @@
+/*
+ * Home / Dashboard — values from Vyapar
+ * dashboardPage-UIComponent_jsx_Dashboard_Dashboard_tsx.css
+ * Layout: padding/gap 4px, left 68% / right 32%, leftTop 18%,
+ * leftMid calc(62% - 9px), leftBottom 20%. Radius 4px throughout.
+ */
 body[data-route="santu-dashboard"] .page-head,
 .santu-dash-page .page-head {
 	display: none !important;
 }
-
 body[data-route="santu-dashboard"] .page-content {
 	margin-top: 0;
 }
 
 .santu-dash {
-	max-width: none;
-	margin: 0;
-	padding: 16px 16px 40px;
-	background: #f4f6f8;
-	min-height: calc(100vh - 60px);
+	height: calc(100vh - 56px);
+	padding: 4px;
+	background: #f3f4f8;
+	box-sizing: border-box;
+	overflow: hidden;
 }
 
 .santu-dash-loading,
 .santu-dash-error {
 	text-align: center;
 	padding: 64px 16px;
-	color: #6b7280;
-	font-weight: 600;
+	color: #71748e;
+	font-weight: 500;
 }
-
-.santu-dash-error {
-	color: #b91c1c;
-}
+.santu-dash-error { color: #f45972; }
 
 .santu-dash-layout {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) 300px;
-	gap: 16px;
-	align-items: start;
+	display: flex;
+	gap: 4px;
+	width: 100%;
+	height: 100%;
+	align-items: stretch;
 }
 
 .santu-dash-main {
+	width: 68%;
 	min-width: 0;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	background: transparent;
+	border: none;
+	border-radius: 0;
+	padding: 0;
 }
 
 .santu-dash-widgets {
-	position: sticky;
-	top: 12px;
-}
-
-.santu-dash-actions {
-	margin-bottom: 16px;
-}
-
-.santu-dash-tile {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	gap: 8px;
-	min-height: 92px;
-	border-radius: 12px;
-	border: 1px solid #e5e7eb;
-	background: #fff;
-	cursor: pointer;
-	user-select: none;
-	transition: box-shadow 0.15s ease, border-color 0.15s ease;
-}
-
-.santu-dash-tile:hover,
-.santu-dash-tile:focus-visible {
-	border-color: #93c5fd;
-	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-	outline: none;
-}
-
-.santu-dash-tile-icon {
-	font-size: 28px;
-	line-height: 1;
-}
-
-.santu-dash-tile-label {
-	font: 600 15px/1.3 inherit;
-	color: #111827;
-}
-
-.santu-dash-tile-featured {
-	flex-direction: row;
-	gap: 14px;
-	min-height: 88px;
-	margin-bottom: 12px;
-	background: #e0393e;
-	border-color: #e0393e;
-}
-
-.santu-dash-tile-featured .santu-dash-tile-label {
-	color: #fff;
-	font: 700 26px/1.2 inherit;
-	letter-spacing: 0.02em;
-}
-
-.santu-dash-tile-featured .santu-dash-tile-icon {
-	font-size: 34px;
-}
-
-.santu-dash-tile-featured:hover {
-	background: #c92a2f;
-	border-color: #c92a2f;
-	box-shadow: 0 6px 18px rgba(224, 57, 62, 0.28);
-}
-
-.santu-dash-actions-row {
-	display: grid;
-	grid-template-columns: repeat(3, 1fr);
-	gap: 12px;
-}
-
-.santu-dash-section {
-	margin-bottom: 16px;
-}
-
-.santu-dash-section-title {
-	font: 700 18px/1.3 inherit;
-	color: #111827;
-	margin-bottom: 12px;
-}
-
-.santu-dash-section-kicker {
-	font: 700 13px/1.3 inherit;
-	letter-spacing: 0.04em;
-	text-transform: uppercase;
-	color: #6b7280;
-	margin-bottom: 0;
-}
-
-.santu-dash-section-head {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	margin-bottom: 10px;
-}
-
-.santu-dash-view-all {
-	border: none;
-	background: none;
-	color: #2563eb;
-	font-weight: 600;
-	font-size: 13px;
-	cursor: pointer;
+	width: 32%;
+	min-width: 0;
+	height: 100%;
+	position: static;
 }
 
 .santu-dash-vy-row {
-	display: grid;
-	grid-template-columns: 1fr 1fr;
-	gap: 12px;
-	margin-bottom: 16px;
+	display: flex;
+	gap: 4px;
+	height: 18%;
+	min-height: 110px;
+	margin: 0;
 }
 
 .santu-dash-vy-card {
+	flex: 1 1 50%;
+	width: 50%;
 	display: flex;
-	align-items: flex-start;
-	justify-content: space-between;
-	padding: 18px 20px;
-	border-radius: 12px;
-	border: 1px solid #e5e7eb;
+	flex-direction: column;
+	justify-content: space-around;
+	padding: 16px;
+	border-radius: 4px;
+	border: none;
 	background: #fff;
 	cursor: pointer;
-	transition: box-shadow 0.15s ease;
 }
+.santu-dash-vy-card:hover { box-shadow: none; }
 
-.santu-dash-vy-card:hover {
-	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+.santu-dash-vy-card-top {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
 }
-
 .santu-dash-vy-card-label {
-	font-size: 13px;
-	color: #6b7280;
-	margin-bottom: 6px;
+	color: #71748e;
+	font-size: 14px;
+	font-weight: 400;
+	line-height: normal;
+	margin-bottom: 0;
 }
-
 .santu-dash-vy-card-amount {
-	font: 700 28px/1.15 inherit;
-	color: #111827;
-	margin-bottom: 6px;
+	color: #3f4155;
+	padding: 10px 0;
+	font-size: 20px;
+	font-weight: 700;
+	line-height: normal;
+	margin-bottom: 0;
 }
-
 .santu-dash-vy-card-sub {
-	font-size: 13px;
-	color: #6b7280;
+	color: #9b9eb8;
+	font-size: 14px;
+	font-weight: 400;
+	line-height: normal;
+}
+.santu-dash-vy-card-sub b,
+.santu-dash-party-count-num {
+	font-weight: 600;
+	color: #3f4155;
 }
 
 .santu-dash-vy-card-icon {
-	width: 36px;
-	height: 36px;
-	min-width: 36px;
-	border-radius: 999px;
+	width: 40px;
+	height: 40px;
+	min-width: 40px;
+	border-radius: 50%;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	font-size: 16px;
-	font-weight: 700;
 }
-
 .santu-dash-vy-card-icon.santu-tone-good {
-	background: #dcfce7;
-	color: #16a34a;
+	background: #def7ee;
+	color: #08bd7c;
 }
-
 .santu-dash-vy-card-icon.santu-tone-warning {
-	background: #fee2e2;
-	color: #dc2626;
+	background: #ffe5e8;
+	color: #f45972;
 }
 
 .santu-dash-vy-chart-card {
 	background: #fff;
-	border: 1px solid #e5e7eb;
-	border-radius: 12px;
-	padding: 18px 20px 8px;
-	margin-bottom: 16px;
+	border: none;
+	border-radius: 4px;
+	padding: 24px 20px 16px;
+	margin-bottom: 0;
+	height: calc(62% - 9px);
+	min-height: 240px;
+	display: flex;
+	flex-direction: column;
+	box-sizing: border-box;
 }
-
 .santu-dash-vy-chart-card .santu-dash-chart {
 	border: none;
 	padding: 0;
 	margin-top: 8px;
-	min-height: 220px;
+	flex: 1;
+	min-height: 0;
 	background: transparent;
 }
 
@@ -226,37 +155,51 @@ body[data-route="santu-dashboard"] .page-content {
 	display: flex;
 	align-items: flex-start;
 	justify-content: space-between;
+	flex-shrink: 0;
 }
-
 .santu-dash-vy-chart-card .santu-dash-section-title {
-	font: 400 13px/1.3 inherit;
-	color: #6b7280;
-	margin-bottom: 4px;
+	color: #71748e;
+	font-size: 14px;
+	font-weight: 400;
+	margin-bottom: 12px;
 }
-
+.santu-dash-vy-chart-amount-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
 .santu-dash-vy-chart-amount {
-	font: 700 28px/1.15 inherit;
-	color: #111827;
+	color: #3f4155;
+	font-size: 20px;
+	font-weight: 700;
+	line-height: normal;
 }
-
-.santu-dash-vy-chart-dropdown {
-	position: relative;
+.santu-dash-vy-chart-pct {
+	font-size: 14px;
+	font-weight: 400;
 }
+.santu-dash-vy-chart-pct b { font-weight: 700; }
+.santu-dash-vy-chart-pct.is-up { color: #08bd7c; }
+.santu-dash-vy-chart-pct.is-down { color: #f45972; }
+.santu-dash-vy-chart-pct.is-same { color: #71748e; }
 
+.santu-dash-vy-chart-dropdown { position: relative; }
 .santu-dash-vy-chart-badge {
 	display: inline-flex;
 	align-items: center;
-	gap: 6px;
+	gap: 4px;
 	border: none;
 	cursor: pointer;
-	padding: 6px 12px;
-	border-radius: 999px;
-	background: #eaf1fe;
-	color: #2f6fed;
-	font: 600 13px/1.4 inherit;
+	padding: 7px 12px 7px 16px;
+	border-radius: 50px;
+	background: #f3f4f8;
+	color: #71748e;
+	font-weight: 400;
+	font-size: 12px;
+	line-height: 18px;
 	white-space: nowrap;
+	font-family: inherit;
 }
-
 .santu-dash-vy-chart-menu {
 	position: absolute;
 	top: calc(100% + 6px);
@@ -264,131 +207,179 @@ body[data-route="santu-dashboard"] .page-content {
 	z-index: 20;
 	min-width: 160px;
 	background: #fff;
-	border: 1px solid #e5e7eb;
-	border-radius: 12px;
-	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+	border: 1px solid #eaeaef;
+	border-radius: 8px;
+	box-shadow: 0 5px 24px rgba(63, 65, 85, 0.12);
 	padding: 6px 0;
 }
-
 .santu-dash-vy-chart-menu-item {
 	padding: 8px 14px;
 	font-size: 14px;
-	color: #111827;
+	color: #3f4155;
 	cursor: pointer;
 }
+.santu-dash-vy-chart-menu-item:hover { background: #f8f8f8; }
 
-.santu-dash-vy-chart-menu-item:hover {
-	background: #f9fafb;
+.santu-dash-reports-section {
+	background: #fff;
+	border-radius: 4px;
+	height: 20%;
+	min-height: 120px;
+	padding: 20px 16px 16px 20px;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: 16px;
+	box-sizing: border-box;
+	margin-bottom: 0;
 }
-
-.santu-dash-reports-row {
-	display: grid;
-	grid-template-columns: repeat(4, 1fr);
-	gap: 12px;
-}
-
-.santu-dash-report-card {
+.santu-dash-section-head {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 14px 16px;
-	border-radius: 12px;
-	border: 1px solid #e5e7eb;
+	margin-bottom: 0;
+}
+.santu-dash-section-title {
+	color: #3f4155;
+	font-weight: 400;
+	font-size: 14px;
+	line-height: 1.3;
+	margin-bottom: 0;
+}
+.santu-dash-section-kicker {
+	color: #71748e;
+	font-weight: 400;
+	font-size: 14px;
+	letter-spacing: 0;
+	text-transform: none;
+	margin-bottom: 0;
+}
+.santu-dash-view-all {
+	border: none;
 	background: #fff;
-	font-weight: 600;
+	color: #0075e8;
+	font-weight: 500;
 	font-size: 14px;
 	cursor: pointer;
+	padding: 0;
 }
-
+.santu-dash-reports-row {
+	display: flex;
+	justify-content: space-between;
+	height: 70px;
+	min-height: 57px;
+	gap: 8px;
+}
+.santu-dash-report-card {
+	width: 23.5%;
+	flex: 1 1 23.5%;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 16px;
+	border-radius: 8px;
+	border: 1px solid #eaeaef;
+	background: #fff;
+	font-weight: 500;
+	font-size: 14px;
+	color: #3f4155;
+	cursor: pointer;
+}
 .santu-dash-report-card:hover {
-	border-color: #93c5fd;
-	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+	border-color: #c4e3ff;
+	box-shadow: none;
 }
-
 .santu-dash-report-arrow {
-	color: #3b82f6;
-	font-size: 20px;
+	color: #0075e8;
+	font-size: 18px;
 	line-height: 1;
 }
 
 .santu-dash-chart-empty {
 	text-align: center;
 	padding: 48px 16px;
-	color: #6b7280;
+	color: #71748e;
 	font-size: 14px;
 }
 
 .santu-dash-widget-rail {
 	background: #fff;
-	border: 1px solid #e5e7eb;
-	border-radius: 12px;
-	min-height: calc(100vh - 92px);
+	border: none;
+	border-radius: 4px;
+	height: 100%;
+	min-height: 0;
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
 }
-
 .santu-dash-widget-list {
 	flex: 1;
-	padding: 16px;
+	padding: 0;
 	overflow: auto;
 }
-
 .santu-dash-widget-empty {
 	height: 100%;
-	min-height: 320px;
+	min-height: 240px;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
 	text-align: center;
-	color: #111827;
-	font-weight: 700;
-	padding: 24px 12px;
+	gap: 12px;
+	padding: 24px 20px;
+	color: #3f4155;
+	font-weight: 500;
+	font-size: 14px;
 }
-
-.santu-dash-widget-empty-art {
-	margin-bottom: 12px;
-}
-
-.santu-dash-widget-empty p {
-	margin: 0;
-}
-
 .santu-dash-widget-empty-sub {
 	font-weight: 400;
-	font-size: 13px;
-	color: #6b7280;
-	max-width: 220px;
-	margin-top: 8px !important;
+	font-size: 12px;
+	line-height: 16px;
+	color: #71748e;
+	max-width: 240px;
+	margin: 0 !important;
 }
+.santu-dash-widget-empty p { margin: 0; }
 
 .santu-dash-w-card {
 	position: relative;
-	border-bottom: 1px solid #eef0f3;
-	padding: 14px 28px 14px 0;
+	border-bottom: 1px solid #eaeaef;
+	padding: 20px;
 	cursor: pointer;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
 }
-
+.santu-dash-w-top {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+}
 .santu-dash-w-title {
+	font-size: 14px;
+	font-weight: 400;
+	color: #71748e;
+	margin-bottom: 0;
+}
+.santu-dash-w-period {
 	font-size: 12px;
-	color: #6b7280;
-	margin-bottom: 4px;
+	font-weight: 400;
+	line-height: 18px;
+	color: #71748e;
 }
-
 .santu-dash-w-value {
-	font-size: 18px;
-	font-weight: 700;
-	color: #111827;
+	font-size: 16px;
+	font-weight: 600;
+	color: #3f4155;
+	line-height: normal;
 }
-
 .santu-dash-w-remove {
 	position: absolute;
-	right: 0;
-	top: 10px;
+	right: 12px;
+	top: 16px;
 	border: none;
 	background: none;
-	color: #9ca3af;
+	color: #9b9eb8;
 	font-size: 18px;
 	cursor: pointer;
 	line-height: 1;
@@ -401,95 +392,77 @@ body[data-route="santu-dashboard"] .page-content {
 	justify-content: space-between;
 	width: 100%;
 	border: none;
-	background: #dbeafe;
-	color: #1e3a8a;
-	font-weight: 600;
+	background: #e4f2ff;
+	color: #3f4155;
+	font-weight: 500;
+	font-size: 14px;
 	padding: 14px 16px;
 	cursor: pointer;
 }
-
 .santu-dash-add-plus {
 	font-size: 22px;
 	font-weight: 400;
-	color: #374151;
+	color: #3f4155;
 }
 
-.santu-dash-picker-inrail {
-	min-height: calc(100vh - 92px);
-}
-
-.santu-dash-picker-list {
-	overflow-y: auto;
-	flex: 1;
-}
-
+.santu-dash-picker-inrail { min-height: 0; height: 100%; }
+.santu-dash-picker-list { overflow-y: auto; flex: 1; }
 .santu-dash-picker-row {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 14px 16px;
-	border-bottom: 1px solid #eef0f3;
+	padding: 20px 16px;
+	border-bottom: 1px solid #eaeaef;
 	background: #fff;
 }
-
 .santu-dash-picker-title {
-	font-size: 12px;
-	color: #6b7280;
+	font-size: 14px;
+	font-weight: 400;
+	color: #71748e;
 }
-
 .santu-dash-picker-value {
 	font-size: 16px;
-	font-weight: 700;
-	color: #111827;
+	font-weight: 600;
+	color: #3f4155;
 }
-
 .santu-dash-picker-add {
 	width: 36px;
 	height: 36px;
 	border: none;
 	background: none;
-	color: #2563eb;
+	color: #0075e8;
 	font-size: 28px;
 	line-height: 1;
 	cursor: pointer;
 }
-
 .santu-dash-picker-add.is-added {
 	width: auto;
-	color: #15803d;
-	font-size: 13px;
-	font-weight: 700;
+	color: #08bd7c;
+	font-size: 14px;
+	font-weight: 500;
 }
-
-.santu-dash-sale-link {
-	cursor: pointer;
-}
-
+.santu-dash-sale-link { cursor: pointer; }
 .santu-dash-picker-close {
 	border: none;
 	background: none;
 	font-size: 18px;
 	cursor: pointer;
-	color: #374151;
+	color: #3f4155;
 }
 
 @media (max-width: 980px) {
-	.santu-dash-layout {
-		grid-template-columns: 1fr;
+	.santu-dash { height: auto; overflow: auto; }
+	.santu-dash-layout { flex-direction: column; height: auto; }
+	.santu-dash-main, .santu-dash-widgets { width: 100%; height: auto; }
+	.santu-dash-vy-row, .santu-dash-vy-chart-card, .santu-dash-reports-section {
+		height: auto;
 	}
-	.santu-dash-widgets {
-		position: static;
-	}
-	.santu-dash-widget-rail,
-	.santu-dash-picker-inrail {
-		min-height: 380px;
-	}
+	.santu-dash-vy-chart-card { min-height: 280px; }
+	.santu-dash-widget-rail { min-height: 380px; }
 }
-
 @media (max-width: 800px) {
-	.santu-dash-actions-row,
-	.santu-dash-vy-row,
-	.santu-dash-reports-row {
-		grid-template-columns: 1fr;
-	}
+	.santu-dash-vy-row { flex-direction: column; }
+	.santu-dash-vy-card { width: 100%; }
+	.santu-dash-reports-row { flex-wrap: wrap; height: auto; }
+	.santu-dash-report-card { width: 100%; flex: 1 1 100%; }
 }

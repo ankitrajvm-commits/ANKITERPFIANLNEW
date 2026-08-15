@@ -87,9 +87,10 @@ santu_reports.filters = {
 		return values;
 	},
 
-	merge_extra(values, report) {
-		if (report.extra_filters) {
-			Object.assign(values, report.extra_filters);
+	merge_extra(values, report, init) {
+		const extra = typeof report.extra_filters === "function" ? report.extra_filters(init) : report.extra_filters;
+		if (extra) {
+			Object.assign(values, extra);
 		}
 		return values;
 	},

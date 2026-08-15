@@ -106,7 +106,7 @@
 .santu-bill-table {
 	width: 100%;
 	border-collapse: collapse;
-	font-size: 13px;
+	font-size: 14px;
 }
 
 .santu-bill-table th {
@@ -138,7 +138,7 @@
 .santu-bill-table .santu-bill-cell-rate .form-control {
 	min-height: 30px;
 	padding: 2px 8px;
-	font-size: 13px;
+	font-size: 14px;
 }
 
 .santu-bill-table .santu-bill-num {
@@ -163,7 +163,7 @@
 	background: var(--santu-warning-soft, #fffbeb);
 	color: var(--santu-warning, #b45309);
 	border-radius: var(--santu-radius-sm, 8px);
-	font-size: 12px;
+	font-size: 13px;
 }
 
 .santu-bill-subtotal {

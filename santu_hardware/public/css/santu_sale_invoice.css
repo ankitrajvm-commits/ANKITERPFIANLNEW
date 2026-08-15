@@ -1,218 +1,1225 @@
-/*
- * Quick Sale Invoice — shop-friendly Sales Invoice creation UI.
- */
+/* Santu Hardware POS — Sales Invoice screen (2026-08-14 redesign).
+   Rounded throughout (2026-08-14: square version reverted — "the round
+   round was looking perfect") — matches the rest of the app's own card/
+   button language (see santu_dashboard.css: 12px cards, 999px pills). */
 
-.santu-sale-invoice-page-main {
-	padding: 0 !important;
+body[data-route="santu-sale-invoice"] .page-head,
+.santu-si2-page-main .page-head {
+	display: none !important;
+}
+body[data-route="santu-sale-invoice"] .page-content {
+	margin-top: 0;
 }
 
-.santu-si {
-	padding: 16px 20px 32px;
-	max-width: 1400px;
-	margin: 0 auto;
+.santu-si2-page-main {
+	max-width: none !important;
 }
 
-.santu-si-header {
+.santu-si2 {
+	background: #f3f4f8;
+	min-height: calc(100vh - 60px);
+	font-family: inherit;
+	color: #3f4155;
+}
+
+.santu-si2-loading {
+	text-align: center;
+	padding: 80px 16px;
+	color: #6b7280;
+}
+
+/* ---------- Tab bar ---------- */
+.santu-si2-tabbar {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	margin-bottom: 16px;
+	background: #1f2937;
+	padding: 0 12px;
+	height: 40px;
 }
 
-.santu-si-title {
-	font-size: 22px;
-	font-weight: 700;
-	margin: 0;
+.santu-si2-tabs {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	overflow-x: auto;
+	height: 100%;
+}
+
+.santu-si2-tab {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 32px;
+	padding: 0 12px;
+	border: none;
+	background: #374151;
+	color: #d1d5db;
+	font-size: 14px;
+	font-weight: 600;
+	cursor: pointer;
+	white-space: nowrap;
+	margin-top: 8px;
+	border-radius: 8px 8px 0 0;
+}
+.santu-si2-tab.is-active {
+	background: #f4f6f8;
 	color: #111827;
 }
-
-.santu-si-body {
-	display: flex;
-	gap: 20px;
-	align-items: flex-start;
+.santu-si2-tab.is-held {
+	border-top: 2px solid #f59e0b;
 }
-
-.santu-si-main {
-	flex: 1 1 auto;
-	min-width: 0;
-	display: flex;
-	flex-direction: column;
-	gap: 16px;
+.santu-si2-tab-close {
+	opacity: 0.6;
+	font-size: 16px;
+	line-height: 1;
 }
-
-.santu-si-side {
-	flex: 0 0 300px;
-	display: flex;
-	flex-direction: column;
-	gap: 16px;
+.santu-si2-tab-close:hover {
+	opacity: 1;
 }
-
-.santu-si-card {
-	background: #fff;
-	border: 1px solid #e5e7eb;
-	border-radius: 12px;
-	padding: 16px;
-}
-
-.santu-si-label {
-	display: block;
-	font-size: 11px;
+.santu-si2-tab-add {
+	width: 28px;
+	height: 28px;
+	border: none;
+	background: #2563eb;
+	color: #fff;
+	font-size: 17px;
 	font-weight: 700;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-	color: #6b7280;
-	margin-bottom: 8px;
+	cursor: pointer;
+	margin-left: 6px;
+	border-radius: 999px;
 }
 
-.santu-si-customer-row,
-.santu-si-item-entry-row {
+.santu-si2-toolbar {
+	display: flex;
+	gap: 4px;
+}
+.santu-si2-icon-btn {
+	width: 30px;
+	height: 30px;
+	border: 1px solid #4b5563;
+	background: #374151;
+	color: #e5e7eb;
+	font-size: 16px;
+	cursor: pointer;
+	border-radius: 8px;
+}
+.santu-si2-icon-btn:hover {
+	background: #4b5563;
+}
+
+/* ---------- Header (Sale | Credit / Cash) ---------- */
+.santu-si2-header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 12px 20px;
+	padding: 14px 20px 6px;
+	background: #fff;
+	border-bottom: 1px solid #e5e7eb;
+}
+.santu-si2-header-title {
+	font-size: 22px;
+	font-weight: 700;
+	color: #111827;
+}
+.santu-si2-mode {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+.santu-si2-mode-label {
+	font-size: 15px;
+	font-weight: 600;
+	color: #9ca3af;
+	cursor: pointer;
+}
+.santu-si2-mode-label.is-active {
+	color: #2563eb;
+}
+.santu-si2-switch {
+	position: relative;
+	display: inline-block;
+	width: 40px;
+	height: 20px;
+}
+.santu-si2-switch input {
+	opacity: 0;
+	width: 0;
+	height: 0;
+}
+.santu-si2-slider {
+	position: absolute;
+	cursor: pointer;
+	inset: 0;
+	background: #2563eb;
+	transition: 0.15s;
+	border-radius: 999px;
+}
+.santu-si2-slider::before {
+	content: "";
+	position: absolute;
+	height: 14px;
+	width: 14px;
+	left: 3px;
+	bottom: 3px;
+	background: #fff;
+	transition: 0.15s;
+	border-radius: 50%;
+}
+.santu-si2-switch input:checked + .santu-si2-slider::before {
+	transform: translateX(20px);
+}
+.santu-si2-mop {
+	margin-left: auto;
+	border: 1px solid #d1d5db;
+	padding: 6px 10px;
+	font-size: 14px;
+	background: #fff;
+	border-radius: 8px;
+}
+.santu-si2-paid-now-label {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 14px;
+	font-weight: 600;
+	color: #374151;
+}
+.santu-si2-paid-now {
+	width: 130px;
+	border: 1px solid #d1d5db;
+	padding: 6px 10px;
+	font-size: 14px;
+	border-radius: 8px;
+}
+.santu-si2-remaining-note {
+	font-size: 13px;
+	font-weight: 600;
+	color: #b45309;
+	background: #fffbeb;
+	border: 1px solid #fde68a;
+	padding: 4px 10px;
+	border-radius: 999px;
+}
+
+/* ---------- Customer + invoice row ---------- */
+.santu-si2-toprow {
+	display: grid;
+	grid-template-columns: 1fr 1fr auto;
+	gap: 16px;
+	align-items: start;
+	padding: 18px 20px;
+	background: #fff;
+	border-bottom: 1px solid #e5e7eb;
+}
+
+.santu-si2-customer-col {
 	display: flex;
 	gap: 10px;
-	align-items: center;
 }
-
-.santu-si-search-wrap {
+.santu-si2-customer-search-wrap {
 	position: relative;
-	flex: 1 1 auto;
+	flex: 1;
 }
-
-.santu-si-customer-search,
-.santu-si-item-search {
-	font-size: 15px;
+.santu-si2-customer-search,
+.santu-si2-phone {
+	width: 100%;
+	border: 1px solid #d1d5db;
 	padding: 10px 12px;
+	font-size: 15px;
+	background: #fff;
+	box-sizing: border-box;
 	border-radius: 8px;
 }
-
-.santu-si-item-qty {
-	width: 80px;
-	flex-shrink: 0;
+.santu-si2-customer-search {
+	text-transform: uppercase;
+}
+.santu-si2-phone {
+	max-width: 160px;
+}
+.santu-si2-customer-search:focus,
+.santu-si2-phone:focus {
+	outline: none;
+	border-color: #2563eb;
 }
 
-.santu-si-suggest {
-	display: none;
+.santu-si2-cust-card {
+	border: 1px solid #e5e7eb;
+	background: #f9fafb;
+	padding: 10px 14px;
+	font-size: 14px;
+	border-radius: 10px;
+}
+.santu-si2-cust-name {
+	font-weight: 700;
+	font-size: 15px;
+	text-transform: uppercase;
+	display: flex;
+	justify-content: space-between;
+}
+.santu-si2-cust-clear {
+	border: none;
+	background: none;
+	color: #9ca3af;
+	font-size: 17px;
+	cursor: pointer;
+	line-height: 1;
+}
+.santu-si2-cust-sub {
+	color: #6b7280;
+	margin-top: 2px;
+}
+.santu-si2-cust-stats {
+	display: flex;
+	gap: 16px;
+	margin-top: 6px;
+	color: #374151;
+	font-weight: 600;
+}
+
+.santu-si2-invoice-info {
+	justify-self: end;
+	min-width: 220px;
+}
+.santu-si2-inv-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 4px 0;
+	font-size: 14px;
+}
+.santu-si2-inv-label {
+	color: #6b7280;
+}
+.santu-si2-inv-value {
+	font-weight: 600;
+	color: #111827;
+}
+.santu-si2-invoice-info input,
+.santu-si2-invoice-info select {
+	border: 1px solid #d1d5db;
+	padding: 5px 8px;
+	font-size: 14px;
+	background: #fff;
+	border-radius: 6px;
+}
+
+/* ---------- Item dropdowns ---------- */
+.santu-si2-customer-dropdown,
+.santu-si2-item-dropdown {
 	position: absolute;
-	top: 100%;
+	top: calc(100% + 2px);
 	left: 0;
 	right: 0;
-	z-index: 1050;
 	background: #fff;
-	border: 1px solid #e5e7eb;
-	border-radius: 8px;
-	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
-	max-height: 260px;
+	border: 1px solid #d1d5db;
+	max-height: 320px;
 	overflow-y: auto;
-	margin-top: 4px;
+	z-index: 40;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+	border-radius: 10px;
+	overflow-x: hidden;
 }
-
-.santu-si-suggest-row {
+.santu-si2-dd-heading {
+	padding: 8px 12px;
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: #9ca3af;
+	background: #f9fafb;
+}
+.santu-si2-dd-empty {
+	padding: 14px 12px;
+	color: #9ca3af;
+	font-size: 14px;
+}
+.santu-si2-dd-row {
+	font-size: 14px;
+	border-bottom: 1px solid #f3f4f6;
+}
+.santu-si2-dd-row-main {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
 	padding: 10px 12px;
 	cursor: pointer;
-	border-bottom: 1px solid #f3f4f6;
+}
+.santu-si2-dd-row-main:hover {
+	background: #f3f4f6;
+}
+.santu-si2-dd-row-text {
 	display: flex;
 	flex-direction: column;
 	gap: 2px;
+	min-width: 0;
 }
-.santu-si-suggest-row:hover { background: #f9fafb; }
-.santu-si-suggest-row strong { font-size: 14px; color: #111827; }
-.santu-si-suggest-row span { font-size: 12px; color: #6b7280; }
-
-.santu-si-customer-selected {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px 16px;
-	margin-top: 10px;
-	font-size: 13px;
-	color: #374151;
-}
-
-.santu-si-table-wrap {
-	overflow-x: auto;
-}
-
-.santu-si-table {
-	width: 100%;
-	border-collapse: collapse;
-	font-size: 13px;
-}
-.santu-si-table thead th {
-	text-align: left;
-	padding: 10px 8px;
-	font-size: 11px;
-	font-weight: 700;
-	color: #9ca3af;
+.santu-si2-dd-row-text b {
 	text-transform: uppercase;
-	border-bottom: 1px solid #e5e7eb;
 }
-.santu-si-table thead th.num,
-.santu-si-table td.num { text-align: right; }
-.santu-si-table tbody td {
-	padding: 8px;
-	border-bottom: 1px solid #f3f4f6;
-	vertical-align: middle;
-}
-.santu-si-table .form-control.input-xs {
-	width: 72px;
-	padding: 4px 6px;
+.santu-si2-dd-row span {
+	color: #6b7280;
 	font-size: 13px;
-	display: inline-block;
 }
-
-.santu-si-stock-warn { color: #b45309; font-size: 11px; display: block; }
-.santu-si-stock-ok { color: #15803d; font-size: 11px; display: block; }
-
-.santu-si-empty-items {
-	text-align: center;
-	padding: 32px;
-	color: #9ca3af;
-	font-size: 14px;
+.santu-si2-dd-sub {
+	display: block;
 }
-
-.santu-si-total-row {
-	display: flex;
-	justify-content: space-between;
-	padding: 8px 0;
-	font-size: 14px;
-	color: #374151;
-}
-.santu-si-grand-row {
-	font-size: 18px;
-	font-weight: 700;
-	color: #111827;
-	border-top: 1px solid #e5e7eb;
-	margin-top: 8px;
-	padding-top: 12px;
-}
-.santu-si-grand { color: #e0393e; }
-
-.santu-si-payment-card .form-control {
-	margin-bottom: 12px;
-	font-size: 15px;
-	padding: 10px 12px;
-	border-radius: 8px;
-}
-
-.santu-si-actions {
+.santu-si2-dd-right {
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
+	align-items: flex-end;
+	gap: 2px;
 }
-.santu-si-actions .btn {
-	font-weight: 700;
-	padding: 10px 16px;
-	border-radius: 8px;
+.santu-si2-dd-walkin {
+	color: #2563eb;
+	font-weight: 600;
+	padding: 10px 12px;
+	cursor: pointer;
 }
-.santu-si-actions .btn-primary {
-	background: var(--santu-brand, #e0393e) !important;
-	border-color: var(--santu-brand, #e0393e) !important;
+.santu-si2-dd-walkin:hover {
+	background: #f3f4f6;
+}
+.santu-si2-dd-add {
+	color: #2563eb;
+	font-weight: 600;
+	padding: 10px 12px;
+	cursor: pointer;
+}
+.santu-si2-dd-add:hover {
+	background: #f3f4f6;
 }
 
-.santu-si-add-item-btn {
+.santu-si2-dd-expand {
+	flex-shrink: 0;
+	width: 24px;
+	height: 24px;
+	border: none;
+	background: #f3f4f6;
+	border-radius: 6px;
+	color: #6b7280;
+	font-size: 12px;
+	cursor: pointer;
+	transition: transform 0.1s ease;
+}
+.santu-si2-dd-expand:hover {
+	background: #e5e7eb;
+	color: #111827;
+}
+
+.santu-si2-dd-row-info {
+	padding: 8px 12px 12px;
+	background: #f9fafb;
+	border-top: 1px dashed #e5e7eb;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+.santu-si2-dd-row-village {
+	font-size: 13px;
+	color: #374151;
+	font-weight: 600;
+}
+.santu-si2-dd-row-note {
+	width: 100%;
+	box-sizing: border-box;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	padding: 6px 8px;
+	font-size: 13px;
+	resize: vertical;
+	min-height: 40px;
+}
+.santu-si2-dd-row-note-save {
+	align-self: flex-end;
+	border: none;
+	background: var(--santu-brand-secondary, #2f6fed);
+	color: #fff;
+	font-size: 12px;
 	font-weight: 700;
-	padding: 10px 18px;
+	padding: 5px 12px;
+	border-radius: 6px;
+	cursor: pointer;
+}
+.santu-si2-dd-row-note-save:hover {
+	background: #2559c9;
+}
+
+/* ---------- Item table ---------- */
+.santu-si2-table-wrap {
+	position: relative;
+	padding: 0 20px;
+	background: #fff;
+}
+.santu-si2-item-search-wrap {
+	padding: 12px 0 0;
+}
+.santu-si2-item-search {
+	width: 100%;
+	border: 1px solid #2563eb;
+	padding: 10px 12px;
+	font-size: 15px;
+	box-sizing: border-box;
+	border-radius: 8px;
+}
+.santu-si2-item-search:focus {
+	outline: none;
+}
+
+.santu-si2-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 14px;
+	margin-top: 8px;
+}
+.santu-si2-table thead th {
+	text-align: left;
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: #6b7280;
+	border-bottom: 2px solid #e5e7eb;
+	padding: 8px 8px;
 	white-space: nowrap;
+}
+.santu-si2-table td {
+	border-bottom: 1px solid #f3f4f6;
+	padding: 8px;
+	vertical-align: middle;
+}
+.santu-si2-empty-row td {
+	text-align: center;
+	color: #9ca3af;
+	padding: 32px 8px;
+}
+.santu-si2-row-warn {
+	background: #fef2f2;
+}
+
+.santu-si2-item-name {
+	font-weight: 600;
+	color: #111827;
+}
+.santu-si2-item-sub {
+	display: flex;
+	gap: 10px;
+	font-size: 12px;
+	margin-top: 2px;
+}
+.santu-si2-stock-ok {
+	color: #16a34a;
+}
+.santu-si2-stock-low {
+	color: #d97706;
+}
+.santu-si2-stock-out {
+	color: #dc2626;
+	font-weight: 700;
+}
+.santu-si2-cost-price {
+	color: #6b7280;
+}
+
+.santu-si2-qty-stepper {
+	display: flex;
+	align-items: center;
+	border: 1px solid #d1d5db;
+	width: 92px;
+	border-radius: 999px;
+	overflow: hidden;
+}
+.santu-si2-qty-stepper button {
+	width: 22px;
+	height: 26px;
+	border: none;
+	background: #f3f4f6;
+	cursor: pointer;
+	font-size: 15px;
+	line-height: 1;
+}
+.santu-si2-qty-input {
+	width: 46px;
+	border: none;
+	text-align: center;
+	font-size: 14px;
+	padding: 4px 0;
+}
+.santu-si2-qty-input:focus {
+	outline: none;
+}
+
+.santu-si2-table input,
+.santu-si2-table select {
+	border: 1px solid #d1d5db;
+	padding: 5px 6px;
+	font-size: 14px;
+	background: #fff;
+	box-sizing: border-box;
+	border-radius: 6px;
+}
+.santu-si2-uom-select {
+	width: 80px;
+}
+.santu-si2-rate-input {
+	width: 90px;
+}
+.santu-si2-disc-pct-input,
+.santu-si2-disc-amt-input {
+	width: 56px;
+	margin-right: 4px;
+}
+.santu-si2-tax-display {
+	color: #6b7280;
+	font-size: 13px;
+	white-space: nowrap;
+}
+.santu-si2-figures {
+	font-variant-numeric: tabular-nums;
+}
+.santu-si2-row-amount {
+	font-weight: 700;
+}
+.santu-si2-row-remove {
+	border: none;
+	background: none;
+	color: #9ca3af;
+	cursor: pointer;
+	font-size: 15px;
+}
+.santu-si2-row-remove:hover {
+	color: #dc2626;
+}
+
+.santu-si2-table tfoot td {
+	border-bottom: none;
+	border-top: 2px solid #e5e7eb;
+	font-weight: 700;
+	padding: 10px 8px;
+}
+.santu-si2-add-row {
+	border: 1px solid #2563eb;
+	background: #fff;
+	color: #2563eb;
+	font-weight: 700;
+	font-size: 13px;
+	padding: 8px 14px;
+	cursor: pointer;
+	letter-spacing: 0.02em;
+	border-radius: 999px;
+}
+.santu-si2-add-row:hover {
+	background: #eff6ff;
+}
+/* Barcode scanning already worked through the item search box (F4, or
+ * Enter after a scan — search_products' barcode fast-path) but had no
+ * visible affordance of its own (2026-08-15 direct request: "add barcode
+ * scanning option in sale and all" — same item search, just made
+ * discoverable as its own button, matching the explicit "Import From
+ * Barcode" option Update Items In Bulk already has). */
+.santu-si2-scan-row {
+	border: 1px solid #16a34a;
+	background: #fff;
+	color: #16a34a;
+	font-weight: 700;
+	font-size: 13px;
+	padding: 8px 14px;
+	cursor: pointer;
+	letter-spacing: 0.02em;
+	border-radius: 999px;
+	margin-left: 6px;
+}
+.santu-si2-scan-row:hover {
+	background: #f0fdf4;
+}
+
+/* ---------- Lower row (extras + summary) ---------- */
+.santu-si2-lowerrow {
+	display: grid;
+	grid-template-columns: 1fr 340px;
+	gap: 20px;
+	padding: 20px;
+	background: #fff;
+}
+.santu-si2-extras {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	align-items: flex-start;
+}
+.santu-si2-extra-btn {
+	border: 1px solid #d1d5db;
+	background: #fff;
+	color: #374151;
+	font-size: 13px;
+	font-weight: 700;
+	letter-spacing: 0.02em;
+	padding: 10px 16px;
+	cursor: pointer;
+	border-radius: 999px;
+}
+.santu-si2-extra-btn:hover {
+	border-color: #2563eb;
+	color: #2563eb;
+}
+
+.santu-si2-summary {
+	border: 1px solid #e5e7eb;
+	padding: 14px 16px;
+	border-radius: 12px;
+}
+.santu-si2-summary-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 6px 0;
+	font-size: 14px;
+	color: #374151;
+}
+.santu-si2-summary-row input[type="number"] {
+	width: 100px;
+	border: 1px solid #d1d5db;
+	padding: 5px 8px;
+	text-align: right;
+	font-size: 14px;
+	border-radius: 6px;
+}
+.santu-si2-summary-total {
+	border-top: 2px solid #111827;
+	margin-top: 6px;
+	padding-top: 10px;
+	font-size: 19px;
+	font-weight: 700;
+	color: #111827;
+}
+
+/* ---------- Action bar ---------- */
+.santu-si2-actionbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 14px 20px;
+	background: #fff;
+	border-top: 1px solid #e5e7eb;
+	position: sticky;
+	bottom: 0;
+}
+.santu-si2-actionbar-left,
+.santu-si2-actionbar-right {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+.santu-si2-btn {
+	border: 1px solid #d1d5db;
+	background: #fff;
+	color: #111827;
+	font-weight: 600;
+	font-size: 14px;
+	padding: 10px 18px;
+	cursor: pointer;
+	border-radius: 8px;
+}
+.santu-si2-btn:hover {
+	border-color: #9ca3af;
+}
+.santu-si2-btn-hold {
+	border-color: #f59e0b;
+	color: #b45309;
+}
+.santu-si2-btn-primary {
+	background: #2563eb;
+	border-color: #2563eb;
+	color: #fff;
+}
+.santu-si2-btn-primary:hover {
+	background: #1d4ed8;
+}
+.santu-si2-kbd {
+	font-size: 11px;
+	opacity: 0.6;
+	margin-left: 4px;
+}
+
+.santu-si2-more-wrap {
+	position: relative;
+}
+.santu-si2-more-menu {
+	position: absolute;
+	bottom: calc(100% + 4px);
+	left: 0;
+	background: #fff;
+	border: 1px solid #d1d5db;
+	box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.12);
+	min-width: 200px;
+	z-index: 30;
+	border-radius: 10px;
+	overflow: hidden;
+}
+.santu-si2-more-menu button {
+	display: block;
+	width: 100%;
+	text-align: left;
+	border: none;
+	background: none;
+	padding: 10px 14px;
+	font-size: 14px;
+	cursor: pointer;
+}
+.santu-si2-more-menu button:hover {
+	background: #f3f4f6;
+}
+
+/* ---------- Calculator ---------- */
+.santu-si2-calc {
+	width: 220px;
+}
+.santu-si2-calc-display {
+	width: 100%;
+	box-sizing: border-box;
+	border: 1px solid #d1d5db;
+	padding: 10px;
+	font-size: 22px;
+	text-align: right;
+	margin-bottom: 8px;
+	border-radius: 8px;
+}
+.santu-si2-calc-grid {
+	display: grid;
+	grid-template-columns: repeat(4, 1fr);
+	gap: 4px;
+}
+.santu-si2-calc-grid button {
+	border: 1px solid #d1d5db;
+	background: #f9fafb;
+	padding: 12px 0;
+	font-size: 16px;
+	cursor: pointer;
+	border-radius: 8px;
+}
+.santu-si2-calc-op {
+	background: #eff6ff;
+	color: #2563eb;
+	font-weight: 700;
+}
+
+.santu-si2-warn-text {
+	color: #dc2626;
+}
+
+@media (max-width: 1100px) {
+	.santu-si2-toprow {
+		grid-template-columns: 1fr;
+	}
+	.santu-si2-invoice-info {
+		justify-self: start;
+	}
+	.santu-si2-lowerrow {
+		grid-template-columns: 1fr;
+	}
+}
+
+@media print {
+	.santu-si2-tabbar,
+	.santu-si2-actionbar {
+		display: none !important;
+	}
+}
+
+/* ---------- Add Party dialog (2026-08-14 rebuild) ---------- */
+.santu-party-tabbar {
+	display: flex;
+	gap: 28px;
+	border-bottom: 1px solid #e5e7eb;
+	margin-bottom: 20px;
+}
+.santu-party-tab-btn {
+	border: none;
+	background: none;
+	padding: 10px 2px;
+	font-size: 15px;
+	font-weight: 600;
+	color: #9ca3af;
+	cursor: pointer;
+	border-bottom: 2px solid transparent;
+	margin-bottom: -1px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+.santu-party-tab-btn:hover {
+	color: #4b5563;
+}
+.santu-party-tab-btn.is-active {
+	color: var(--santu-brand-secondary, #2f6fed);
+	border-bottom-color: var(--santu-brand-secondary, #2f6fed);
+}
+.santu-party-tab-new {
+	background: #e0393e;
+	color: #fff;
+	font-size: 11px;
+	font-weight: 700;
+	padding: 1px 6px;
+	border-radius: 4px;
+	text-transform: uppercase;
+}
+.santu-party-credit-limit-wrap {
+	max-width: 260px;
+}
+.santu-party-field-hint {
+	display: block;
+	font-size: 12px;
+	color: #9ca3af;
+	margin-top: 4px;
+}
+
+.santu-party-gst-address {
+	display: flex;
+	gap: 28px;
+	align-items: flex-start;
+	flex-wrap: wrap;
+}
+.santu-party-col {
+	flex: 1 1 220px;
+	min-width: 220px;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+.santu-party-col-billing,
+.santu-party-col-shipping {
+	border-left: 1px solid #e5e7eb;
+	padding-left: 24px;
+}
+.santu-party-col .control-label {
+	font-size: 13px;
+	font-weight: 600;
+	color: #6b7280;
+	margin-bottom: 4px;
+	display: block;
+}
+.santu-party-col select.form-control,
+.santu-party-col input.form-control,
+.santu-party-col textarea.form-control {
+	font-size: 14px;
+}
+.santu-party-billing-simple,
+.santu-party-shipping-simple {
+	resize: vertical;
+}
+.santu-party-show-detailed,
+.santu-party-enable-shipping {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--santu-brand-secondary, #2f6fed);
+	text-decoration: none;
+	display: inline-block;
+}
+.santu-party-show-detailed:hover,
+.santu-party-enable-shipping:hover {
+	text-decoration: underline;
+}
+.santu-party-detailed,
+.santu-party-shipping-block {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	margin-top: 6px;
+	padding-top: 10px;
+	border-top: 1px dashed #e5e7eb;
+}
+.santu-party-village-wrap {
+	position: relative;
+}
+.santu-party-village-dropdown {
+	position: absolute;
+	top: calc(100% + 2px);
+	left: 0;
+	right: 0;
+	background: #fff;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+	max-height: 220px;
+	overflow-y: auto;
+	z-index: 1200;
+}
+.santu-party-village-row {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 8px 12px;
+	font-size: 14px;
+	cursor: pointer;
+}
+.santu-party-village-row:hover {
+	background: #f3f4f6;
+}
+.santu-party-village-row span {
+	color: #6b7280;
+	font-size: 13px;
+}
+.santu-party-village-empty {
+	padding: 10px 12px;
+	font-size: 13px;
+	color: #9ca3af;
 }
 
 @media (max-width: 900px) {
-	.santu-si-body { flex-direction: column; }
-	.santu-si-side { flex: 1 1 auto; width: 100%; }
+	.santu-party-gst-address {
+		flex-direction: column;
+	}
+	.santu-party-col-billing,
+	.santu-party-col-shipping {
+		border-left: none;
+		padding-left: 0;
+		border-top: 1px solid #e5e7eb;
+		padding-top: 16px;
+	}
+}
+
+/* santu-view-invoice — read-only Vyapar-style view for a saved document */
+.santu-view-status-badge {
+	display: inline-block;
+	font-size: 13px;
+	font-weight: 700;
+	padding: 2px 10px;
+	border-radius: 999px;
+	margin-left: 8px;
+	vertical-align: middle;
+}
+.santu-view-status-green {
+	background: #dcfce7;
+	color: #15803d;
+}
+.santu-view-status-red {
+	background: #fee2e2;
+	color: #b91c1c;
+}
+.santu-view-status-orange {
+	background: #ffedd5;
+	color: #c2410c;
+}
+.santu-view-status-gray {
+	background: #f3f4f6;
+	color: #4b5563;
+}
+.santu-view-note {
+	margin-bottom: 12px;
+	font-size: 14px;
+}
+.santu-view-note b {
+	display: block;
+	margin-bottom: 2px;
+	color: #374151;
+}
+.santu-view-note p {
+	margin: 0;
+	color: #6b7280;
+	white-space: pre-wrap;
+}
+
+/* ==========================================================================
+   Payment-In / Payment-Out screen (santu-payment-entry)
+   Layered on top of the santu-si2-* quick-entry language rather than a
+   separate stylesheet — only the bits that differ from an invoice screen
+   (the due bar, the settlement table's own columns, the advance callout)
+   are defined here.
+   ========================================================================== */
+
+/* Due bar — the answer to "what does this party actually owe?", which the
+   old Collect Payment dialog never showed at all. */
+.santu-pay-duebar { padding: 0 20px; }
+.santu-pay-duebar-inner {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 12px 16px;
+	border-radius: 8px;
+	margin-bottom: 4px;
+}
+.santu-pay-duebar-owed { background: #fff5e9; border: 1px solid #ffd9ac; }
+.santu-pay-duebar-clear { background: #eefaf4; border: 1px solid #b9e9d3; }
+.santu-pay-duebar-label { font-size: 14px; font-weight: 500; color: #3f4155; }
+.santu-pay-duebar-amount { font-size: 18px; font-weight: 700; color: #3f4155; }
+
+/* Settlement table */
+.santu-pay-col-inv { text-align: left; }
+.santu-pay-col-date { text-align: left; width: 120px; }
+.santu-pay-col-amt,
+.santu-pay-col-due { text-align: right; width: 140px; }
+.santu-pay-col-pay { text-align: right; width: 150px; }
+.santu-pay-table tbody td.santu-pay-col-amt,
+.santu-pay-table tbody td.santu-pay-col-due { text-align: right; }
+.santu-pay-table tfoot td { text-align: right; font-weight: 600; }
+.santu-pay-table tfoot td:first-child { text-align: left; }
+.santu-pay-alloc {
+	width: 120px;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	padding: 5px 8px;
+	text-align: right;
+	font-size: 14px;
+}
+
+.santu-pay-settle-all,
+.santu-pay-clear-all {
+	border: 1px solid #2563eb;
+	background: #fff;
+	color: #2563eb;
+	font-weight: 600;
+	font-size: 12px;
+	letter-spacing: 0.03em;
+	border-radius: 999px;
+	padding: 5px 14px;
+	cursor: pointer;
+}
+.santu-pay-clear-all { border-color: #9ca3af; color: #6b7280; }
+.santu-pay-settle-all:hover { background: #eff6ff; }
+.santu-pay-clear-all:hover { background: #f3f4f6; }
+
+/* Notes column reuses the extras slot, which is a button stack on invoice
+   screens — reset it to a labelled field here. */
+.santu-pay-notes-col { display: flex; flex-direction: column; gap: 6px; max-width: 340px; }
+.santu-pay-notes-label { font-size: 12px; font-weight: 600; color: #6b7280; letter-spacing: 0.03em; }
+.santu-pay-remarks {
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	padding: 8px 10px;
+	font-size: 14px;
+	resize: vertical;
+	width: 100%;
+}
+
+/* Advance callout — stays muted at zero, turns amber the moment the typed
+   amount runs past what's being settled. */
+.santu-pay-advance-row { color: #9ca3af; }
+.santu-pay-advance-row.santu-pay-advance-on { color: #b45309; font-weight: 600; }
+
+.santu-pay-amount {
+	width: 140px !important;
+	font-size: 19px !important;
+	font-weight: 700;
+	text-align: right;
+	border: 1px solid #111827 !important;
+	border-radius: 6px;
+	padding: 4px 8px !important;
+}
+
+.santu-pay-dd-empty { color: #9ca3af; font-size: 13px; cursor: default; }
+
+/* ==========================================================================
+   Expense screen (santu-expense) — layered on the santu-si2-* language;
+   only the category/description/amount columns differ from an item table.
+   ========================================================================== */
+.santu-exp-col-cat { text-align: left; width: 260px; }
+.santu-exp-col-desc { text-align: left; }
+.santu-exp-col-amt { text-align: right; width: 160px; }
+.santu-exp-table tfoot td { text-align: right; font-weight: 600; }
+.santu-exp-table tfoot td:first-child { text-align: left; }
+
+.santu-exp-cat,
+.santu-exp-desc,
+.santu-exp-amt {
+	width: 100%;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	padding: 5px 8px;
+	font-size: 14px;
+}
+.santu-exp-amt { text-align: right; }
+
+/* ==========================================================================
+   Party to Party Transfer (santu-party-transfer)
+   ========================================================================== */
+.santu-ptp-row {
+	display: flex;
+	align-items: stretch;
+	gap: 16px;
+	padding: 16px 20px 4px;
+}
+.santu-ptp-side {
+	flex: 1 1 0;
+	min-width: 0;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	padding: 14px;
+	background: #fff;
+}
+.santu-ptp-side-head {
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 0.03em;
+	color: #6b7280;
+	margin-bottom: 10px;
+}
+.santu-ptp-type { display: flex; gap: 16px; margin-bottom: 10px; }
+.santu-ptp-type label {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 14px;
+	color: #3f4155;
+	margin: 0;
+	cursor: pointer;
+}
+.santu-ptp-arrow {
+	align-self: center;
+	font-size: 22px;
+	color: #9ca3af;
+	flex: 0 0 auto;
+}
+.santu-ptp-balance { margin-top: 10px; min-height: 20px; }
+.santu-ptp-bal { font-size: 14px; font-weight: 600; }
+.santu-ptp-bal-in { color: #08bd7c; }
+.santu-ptp-bal-out { color: #f45972; }
+.santu-ptp-bal-none { font-size: 13px; color: #9ca3af; }
+
+.santu-ptp-fields {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 16px;
+	padding: 16px 20px 0;
+}
+.santu-ptp-field { display: flex; flex-direction: column; gap: 6px; }
+.santu-ptp-field-wide { flex: 1 1 320px; min-width: 240px; }
+.santu-ptp-field label {
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 0.03em;
+	color: #6b7280;
+	margin: 0;
+}
+.santu-ptp-field input {
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	padding: 6px 10px;
+	font-size: 14px;
+}
+.santu-ptp-amount { width: 160px; text-align: right; font-weight: 600; }
+
+.santu-ptp-preview { padding: 16px 20px 0; }
+.santu-ptp-preview-box {
+	background: #eef7ff;
+	border: 1px solid #cfe6ff;
+	border-radius: 8px;
+	padding: 12px 14px;
+	font-size: 14px;
+	color: #3f4155;
+	line-height: 1.5;
+}
+
+@media (max-width: 800px) {
+	.santu-ptp-row { flex-direction: column; }
+	.santu-ptp-arrow { transform: rotate(90deg); }
+}
+.santu-ptp-preview-box > div + div { margin-top: 4px; }
+.santu-ptp-preview-note {
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid #cfe6ff;
+	font-size: 13px;
+	color: #6b7280;
 }
