@@ -7621,18 +7621,23 @@ def get_printer_diagnostics(printer_name: str = None):
 	# Until one of those is resolved there is no honest way to change
 	# density from inside the app, and the screen says so rather than
 	# offering a control that does nothing.
-	raw_blocked_reason = None
+	# The TM-T82X-II simply does not implement print density. Verified against
+	# the hardware over a direct USB channel: GS ( E Function 5 writes DO take
+	# on this printer -- print speed was moved 13 -> 10 and back, and read
+	# back correctly each time via Function 6 -- but customized value a=5
+	# (print density) reads 0 and refuses every value written to it. The
+	# levels 1-7 documented in the TM-T82II guide belong to a different model.
+	raw_blocked_reason = _(
+		"This printer model (TM-T82X-II) has no adjustable print density. Verified "
+		"directly against the hardware: other printer settings can be changed, but "
+		"density stays fixed at the factory value."
+	)
 	try:
 		probe = subprocess.run(
 			["lpadmin", "-p", "santu_raw_probe", "-m", "raw", "-v", "file:///dev/null"],
 			capture_output=True, text=True, timeout=8,
 		)
-		if "no longer supported" in (probe.stdout + probe.stderr).lower():
-			raw_blocked_reason = _(
-				"macOS no longer allows raw printer queues, so ESC/POS commands cannot pass "
-				"through the printer driver."
-			)
-		else:
+		if "no longer supported" not in (probe.stdout + probe.stderr).lower():
 			run(["lpadmin", "-x", "santu_raw_probe"])
 	except Exception:
 		pass
