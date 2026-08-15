@@ -647,7 +647,14 @@ def get_business_setup():
 			"gstin": getattr(company, "gstin", None) or "",
 			"default_currency": company.default_currency if company else "INR",
 		} if company else {},
-		"warehouse": frappe.db.get_value("Warehouse", {"company": company_name, "is_group": 0}, "name") if company_name else "",
+		# Must exclude disabled warehouses, or this reports one bills can never
+		# use: it was showing "Goods In Transit" (disabled) while every bill
+		# was actually going to Stores.
+		"warehouse": frappe.db.get_value(
+			"Warehouse", {"company": company_name, "is_group": 0, "disabled": 0}, "name"
+		)
+		if company_name
+		else "",
 		"price_list": frappe.db.get_single_value("Selling Settings", "selling_price_list"),
 		"payment_modes": frappe.get_all("Mode of Payment", filters={"enabled": 1}, pluck="name"),
 	}

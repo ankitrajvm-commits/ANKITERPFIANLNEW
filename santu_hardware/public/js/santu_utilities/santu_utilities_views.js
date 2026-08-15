@@ -279,9 +279,13 @@ santu_utilities.views = {
 					<p class="santu-utilities-muted">Cost price stays hidden on the billing screen so a customer at the counter cannot see your margin. Set a PIN to reveal it, and add this Mac's fingerprint so you do not have to type the PIN every time.</p>
 					<button class="btn btn-default" id="open-privacy-lock">Set PIN &amp; Fingerprint</button></div>`;
 			} else {
+				// Only the Business step writes anything; every other step is a
+				// door to a screen that saves on its own. Claiming "your
+				// configuration has been saved" here told people their work was
+				// safe when walking past a step saves nothing at all.
 				body += `<div class="santu-utilities-hero"><div class="hero-icon">✅</div>
-					<h2>Santu Hardware is ready to use.</h2>
-					<p>Your business configuration has been saved.</p></div>`;
+					<h2>All done.</h2>
+					<p>Each screen above saves on its own when you use it. You can come back to any of them any time from Utilities.</p></div>`;
 			}
 
 			body += `<div class="santu-utilities-footer-bar">
