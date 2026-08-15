@@ -7606,6 +7606,39 @@ def get_printer_diagnostics(printer_name: str = None):
 
 	density = get_printer_density(printer_name) if printer_name else None
 
+	# Can ESC/POS actually reach this printer on this machine?
+	#
+	# Two independent walls, both verified on the box rather than assumed:
+	#   * macOS no longer supports raw CUPS queues at all -- lpadmin answers
+	#     "Raw queues are no longer supported on macOS" -- so every raw job
+	#     is handed to the Epson raster filter, which renders it as nothing.
+	#     That is why raw test slips came out blank, and it means the
+	#     cash-drawer kick on this same path has never worked either.
+	#   * QZ Tray's direct USB channel, which would bypass CUPS, answers
+	#     "Sorry, this feature is unavailable at this time" without a paid
+	#     QZ signing certificate.
+	#
+	# Until one of those is resolved there is no honest way to change
+	# density from inside the app, and the screen says so rather than
+	# offering a control that does nothing.
+	raw_blocked_reason = None
+	try:
+		probe = subprocess.run(
+			["lpadmin", "-p", "santu_raw_probe", "-m", "raw", "-v", "file:///dev/null"],
+			capture_output=True, text=True, timeout=8,
+		)
+		if "no longer supported" in (probe.stdout + probe.stderr).lower():
+			raw_blocked_reason = _(
+				"macOS no longer allows raw printer queues, so ESC/POS commands cannot pass "
+				"through the printer driver."
+			)
+		else:
+			run(["lpadmin", "-x", "santu_raw_probe"])
+	except Exception:
+		pass
+
+	density_supported = raw_blocked_reason is None
+
 	return {
 		"printer_name": printer_name,
 		"cups_queue": (matched or {}).get("queue"),
@@ -7617,8 +7650,9 @@ def get_printer_diagnostics(printer_name: str = None):
 		"density_method": "QZ Tray raw ESC/POS (GS ( E, Function 5)",
 		"driver_options": driver_options,
 		"density_in_driver": density_in_driver,
-		"density_supported": True,
-		"density_support_note": _(
+		"density_supported": density_supported,
+		"density_support_note": raw_blocked_reason
+		or _(
 			"The Epson driver exposes no darkness setting, so density is written straight to the printer over ESC/POS instead."
 		),
 		"queues_found": queues,

@@ -645,3 +645,18 @@
 .santu-prn-error b {
 	color: #c0392b;
 }
+
+.santu-prn-blocked {
+	margin-top: 12px;
+	padding: 10px 12px;
+	border: 1px solid #f3ddbe;
+	background: #fff7ec;
+	border-radius: 6px;
+	font-size: 12.5px;
+	color: #7a5a2a;
+	line-height: 1.5;
+}
+
+.santu-prn-blocked p {
+	margin: 6px 0 0;
+}

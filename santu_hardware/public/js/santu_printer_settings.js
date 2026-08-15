@@ -78,7 +78,8 @@
 						<div class="santu-prn-slider-wrap">
 							<span class="santu-prn-end">${__("Lighter")}</span>
 							<input type="range" class="santu-prn-density"
-								min="${levels.min}" max="${levels.max}" step="1" value="${cur}">
+								min="${levels.min}" max="${levels.max}" step="1" value="${cur}"
+								${diag.density_supported ? "" : "disabled"}>
 							<span class="santu-prn-end">${__("Darker")}</span>
 						</div>
 						<div class="santu-prn-density-read"></div>
@@ -91,9 +92,21 @@
 								: `<div class="santu-prn-applied santu-prn-unapplied">${__("Not written to this printer yet.")}</div>`
 						}
 
+						${
+							diag.density_supported
+								? ""
+								: `<div class="santu-prn-blocked">
+										<b>${__("Density cannot be changed from here on this computer.")}</b>
+										<p>${frappe.utils.escape_html(diag.density_support_note || "")}</p>
+										<p>${__(
+											"The printer's own density is unchanged and still at its factory setting. It can be set with Epson's TM Utility, or from the printer's panel, and it stays in the printer once set."
+										)}</p>
+									</div>`
+						}
+
 						<div class="santu-prn-actions">
-							<button class="btn btn-default santu-prn-test">${__("Test Print")}</button>
-							<button class="btn btn-primary santu-prn-save">${__("Save & Apply to Printer")}</button>
+							<button class="btn btn-default santu-prn-test" ${diag.density_supported ? "" : "disabled"}>${__("Test Print")}</button>
+							<button class="btn btn-primary santu-prn-save" ${diag.density_supported ? "" : "disabled"}>${__("Save & Apply to Printer")}</button>
 						</div>
 					</div>
 
