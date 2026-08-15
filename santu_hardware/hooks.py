@@ -32,7 +32,7 @@ app_license = "mit"
 # without a version bump, browsers keep serving a stale copy after every
 # edit during active development. Bump the number whenever these files
 # change.
-SANTU_ASSET_VERSION = "275"
+SANTU_ASSET_VERSION = "277"
 app_include_css = [
 	f"/assets/santu_hardware/css/design_system.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/vyapar_theme.css?v={SANTU_ASSET_VERSION}",
@@ -57,6 +57,7 @@ app_include_css = [
 	f"/assets/santu_hardware/css/santu_receive_stock.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/santu_parties.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/santu_items.css?v={SANTU_ASSET_VERSION}",
+	f"/assets/santu_hardware/css/santu_stock.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/santu_add_item.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/santu_billing.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/santu_sale.css?v={SANTU_ASSET_VERSION}",

@@ -85,6 +85,7 @@ santu_reports.runner = {
 				"/assets/santu_hardware/js/santu_sale/santu_sale_transactions.js",
 				"/assets/santu_hardware/js/santu_sale/santu_sale_page.js",
 			],
+			stock: ["/assets/santu_hardware/js/santu_stock/santu_stock_page.js"],
 			purchase: [
 				"/assets/santu_hardware/js/santu_purchase/santu_purchase_utils.js",
 				"/assets/santu_hardware/js/santu_purchase/santu_purchase_api.js",
@@ -106,6 +107,8 @@ santu_reports.runner = {
 				santu_sale.create_page().init($embed, { view: report.view || "invoices", enable_view_switch: false, show_trend: false });
 			} else if (report.embed === "purchase") {
 				santu_purchase.create_page().init($embed, { view: report.view || "bills", enable_view_switch: false });
+			} else if (report.embed === "stock") {
+				santu_stock.create_page().init($embed, { only_low: !!report.only_low });
 			}
 		} catch (e) {
 			$embed.html(`<div class="santu-reports-error">Could not load report: ${frappe.utils.escape_html(e.message || String(e))}</div>`);

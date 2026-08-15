@@ -7,7 +7,7 @@
 	// Bump whenever NAV_ITEMS changes shape — build_sidebar() reuses an
 	// already-rendered sidebar when this matches, so without a bump an open
 	// tab keeps the old menu.
-	const SIDEBAR_NAV_VERSION = "vyapar-match-4";
+	const SIDEBAR_NAV_VERSION = "vyapar-match-5";
 	const SIDEBAR_COLLAPSE_KEY = "santu_sidebar_collapsed";
 
 	const PURCHASE_CHILDREN = [
@@ -29,6 +29,10 @@
 		{ type: "link", route: "santu-dashboard", icon: "🏠", label: "Home" },
 		{ type: "link", route: "santu-parties", icon: "👥", label: "Parties" },
 		{ type: "link", route: "santu-items", icon: "📦", label: "Items", quickadd: { run: () => frappe.set_route("santu-add-item") } },
+		// "kaun sa product kitna stock me hai, kis rate me aaya, kis rate me
+		// becha ja raha hai" — one screen, next to Items where someone looks
+		// for it, not buried three levels into Reports.
+		{ type: "link", route: "santu-stock", icon: "📊", label: "Stock & Rates" },
 		{
 			type: "group",
 			key: "sale",

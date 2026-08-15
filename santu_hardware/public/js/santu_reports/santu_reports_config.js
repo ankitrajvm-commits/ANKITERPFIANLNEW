@@ -58,11 +58,11 @@ santu_reports.REPORTS = [
 	{ id: "sac_report", label: "SAC Report", category: "gst", type: "erpnext", report_name: "HSN-wise-summary of outward supplies" },
 
 	// Stock
-	{ id: "stock_summary", label: "Stock Summary", category: "stock", type: "erpnext", report_name: "Stock Balance" },
+	{ id: "stock_summary", label: "Stock Summary", category: "stock", type: "embed", embed: "stock" },
 	{ id: "item_report_by_party", label: "Item Report By Party", category: "stock", type: "erpnext", report_name: "Item-wise Sales Register" },
 	{ id: "item_wise_pl", label: "Item Wise Profit And Loss", category: "stock", type: "erpnext", report_name: "Gross Profit", extra_filters: { group_by: "Item Code" } },
 	{ id: "item_category_pl", label: "Item Category Wise Profit And Loss", category: "stock", type: "erpnext", report_name: "Gross Profit", extra_filters: { group_by: "Item Group" } },
-	{ id: "low_stock", label: "Low Stock Summary", category: "stock", type: "erpnext", report_name: "Item Shortage Report" },
+	{ id: "low_stock", label: "Low Stock Summary", category: "stock", type: "embed", embed: "stock", only_low: true },
 	{ id: "stock_detail", label: "Stock Detail", category: "stock", type: "erpnext", report_name: "Stock Ledger" },
 	{ id: "item_detail", label: "Item Detail", category: "stock", type: "custom", method: "item_detail", custom_filters: [
 		{ fieldname: "from_date", label: "From Date", fieldtype: "Date" },

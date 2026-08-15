@@ -1,0 +1,293 @@
+/* Stock Summary — same visual language as the Sale/Purchase screens so the
+   shop only ever learns one table. */
+
+.santu-stock-page-main {
+	background: #f4f5f8;
+}
+
+.santu-stock {
+	padding: 0 0 32px;
+	font-size: 13px;
+	color: #1f2233;
+}
+
+/* ---------- header ---------- */
+.santu-stock-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 18px 24px 12px;
+	background: #fff;
+	border-bottom: 1px solid #e6e8ee;
+}
+
+.santu-stock-title {
+	font-size: 19px;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
+
+.santu-stock-add-btn {
+	background: #e8453c;
+	color: #fff;
+	border: none;
+	border-radius: 6px;
+	padding: 8px 16px;
+	font-size: 13px;
+	font-weight: 600;
+}
+
+.santu-stock-add-btn:hover {
+	background: #d13c34;
+	color: #fff;
+}
+
+/* ---------- filters ---------- */
+.santu-stock-filters {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+	padding: 12px 24px;
+	background: #fff;
+	border-bottom: 1px solid #e6e8ee;
+}
+
+.santu-stock-search-wrap {
+	position: relative;
+	flex: 1 1 260px;
+	max-width: 380px;
+}
+
+.santu-stock-search-icon {
+	position: absolute;
+	left: 10px;
+	top: 50%;
+	transform: translateY(-50%);
+	font-size: 12px;
+	opacity: 0.55;
+	pointer-events: none;
+}
+
+.santu-stock-search {
+	width: 100%;
+	height: 34px;
+	padding: 0 10px 0 30px;
+	border: 1px solid #d8dbe3;
+	border-radius: 6px;
+	font-size: 13px;
+	background: #fff;
+}
+
+.santu-stock-group {
+	height: 34px;
+	min-width: 160px;
+	padding: 0 8px;
+	border: 1px solid #d8dbe3;
+	border-radius: 6px;
+	font-size: 13px;
+	background: #fff;
+}
+
+.santu-stock-lowtoggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin: 0;
+	font-size: 13px;
+	color: #4a4d5e;
+	cursor: pointer;
+	user-select: none;
+}
+
+.santu-stock-refresh {
+	margin-left: auto;
+	width: 34px;
+	height: 34px;
+	border: 1px solid #d8dbe3;
+	border-radius: 6px;
+	background: #fff;
+	font-size: 15px;
+	color: #4a4d5e;
+}
+
+/* ---------- summary cards ---------- */
+.santu-stock-cards {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+	gap: 12px;
+	padding: 16px 24px 8px;
+}
+
+.santu-stock-card {
+	background: #fff;
+	border: 1px solid #e6e8ee;
+	border-radius: 8px;
+	padding: 14px 16px;
+}
+
+.santu-stock-card-label {
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: #7a7d8c;
+}
+
+.santu-stock-card-label span {
+	font-weight: 400;
+	text-transform: none;
+	letter-spacing: 0;
+	opacity: 0.85;
+}
+
+.santu-stock-card-value {
+	margin-top: 6px;
+	font-size: 21px;
+	font-weight: 600;
+	letter-spacing: -0.02em;
+}
+
+.santu-stock-card-sub {
+	margin-top: 3px;
+	font-size: 11.5px;
+	color: #8b8e9c;
+}
+
+.santu-stock-card-profit .santu-stock-card-value {
+	color: #17864b;
+}
+
+.santu-stock-card-warn .santu-stock-card-value {
+	color: #d1671f;
+}
+
+/* ---------- table ---------- */
+.santu-stock-table-wrap {
+	margin: 8px 24px 0;
+	background: #fff;
+	border: 1px solid #e6e8ee;
+	border-radius: 8px;
+	overflow-x: auto;
+}
+
+.santu-stock-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+
+.santu-stock-table thead th {
+	position: sticky;
+	top: 0;
+	background: #fafbfc;
+	border-bottom: 1px solid #e6e8ee;
+	padding: 10px 14px;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	color: #7a7d8c;
+	white-space: nowrap;
+	cursor: pointer;
+	user-select: none;
+}
+
+.santu-stock-th-right {
+	text-align: right;
+}
+
+.santu-stock-th-left {
+	text-align: left;
+}
+
+.santu-stock-table tbody tr {
+	border-bottom: 1px solid #f0f1f5;
+	cursor: pointer;
+}
+
+.santu-stock-table tbody tr:last-child {
+	border-bottom: none;
+}
+
+.santu-stock-table tbody tr:hover {
+	background: #f7f9ff;
+}
+
+.santu-stock-table td {
+	padding: 10px 14px;
+	vertical-align: middle;
+}
+
+.santu-stock-td-num {
+	text-align: right;
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+.santu-stock-item-name {
+	font-weight: 500;
+}
+
+.santu-stock-item-sub {
+	margin-top: 2px;
+	font-size: 11.5px;
+	color: #8b8e9c;
+}
+
+.santu-stock-uom {
+	margin-left: 4px;
+	font-size: 11.5px;
+	color: #8b8e9c;
+}
+
+/* Low stock is the one thing on this screen that needs acting on, so it is
+   the only thing that gets colour on the quantity itself. */
+.santu-stock-row-low {
+	background: #fffaf5;
+}
+
+.santu-stock-row-low:hover {
+	background: #fff4ea;
+}
+
+.santu-stock-qty-low {
+	color: #d1671f;
+	font-weight: 600;
+}
+
+.santu-stock-gain {
+	color: #17864b;
+}
+
+.santu-stock-loss {
+	color: #c0392b;
+}
+
+.santu-stock-dash {
+	color: #c3c6d0;
+}
+
+/* ---------- empty / loading ---------- */
+.santu-stock-loading,
+.santu-stock-empty {
+	padding: 48px 24px;
+	text-align: center;
+	color: #8b8e9c;
+}
+
+.santu-stock-empty-icon {
+	font-size: 30px;
+	margin-bottom: 8px;
+}
+
+.santu-stock-empty-title {
+	font-size: 15px;
+	font-weight: 600;
+	color: #4a4d5e;
+}
+
+.santu-stock-empty-sub {
+	margin-top: 4px;
+	font-size: 12.5px;
+}

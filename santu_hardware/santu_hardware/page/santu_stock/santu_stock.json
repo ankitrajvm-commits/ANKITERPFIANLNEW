@@ -1,0 +1,16 @@
+{
+ "content": null,
+ "doctype": "Page",
+ "icon": "octicon octicon-package",
+ "idx": 0,
+ "module": "Santu Hardware",
+ "name": "santu-stock",
+ "page_name": "santu-stock",
+ "restrict_to_domain": null,
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Stock Summary"
+}

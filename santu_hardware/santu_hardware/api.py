@@ -6995,3 +6995,100 @@ def backfill_loyalty_expiry():
 		fixed += 1
 	frappe.db.commit()
 	return fixed
+
+
+@frappe.whitelist()
+def get_stock_summary(search: str = None, item_group: str = None, only_low: int = 0):
+	"""One row per product: how much is in stock, what it cost, what it sells for.
+
+	The three numbers a shopkeeper actually wants together lived in three
+	different places — quantity in the Items screen, cost only behind
+	Privacy Mode, selling price on the item form — and the Reports entry
+	for "Stock Summary" opened ERPNext's own Stock Balance report, which
+	never shows a selling price at all.
+
+	Cost is the warehouse's weighted-average valuation where there has been
+	stock movement, falling back to the last price actually paid and then
+	the item master's own rate, so an item that has been bought but not yet
+	moved still shows a real number instead of zero.
+	"""
+	company = frappe.defaults.get_user_default("Company")
+
+	conditions = ["i.disabled = 0", "i.is_stock_item = 1"]
+	params = {}
+	if search:
+		conditions.append("(i.name like %(q)s or i.item_name like %(q)s or i.custom_rack_number like %(q)s)")
+		params["q"] = f"%{search}%"
+	if item_group:
+		conditions.append("i.item_group = %(g)s")
+		params["g"] = item_group
+
+	rows = frappe.db.sql(
+		f"""
+		select
+			i.name                as item_code,
+			i.item_name           as item_name,
+			i.item_group          as item_group,
+			i.stock_uom           as uom,
+			i.custom_rack_number  as rack,
+			i.last_purchase_rate  as last_purchase_rate,
+			i.valuation_rate      as master_valuation_rate,
+			(select sum(b.actual_qty) from `tabBin` b where b.item_code = i.name)     as qty,
+			(select sum(b.stock_value) from `tabBin` b where b.item_code = i.name)    as stock_value,
+			(select max(r.warehouse_reorder_level) from `tabItem Reorder` r
+			  where r.parent = i.name)                                               as reorder_level,
+			(select ip.price_list_rate from `tabItem Price` ip
+			  where ip.item_code = i.name and ip.selling = 1 order by ip.modified desc limit 1) as sale_rate
+		from `tabItem` i
+		where {" and ".join(conditions)}
+		order by i.item_name asc
+		""",
+		params,
+		as_dict=True,
+	)
+
+	out = []
+	for r in rows:
+		qty = flt(r.qty)
+		# Weighted-average cost per unit, derived from what the stock is
+		# actually valued at rather than any list price.
+		if qty and flt(r.stock_value):
+			cost = flt(r.stock_value) / qty
+		else:
+			cost = flt(r.last_purchase_rate) or flt(r.master_valuation_rate)
+		sale = flt(r.sale_rate)
+		reorder = flt(r.reorder_level)
+		low = bool(reorder and qty <= reorder) or qty <= 0
+		if cint(only_low) and not low:
+			continue
+		out.append({
+			"item_code": r.item_code,
+			"item_name": r.item_name or r.item_code,
+			"item_group": r.item_group,
+			"uom": r.uom,
+			"rack": r.rack,
+			"qty": qty,
+			"cost_rate": flt(cost, 2),
+			"sale_rate": flt(sale, 2),
+			# What the shop would make if the whole lot sold at today's price.
+			"margin": flt(sale - cost, 2) if sale and cost else None,
+			"margin_pct": flt((sale - cost) / cost * 100, 1) if sale and cost else None,
+			"stock_value": flt(qty * cost, 2),
+			"sale_value": flt(qty * sale, 2) if sale else 0,
+			"reorder_level": reorder,
+			"low": low,
+		})
+
+	summary = {
+		"items": len(out),
+		"total_qty": flt(sum(r["qty"] for r in out), 2),
+		"stock_value": flt(sum(r["stock_value"] for r in out), 2),
+		"sale_value": flt(sum(r["sale_value"] for r in out), 2),
+		"low_count": sum(1 for r in out if r["low"]),
+	}
+	summary["potential_profit"] = flt(summary["sale_value"] - summary["stock_value"], 2)
+
+	groups = frappe.get_all(
+		"Item Group", filters={"is_group": 0}, pluck="name", order_by="name asc"
+	)
+	return {"rows": out, "summary": summary, "item_groups": groups, "company": company}
