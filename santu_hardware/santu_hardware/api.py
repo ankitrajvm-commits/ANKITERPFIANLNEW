@@ -7523,10 +7523,13 @@ def get_density_escpos(level):
 	"""
 	level = _clamp_density_level(level)
 	# a = 5 (print density); value = nL + nH * 256, and 1-7 fits in nL alone.
+	# Emitted as plain hex rather than "\\xNN" text: whether an escape like
+	# that gets decoded depends on how the print bridge chooses to read the
+	# string, and a printer command is not a place to leave that to chance.
 	n_low, n_high = level, 0
-	enter = "\\x1D\\x28\\x45\\x03\\x00\\x01\\x49\\x4E"
-	set_density = "\\x1D\\x28\\x45\\x04\\x00\\x05\\x05" + f"\\x{n_low:02X}\\x{n_high:02X}"
-	leave = "\\x1D\\x28\\x45\\x04\\x00\\x02\\x4F\\x55\\x54"
+	enter = "1D2845030001494E"
+	set_density = f"1D284504000505{n_low:02X}{n_high:02X}"
+	leave = "1D28450400024F5554"
 	pct, label = SANTU_DENSITY_LEVELS[level]
 	return {
 		"level": level,
@@ -7625,50 +7628,61 @@ def get_printer_diagnostics(printer_name: str = None):
 
 @frappe.whitelist()
 def get_density_test_receipt(level=None, printer_name: str = None):
-	"""A short receipt whose only job is to show how dark this printer prints.
+	"""A short slip whose only job is to show how dark this printer prints.
 
-	Built as raw ESC/POS text rather than the usual PDF path so that nothing
-	about the normal bill — its layout, fonts, margins, paper width, GST or
-	item formatting — is involved or can be disturbed by this.
+	Raw ESC/POS rather than the usual PDF path, so nothing about the real
+	bill -- its layout, fonts, margins, paper width, GST or item formatting
+	-- is involved or can be disturbed by a density test.
+
+	Returned as hex for the same reason the density command is: whether a
+	"\\xNN" escape gets decoded depends on how the print bridge reads the
+	string, and that is not a thing to leave to chance.
+
+	Deliberately does not cut the paper (2026-08-16 direct request) -- while
+	density is being compared it is easier to hold several slips against
+	each other on one continuous strip.
 	"""
 	if level is None:
-		level = (get_printer_density(printer_name).get("level")
-		         if printer_name else SANTU_DENSITY_DEFAULT_LEVEL)
+		level = (
+			get_printer_density(printer_name).get("level")
+			if printer_name
+			else SANTU_DENSITY_DEFAULT_LEVEL
+		)
 	level = _clamp_density_level(level)
 	pct, label = SANTU_DENSITY_LEVELS[level]
 
-	ESC_INIT = "\\x1B\\x40"
-	CENTER = "\\x1B\\x61\\x01"
-	LEFT = "\\x1B\\x61\\x00"
-	BOLD_ON = "\\x1B\\x45\\x01"
-	BOLD_OFF = "\\x1B\\x45\\x00"
-	FEED_CUT = "\\x1D\\x56\\x42\\x03"  # feed then partial cut
-	NL = "\\x0A"
-	rule = "-" * 32
+	ESC_INIT = b"\x1b@"
+	CENTER = b"\x1b\x61\x01"
+	LEFT = b"\x1b\x61\x00"
+	BOLD_ON = b"\x1b\x45\x01"
+	BOLD_OFF = b"\x1b\x45\x00"
+	NL = b"\n"
+	rule = b"-" * 32
 
-	lines = [
-		ESC_INIT,
-		CENTER, BOLD_ON, "SANTU HARDWARE / SantuERP", BOLD_OFF, NL,
-		LEFT, rule, NL,
-		"PRINT DENSITY TEST", NL,
-		rule, NL, NL,
-		"ABCDEFGHIJKLMNOPQRSTUVWXYZ", NL,
-		"abcdefghijklmnopqrstuvwxyz", NL,
-		"0123456789", NL,
-		"Rs Rs Rs Rs Rs", NL, NL,
-		# A solid bar is the clearest way to judge darkness by eye; built from
-		# the block character rather than an image so the driver's own
-		# halftoning cannot muddy the comparison.
-		"\\xDB" * 24, NL,
-		rule, NL,
-		f"Level {level} of 7  ({pct}%)", NL,
-		f"{label}", NL,
-		rule, NL,
-		FEED_CUT,
-	]
+	out = bytearray()
+	out += ESC_INIT
+	out += CENTER + BOLD_ON + b"SANTU HARDWARE / SantuERP" + BOLD_OFF + NL
+	out += LEFT + rule + NL
+	out += b"PRINT DENSITY TEST" + NL
+	out += rule + NL + NL
+	out += b"ABCDEFGHIJKLMNOPQRSTUVWXYZ" + NL
+	out += b"abcdefghijklmnopqrstuvwxyz" + NL
+	out += b"0123456789" + NL
+	out += b"Rs Rs Rs Rs Rs" + NL + NL
+	# A solid bar is the clearest way to judge darkness by eye. 0xDB is the
+	# full block in the printer's default code page; built from a character
+	# rather than an image so the driver's halftoning cannot muddy it.
+	out += b"\xdb" * 24 + NL
+	out += rule + NL
+	out += f"Level {level} of 7  ({pct}%)".encode("ascii", "replace") + NL
+	out += label.encode("ascii", "replace") + NL
+	out += rule + NL
+	# Feed clear of the tear bar without cutting.
+	out += NL * 5
+
 	return {
 		"level": level,
 		"percent": pct,
 		"label": label,
-		"data": "".join(lines),
+		"data": out.hex().upper(),
 	}

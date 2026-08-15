@@ -163,14 +163,17 @@ async function santu_qz_apply_print_density(printer_name, level) {
 	// with a "mode change notice" before it will accept the value, and
 	// Function 2 performs a software reset — batching all three into one
 	// stream gives the printer no room to do either.
+	// format "hex", not "command": a "\xNN" escape only becomes a byte if
+	// whatever reads the string chooses to decode it, and a printer command
+	// is not a place to leave that to chance.
 	await qz.print(config, [
-		{ type: "raw", format: "command", data: cmds.enter_user_setting_mode },
+		{ type: "raw", format: "hex", data: cmds.enter_user_setting_mode },
 	]);
 	await new Promise((r) => setTimeout(r, 400));
-	await qz.print(config, [{ type: "raw", format: "command", data: cmds.set_density }]);
+	await qz.print(config, [{ type: "raw", format: "hex", data: cmds.set_density }]);
 	await new Promise((r) => setTimeout(r, 200));
 	await qz.print(config, [
-		{ type: "raw", format: "command", data: cmds.end_user_setting_mode },
+		{ type: "raw", format: "hex", data: cmds.end_user_setting_mode },
 	]);
 	// The reset takes a moment; printing immediately after would be dropped.
 	await new Promise((r) => setTimeout(r, 1500));
@@ -193,6 +196,6 @@ async function santu_qz_print_density_test(printer_name, level) {
 		{ level, printer_name }
 	);
 	const config = qz.configs.create(printer_name);
-	await qz.print(config, [{ type: "raw", format: "command", data: receipt.data }]);
+	await qz.print(config, [{ type: "raw", format: "hex", data: receipt.data }]);
 	return receipt;
 }
