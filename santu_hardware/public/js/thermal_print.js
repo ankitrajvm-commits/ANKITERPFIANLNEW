@@ -103,6 +103,16 @@ async function santu_qz_print_invoice(doctype, docname) {
 	}
 }
 
+// KNOWN BROKEN, and harmless only because this shop has no cash drawer yet
+// (2026-08-16). This sends the kick as a raw job through the CUPS queue, and
+// macOS no longer supports raw queues at all -- lpadmin answers "Raw queues
+// are no longer supported on macOS" -- so Epson's raster filter swallows it
+// and the drawer never opens. Nothing reports an error; the job completes.
+//
+// The fix is the route print density already uses: talk to the printer's USB
+// endpoint directly from the server (see _usb_send in api.py, proven end to
+// end against this printer). Whoever buys a drawer should start there rather
+// than debugging this function.
 async function santu_qz_open_cash_drawer(printer_name) {
 	await santu_qz_connect();
 	if (!printer_name) {
