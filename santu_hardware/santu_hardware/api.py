@@ -1032,8 +1032,19 @@ def title_case_a_name(name: str) -> str:
 	"""
 	if not name:
 		return name
-	words = name.split(" ")
-	return " ".join(w[:1].upper() + w[1:].lower() if w else w for w in words)
+
+	def cased(word):
+		if not word:
+			return word
+		# Leave short all-capital runs alone: they are acronyms, not shouting.
+		# A supplier really is "Janta Cement Store (JCS)" and a brand really is
+		# "MRF" — lowercasing those produced "(jcs)" on a real supplier record.
+		letters = [c for c in word if c.isalpha()]
+		if letters and len(letters) <= 4 and all(c.isupper() for c in letters):
+			return word
+		return word[:1].upper() + word[1:].lower()
+
+	return " ".join(cased(w) for w in name.split(" "))
 
 
 def title_case_party_name(doc, method=None):
@@ -3444,16 +3455,62 @@ def get_sale_item_row(customer: str, item_code: str, warehouse: str = None, qty:
 		available_qty = actual_qty - flt(get_pos_reserved_qty(item_code, warehouse))
 	row["available_qty"] = available_qty
 
-	# Display-only effective tax rate, resolved from the item's own real
-	# GST/Item Tax Template — not a value the quick-sale UI can override.
-	# Summing every rate in the map is correct either way GST is split for
-	# this item (CGST 9 + SGST 9, or IGST 18 alone both sum to 18).
-	try:
-		tax_map = frappe.parse_json(row.get("item_tax_rate") or "{}")
-		row["tax_rate"] = sum(flt(v) for v in tax_map.values())
-	except Exception:
-		row["tax_rate"] = 0
+	# Customer prices here are inclusive of tax and strip_gst_line_items
+	# clears every tax row off Sales/POS Invoices before they save, so a
+	# sale genuinely carries no separate GST. Showing the item's notional
+	# rate in this column would promise a tax line that never appears on
+	# the bill or in the total.
+	row["tax_rate"] = 0
 	return row
+
+
+def _applicable_purchase_tax_template(supplier, company):
+	"""The GST template a purchase from this supplier would actually use.
+
+	Unregistered suppliers charge no GST, so there is no template at all.
+	Otherwise it is in-state (CGST+SGST) or out-of-state (IGST) depending on
+	whether the supplier sits in the same state as the shop.
+	"""
+	gst_category = frappe.db.get_value("Supplier", supplier, "gst_category")
+	if gst_category in (None, "", "Unregistered"):
+		return None
+
+	abbr = frappe.db.get_value("Company", company, "abbr")
+	supplier_gstin = frappe.db.get_value("Supplier", supplier, "gstin") or ""
+	company_gstin = frappe.db.get_value("Company", company, "gstin") or ""
+	# The first two digits of a GSTIN are the state code — same code means
+	# the sale happened inside one state, which is what splits GST into
+	# CGST+SGST rather than a single IGST line.
+	in_state = bool(supplier_gstin and company_gstin and supplier_gstin[:2] == company_gstin[:2])
+	name = f"Input GST {'In' if in_state else 'Out'}-state - {abbr}"
+	return name if frappe.db.exists("Purchase Taxes and Charges Template", name) else None
+
+
+def _purchase_item_tax_rate(item_tax_rate, supplier, company):
+	"""Percentage this item is actually taxed at on a purchase from this supplier.
+
+	`item_tax_rate` from get_item_details lists every GST account the item's
+	tax template touches — Output and Input, CGST/SGST and IGST, plus RCM and
+	Refund variants. Summing all of them (which this used to do) returns 36%
+	for an ordinary 18% item, and would have doubled the tax shown on screen
+	the moment items were given tax templates. Only the accounts on the
+	template that will really be applied count.
+	"""
+	try:
+		tax_map = frappe.parse_json(item_tax_rate or "{}")
+	except Exception:
+		return 0
+	if not tax_map:
+		return 0
+
+	template = _applicable_purchase_tax_template(supplier, company)
+	if not template:
+		return 0
+	accounts = {
+		r.account_head
+		for r in frappe.get_doc("Purchase Taxes and Charges Template", template).taxes
+	}
+	return flt(sum(flt(v) for k, v in tax_map.items() if k in accounts))
 
 
 @frappe.whitelist()
@@ -3917,11 +3974,7 @@ def get_purchase_item_row(supplier: str, item_code: str, warehouse: str = None, 
 		)
 	row["available_qty"] = available_qty
 
-	try:
-		tax_map = frappe.parse_json(row.get("item_tax_rate") or "{}")
-		row["tax_rate"] = sum(flt(v) for v in tax_map.values())
-	except Exception:
-		row["tax_rate"] = 0
+	row["tax_rate"] = _purchase_item_tax_rate(row.get("item_tax_rate"), supplier, company)
 	return row
 
 
@@ -4006,6 +4059,13 @@ def save_purchase_invoice(invoice_json: str, submit: int = 0):
 		doc.naming_series = data.get("naming_series")
 	if data.get("place_of_supply"):
 		doc.place_of_supply = data.get("place_of_supply")
+	# The supplier's own bill number. GST Settings makes this mandatory for a
+	# registered supplier, so without it the screen simply could not save a
+	# purchase from anyone GST-registered. It is also what the duplicate check
+	# matches on, and what the shop reads off the paper bill to find it later.
+	if data.get("bill_no"):
+		doc.bill_no = data.get("bill_no")
+		doc.bill_date = data.get("bill_date") or doc.posting_date
 	if data.get("terms"):
 		doc.tc_name = None
 		doc.terms = data.get("terms")

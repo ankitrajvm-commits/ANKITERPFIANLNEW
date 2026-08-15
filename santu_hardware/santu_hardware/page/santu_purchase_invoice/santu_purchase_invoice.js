@@ -107,6 +107,7 @@ const santu_purchase_pos = {
 			additional_discount_amount: 0,
 			round_off: true,
 			place_of_supply: this._default_place_of_supply(),
+			bill_no: "",
 			posting_date: this.init_data.posting_date,
 			terms: "",
 			description: "",
@@ -298,6 +299,10 @@ const santu_purchase_pos = {
 								? frappe.utils.escape_html(tab.saved_invoice.name)
 								: frappe.utils.escape_html((this.init_data.naming_series_default || "").replace(/\.#+.*/, "")) + " (auto)"
 						}</span>
+					</div>
+					<div class="santu-si2-inv-row">
+						<span class="santu-si2-inv-label">Supplier Bill No.</span>
+						<input type="text" class="santu-si2-bill-no" placeholder="As printed on their bill" value="${frappe.utils.escape_html(tab.bill_no || "")}">
 					</div>
 					<div class="santu-si2-inv-row">
 						<span class="santu-si2-inv-label">Invoice Date</span>
@@ -497,12 +502,40 @@ const santu_purchase_pos = {
 
 	_select_customer(name) {
 		const tab = this._active_tab();
+		const supplier_changed = tab.supplier !== name;
 		tab.supplier = name;
 		this.$root.find(".santu-si2-customer-dropdown").hide().empty();
 		santu_purchase_invoice.api.supplier_details(name).then((d) => {
 			tab.supplier_details = d;
 			this._save_debounced();
 			this._render_customer_info();
+		});
+		// GST depends on who is selling: a registered supplier adds CGST+SGST
+		// (or IGST from out of state), an unregistered one adds nothing. Rows
+		// already in the table were priced against whoever was selected when
+		// they were added — which is nobody, if the operator scanned goods
+		// first and picked the supplier after, the way a delivery actually
+		// arrives. Without this, the screen would show a tax-free total and
+		// then save a bill 18% larger.
+		if (supplier_changed && tab.items.length) this._refresh_row_taxes();
+	},
+
+	_refresh_row_taxes() {
+		const tab = this._active_tab();
+		const rows = tab.items.filter((r) => r.item_code);
+		if (!rows.length) return Promise.resolve();
+		return Promise.all(
+			rows.map((row) =>
+				santu_purchase_invoice.api
+					.item_row(tab.supplier, row.item_code, this.init_data.warehouse, row.qty)
+					.then((r) => {
+						row.tax_rate = r.tax_rate || 0;
+					})
+					.catch(() => {})
+			)
+		).then(() => {
+			this._save_debounced();
+			this._render_items();
 		});
 	},
 
@@ -775,6 +808,10 @@ const santu_purchase_pos = {
 			this._save_debounced();
 		});
 
+		$root.find(".santu-si2-bill-no").on("input", (e) => {
+			tab.bill_no = e.target.value;
+			this._save_debounced();
+		});
 		$root.find(".santu-si2-posting-date").on("change", (e) => {
 			tab.posting_date = e.target.value;
 			this._save_debounced();
@@ -1093,6 +1130,7 @@ const santu_purchase_pos = {
 			buying_price_list: this.init_data.buying_price_list,
 			payment_mode: tab.payment_mode,
 			place_of_supply: tab.place_of_supply || null,
+			bill_no: (tab.bill_no || "").trim() || null,
 			additional_discount_amount: tab.additional_discount_amount || 0,
 			terms: tab.terms || null,
 			description: tab.description || null,
