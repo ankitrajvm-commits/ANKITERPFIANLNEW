@@ -139,6 +139,13 @@ window.santu_payment_entry_page = {
 			</div>
 		`);
 		this.$root = $body.find(".santu-si2");
+		// One screen serves both directions, but the Page was registered as
+		// "Payment In" — so recording a payment to a supplier left the
+		// browser tab (and every recent-pages entry) reading "Payment In"
+		// while the body correctly said Payment - Out. Money going out under
+		// a heading that says "In" is exactly the kind of thing nobody
+		// double-checks. Keep the page's own title honest too.
+		if (this.page && this.page.set_title) this.page.set_title(this._screen_title());
 		this._render_body();
 	},
 

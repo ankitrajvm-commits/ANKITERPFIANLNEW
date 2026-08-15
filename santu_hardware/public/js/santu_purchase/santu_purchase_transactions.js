@@ -161,8 +161,8 @@ santu_purchase.transactions = {
 			$card.append(`
 				<div class="santu-purchase-empty">
 					<div class="santu-purchase-empty-icon">📋</div>
-					<div class="santu-purchase-empty-title">No data is available for Debit Note.</div>
-					<div class="santu-purchase-empty-sub">Please try again after making relevant changes.</div>
+					<div class="santu-purchase-empty-title">No purchase returns yet.</div>
+					<div class="santu-purchase-empty-sub">Use this when you send goods back to a supplier and they owe you money.</div>
 					<button type="button" class="btn santu-purchase-add-btn santu-purchase-empty-btn">${frappe.utils.escape_html(meta.addLabel || "+ Add")}</button>
 				</div>
 			`);

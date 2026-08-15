@@ -2711,6 +2711,50 @@ def _purchase_fetch_payment_out_rows(start, end, company, search=None):
 	return out
 
 
+# Accounts that sit under Expense but exist for the system's own postings
+# rather than for anyone to spend money into: Cost of Goods Sold and Stock
+# Adjustment are written by stock entries, Round Off / Exchange Gain-Loss by
+# the rounding logic. Offering them as a category invites postings that
+# quietly corrupt stock valuation, so the Expense screen hides them. The
+# Expenses *list* still shows anything already booked to them — see
+# _purchase_fetch_expense_rows.
+SYSTEM_OWNED_EXPENSE_ACCOUNTS = {
+	"Cost of Goods Sold",
+	"Stock Adjustment",
+	"Round Off",
+	"Exchange Gain/Loss",
+	"Expenses Included In Valuation",
+	"Expenses Included In Asset Valuation",
+	"Gain/Loss on Asset Disposal",
+	"Impairment",
+	"Depreciation",
+}
+
+
+def _spendable_expense_accounts(company=None):
+	"""Leaf Expense accounts a person can actually book spending against."""
+	filters = {"root_type": "Expense", "is_group": 0, "disabled": 0}
+	if company:
+		filters["company"] = company
+	return [
+		a
+		for a in frappe.get_all(
+			"Account", filters=filters, fields=["name", "account_name"], order_by="account_name asc"
+		)
+		if a.account_name not in SYSTEM_OWNED_EXPENSE_ACCOUNTS
+	]
+
+
+def _account_label(account):
+	"""Account name without the company abbreviation ERPNext appends.
+
+	Nobody at the counter thinks of the rent account as "Office Rent - SH".
+	"""
+	if not account:
+		return "—"
+	return frappe.db.get_value("Account", account, "account_name") or account
+
+
 def _purchase_fetch_expense_rows(start, end, company, search=None):
 	out = []
 	seen = set()
@@ -2747,7 +2791,7 @@ def _purchase_fetch_expense_rows(start, end, company, search=None):
 				"invoice_no": r.name,
 				"posting_date": r.posting_date,
 				"party_name": r.party or "—",
-				"expense_account": r.paid_to or "—",
+				"expense_account": _account_label(r.paid_to),
 				"payment_type": r.mode_of_payment or "—",
 				"amount": flt(r.paid_amount),
 				"reference": r.reference_no or r.name,
@@ -2757,12 +2801,21 @@ def _purchase_fetch_expense_rows(start, end, company, search=None):
 			}
 		)
 
-	# Journal Entry lines debiting expense accounts
-	expense_accounts = frappe.get_all(
-		"Account",
-		filters={"root_type": "Expense", "is_group": 0, "disabled": 0},
-		pluck="name",
+	# Journal Entry lines debiting expense accounts. Deliberately NOT
+	# narrowed to _spendable_expense_accounts: stock movements post their
+	# Cost of Goods Sold / Stock Adjustment entries straight to the GL, not
+	# through Journal Entries, so everything caught here is money a person
+	# actually entered. Filtering by category would hide real spending that
+	# happened to be filed under the wrong head — the create screen is where
+	# the wrong head gets prevented, not the list.
+	acc_filters = {"root_type": "Expense", "is_group": 0, "disabled": 0}
+	if company:
+		acc_filters["company"] = company
+	all_expense = frappe.get_all(
+		"Account", filters=acc_filters, fields=["name", "account_name"]
 	)
+	expense_accounts = [a.name for a in all_expense]
+	account_labels = {a.name: a.account_name for a in all_expense}
 	if expense_accounts:
 		je_filters = {"docstatus": 1, "posting_date": ["between", [start, end]]}
 		if company:
@@ -2806,8 +2859,14 @@ def _purchase_fetch_expense_rows(start, end, company, search=None):
 						"invoice_no": ja.parent,
 						"posting_date": je.posting_date,
 						"party_name": ja.party or "—",
-						"expense_account": ja.account,
-						"payment_type": "Journal",
+						# "Office Rent", not "Office Rent - SH" — the same
+						# friendly name the Expense screen offers when picking
+						# the category in the first place.
+						"expense_account": account_labels.get(ja.account, ja.account),
+						# "Journal" is the doctype's name, not anything the
+						# person at the counter did. They spent cash or they
+						# didn't, and a manual entry doesn't record which.
+						"payment_type": "—",
 						"amount": flt(ja.debit_in_account_currency),
 						"reference": ja.user_remark or je.cheque_no or ja.parent,
 						"transaction": "Expense",
@@ -4661,31 +4720,12 @@ def get_expense_init():
 	(Cost of Goods Sold and Stock Adjustment are written by stock entries,
 	Round Off / Exchange Gain-Loss by the rounding logic); offering them as
 	an expense category invites postings that quietly corrupt stock
-	valuation or reconciliation, so they're filtered out.
+	valuation or reconciliation, so they're filtered out here — see
+	SYSTEM_OWNED_EXPENSE_ACCOUNTS.
 	"""
 	company = frappe.defaults.get_user_default("Company")
 
-	system_owned = {
-		"Cost of Goods Sold",
-		"Stock Adjustment",
-		"Round Off",
-		"Exchange Gain/Loss",
-		"Expenses Included In Valuation",
-		"Expenses Included In Asset Valuation",
-		"Gain/Loss on Asset Disposal",
-		"Impairment",
-		"Depreciation",
-	}
-	filters = {"root_type": "Expense", "is_group": 0, "disabled": 0}
-	if company:
-		filters["company"] = company
-	accounts = [
-		{"name": a.name, "label": a.account_name}
-		for a in frappe.get_all(
-			"Account", filters=filters, fields=["name", "account_name"], order_by="account_name asc"
-		)
-		if a.account_name not in system_owned
-	]
+	accounts = [{"name": a.name, "label": a.account_name} for a in _spendable_expense_accounts(company)]
 
 	modes = frappe.get_all(
 		"Mode of Payment", filters={"enabled": 1}, fields=["name", "type"], order_by="name asc"
