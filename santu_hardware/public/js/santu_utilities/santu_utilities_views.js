@@ -271,8 +271,9 @@ santu_utilities.views = {
 					<p>Enabled modes: ${(data.payment_modes || []).map(frappe.utils.escape_html).join(", ") || "—"}</p>
 					<button class="btn btn-default" id="open-mop">Manage Modes of Payment</button></div>`;
 			} else if (step === 4) {
-				body += `<div class="santu-utilities-card"><h3>Print Settings</h3>
-					<p class="santu-utilities-muted">Bill layout and printer settings live in Settings &rsaquo; Printer Settings.</p></div>`;
+				body += `<div class="santu-utilities-card"><h3>Printer Settings</h3>
+					<p class="santu-utilities-muted">Choose which printer bills go to, and how dark it prints. Print density is written into the printer itself, so it survives unplugging.</p>
+					<button class="btn btn-default" id="open-printer-settings">Open Printer Settings</button></div>`;
 			} else if (step === 5) {
 				body += `<div class="santu-utilities-card"><h3>Cost Price Lock</h3>
 					<p class="santu-utilities-muted">Cost price stays hidden on the billing screen so a customer at the counter cannot see your margin. Set a PIN to reveal it, and add this Mac's fingerprint so you do not have to type the PIN every time.</p>
@@ -292,6 +293,7 @@ santu_utilities.views = {
 			$wrap.find("#open-company").on("click", () => window.santu_open_shop_profile());
 			$wrap.find("#open-mop").on("click", () => window.santu_open_payment_modes());
 			$wrap.find("#open-privacy-lock").on("click", () => window.santu_privacy.manage_dialog());
+			$wrap.find("#open-printer-settings").on("click", () => window.santu_open_printer_settings());
 			$wrap.find(".santu-wiz-prev").on("click", () => { step--; render(); });
 			$wrap.find(".santu-wiz-next").on("click", async () => {
 				if (step === 0) {

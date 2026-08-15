@@ -17,6 +17,7 @@
   "print_copies",
   "auto_print",
   "open_cash_drawer",
+  "printer_densities",
   "payments_section",
   "upi_id",
   "privacy_mode_section",
@@ -139,6 +140,13 @@
    "hidden": 1,
    "label": "Registered Touch ID devices",
    "read_only": 1
+  },
+  {
+   "description": "Epson print density (levels 1-7 = 85%-115%). Written to the printer's own memory via ESC/POS, not applied to the bill image.",
+   "fieldname": "printer_densities",
+   "fieldtype": "Table",
+   "label": "Print Density Per Printer",
+   "options": "Santu Printer Density"
   }
  ],
  "icon": "fa fa-shield",

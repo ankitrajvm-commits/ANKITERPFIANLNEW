@@ -135,3 +135,64 @@ async function santu_print_thermal_bill(doctype, docname) {
 		return false;
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Print density (Epson TM-T82X-II)
+//
+// The bill itself goes out as a PDF pixel job through the Epson CUPS driver,
+// which exposes no darkness setting at all. Density instead rides the same
+// raw ESC/POS channel QZ Tray already uses for the cash-drawer kick, writing
+// straight to the printer's own stored settings.
+//
+// The byte sequences come from the server (get_density_escpos) rather than
+// being assembled here: the 1-7 clamp and the command format belong in one
+// place, and a browser is not where a printer's stored configuration should
+// be composed.
+// ---------------------------------------------------------------------------
+
+async function santu_qz_apply_print_density(printer_name, level) {
+	await santu_qz_connect();
+	if (!printer_name) {
+		frappe.throw(__("No printer selected yet."));
+	}
+
+	const cmds = await frappe.xcall("santu_hardware.santu_hardware.api.get_density_escpos", { level });
+	const config = qz.configs.create(printer_name);
+
+	// Sent as separate jobs on purpose. Function 1 makes the printer reply
+	// with a "mode change notice" before it will accept the value, and
+	// Function 2 performs a software reset — batching all three into one
+	// stream gives the printer no room to do either.
+	await qz.print(config, [
+		{ type: "raw", format: "command", data: cmds.enter_user_setting_mode },
+	]);
+	await new Promise((r) => setTimeout(r, 400));
+	await qz.print(config, [{ type: "raw", format: "command", data: cmds.set_density }]);
+	await new Promise((r) => setTimeout(r, 200));
+	await qz.print(config, [
+		{ type: "raw", format: "command", data: cmds.end_user_setting_mode },
+	]);
+	// The reset takes a moment; printing immediately after would be dropped.
+	await new Promise((r) => setTimeout(r, 1500));
+
+	await frappe.xcall("santu_hardware.santu_hardware.api.set_printer_density", {
+		printer_name,
+		level: cmds.level,
+		mark_applied: 1,
+	});
+	return cmds;
+}
+
+// Deliberately raw ESC/POS text, not the usual PDF pipeline: nothing about
+// the real bill's layout, fonts, margins, paper width or GST formatting is
+// involved, so a density test cannot disturb any of it.
+async function santu_qz_print_density_test(printer_name, level) {
+	await santu_qz_connect();
+	const receipt = await frappe.xcall(
+		"santu_hardware.santu_hardware.api.get_density_test_receipt",
+		{ level, printer_name }
+	);
+	const config = qz.configs.create(printer_name);
+	await qz.print(config, [{ type: "raw", format: "command", data: receipt.data }]);
+	return receipt;
+}

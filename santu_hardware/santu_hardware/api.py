@@ -7389,3 +7389,286 @@ def touch_id_login_finish(credential_id: str, authenticator_data: str, client_da
 		frappe.throw(_("Fingerprint check could not be completed. Use the PIN."))
 
 	return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Thermal print density (Epson TM-T82X-II)
+#
+# The receipt reaches the printer as a PDF rendered to a pixel job through
+# QZ Tray -> CUPS -> Epson's `rastertotmtr` driver. That driver exposes only
+# PageSize, Resolution, PaperReduction, Buzzer/Drawer and PaperCut (verified
+# against /etc/cups/ppd/EPSON_TM_T82X_II.ppd, which contains no density,
+# darkness, contrast, intensity or energy keyword anywhere). So darkness
+# cannot be reached through the printing path the bill itself takes.
+#
+# It CAN be reached over the raw ESC/POS channel the same QZ Tray connection
+# already uses for the cash-drawer kick. Density on TM printers is a stored
+# printer setting rather than a per-job attribute, so it is written once when
+# the shop changes it — never with every bill.
+#
+# Command sequence, taken verbatim from Epson's ESC/POS Command Reference
+# (GS ( E, Functions 1/5/2) and the TM-T82II Technical Reference Guide:
+#
+#   Enter user setting mode   1D 28 45 03 00 01 49 4E        ("IN")
+#   Set customized value      1D 28 45 04 00 05 05 nL nH     (a=5 -> density)
+#   End user setting mode     1D 28 45 04 00 02 4F 55 54     ("OUT")
+#
+# TRG page 55: "Print density - Selectable from levels 1 to 7 (85% ~ 115%).
+# Initial setting: level 4 (100%)". Nothing outside 1-7 is ever sent.
+#
+# Two consequences worth knowing:
+#   * Function 2 performs a software reset, so this can never be appended to
+#     a receipt — it is always its own standalone job.
+#   * Epson: the value is "not initialized by power off or ESC @", i.e. it
+#     lives in the printer and survives everything on this side.
+# ---------------------------------------------------------------------------
+
+SANTU_DENSITY_MIN_LEVEL = 1
+SANTU_DENSITY_MAX_LEVEL = 7
+SANTU_DENSITY_DEFAULT_LEVEL = 4
+
+# level -> (percent, plain-language label)
+SANTU_DENSITY_LEVELS = {
+	1: (85, "Lightest"),
+	2: (90, "Lighter"),
+	3: (95, "Slightly light"),
+	4: (100, "Normal (Epson default)"),
+	5: (105, "Slightly dark"),
+	6: (110, "Darker"),
+	7: (115, "Darkest"),
+}
+
+
+def _clamp_density_level(level) -> int:
+	level = cint(level) or SANTU_DENSITY_DEFAULT_LEVEL
+	return max(SANTU_DENSITY_MIN_LEVEL, min(SANTU_DENSITY_MAX_LEVEL, level))
+
+
+@frappe.whitelist()
+def get_density_levels():
+	"""The levels this printer actually supports, for the slider to render."""
+	return {
+		"min": SANTU_DENSITY_MIN_LEVEL,
+		"max": SANTU_DENSITY_MAX_LEVEL,
+		"default": SANTU_DENSITY_DEFAULT_LEVEL,
+		"levels": [
+			{"level": lvl, "percent": pct, "label": label}
+			for lvl, (pct, label) in sorted(SANTU_DENSITY_LEVELS.items())
+		],
+	}
+
+
+@frappe.whitelist()
+def get_printer_density(printer_name: str):
+	"""Stored density for one printer, defaulting to Epson's own default."""
+	settings = frappe.get_single("Santu POS Settings")
+	for row in settings.get("printer_densities") or []:
+		if row.printer_name == printer_name:
+			level = _clamp_density_level(row.density_level)
+			pct, label = SANTU_DENSITY_LEVELS[level]
+			return {
+				"printer_name": printer_name,
+				"level": level,
+				"percent": pct,
+				"label": label,
+				"last_applied_on": row.last_applied_on,
+				"configured": True,
+			}
+	pct, label = SANTU_DENSITY_LEVELS[SANTU_DENSITY_DEFAULT_LEVEL]
+	return {
+		"printer_name": printer_name,
+		"level": SANTU_DENSITY_DEFAULT_LEVEL,
+		"percent": pct,
+		"label": label,
+		"last_applied_on": None,
+		"configured": False,
+	}
+
+
+@frappe.whitelist()
+def set_printer_density(printer_name: str, level, mark_applied: int = 0):
+	"""Persist the density chosen for one printer.
+
+	Stored in the database, not in browser state, so it survives an app
+	restart, a bench restart, unplugging the printer, and an app update.
+	The printer keeps its own copy too (the ESC/POS write is what actually
+	changes printing); this record is what the screen shows and what gets
+	re-applied if the printer is ever reset.
+	"""
+	if not printer_name:
+		frappe.throw(_("Pick a printer first."))
+	level = _clamp_density_level(level)
+
+	settings = frappe.get_single("Santu POS Settings")
+	row = next(
+		(r for r in (settings.get("printer_densities") or []) if r.printer_name == printer_name), None
+	)
+	if not row:
+		row = settings.append("printer_densities", {"printer_name": printer_name})
+	row.density_level = level
+	if cint(mark_applied):
+		row.last_applied_on = frappe.utils.now()
+	settings.save(ignore_permissions=True)
+	frappe.db.commit()
+	return get_printer_density(printer_name)
+
+
+@frappe.whitelist()
+def get_density_escpos(level):
+	"""The exact bytes to send, as \\xNN escapes for QZ Tray's raw channel.
+
+	Returned from the server rather than assembled in JavaScript so the
+	1-7 clamp and the command format live in one place — a browser is not
+	where a printer's stored settings should be composed.
+	"""
+	level = _clamp_density_level(level)
+	# a = 5 (print density); value = nL + nH * 256, and 1-7 fits in nL alone.
+	n_low, n_high = level, 0
+	enter = "\\x1D\\x28\\x45\\x03\\x00\\x01\\x49\\x4E"
+	set_density = "\\x1D\\x28\\x45\\x04\\x00\\x05\\x05" + f"\\x{n_low:02X}\\x{n_high:02X}"
+	leave = "\\x1D\\x28\\x45\\x04\\x00\\x02\\x4F\\x55\\x54"
+	pct, label = SANTU_DENSITY_LEVELS[level]
+	return {
+		"level": level,
+		"percent": pct,
+		"label": label,
+		# Sent as three separate raw chunks so the printer's own
+		# "mode change notice" after Function 1 has a moment to come back
+		# before the value is written.
+		"enter_user_setting_mode": enter,
+		"set_density": set_density,
+		"end_user_setting_mode": leave,
+		"hex_readable": f"1D 28 45 04 00 05 05 {n_low:02X} {n_high:02X}",
+	}
+
+
+@frappe.whitelist()
+def get_printer_diagnostics(printer_name: str = None):
+	"""What is actually known about how this shop's receipts reach the printer.
+
+	Everything here is read from the machine rather than assumed: the CUPS
+	queue, its device URI, and the driver's own option list from the PPD.
+	"""
+	import re
+	import subprocess
+
+	settings = frappe.get_single("Santu POS Settings")
+	printer_name = printer_name or settings.get("printer_name")
+
+	def run(cmd):
+		try:
+			return subprocess.run(cmd, capture_output=True, text=True, timeout=8).stdout
+		except Exception:
+			return ""
+
+	queues = []
+	for line in run(["lpstat", "-v"]).splitlines():
+		m = re.match(r"device for (.+?): (.+)", line.strip())
+		if m:
+			queues.append({"queue": m.group(1), "uri": m.group(2)})
+
+	# Match the QZ Tray/OS display name back to a CUPS queue. QZ reports the
+	# printer's description ("EPSON TM-T82X-II") while CUPS names the queue
+	# with every space and hyphen turned into an underscore
+	# ("EPSON_TM_T82X_II"), so neither string matches the other directly.
+	def _norm(value):
+		return re.sub(r"[^a-z0-9]+", "_", (value or "").lower()).strip("_")
+
+	matched = None
+	if printer_name:
+		target = _norm(printer_name)
+		matched = next((q for q in queues if _norm(q["queue"]) == target), None)
+
+	uri = (matched or {}).get("uri", "")
+	if uri.startswith("usb:"):
+		connection = "USB"
+	elif uri.startswith(("socket:", "ipp:", "ipps:", "lpd:", "dnssd:")):
+		connection = "Network"
+	elif uri:
+		connection = uri.split(":")[0]
+	else:
+		connection = "Unknown"
+
+	driver_options = []
+	density_in_driver = False
+	if matched:
+		raw = run(["lpoptions", "-p", matched["queue"], "-l"])
+		for line in raw.splitlines():
+			if "/" in line and ":" in line:
+				key = line.split("/")[0].strip()
+				driver_options.append(key)
+		density_in_driver = bool(
+			re.search(r"density|darkness|contrast|intensity", raw, re.I)
+		)
+
+	density = get_printer_density(printer_name) if printer_name else None
+
+	return {
+		"printer_name": printer_name,
+		"cups_queue": (matched or {}).get("queue"),
+		"device_uri": uri or None,
+		"connection": connection,
+		# The bill itself is a rendered PDF sent as a pixel job; density rides
+		# a separate raw ESC/POS job on the same QZ Tray connection.
+		"printing_method": "QZ Tray → CUPS driver (PDF pixel job)",
+		"density_method": "QZ Tray raw ESC/POS (GS ( E, Function 5)",
+		"driver_options": driver_options,
+		"density_in_driver": density_in_driver,
+		"density_supported": True,
+		"density_support_note": _(
+			"The Epson driver exposes no darkness setting, so density is written straight to the printer over ESC/POS instead."
+		),
+		"queues_found": queues,
+		"density": density,
+	}
+
+
+@frappe.whitelist()
+def get_density_test_receipt(level=None, printer_name: str = None):
+	"""A short receipt whose only job is to show how dark this printer prints.
+
+	Built as raw ESC/POS text rather than the usual PDF path so that nothing
+	about the normal bill — its layout, fonts, margins, paper width, GST or
+	item formatting — is involved or can be disturbed by this.
+	"""
+	if level is None:
+		level = (get_printer_density(printer_name).get("level")
+		         if printer_name else SANTU_DENSITY_DEFAULT_LEVEL)
+	level = _clamp_density_level(level)
+	pct, label = SANTU_DENSITY_LEVELS[level]
+
+	ESC_INIT = "\\x1B\\x40"
+	CENTER = "\\x1B\\x61\\x01"
+	LEFT = "\\x1B\\x61\\x00"
+	BOLD_ON = "\\x1B\\x45\\x01"
+	BOLD_OFF = "\\x1B\\x45\\x00"
+	FEED_CUT = "\\x1D\\x56\\x42\\x03"  # feed then partial cut
+	NL = "\\x0A"
+	rule = "-" * 32
+
+	lines = [
+		ESC_INIT,
+		CENTER, BOLD_ON, "SANTU HARDWARE / SantuERP", BOLD_OFF, NL,
+		LEFT, rule, NL,
+		"PRINT DENSITY TEST", NL,
+		rule, NL, NL,
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZ", NL,
+		"abcdefghijklmnopqrstuvwxyz", NL,
+		"0123456789", NL,
+		"Rs Rs Rs Rs Rs", NL, NL,
+		# A solid bar is the clearest way to judge darkness by eye; built from
+		# the block character rather than an image so the driver's own
+		# halftoning cannot muddy the comparison.
+		"\\xDB" * 24, NL,
+		rule, NL,
+		f"Level {level} of 7  ({pct}%)", NL,
+		f"{label}", NL,
+		rule, NL,
+		FEED_CUT,
+	]
+	return {
+		"level": level,
+		"percent": pct,
+		"label": label,
+		"data": "".join(lines),
+	}
