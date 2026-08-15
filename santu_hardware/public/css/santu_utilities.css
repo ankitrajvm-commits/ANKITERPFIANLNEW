@@ -461,3 +461,49 @@
 .santu-pm-toggle { display: flex; align-items: center; gap: 10px; margin: 0; cursor: pointer; font-size: 14px; color: #3f4155; }
 .santu-pm-ok { font-size: 12px; color: #08bd7c; font-weight: 500; }
 .santu-pm-warn { font-size: 12px; color: #b45309; font-weight: 500; }
+
+/* ---- Cost Price Lock (Privacy Mode) ---- */
+.santu-privacy-hint,
+.santu-privacy-warn {
+	font-size: 12.5px;
+	color: #6b6e7d;
+	line-height: 1.45;
+	margin-bottom: 8px;
+}
+
+.santu-privacy-warn {
+	color: #b06a1f;
+	background: #fff7ec;
+	border: 1px solid #f3ddbe;
+	border-radius: 6px;
+	padding: 8px 10px;
+}
+
+.santu-privacy-manage p {
+	font-size: 13px;
+	color: #4a4d5e;
+	line-height: 1.5;
+}
+
+.santu-privacy-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 0;
+	border-top: 1px solid #eceef3;
+}
+
+.santu-privacy-row > span {
+	flex: 1 1 auto;
+	font-size: 13px;
+	color: #4a4d5e;
+}
+
+.santu-privacy-row > b {
+	font-size: 12.5px;
+	color: #1f2233;
+}
+
+.santu-privacy-row .btn {
+	flex: 0 0 auto;
+}

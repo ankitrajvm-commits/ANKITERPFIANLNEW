@@ -1,4 +1,4 @@
-/* global frappe, santu_sale_invoice, santu_billing_page */
+/* global frappe, santu_sale_invoice, santu_billing_page, santu_is_privacy_mode_active, santu_toggle_privacy_mode */
 // Santu Hardware — counter billing, laid out from Vyapar's own billing
 // screen (2026-08-15 screenshots: bill tabs, scan bar, the 9-column item
 // grid, the right-hand total/payment rail, the F-key action bar and the
@@ -210,6 +210,7 @@ window.santu_billing_page = {
 						<button type="button" data-act="bdisc">Bill Discount <b>[F9]</b></button>
 						<button type="button" data-act="loyalty">Loyalty Points <b>[F10]</b></button>
 						<button type="button" data-act="remarks">Remarks <b>[F12]</b></button>
+						<button type="button" data-act="privacy">Show Cost <b>[F11]</b></button>
 					</div>
 					<div class="santu-bill-savecol">
 						<button type="button" class="santu-bill-save">Save &amp; Print Bill <span class="santu-bill-kbd">Ctrl+P</span></button>
@@ -264,6 +265,9 @@ window.santu_billing_page = {
 
 	_render_rows() {
 		const b = this._bill();
+		const privacy_on =
+			typeof santu_is_privacy_mode_active === "function" && santu_is_privacy_mode_active();
+		if (privacy_on) this._fetch_costs(b);
 		const $tb = this.$root.find(".santu-bill-grid tbody").empty();
 		b.items.forEach((r, i) => {
 			const $tr = $(`
@@ -273,7 +277,11 @@ window.santu_billing_page = {
 					<td class="c-name">${frappe.utils.escape_html(r.item_name)}</td>
 					<td class="c-qty">${format_number(r.qty, null, 2)}</td>
 					<td class="c-unit">${frappe.utils.escape_html(r.uom || "-")}</td>
-					<td class="c-rate">${format_number(r.rate, null, 2)}</td>
+					<td class="c-rate">${format_number(r.rate, null, 2)}${
+						privacy_on && r.cost_price != null
+							? `<span class="santu-bill-cost">${__("cost")} ₹${format_number(r.cost_price, null, 2)}</span>`
+							: ""
+					}</td>
 					<td class="c-disc">${format_number(r.discount || 0, null, 2)}</td>
 					<td class="c-tax">${format_number(r.tax_amount || 0, null, 2)}</td>
 					<td class="c-total">${format_number(this._row_total(r), null, 2)}</td>
@@ -286,6 +294,31 @@ window.santu_billing_page = {
 			$tb.append($tr);
 		});
 		this._render_totals();
+	},
+
+	_fetch_costs(b) {
+		// Only asked for while the reveal is actually on, and only once per
+		// item — a counter screen should not be pulling cost prices it is
+		// not showing.
+		b.items.forEach((r) => {
+			if (r.cost_price != null || r._cost_pending || !r.item_code) return;
+			r._cost_pending = true;
+			frappe
+				.xcall("santu_hardware.santu_hardware.api.get_item_cost_price", {
+					item_code: r.item_code,
+					warehouse: this.init_data.warehouse,
+				})
+				.then((c) => {
+					r.cost_price = (c && c.cost_price != null ? c.cost_price : c) || 0;
+					r._cost_pending = false;
+					if (typeof santu_is_privacy_mode_active === "function" && santu_is_privacy_mode_active()) {
+						this._render_rows();
+					}
+				})
+				.catch(() => {
+					r._cost_pending = false;
+				});
+		});
 	},
 
 	_render_totals() {
@@ -428,6 +461,12 @@ window.santu_billing_page = {
 			this._prompt(__("Remarks"), __("Note"), "Small Text", b.remarks, (v) => (b.remarks = v || ""));
 		} else if (act === "loyalty") {
 			this._loyalty();
+		} else if (act === "privacy") {
+			// Cost price is deliberately absent from the counter screen: the
+			// customer is standing on the other side of it. Unlocking is
+			// gated by fingerprint or PIN (santu_privacy.js) and switches
+			// itself back off after a few seconds.
+			Promise.resolve(window.santu_toggle_privacy_mode()).then(() => this._render_rows());
 		}
 	},
 
@@ -763,7 +802,7 @@ window.santu_billing_page = {
 		// never have to reach for the mouse mid-bill.
 		$(document).off("keydown.santu-bill").on("keydown.santu-bill", (ev) => {
 			if (frappe.get_route()[0] !== "santu-billing") return;
-			const map = { F2: "qty", F3: "idisc", F4: "remove", F6: "unit", F8: "charges", F9: "bdisc", F10: "loyalty", F12: "remarks" };
+			const map = { F2: "qty", F3: "idisc", F4: "remove", F6: "unit", F8: "charges", F9: "bdisc", F10: "loyalty", F11: "privacy", F12: "remarks" };
 			if (map[ev.key]) {
 				ev.preventDefault();
 				this._action(map[ev.key]);

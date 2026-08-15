@@ -20,7 +20,9 @@
   "payments_section",
   "upi_id",
   "privacy_mode_section",
-  "privacy_mode_pin"
+  "privacy_mode_pin",
+  "privacy_pin_hash",
+  "privacy_touch_id_credentials"
  ],
  "fields": [
   {
@@ -115,10 +117,28 @@
   },
   {
    "default": "7739",
-   "description": "Entering this PIN on the billing screen's \"Privacy Mode\" status bar item reveals each item's cost price for 10 seconds (or until tapped again) — for deciding how much discount still leaves a profit, without leaving it visible to customers by default.",
+   "description": "Deprecated \u2014 superseded by the hashed PIN. Kept only for migration.",
    "fieldname": "privacy_mode_pin",
    "fieldtype": "Data",
-   "label": "Privacy Mode PIN"
+   "hidden": 1,
+   "label": "Privacy Mode PIN",
+   "read_only": 1
+  },
+  {
+   "description": "Salted hash of the Privacy Mode PIN. The PIN itself is never stored.",
+   "fieldname": "privacy_pin_hash",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Privacy PIN (hashed)",
+   "read_only": 1
+  },
+  {
+   "description": "Public keys of devices allowed to unlock Privacy Mode with a fingerprint. Public keys only \u2014 no fingerprint data ever leaves the Mac.",
+   "fieldname": "privacy_touch_id_credentials",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Registered Touch ID devices",
+   "read_only": 1
   }
  ],
  "icon": "fa fa-shield",

@@ -406,6 +406,7 @@ const santu_sale_pos = {
 							<button type="button" data-more="payment">Payment</button>
 							<button type="button" data-more="sales_return">Sales Return</button>
 							<button type="button" data-more="submit_draft">Save as Draft (don't submit)</button>
+							<button type="button" data-more="privacy">Show Cost Price</button>
 						</div>
 					</div>
 				</div>
@@ -1117,6 +1118,13 @@ const santu_sale_pos = {
 		const tab = this._active_tab();
 		if (action === "more") {
 			this.$root.find(".santu-si2-more-menu").toggle();
+			return;
+		}
+		if (action === "privacy") {
+			// This screen already knew how to render cost price once Privacy
+			// Mode was on; nothing anywhere ever turned it on. Same gate as
+			// the billing screen's [F11].
+			Promise.resolve(window.santu_toggle_privacy_mode()).then(() => this._render_items());
 			return;
 		}
 		if (action === "hold") {

@@ -53,33 +53,10 @@ function santu_set_privacy_mode(active) {
 	santu_render_status_bar();
 }
 
-async function santu_toggle_privacy_mode() {
-	if (santu_privacy_mode_active) {
-		santu_set_privacy_mode(false);
-		return;
-	}
-
-	frappe.prompt(
-		{
-			fieldname: "pin",
-			fieldtype: "Password",
-			label: __("Enter PIN"),
-			reqd: 1,
-		},
-		async (values) => {
-			const correct = await frappe.xcall("santu_hardware.santu_hardware.api.check_privacy_mode_pin", {
-				pin: values.pin,
-			});
-			if (correct) {
-				santu_set_privacy_mode(true);
-			} else {
-				frappe.show_alert({ message: __("Wrong PIN"), indicator: "red" });
-			}
-		},
-		__("Privacy Mode"),
-		__("Unlock")
-	);
-}
+// santu_toggle_privacy_mode now lives in santu_privacy.js, which owns the
+// whole unlock flow (Touch ID, then PIN, then offering to set one). It used
+// to prompt for a PIN here and compare it against a value that fell back to
+// a hard-coded "7739" — and nothing on any screen ever called it.
 
 // UX_STRATEGY.md SS4.1: Cashier role lands directly on billing, no "New
 // Bill" button/menu step — billing is the resting state, not a destination.

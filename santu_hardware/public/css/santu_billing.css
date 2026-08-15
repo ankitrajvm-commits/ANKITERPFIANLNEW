@@ -394,3 +394,14 @@
 .santu-bill-modal-save:hover { background: #96dfb6; }
 .santu-bill-modal-cancel { background: #f1f3f6; color: #3f4155; }
 .santu-bill-modal-cancel:hover { background: #e7eaef; }
+
+/* Cost price, shown only while the reveal is unlocked. Deliberately small and
+   grey: it sits under the selling rate for the operator's benefit, not as a
+   second price the customer might read across the counter. */
+.santu-bill-cost {
+	display: block;
+	margin-top: 1px;
+	font-size: 10.5px;
+	color: #8b8e9c;
+	letter-spacing: 0.01em;
+}

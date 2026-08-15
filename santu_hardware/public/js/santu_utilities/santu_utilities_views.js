@@ -240,7 +240,7 @@ santu_utilities.views = {
 	/* ── 2. Set Up My Business ───────────────────────────────── */
 	async render_setup_business($wrap) {
 		const data = await santu_utilities.api.getBusinessSetup();
-		const steps = ["Business", "Tax", "Invoice", "Payment", "Printer", "Finish"];
+		const steps = ["Business", "Tax", "Invoice", "Payment", "Printer", "Security", "Finish"];
 		let step = 0;
 		const render = () => {
 			const pct = Math.round((step / (steps.length - 1)) * 100);
@@ -273,6 +273,10 @@ santu_utilities.views = {
 			} else if (step === 4) {
 				body += `<div class="santu-utilities-card"><h3>Print Settings</h3>
 					<p class="santu-utilities-muted">Bill layout and printer settings live in Settings &rsaquo; Printer Settings.</p></div>`;
+			} else if (step === 5) {
+				body += `<div class="santu-utilities-card"><h3>Cost Price Lock</h3>
+					<p class="santu-utilities-muted">Cost price stays hidden on the billing screen so a customer at the counter cannot see your margin. Set a PIN to reveal it, and add this Mac's fingerprint so you do not have to type the PIN every time.</p>
+					<button class="btn btn-default" id="open-privacy-lock">Set PIN &amp; Fingerprint</button></div>`;
 			} else {
 				body += `<div class="santu-utilities-hero"><div class="hero-icon">✅</div>
 					<h2>Santu Hardware is ready to use.</h2>
@@ -287,6 +291,7 @@ santu_utilities.views = {
 
 			$wrap.find("#open-company").on("click", () => window.santu_open_shop_profile());
 			$wrap.find("#open-mop").on("click", () => window.santu_open_payment_modes());
+			$wrap.find("#open-privacy-lock").on("click", () => window.santu_privacy.manage_dialog());
 			$wrap.find(".santu-wiz-prev").on("click", () => { step--; render(); });
 			$wrap.find(".santu-wiz-next").on("click", async () => {
 				if (step === 0) {

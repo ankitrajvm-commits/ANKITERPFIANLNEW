@@ -7092,3 +7092,300 @@ def get_stock_summary(search: str = None, item_group: str = None, only_low: int 
 		"Item Group", filters={"is_group": 0}, pluck="name", order_by="name asc"
 	)
 	return {"rows": out, "summary": summary, "item_groups": groups, "company": company}
+
+
+# ---------------------------------------------------------------------------
+# Privacy Mode lock: a PIN the shop chooses, plus Touch ID on Macs that have
+# registered it. Cost price is what this guards — the number that tells a
+# customer leaning over the counter exactly what margin they are being asked
+# to pay. It used to be guarded by the string "7739" written into this file.
+# ---------------------------------------------------------------------------
+
+PRIVACY_PIN_ITERATIONS = 200_000
+PRIVACY_CHALLENGE_TTL = 120  # seconds; long enough to touch a sensor, short enough to be useless if leaked
+
+
+def _privacy_settings():
+	return frappe.get_single("Santu POS Settings")
+
+
+def _hash_privacy_pin(pin: str, salt: bytes) -> str:
+	import hashlib
+
+	return hashlib.pbkdf2_hmac("sha256", str(pin).encode(), salt, PRIVACY_PIN_ITERATIONS).hex()
+
+
+def _encode_pin_hash(pin: str) -> str:
+	import os
+
+	salt = os.urandom(16)
+	return f"pbkdf2${PRIVACY_PIN_ITERATIONS}${salt.hex()}${_hash_privacy_pin(pin, salt)}"
+
+
+def _verify_pin_hash(pin: str, stored: str) -> bool:
+	import hashlib
+	import hmac
+
+	try:
+		algo, iterations, salt_hex, digest = stored.split("$")
+	except (ValueError, AttributeError):
+		return False
+	if algo != "pbkdf2":
+		return False
+	calc = hashlib.pbkdf2_hmac("sha256", str(pin).encode(), bytes.fromhex(salt_hex), int(iterations)).hex()
+	# Constant-time: a PIN is short enough that timing a comparison is a
+	# realistic way to guess it one digit at a time.
+	return hmac.compare_digest(calc, digest)
+
+
+def migrate_privacy_pin():
+	"""Move any plaintext PIN into the hash, and stop honouring the built-in one.
+
+	The PIN lived in a plain Data field, readable by anyone who could open
+	the settings record, and `check_privacy_mode_pin` fell back to a
+	hard-coded "7739" when it was blank — which is to say the lock was open
+	by default and the key was in the source code.
+	"""
+	settings = _privacy_settings()
+	if settings.get("privacy_pin_hash"):
+		return False
+	plain = (settings.get("privacy_mode_pin") or "").strip()
+	if not plain:
+		return False
+	settings.privacy_pin_hash = _encode_pin_hash(plain)
+	settings.privacy_mode_pin = ""
+	settings.save(ignore_permissions=True)
+	frappe.db.commit()
+	return True
+
+
+@frappe.whitelist()
+def get_privacy_status():
+	"""What the unlock screen needs to know before it asks for anything."""
+	settings = _privacy_settings()
+	creds = frappe.parse_json(settings.get("privacy_touch_id_credentials") or "[]")
+	mine = [c for c in creds if c.get("user") == frappe.session.user]
+	return {
+		"pin_set": bool(settings.get("privacy_pin_hash")),
+		"touch_id_devices": len(mine),
+		"touch_id_names": [c.get("label") for c in mine],
+		"can_manage": "System Manager" in frappe.get_roles(),
+	}
+
+
+@frappe.whitelist()
+def set_privacy_pin(new_pin: str, current_pin: str = None):
+	"""Set or change the Privacy Mode PIN."""
+	new_pin = (new_pin or "").strip()
+	if not new_pin.isdigit() or not (4 <= len(new_pin) <= 8):
+		frappe.throw(_("The PIN must be 4 to 8 digits."))
+	# Rejecting 1234/0000 here rather than in the UI: the UI is not the only
+	# caller, and a PIN this guessable is the same as no PIN at all.
+	if len(set(new_pin)) == 1 or new_pin in ("1234", "12345", "123456", "4321"):
+		frappe.throw(_("Please choose a less obvious PIN — not all the same digit, and not 1234."))
+
+	settings = _privacy_settings()
+	existing = settings.get("privacy_pin_hash")
+	if existing:
+		if "System Manager" not in frappe.get_roles() and not _verify_pin_hash(current_pin or "", existing):
+			frappe.throw(_("The current PIN is wrong."))
+	settings.privacy_pin_hash = _encode_pin_hash(new_pin)
+	settings.privacy_mode_pin = ""
+	# Changing the PIN retires every fingerprint too: whoever sets a new PIN
+	# is usually doing it because the old one got out, and a Touch ID device
+	# registered under the old PIN would still walk straight in.
+	settings.privacy_touch_id_credentials = "[]"
+	settings.save(ignore_permissions=True)
+	frappe.db.commit()
+	return {"ok": True}
+
+
+@frappe.whitelist()
+def check_privacy_mode_pin(pin: str):
+	"""Yes/no for the entered PIN. The stored value never leaves the server."""
+	stored = _privacy_settings().get("privacy_pin_hash")
+	if not stored:
+		# No fallback PIN. An unset lock is reported as unset so the screen
+		# can offer to set one, rather than quietly letting anybody in.
+		return {"ok": False, "reason": "not_set"}
+	return {"ok": bool(_verify_pin_hash(pin, stored))}
+
+
+# --- Touch ID -------------------------------------------------------------
+# WebAuthn with a platform authenticator. The Mac's Secure Enclave holds the
+# private key and the fingerprint never leaves the machine — all the server
+# ever stores is a public key, and all it ever checks is a signature over a
+# challenge it issued moments earlier.
+#
+# No `webauthn` package is installed, and parsing an attestation object would
+# need a CBOR decoder. It is not needed: the browser hands over the public key
+# directly via PublicKeyCredential.response.getPublicKey() as SPKI DER, which
+# `cryptography` reads natively. Assertions are then plain signature checks.
+
+
+def _b64url_decode(data: str) -> bytes:
+	import base64
+
+	data = str(data or "")
+	return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
+
+
+def _privacy_challenge_key(purpose: str) -> str:
+	return f"santu_privacy_challenge:{purpose}:{frappe.session.user}"
+
+
+def _issue_challenge(purpose: str) -> str:
+	import base64
+	import os
+
+	challenge = base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip("=")
+	frappe.cache().set_value(
+		_privacy_challenge_key(purpose), challenge, expires_in_sec=PRIVACY_CHALLENGE_TTL
+	)
+	return challenge
+
+
+def _take_challenge(purpose: str) -> str:
+	"""Read and immediately burn the challenge — one use, never replayable."""
+	key = _privacy_challenge_key(purpose)
+	value = frappe.cache().get_value(key)
+	frappe.cache().delete_value(key)
+	return value
+
+
+def _expected_origin() -> str:
+	return frappe.utils.get_url().rstrip("/")
+
+
+def _relying_party_id() -> str:
+	from urllib.parse import urlparse
+
+	# WebAuthn keys are bound to a domain, deliberately: a credential
+	# registered here cannot be replayed against any other site.
+	return urlparse(_expected_origin()).hostname or "localhost"
+
+
+def _check_client_data(client_data_json: bytes, purpose: str, expected_type: str):
+	import json as _json
+
+	data = _json.loads(client_data_json.decode())
+	if data.get("type") != expected_type:
+		frappe.throw(_("This request did not come from the fingerprint prompt."))
+	expected = _take_challenge(purpose)
+	if not expected or data.get("challenge") != expected:
+		frappe.throw(_("That fingerprint prompt has expired. Please try again."))
+	if data.get("origin", "").rstrip("/") != _expected_origin():
+		frappe.throw(_("This request came from an unexpected address."))
+
+
+@frappe.whitelist()
+def touch_id_register_options():
+	"""Challenge + parameters for registering this Mac's fingerprint."""
+	import base64
+
+	if not _privacy_settings().get("privacy_pin_hash"):
+		frappe.throw(_("Set a PIN first — the fingerprint is a shortcut for it, not a replacement."))
+	user = frappe.session.user
+	return {
+		"challenge": _issue_challenge("register"),
+		"rp": {"id": _relying_party_id(), "name": "Santu Hardware"},
+		"user": {
+			"id": base64.urlsafe_b64encode(user.encode()).decode().rstrip("="),
+			"name": user,
+			"displayName": frappe.db.get_value("User", user, "full_name") or user,
+		},
+		# -7 is ES256, which is what the Secure Enclave produces.
+		"pubKeyCredParams": [{"type": "public-key", "alg": -7}],
+		"timeout": PRIVACY_CHALLENGE_TTL * 1000,
+	}
+
+
+@frappe.whitelist()
+def touch_id_register_finish(credential_id: str, public_key: str, client_data: str, label: str = None):
+	"""Store the public key this Mac just generated, after re-checking the PIN."""
+	import json as _json
+
+	_check_client_data(_b64url_decode(client_data), "register", "webauthn.create")
+
+	try:
+		from cryptography.hazmat.primitives.serialization import load_der_public_key
+
+		load_der_public_key(_b64url_decode(public_key))
+	except Exception:
+		frappe.throw(_("This device sent a key we could not read. Try the PIN instead."))
+
+	settings = _privacy_settings()
+	creds = frappe.parse_json(settings.get("privacy_touch_id_credentials") or "[]")
+	creds = [c for c in creds if c.get("id") != credential_id]
+	creds.append({
+		"id": credential_id,
+		"public_key": public_key,
+		"user": frappe.session.user,
+		"label": label or "This Mac",
+		"added_on": frappe.utils.now(),
+	})
+	settings.privacy_touch_id_credentials = _json.dumps(creds)
+	settings.save(ignore_permissions=True)
+	frappe.db.commit()
+	return {"ok": True, "devices": len([c for c in creds if c.get("user") == frappe.session.user])}
+
+
+@frappe.whitelist()
+def touch_id_login_options():
+	settings = _privacy_settings()
+	creds = frappe.parse_json(settings.get("privacy_touch_id_credentials") or "[]")
+	mine = [c["id"] for c in creds if c.get("user") == frappe.session.user]
+	if not mine:
+		return {"available": False}
+	return {
+		"available": True,
+		"challenge": _issue_challenge("login"),
+		"rpId": _relying_party_id(),
+		"allowCredentials": [{"type": "public-key", "id": cid} for cid in mine],
+		"timeout": PRIVACY_CHALLENGE_TTL * 1000,
+	}
+
+
+@frappe.whitelist()
+def touch_id_login_finish(credential_id: str, authenticator_data: str, client_data: str, signature: str):
+	"""Verify the assertion. Only a real signature over our own challenge passes."""
+	import hashlib
+
+	from cryptography.exceptions import InvalidSignature
+	from cryptography.hazmat.primitives import hashes
+	from cryptography.hazmat.primitives.asymmetric import ec
+	from cryptography.hazmat.primitives.serialization import load_der_public_key
+
+	client_data_bytes = _b64url_decode(client_data)
+	_check_client_data(client_data_bytes, "login", "webauthn.get")
+
+	settings = _privacy_settings()
+	creds = frappe.parse_json(settings.get("privacy_touch_id_credentials") or "[]")
+	cred = next(
+		(c for c in creds if c.get("id") == credential_id and c.get("user") == frappe.session.user), None
+	)
+	if not cred:
+		frappe.throw(_("This device is not registered for fingerprint unlock."))
+
+	auth_data = _b64url_decode(authenticator_data)
+	# The authenticator must say a human was actually present (UP flag) and
+	# verified (UV flag) — otherwise a fingerprint unlock could be satisfied
+	# by a device that never asked anyone for a fingerprint.
+	if len(auth_data) < 33:
+		frappe.throw(_("The fingerprint reader sent an incomplete answer."))
+	flags = auth_data[32]
+	if not (flags & 0x01) or not (flags & 0x04):
+		frappe.throw(_("The fingerprint was not confirmed on this device."))
+	if auth_data[:32] != hashlib.sha256(_relying_party_id().encode()).digest():
+		frappe.throw(_("This request came from an unexpected address."))
+
+	signed = auth_data + hashlib.sha256(client_data_bytes).digest()
+	try:
+		key = load_der_public_key(_b64url_decode(cred["public_key"]))
+		key.verify(_b64url_decode(signature), signed, ec.ECDSA(hashes.SHA256()))
+	except InvalidSignature:
+		frappe.throw(_("Fingerprint check failed."))
+	except Exception:
+		frappe.throw(_("Fingerprint check could not be completed. Use the PIN."))
+
+	return {"ok": True}

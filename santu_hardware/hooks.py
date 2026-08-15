@@ -32,7 +32,7 @@ app_license = "mit"
 # without a version bump, browsers keep serving a stale copy after every
 # edit during active development. Bump the number whenever these files
 # change.
-SANTU_ASSET_VERSION = "277"
+SANTU_ASSET_VERSION = "280"
 app_include_css = [
 	f"/assets/santu_hardware/css/design_system.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/vyapar_theme.css?v={SANTU_ASSET_VERSION}",
@@ -81,6 +81,7 @@ app_include_js = [
 	f"/assets/santu_hardware/js/kiosk_mode.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/santu_fixed_sidebar.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/santu_topbar.js?v={SANTU_ASSET_VERSION}",
+	f"/assets/santu_hardware/js/santu_privacy.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/pos_dashboard_sidebar_link.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/pos_open_returns.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/pos_smart_confirm.js?v={SANTU_ASSET_VERSION}",
@@ -185,6 +186,7 @@ after_migrate = [
 	"santu_hardware.setup.install.hide_vendor_navbar_items",
 	"santu_hardware.santu_hardware.api.ensure_loyalty_setup",
 	"santu_hardware.setup.install.enforce_unique_supplier_bill_numbers",
+	"santu_hardware.santu_hardware.api.migrate_privacy_pin",
 ]
 
 # Uninstallation
