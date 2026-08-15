@@ -7,7 +7,7 @@
 	// Bump whenever NAV_ITEMS changes shape — build_sidebar() reuses an
 	// already-rendered sidebar when this matches, so without a bump an open
 	// tab keeps the old menu.
-	const SIDEBAR_NAV_VERSION = "vyapar-match-6";
+	const SIDEBAR_NAV_VERSION = "vyapar-match-7";
 	const SIDEBAR_COLLAPSE_KEY = "santu_sidebar_collapsed";
 
 	const PURCHASE_CHILDREN = [
@@ -133,7 +133,9 @@
 			getView: () => sessionStorage.getItem("santu_utilities_view") || "import_items",
 			children: [
 				{ view: "import_items", label: "Import Items", route: "santu-utilities" },
-				{ view: "setup_business", label: "Set Up My Business", route: "santu-utilities" },
+				{ view: "shop_profile", label: "Shop Profile", run: () => window.santu_open_shop_profile() },
+				{ view: "payment_modes", label: "Payment Modes", run: () => window.santu_open_payment_modes() },
+				{ view: "cost_price_lock", label: "Cost Price Lock", run: () => window.santu_privacy.manage_dialog() },
 				{ view: "accountant_access", label: "Accountant Access", route: "santu-utilities" },
 				{ view: "barcode_generator", label: "Barcode Generator", route: "santu-utilities" },
 				{ view: "bulk_update", label: "Update Items In Bulk", route: "santu-utilities" },
@@ -225,6 +227,14 @@
 
 	function navigate(item, group) {
 		close_mobile_sidebar();
+		// Some settings are a single small form. Routing to a page whose only
+		// content is a button to open that form is the thing that made the
+		// old setup wizard feel broken -- six of its seven steps were exactly
+		// that. These open their form directly instead.
+		if (item.run) {
+			item.run();
+			return;
+		}
 		if (item.redirect) {
 			frappe.set_route(item.redirect);
 			return;
