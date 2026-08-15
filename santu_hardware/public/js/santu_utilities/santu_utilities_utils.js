@@ -11,6 +11,7 @@ santu_utilities.VIEWS = {
 	track_salesmen: { title: "Track Your Salesmen", label: "Track Your Salesmen" },
 	export_tally: { title: "Exports To Tally", label: "Exports To Tally" },
 	export_items: { title: "Export Items", label: "Export Items" },
+	printer_settings: { title: "Printer Settings", label: "Printer Settings" },
 	verify_data: { title: "Verify My Data", label: "Verify My Data" },
 	close_fy: { title: "Close Financial Year", label: "Close Financial Year" },
 };

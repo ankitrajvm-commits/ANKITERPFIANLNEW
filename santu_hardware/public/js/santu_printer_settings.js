@@ -1,4 +1,4 @@
-/* global frappe, santu_qz_list_printers */
+/* global frappe */
 
 // Printer Settings. Until now this did not exist — the setup wizard said
 // "printer settings live in Settings › Printer Settings", which was a place
@@ -11,15 +11,11 @@
 (function () {
 	const API = "santu_hardware.santu_hardware.api";
 
-	window.santu_open_printer_settings = async function () {
-		const d = new frappe.ui.Dialog({
-			title: __("Printer Settings"),
-			size: "large",
-			fields: [{ fieldtype: "HTML", fieldname: "body" }],
-		});
-		const $body = d.fields_dict.body.$wrapper;
+	// Rendered into whatever container it is handed, so the same screen serves
+	// both the Utilities entry (where someone actually looks for it) and the
+	// setup wizard's Printer step, instead of existing twice.
+	window.santu_render_printer_settings = async function ($body) {
 		$body.html(`<div class="santu-prn-loading">${__("Looking for printers…")}</div>`);
-		d.show();
 
 		let printers = [];
 		let selected = null;
@@ -27,11 +23,11 @@
 
 		async function boot() {
 			try {
-				printers = await santu_qz_list_printers();
+				printers = await frappe.xcall(`${API}.list_printers`);
 			} catch (e) {
 				$body.html(`
 					<div class="santu-prn-error">
-						<b>${__("Could not reach QZ Tray.")}</b>
+						<b>${__("Could not read the printer list.")}</b>
 						<p>${frappe.utils.escape_html(e.message || String(e))}</p>
 					</div>
 				`);
@@ -133,7 +129,7 @@
 				const lvl = cint($slider.val());
 				const meta = levels.levels.find((l) => l.level === lvl) || {};
 				$body.find(".santu-prn-density-read").html(
-					`<b>${__("Level {0} of {1}", [lvl, levels.max])}</b> — ${meta.percent}% · ${frappe.utils.escape_html(meta.label || "")}`
+					`<b>${__("Density {0} of {1}", [lvl, levels.max])}</b> — ${frappe.utils.escape_html(meta.label || "")}`
 				);
 			};
 			show();
@@ -151,7 +147,7 @@
 					await frappe.db.set_value("Santu POS Settings", "Santu POS Settings", "printer_name", selected);
 					const res = await santu_qz_apply_print_density(selected, lvl);
 					frappe.show_alert({
-						message: __("Density set to level {0} ({1}%)", [res.level, res.percent]),
+						message: __("Density set to {0} — {1}", [res.level, res.label]),
 						indicator: "green",
 					});
 					render();
@@ -190,5 +186,15 @@
 		}
 
 		boot();
+	};
+
+	window.santu_open_printer_settings = function () {
+		const d = new frappe.ui.Dialog({
+			title: __("Printer Settings"),
+			size: "large",
+			fields: [{ fieldtype: "HTML", fieldname: "body" }],
+		});
+		d.show();
+		window.santu_render_printer_settings(d.fields_dict.body.$wrapper);
 	};
 })();

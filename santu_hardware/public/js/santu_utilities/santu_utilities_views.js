@@ -838,6 +838,12 @@ santu_utilities.views = {
 	},
 
 	/* ── 10. Verify My Data ──────────────────────────────────── */
+	async render_printer_settings($wrap) {
+		// Printing is a daily thing, so it gets its own entry rather than
+		// living four clicks into the setup wizard.
+		return window.santu_render_printer_settings($wrap);
+	},
+
 	async render_verify_data($wrap) {
 		$wrap.html(`<div class="santu-utilities-loading">Scanning database…</div>`);
 		const r = await santu_utilities.api.getDataAudit();

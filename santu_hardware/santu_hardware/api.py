@@ -7882,3 +7882,35 @@ def print_density_test(printer_name: str = None, level=None):
 	receipt = get_density_test_receipt(level=level, printer_name=printer_name)
 	_usb_send(bytes.fromhex(receipt["data"]))
 	return receipt
+
+
+@frappe.whitelist()
+def list_printers():
+	"""Printers the OS knows about, read from CUPS.
+
+	Deliberately not via QZ Tray: density is written over USB from the
+	server now, so the Printer Settings screen has no other reason to need
+	a browser bridge — and waiting on one left the screen stuck on
+	"Looking for printers…" whenever QZ had not been allowed yet in that
+	browser session.
+	"""
+	import re
+	import subprocess
+
+	names = []
+	try:
+		out = subprocess.run(["lpstat", "-v"], capture_output=True, text=True, timeout=8).stdout
+		for line in out.splitlines():
+			m = re.match(r"device for (.+?):", line.strip())
+			if m:
+				names.append(m.group(1))
+	except Exception:
+		pass
+
+	# QZ Tray reports a printer by its description ("EPSON TM-T82X-II") while
+	# CUPS names the queue with underscores, and the stored setting may hold
+	# either. Offer the stored one too so the screen can always select it.
+	current = frappe.db.get_single_value("Santu POS Settings", "printer_name")
+	if current and current not in names:
+		names.insert(0, current)
+	return names
