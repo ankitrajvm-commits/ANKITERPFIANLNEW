@@ -21,6 +21,7 @@ def after_install():
 	from santu_hardware.santu_hardware.api import ensure_loyalty_setup
 
 	ensure_loyalty_setup()
+	enforce_unique_supplier_bill_numbers()
 
 
 def create_hardware_uoms():
@@ -286,3 +287,19 @@ def hide_vendor_navbar_items():
 		settings.save(ignore_permissions=True)
 		frappe.db.commit()
 	return changed
+
+
+def enforce_unique_supplier_bill_numbers():
+	"""Refuse the same supplier bill number twice.
+
+	Purchase bills arrive here as PDFs and get imported, and re-importing
+	the same PDF is an easy mistake — the setup already had two drafts of
+	supplier bill JCS/2025-26/1220 sitting side by side. With this off,
+	both could be submitted and the shop would pay the same bill twice
+	with nothing on screen to suggest anything was wrong.
+	"""
+	if not frappe.db.get_single_value("Accounts Settings", "check_supplier_invoice_uniqueness"):
+		frappe.db.set_single_value("Accounts Settings", "check_supplier_invoice_uniqueness", 1)
+		frappe.db.commit()
+		return True
+	return False

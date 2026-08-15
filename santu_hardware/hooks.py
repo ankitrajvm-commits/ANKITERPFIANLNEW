@@ -183,6 +183,7 @@ after_install = "santu_hardware.setup.install.after_install"
 after_migrate = [
 	"santu_hardware.setup.install.hide_vendor_navbar_items",
 	"santu_hardware.santu_hardware.api.ensure_loyalty_setup",
+	"santu_hardware.setup.install.enforce_unique_supplier_bill_numbers",
 ]
 
 # Uninstallation
