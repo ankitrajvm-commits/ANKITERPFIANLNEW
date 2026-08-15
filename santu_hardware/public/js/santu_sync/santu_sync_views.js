@@ -240,7 +240,7 @@ santu_sync.views = {
 			<div class="santu-sync-hero santu-sync-hero-compact">
 				<div class="santu-sync-hero-icon">💾</div>
 				<h2>Backup To Computer</h2>
-				<p>Create a real ERPNext site backup (database + files) on this server.</p>
+				<p>Save a full copy of your shop's data — all bills, parties, items and photos — so nothing is lost.</p>
 				<button class="btn btn-primary santu-sync-primary-btn santu-sync-create-backup">Create Backup</button>
 			</div>
 			<div class="santu-sync-section"><h3>Backup History</h3><div class="santu-sync-history"></div></div>
@@ -275,12 +275,12 @@ santu_sync.views = {
 					<span>Last Upload: <b>${santu_sync.utils.format_dt(gd.last_backup_on)}</b></span>
 				</div>
 				${gd.email ? `<p>Account: ${frappe.utils.escape_html(gd.email)}</p>` : ""}
-				${!gd.available ? `<div class="santu-sync-config-msg">Google Drive integration is not available in this Frappe install.</div>` : ""}
+				${!gd.available ? `<div class="santu-sync-config-msg">Google Drive backup is not switched on for this shop yet.</div>` : ""}
 				<div class="santu-sync-toolbar">
 					${!connected ? `<button class="btn btn-primary santu-sync-gd-connect">Connect Google Drive</button>` : ""}
 					${connected ? `<button class="btn btn-primary santu-sync-gd-upload">Upload Backup Now</button>` : ""}
 									</div>
-				${!connected ? `<p class="santu-sync-muted">OAuth credentials must be configured in ERPNext Integrations → Google Settings before connecting.</p>` : ""}
+				${!connected ? `<p class="santu-sync-muted">Google Drive has to be linked once by whoever set up this software. Ask them to do it, then come back here.</p>` : ""}
 			</div>
 		`);
 

@@ -96,7 +96,7 @@ santu_reports.REPORTS = [
 	{ id: "sale_order_item", label: "Sale Order Item", category: "sale_order", type: "erpnext", report_name: "Sales Order Analysis" },
 
 	// Loan
-	{ id: "loan_statement", label: "Loan Statement", category: "loan", type: "config", config_message: "Loan Statement requires the ERPNext Lending app. Use General Ledger filtered by your loan account, or install the Lending app from Frappe." },
+	{ id: "loan_statement", label: "Loan Statement", category: "loan", type: "config", config_message: "Loan tracking is not switched on for this shop. Until it is, open the General Ledger report and filter it by your loan account to see the same figures." },
 ];
 
 santu_reports.utils = {

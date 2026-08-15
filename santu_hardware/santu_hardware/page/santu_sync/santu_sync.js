@@ -43,6 +43,11 @@ frappe.pages["santu-sync"].on_page_load = function (wrapper) {
 				const v = santu_sync.utils.get_view();
 				const m = santu_sync.VIEWS[v] || santu_sync.VIEWS.sync_share;
 				$root.find(".santu-sync-title").text(m.title);
+				// The Page's own title was set once at construction, so every
+				// view after the first left the browser tab reading "Sync &
+				// Share" while the body said "Restore Backup". Same slip as
+				// the Payment-Out screen had.
+				if (page.set_title) page.set_title(m.title);
 				reload();
 			});
 		}

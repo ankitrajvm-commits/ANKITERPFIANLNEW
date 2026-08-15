@@ -259,7 +259,7 @@ santu_utilities.views = {
 					</div></div>`;
 			} else if (step === 1) {
 				body += `<div class="santu-utilities-card"><h3>Tax Settings</h3>
-					<p class="santu-utilities-muted">GST is managed via ERPNext India Compliance. Configure HSN and tax templates in Company settings.</p>
+					<p class="santu-utilities-muted">GST rates come from each item’s HSN code. Set the HSN when you add or edit an item; the tax is then worked out for you on every bill.</p>
 					<button class="btn btn-default" id="open-company">Open Company Tax Settings</button></div>`;
 			} else if (step === 2) {
 				body += `<div class="santu-utilities-card"><h3>Invoice Settings</h3>
