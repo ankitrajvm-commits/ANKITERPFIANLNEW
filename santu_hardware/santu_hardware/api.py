@@ -5365,10 +5365,18 @@ def _validate_credit_customer(customer_name: str, outstanding: float):
 	balance ("baaki") — cash-in-full only, since there's no way to
 	actually collect from a walk-in later. Any *other* customer left with
 	an outstanding balance (a credit sale, or a partial "Paid Now" less
-	than the total) must have phone + address on file — same reasoning,
-	just short of an outright ban: you need a way to reach them for the
-	rest of the money. Checked here, not just client-side, since this
-	quick-sale screen isn't the only caller of `save_sale_invoice`."""
+	than the total) must have some way to be reached for the rest of the
+	money — same reasoning, just short of an outright ban.
+
+	A phone number OR an address, not both: that is the same bar party
+	creation sets, and demanding more here than creation does produced a
+	trap. 17 of 29 existing customers had only one of the two, so they
+	could be created happily and then refused at the counter, mid-sale,
+	with the customer standing there. For chasing a debt a phone number
+	is at least as useful as a street address anyway.
+
+	Checked here, not just client-side, since this quick-sale screen
+	isn't the only caller of `save_sale_invoice`."""
 	cust = frappe.db.get_value(
 		"Customer", customer_name, ["customer_name", "mobile_no", "customer_primary_address"], as_dict=True
 	)
@@ -5383,16 +5391,13 @@ def _validate_credit_customer(customer_name: str, outstanding: float):
 			).format(frappe.utils.fmt_money(outstanding, currency="INR"))
 		)
 
-	missing = []
-	if not cust.mobile_no:
-		missing.append(_("Phone Number"))
-	if not cust.customer_primary_address:
-		missing.append(_("Address"))
-	if missing:
+	if not cust.mobile_no and not cust.customer_primary_address:
 		frappe.throw(
-			_("{0} is required for {1} to have an outstanding balance (baaki) of {2}.").format(
-				" and ".join(missing), cust.customer_name, frappe.utils.fmt_money(outstanding, currency="INR")
-			)
+			_(
+				"{0} has no phone number and no address on file, so {1} cannot be left "
+				"as baaki. Open the party and add a phone number or an address, then "
+				"make this sale again."
+			).format(cust.customer_name, frappe.utils.fmt_money(outstanding, currency="INR"))
 		)
 
 
