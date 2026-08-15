@@ -9,7 +9,7 @@ santu_sale.VIEWS = {
 	sales_order: { label: "Sales Order", title: "Sales Order", addLabel: "+ Add Sales Order" },
 	delivery_challan: { label: "Delivery Challan", title: "Delivery Challan", addLabel: "+ Add Delivery Challan" },
 	sales_return: { label: "Sales Return / Credit Note", title: "Sales Return", addLabel: "+ Add Sales Return" },
-	pos: { label: "POS", title: "POS", redirect: "point-of-sale" },
+	pos: { label: "POS", title: "POS", redirect: "santu-billing" },
 };
 
 santu_sale.PERIODS = ["Today", "This Week", "This Month", "Last Month", "This Quarter", "This Year", "Custom"];

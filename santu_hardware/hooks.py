@@ -32,7 +32,7 @@ app_license = "mit"
 # without a version bump, browsers keep serving a stale copy after every
 # edit during active development. Bump the number whenever these files
 # change.
-SANTU_ASSET_VERSION = "251"
+SANTU_ASSET_VERSION = "268"
 app_include_css = [
 	f"/assets/santu_hardware/css/design_system.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/vyapar_theme.css?v={SANTU_ASSET_VERSION}",
@@ -57,6 +57,8 @@ app_include_css = [
 	f"/assets/santu_hardware/css/santu_receive_stock.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/santu_parties.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/santu_items.css?v={SANTU_ASSET_VERSION}",
+	f"/assets/santu_hardware/css/santu_add_item.css?v={SANTU_ASSET_VERSION}",
+	f"/assets/santu_hardware/css/santu_billing.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/santu_sale.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/santu_sale_invoice.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/santu_invoice_preview.css?v={SANTU_ASSET_VERSION}",
@@ -178,7 +180,10 @@ after_install = "santu_hardware.setup.install.after_install"
 # its own Documentation / Frappe School / Support / Apps entries back in front
 # of a shop owner. Re-hiding them after every migrate keeps that from silently
 # undoing the choice (2026-08-15).
-after_migrate = "santu_hardware.setup.install.hide_vendor_navbar_items"
+after_migrate = [
+	"santu_hardware.setup.install.hide_vendor_navbar_items",
+	"santu_hardware.santu_hardware.api.ensure_loyalty_setup",
+]
 
 # Uninstallation
 # ------------

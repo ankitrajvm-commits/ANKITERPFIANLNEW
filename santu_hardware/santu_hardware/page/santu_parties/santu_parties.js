@@ -171,12 +171,15 @@ const santu_parties_page = {
 		} else {
 			this.filter = null;
 		}
+		// A specific party can also be handed in — used where something used
+		// to jump to the native Customer/Supplier form.
+		const focus = opts.party || null;
 		frappe.route_options = null;
 
 		if (!this.$list) return;
 		this.first_load = true;
-		this.$search.val("");
-		this.reload_list();
+		this.$search.val(focus || "");
+		this.reload_list(focus);
 	},
 
 	// `select_party` re-opens a specific party once the list has redrawn —

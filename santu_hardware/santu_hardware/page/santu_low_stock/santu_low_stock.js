@@ -137,7 +137,10 @@ function build_row(row, show_code) {
 				${row.suggested_reorder_qty > 0 ? `Order ~${row.suggested_reorder_qty}` : ""}
 			</div>
 		</div>
-	`).on("click", () => frappe.set_route("Form", "Item", row.item_code));
+	`).on("click", () => {
+		frappe.route_options = { item_code: row.item_code };
+		frappe.set_route("santu-items");
+	});
 }
 
 function share_low_stock_on_whatsapp(rows) {

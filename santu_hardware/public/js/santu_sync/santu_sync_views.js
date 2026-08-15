@@ -128,7 +128,7 @@ santu_sync.views = {
 				$table.find("tbody").append($tr);
 			});
 			$sw.append($table);
-			$sw.find(".santu-sync-add-user").on("click", () => frappe.new_doc("User"));
+			$sw.find(".santu-sync-add-user").on("click", () => window.santu_open_add_user("Staff", reload));
 		}
 	},
 
@@ -279,8 +279,7 @@ santu_sync.views = {
 				<div class="santu-sync-toolbar">
 					${!connected ? `<button class="btn btn-primary santu-sync-gd-connect">Connect Google Drive</button>` : ""}
 					${connected ? `<button class="btn btn-primary santu-sync-gd-upload">Upload Backup Now</button>` : ""}
-					${connected ? `<button class="btn btn-default santu-sync-gd-settings">Open Google Drive Settings</button>` : ""}
-				</div>
+									</div>
 				${!connected ? `<p class="santu-sync-muted">OAuth credentials must be configured in ERPNext Integrations → Google Settings before connecting.</p>` : ""}
 			</div>
 		`);
@@ -302,7 +301,6 @@ santu_sync.views = {
 				frappe.msgprint(e.message || "Upload failed");
 			}
 		});
-		$wrap.find(".santu-sync-gd-settings").on("click", () => frappe.set_route("Form", "Google Drive"));
 	},
 
 	async _restore($wrap, reload) {

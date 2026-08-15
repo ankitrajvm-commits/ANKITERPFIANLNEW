@@ -1,3 +1,11 @@
+frappe.pages["santu-items"].on_page_show = function () {
+	// set_route to a page already showing fires no lifecycle, so a second
+	// "open this item" from elsewhere would otherwise silently do nothing.
+	if (window.santu_items_page && santu_items_page.$list && santu_items_page.apply_route_options()) {
+		santu_items_page.reload_list();
+	}
+};
+
 frappe.pages["santu-items"].on_page_load = function (wrapper) {
 	const page = frappe.ui.make_app_page({
 		parent: wrapper,
@@ -27,12 +35,37 @@ const SANTU_ITEMS_TABS = [
 	{ key: "units", label: "Units" },
 ];
 
-const santu_items_page = {
+
+window.santu_items_page = {
 	init(page) {
 		this.render_shell(page);
 		this.bind_events();
 		this.update_tab_ui();
+		this.apply_route_options();
 		this.reload_list();
+	},
+
+	// Lets anything in the app open this screen focused on one item instead
+	// of routing to the native Item form. Used by the Low Stock rows, the
+	// Utilities item lists and the Items screen's own name/code links, all
+	// of which used to jump to Form/Item.
+	apply_route_options() {
+		const opts = frappe.route_options || {};
+		frappe.route_options = null;
+		if (opts.item_code) {
+			this.selected_code = opts.item_code;
+			santu_items.utils.set_selected_code(opts.item_code);
+			// An item arriving from elsewhere is always a product; the
+			// Services/Category/Units tabs would never show it.
+			const tab = SANTU_ITEMS_TABS.find((t) => t.key === "products");
+			if (tab) this.active_tab = tab;
+			this.update_tab_ui();
+		}
+		if (opts.item_group) {
+			this.pending_group_filter = opts.item_group;
+			if (this.$search) this.$search.val("");
+		}
+		return !!(opts.item_code || opts.item_group);
 	},
 
 	render_shell(page) {
@@ -107,15 +140,19 @@ const santu_items_page = {
 			if ($searchWrap.hasClass("santu-items-search-open")) this.$search.trigger("focus");
 		});
 
-		const on_search = santu_items.utils.debounce(() => this.reload_list());
+		const on_search = santu_items.utils.debounce(() => {
+			this.pending_group_filter = null;
+			this.$search.attr("placeholder", "Search");
+			this.reload_list();
+		});
 		this.$search.on("input", on_search);
 	},
 
 	show_add_menu($anchor) {
 		const items = [
-			{ label: "New Item", action: () => frappe.new_doc("Item") },
-			{ label: "Import Items", action: () => frappe.set_route("data-import") },
-			{ label: "Bulk Items Update", action: () => frappe.set_route("List", "Item") },
+			{ label: "New Item", action: () => frappe.set_route("santu-add-item") },
+			{ label: "Import Items", action: () => { sessionStorage.setItem("santu_utilities_view", "import_items"); frappe.set_route("santu-utilities"); $(document).trigger("santu-utilities-view-change"); } },
+			{ label: "Bulk Items Update", action: () => { sessionStorage.setItem("santu_utilities_view", "bulk_update"); frappe.set_route("santu-utilities"); $(document).trigger("santu-utilities-view-change"); } },
 		];
 		const $menu = $(`<div class="santu-topbar-menu"></div>`);
 		items.forEach((item) => {
@@ -167,10 +204,38 @@ const santu_items_page = {
 		this.$tableHead.find(".santu-items-col-qty").text(label);
 	},
 
+	// One name, one insert — used by both the Category and Unit tabs.
+	_quick_master(doctype, title, label) {
+		const d = new frappe.ui.Dialog({
+			title,
+			fields: [{ fieldtype: "Data", fieldname: "name_value", label, reqd: 1 }],
+			primary_action_label: __("Save"),
+			primary_action: (v) => {
+				frappe.dom.freeze(__("Saving…"));
+				frappe
+					.xcall("santu_hardware.santu_hardware.api.create_item_master", {
+						doctype,
+						name_value: v.name_value,
+					})
+					.then(() => {
+						frappe.dom.unfreeze();
+						d.hide();
+						frappe.show_alert({ message: __("Added"), indicator: "green" });
+						this.reload_list();
+					})
+					.catch(() => frappe.dom.unfreeze());
+			},
+		});
+		d.show();
+	},
+
 	add_master_record() {
-		if (this.active_tab.key === "category") frappe.new_doc("Item Group");
-		else if (this.active_tab.key === "units") frappe.new_doc("UOM");
-		else frappe.new_doc("Item");
+		// Both used to open the raw Item Group / UOM forms — parent group,
+		// "Is Group", tree fields, none of it meaningful here. A category and
+		// a unit are each just a name.
+		if (this.active_tab.key === "category") this._quick_master("Item Group", __("Add Category"), __("Category name"));
+		else if (this.active_tab.key === "units") this._quick_master("UOM", __("Add Unit"), __("Unit name"));
+		else frappe.set_route("santu-add-item");
 	},
 
 	async reload_list() {
@@ -189,6 +254,14 @@ const santu_items_page = {
 			search: this.$search.val() || null,
 			item_type: this.active_tab.item_type,
 		});
+
+		// Arrived here from a category's item count, which used to open the
+		// native Item list filtered by group.
+		if (this.pending_group_filter) {
+			const group = this.pending_group_filter;
+			rows = rows.filter((r) => r.item_group === group);
+			this.$search.attr("placeholder", `${group} — showing this category only`);
+		}
 
 		if (this.qty_sort_dir) {
 			const dir = this.qty_sort_dir === "asc" ? 1 : -1;
@@ -291,7 +364,7 @@ const santu_items_page = {
 
 	show_quick_menu() {
 		const menu = [
-			{ label: "New Item", action: () => frappe.new_doc("Item") },
+			{ label: "New Item", action: () => frappe.set_route("santu-add-item") },
 			{ label: "Receive Stock", action: () => frappe.set_route("santu-receive-stock") },
 			{ label: "New Sale", action: () => frappe.set_route("santu-sale-invoice") },
 			{ label: "Low Stock", action: () => frappe.set_route("santu-low-stock") },

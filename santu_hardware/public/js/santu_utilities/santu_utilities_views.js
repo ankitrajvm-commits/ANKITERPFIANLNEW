@@ -125,7 +125,8 @@ santu_utilities.views = {
 			html += "</tbody></table>";
 			$results.html(html);
 			$results.find("button[data-code]").on("click", function () {
-				frappe.set_route("Form", "Item", $(this).data("code"));
+				frappe.route_options = { item_code: $(this).data("code") };
+				frappe.set_route("santu-items");
 			});
 		}, 200);
 		$input.on("input", run);
@@ -264,15 +265,14 @@ santu_utilities.views = {
 				body += `<div class="santu-utilities-card"><h3>Invoice Settings</h3>
 					<p>Default Warehouse: <b>${frappe.utils.escape_html(data.warehouse || "—")}</b></p>
 					<p>Default Price List: <b>${frappe.utils.escape_html(data.price_list || "—")}</b></p>
-					<button class="btn btn-default" id="open-selling">Open Selling Settings</button></div>`;
+</div>`;
 			} else if (step === 3) {
 				body += `<div class="santu-utilities-card"><h3>Payment Settings</h3>
 					<p>Enabled modes: ${(data.payment_modes || []).map(frappe.utils.escape_html).join(", ") || "—"}</p>
 					<button class="btn btn-default" id="open-mop">Manage Modes of Payment</button></div>`;
 			} else if (step === 4) {
 				body += `<div class="santu-utilities-card"><h3>Print Settings</h3>
-					<p class="santu-utilities-muted">Configure thermal and A4 print formats in Print Format list.</p>
-					<button class="btn btn-default" id="open-print">Open Print Formats</button></div>`;
+					<p class="santu-utilities-muted">Bill layout and printer settings live in Settings &rsaquo; Printer Settings.</p></div>`;
 			} else {
 				body += `<div class="santu-utilities-hero"><div class="hero-icon">✅</div>
 					<h2>Santu Hardware is ready to use.</h2>
@@ -285,10 +285,8 @@ santu_utilities.views = {
 			</div>`;
 			$wrap.html(body);
 
-			$wrap.find("#open-company").on("click", () => frappe.set_route("Form", "Company", data.company.name));
-			$wrap.find("#open-selling").on("click", () => frappe.set_route("Form", "Selling Settings"));
-			$wrap.find("#open-mop").on("click", () => frappe.set_route("List", "Mode of Payment"));
-			$wrap.find("#open-print").on("click", () => frappe.set_route("List", "Print Format"));
+			$wrap.find("#open-company").on("click", () => window.santu_open_shop_profile());
+			$wrap.find("#open-mop").on("click", () => window.santu_open_payment_modes());
 			$wrap.find(".santu-wiz-prev").on("click", () => { step--; render(); });
 			$wrap.find(".santu-wiz-next").on("click", async () => {
 				if (step === 0) {
@@ -333,7 +331,7 @@ santu_utilities.views = {
 			$tr.find(".santu-utilities-actions").append(`<button class="btn btn-xs btn-danger" data-disable="${frappe.utils.escape_html(u.name)}">Disable</button>`);
 			$tb.append($tr);
 		});
-		$wrap.find(".santu-add-accountant").on("click", () => frappe.new_doc("User"));
+		$wrap.find(".santu-add-accountant").on("click", () => window.santu_open_add_user("Accountant", () => santu_utilities.views.accountant_access($wrap)));
 		$wrap.find("[data-edit]").on("click", function () {
 			const user = $(this).data("edit");
 			const u = staff.find((x) => x.name === user);

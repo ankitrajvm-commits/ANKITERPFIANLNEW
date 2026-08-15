@@ -91,7 +91,6 @@ santu_items.detail = {
 		$detail.find(".santu-items-share-btn").on("click", () => this.share_item(item));
 		$detail.find(".santu-items-txn-export").on("click", () => this.export_transactions(item, txns));
 		$detail.find(".santu-items-adjust-btn").on("click", () => this.adjust_stock(item));
-		$detail.find(".santu-items-detail-name").on("dblclick", () => frappe.set_route("Form", "Item", item.item_code));
 
 		const $txn_wrap = $detail.find(".santu-items-txn-table-wrap");
 		const state = { txns, item, sort_key: "txn_date", sort_dir: "desc", type_filter: "", search: "" };
@@ -125,10 +124,56 @@ santu_items.detail = {
 		rerender();
 	},
 
+	// Opened the raw Stock Reconciliation form until 2026-08-15 — a
+	// multi-item accounting document, for what is one number and a reason.
+	// api.fix_stock already existed for exactly this and posts the same real
+	// Stock Reconciliation underneath.
 	adjust_stock(item) {
-		frappe.new_doc("Stock Reconciliation", {
-			items: [{ item_code: item.item_code, warehouse: item.warehouse }],
+		const current = flt(item.actual_qty || item.stock_qty || 0);
+		const d = new frappe.ui.Dialog({
+			title: __("Adjust Stock"),
+			fields: [
+				{
+					fieldtype: "HTML",
+					fieldname: "current",
+					options: `<div class="santu-adj-current">${__("In stock now")}: <b>${format_number(current, null, 2)}</b> ${frappe.utils.escape_html(item.stock_uom || "")}</div>`,
+				},
+				{
+					fieldtype: "Float",
+					fieldname: "new_qty",
+					label: __("Correct quantity"),
+					reqd: 1,
+					default: current,
+					description: __("What the shelf actually has right now"),
+				},
+				{
+					fieldtype: "Select",
+					fieldname: "reason",
+					label: __("Reason"),
+					reqd: 1,
+					options: ["Count Correction", "Damage", "Theft", "Other"].join("\n"),
+					default: "Count Correction",
+				},
+			],
+			primary_action_label: __("Save"),
+			primary_action: (v) => {
+				frappe.dom.freeze(__("Saving…"));
+				frappe
+					.xcall("santu_hardware.santu_hardware.api.fix_stock", {
+						item_code: item.item_code,
+						new_qty: v.new_qty,
+						reason: v.reason,
+					})
+					.then(() => {
+						frappe.dom.unfreeze();
+						d.hide();
+						frappe.show_alert({ message: __("Stock updated"), indicator: "green" });
+						if (window.santu_items_page) santu_items_page.reload_list();
+					})
+					.catch(() => frappe.dom.unfreeze());
+			},
 		});
+		d.show();
 	},
 
 	export_transactions(item, txns) {
@@ -187,10 +232,34 @@ santu_items.detail = {
 		`);
 
 		if (!is_uncategorized) {
-			$detail.find(".santu-items-action-edit").on("click", () => frappe.set_route("Form", "Item Group", row.name));
+			$detail.find(".santu-items-action-edit").on("click", () => {
+				const d = new frappe.ui.Dialog({
+					title: __("Rename Category"),
+					fields: [{ fieldtype: "Data", fieldname: "new_name", label: __("Category name"), reqd: 1, default: row.name }],
+					primary_action_label: __("Save"),
+					primary_action: (v) => {
+						frappe.dom.freeze(__("Saving…"));
+						frappe
+							.xcall("santu_hardware.santu_hardware.api.rename_item_master", {
+								doctype: "Item Group",
+								old_name: row.name,
+								new_name: v.new_name,
+							})
+							.then(() => {
+								frappe.dom.unfreeze();
+								d.hide();
+								frappe.show_alert({ message: __("Renamed"), indicator: "green" });
+								if (window.santu_items_page) santu_items_page.reload_list();
+							})
+							.catch(() => frappe.dom.unfreeze());
+					},
+				});
+				d.show();
+			});
 		}
 		$detail.find(".santu-items-cat-move-btn").on("click", () => {
-			frappe.set_route("List", "Item", { item_group: row.name });
+			frappe.route_options = { item_group: row.name };
+			frappe.set_route("santu-items");
 		});
 
 		const render_items = (rows) => {
@@ -224,7 +293,8 @@ santu_items.detail = {
 				</table>
 			`);
 			$wrap.find(".santu-items-txn-row").on("click", function () {
-				frappe.set_route("Form", "Item", $(this).data("code"));
+				frappe.route_options = { item_code: $(this).data("code") };
+				frappe.set_route("santu-items");
 			});
 		};
 

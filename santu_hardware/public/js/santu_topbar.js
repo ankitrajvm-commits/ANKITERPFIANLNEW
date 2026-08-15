@@ -512,3 +512,148 @@
 		frappe.router.render_page._santu_patched = true;
 	}
 })();
+
+// Shared "add a person" dialog. Both callers used to open the native User
+// form — roles table, API keys, module permissions. A shop needs a name, a
+// login email, and which of the two kinds of person this is.
+window.santu_open_add_user = function (role, on_created) {
+	const d = new frappe.ui.Dialog({
+		title: role === "Accountant" ? __("Add Accountant") : __("Add User"),
+		fields: [
+			{ fieldtype: "Data", fieldname: "full_name", label: __("Name"), reqd: 1 },
+			{
+				fieldtype: "Data",
+				fieldname: "email",
+				label: __("Email"),
+				reqd: 1,
+				description: __("They sign in with this"),
+			},
+		],
+		primary_action_label: __("Add"),
+		primary_action: (v) => {
+			frappe.dom.freeze(__("Adding…"));
+			frappe
+				.xcall("santu_hardware.santu_hardware.api.create_staff_user", {
+					full_name: v.full_name,
+					email: v.email,
+					role,
+				})
+				.then(() => {
+					frappe.dom.unfreeze();
+					d.hide();
+					frappe.show_alert({ message: __("Added"), indicator: "green" });
+					if (on_created) on_created();
+				})
+				.catch(() => frappe.dom.unfreeze());
+		},
+	});
+	d.show();
+};
+
+// Shop's own details. Both callers used to open the native Company form,
+// which carries the chart of accounts, default warehouses, cost centres and
+// fixed-asset settings — nothing a shop owner should edit by accident.
+window.santu_open_shop_profile = function () {
+	frappe.xcall("santu_hardware.santu_hardware.api.get_shop_profile").then((p) => {
+		if (!p || !p.name) return;
+		const d = new frappe.ui.Dialog({
+			title: __("Shop Details"),
+			fields: [
+				{ fieldtype: "Data", fieldname: "company_name", label: __("Shop Name"), reqd: 1, default: p.company_name },
+				{ fieldtype: "Data", fieldname: "phone_no", label: __("Phone"), default: p.phone_no || "" },
+				{ fieldtype: "Data", fieldname: "email", label: __("Email"), default: p.email || "" },
+				{ fieldtype: "Data", fieldname: "gstin", label: __("GSTIN"), default: p.gstin || "" },
+			],
+			primary_action_label: __("Save"),
+			primary_action: (v) => {
+				frappe.dom.freeze(__("Saving…"));
+				frappe
+					.xcall("santu_hardware.santu_hardware.api.update_shop_profile", {
+						company: p.name,
+						company_name: v.company_name,
+						phone_no: v.phone_no || "",
+						email: v.email || "",
+						gstin: v.gstin || "",
+					})
+					.then(() => {
+						frappe.dom.unfreeze();
+						d.hide();
+						frappe.show_alert({ message: __("Saved"), indicator: "green" });
+					})
+					.catch(() => frappe.dom.unfreeze());
+			},
+		});
+		d.show();
+	});
+};
+
+// Manage payment modes. Replaced a jump to the native Mode of Payment list
+// — a Frappe list view with filters, bulk edit and a raw child table for
+// per-company accounts. What a shop needs is: which ways can I take money,
+// and does each one actually work.
+window.santu_open_payment_modes = function () {
+	const render = (d) => {
+		frappe.xcall("santu_hardware.santu_hardware.api.get_payment_modes").then((rows) => {
+			const $w = d.fields_dict.modes.$wrapper;
+			$w.empty();
+			const $list = $(`<div class="santu-pm-list"></div>`).appendTo($w);
+			rows.forEach((r) => {
+				const $row = $(`
+					<div class="santu-pm-row">
+						<label class="santu-pm-toggle">
+							<input type="checkbox" ${r.enabled ? "checked" : ""}>
+							<span>${frappe.utils.escape_html(r.name)}</span>
+						</label>
+						<span class="santu-pm-meta">${
+							r.ready
+								? `<span class="santu-pm-ok">Ready</span>`
+								: `<span class="santu-pm-warn" title="No cash/bank account set for this company">Not set up</span>`
+						}</span>
+					</div>
+				`);
+				$row.find("input").on("change", function () {
+					frappe
+						.xcall("santu_hardware.santu_hardware.api.set_payment_mode_enabled", {
+							mode: r.name,
+							enabled: this.checked ? 1 : 0,
+						})
+						.then(() => frappe.show_alert({ message: __("Saved"), indicator: "green" }));
+				});
+				$list.append($row);
+			});
+		});
+	};
+
+	const d = new frappe.ui.Dialog({
+		title: __("Payment Modes"),
+		fields: [
+			{ fieldtype: "HTML", fieldname: "modes" },
+			{ fieldtype: "Section Break" },
+			{ fieldtype: "Data", fieldname: "new_mode", label: __("Add a new one") },
+			{ fieldtype: "Column Break" },
+			{ fieldtype: "Select", fieldname: "new_type", label: __("Kind"), options: "Cash\nBank", default: "Cash" },
+		],
+		primary_action_label: __("Add"),
+		primary_action: (v) => {
+			if (!(v.new_mode || "").trim()) {
+				d.hide();
+				return;
+			}
+			frappe.dom.freeze(__("Adding…"));
+			frappe
+				.xcall("santu_hardware.santu_hardware.api.create_payment_mode", {
+					mode_name: v.new_mode,
+					mode_type: v.new_type,
+				})
+				.then(() => {
+					frappe.dom.unfreeze();
+					d.set_value("new_mode", "");
+					render(d);
+					frappe.show_alert({ message: __("Added"), indicator: "green" });
+				})
+				.catch(() => frappe.dom.unfreeze());
+		},
+	});
+	d.show();
+	render(d);
+};

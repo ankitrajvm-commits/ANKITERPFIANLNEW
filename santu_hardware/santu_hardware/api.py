@@ -5,7 +5,7 @@ import re
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt
+from frappe.utils import cint, flt, getdate
 
 
 @frappe.whitelist()
@@ -1212,6 +1212,17 @@ def create_customer_full(party: str):
 	if not customer_name:
 		frappe.throw(_("Party Name is required."))
 
+	# A named party needs at least ONE way to be found again — a phone
+	# number or a place. Requiring both is friction at a counter; requiring
+	# neither leaves a list of bare names nobody can tell apart (2026-08-16
+	# direct request: "yaa to city mandatory kr ya phir phone number, dono me
+	# se ek"). Anonymous counter sales don't come through here at all — they
+	# go to Walk-in Customer without being asked anything.
+	has_phone = bool((data.get("phone") or "").strip())
+	has_place = any((data.get(f) or "").strip() for f in ("address_line1", "city", "district", "pincode"))
+	if not has_phone and not has_place:
+		frappe.throw(_("Add a phone number or an address — one of the two is needed to find this party later."))
+
 	customer = frappe.new_doc("Customer")
 	customer.customer_name = customer_name
 	customer.customer_type = "Individual"
@@ -1227,14 +1238,33 @@ def create_customer_full(party: str):
 		company = frappe.defaults.get_user_default("Company")
 		if company:
 			customer.append("credit_limits", {"company": company, "credit_limit": flt(data.get("credit_limit"))})
-	customer.insert(ignore_permissions=True)
+	# One savepoint around the whole party. Customer used to be inserted
+	# first and the Address after; when the Address failed validation the
+	# Customer survived, so a retry made "Name - 1", "Name - 2"… (seen live
+	# 2026-08-16 while the state/city rules were still tripping).
+	savepoint = "santu_create_party"
+	frappe.db.savepoint(savepoint)
+	try:
+		customer.insert(ignore_permissions=True)
+		_create_customer_addresses(customer, customer_name, data)
+	except Exception:
+		frappe.db.rollback(save_point=savepoint)
+		raise
 
+	return customer.name
+
+
+def _create_customer_addresses(customer, customer_name, data):
+	"""Billing (and optional shipping) address for a newly created party."""
 	# Address doctype has no native "district" field — this app added the
 	# picker (default Bihar/Saran) purely to help the cashier find the
 	# right village faster; fold the choice into address_line2 rather than
 	# silently dropping it, unless the cashier already typed something there.
-	address_fields = ("address_line1", "address_line2", "city", "pincode", "country", "district")
-	if any(data.get(f) for f in address_fields):
+	# Only a real address field counts. state/country are sent as defaults by
+	# callers even when no address was typed, and including them here used to
+	# conjure an Address whose line1 was just the customer's name.
+	address_fields = ("address_line1", "address_line2", "city", "pincode", "district")
+	if any((data.get(f) or "").strip() for f in address_fields):
 		# The City/Village picker shows "Village - PIN" (so the pincode is
 		# visible right in the option list); split that back apart here
 		# rather than on the client, where Frappe's Autocomplete control
@@ -1254,8 +1284,12 @@ def create_customer_full(party: str):
 		address.address_line2 = data.get("address_line2") or (
 			f"{data.get('district')} District" if data.get("district") else None
 		)
-		address.city = city
-		address.state = data.get("state")
+		# City is mandatory on Address, but the counter's Add Customer form
+		# only asks for name / phone / address — same three fields Vyapar
+		# asks for. Fall back to the district, then to this shop's own, so a
+		# quick counter entry doesn't fail on a field nobody was shown.
+		address.city = city or data.get("district") or "Saran"
+		address.state = data.get("state") or "Bihar"
 		address.pincode = pincode
 		address.country = data.get("country") or "India"
 		address.append("links", {"link_doctype": "Customer", "link_name": customer.name})
@@ -1273,8 +1307,6 @@ def create_customer_full(party: str):
 		ship.country = data.get("country") or "India"
 		ship.append("links", {"link_doctype": "Customer", "link_name": customer.name})
 		ship.insert(ignore_permissions=True)
-
-	return customer.name
 
 
 @frappe.whitelist()
@@ -2453,6 +2485,7 @@ def get_sale_dashboard_data(
 		"delivery_challan": "Total Delivery Challans",
 		"payment_in": "Total Payment Received",
 		"sales_return": "Total Sales Return",
+		"proforma": "Total Proforma Amount",
 	}
 
 	if view in CONVERTED_STATUS:
@@ -2490,8 +2523,23 @@ def get_sale_dashboard_data(
 			"value2": None,
 			"value2_danger": False,
 		}
+	elif view == "proforma":
+		# Proforma lists DRAFT invoices, so its total has to come from those
+		# same rows. It used to fall through to the branch below and show the
+		# submitted-sales figure instead — a number that flatly contradicted
+		# the (often empty) list under it (2026-08-15 audit).
+		total_sales = sum(flt(r["amount"]) for r in transactions)
+		summary = {
+			"title": SUMMARY_TITLE.get(view, "Total Proforma Amount"),
+			"total_sales": total_sales,
+			"label1": "Proformas",
+			"value1": len(transactions),
+			"label2": None,
+			"value2": None,
+			"value2_danger": False,
+		}
 	else:
-		# invoices / proforma / sales_return / default: real sales, so
+		# invoices / sales_return / default: real sales, so
 		# Received/Balance from POS + non-POS Sales Invoice (no double-count).
 		sale_rows = _sale_fetch_pos_rows(start, end, company, is_return=(1 if view == "sales_return" else 0))
 		sale_rows += _sale_fetch_si_rows(start, end, company, is_return=(1 if view == "sales_return" else 0))
@@ -3227,7 +3275,11 @@ def get_sale_invoice_init():
 	configured = set(
 		frappe.get_all("Mode of Payment Account", filters={"company": company}, pluck="parent")
 	)
-	payment_modes.sort(key=lambda m: m.name not in configured)
+	# Cash leads. Sorting only by "is it configured" left Bank Draft first
+	# alphabetically, which is what the billing and Sale Invoice screens then
+	# defaulted to — the same silent mis-recording of counter cash that
+	# get_payment_entry_init was already fixed for (2026-08-15).
+	payment_modes.sort(key=lambda m: (m.name != "Cash", m.name not in configured, m.name))
 	naming_series = frappe.get_meta("Sales Invoice").get_field("naming_series")
 	series_options = (naming_series.options or "").split("\n") if naming_series else []
 	place_of_supply_field = frappe.db.get_value(
@@ -3476,6 +3528,31 @@ def save_sale_invoice(invoice_json: str, submit: int = 0):
 		doc.apply_discount_on = "Grand Total"
 		doc.discount_amount = invoice_discount
 
+	# Reward points, if the counter chose to spend some. The screen sends a
+	# rupee value; ERPNext wants a point count plus the programme's own
+	# redemption accounts, and works out the rupee figure itself.
+	redeem_value = flt(data.get("redeem_points"))
+	applied_redeem = 0.0
+	if redeem_value > 0:
+		program = frappe.db.get_value("Customer", customer, "loyalty_program")
+		if program:
+			lp = frappe.db.get_value(
+				"Loyalty Program",
+				program,
+				["conversion_factor", "expense_account", "cost_center"],
+				as_dict=True,
+			)
+			if not lp.expense_account:
+				frappe.throw(
+					_("The rewards scheme has no expense account set, so points cannot be used yet.")
+				)
+			doc.loyalty_program = program
+			doc.redeem_loyalty_points = 1
+			doc.loyalty_points = cint(redeem_value / (flt(lp.conversion_factor) or 1))
+			doc.loyalty_redemption_account = lp.expense_account
+			doc.loyalty_redemption_cost_center = lp.cost_center
+			applied_redeem = flt(doc.loyalty_points) * (flt(lp.conversion_factor) or 1)
+
 	doc.run_method("set_missing_values")
 	doc.run_method("calculate_taxes_and_totals")
 
@@ -3535,7 +3612,12 @@ def save_sale_invoice(invoice_json: str, submit: int = 0):
 			if amt > 0:
 				doc.append("payments", {"mode_of_payment": p.get("mode_of_payment"), "amount": amt})
 
-	would_be_outstanding = flt(doc.grand_total) - sum(flt(p.amount) for p in doc.payments)
+	# Redeemed points settle part of the bill just like a payment does, so
+	# they must count here — otherwise a fully-paid cash sale that used
+	# points looks like credit and trips the credit-limit check.
+	would_be_outstanding = (
+		flt(doc.grand_total) - applied_redeem - sum(flt(p.amount) for p in doc.payments)
+	)
 	if would_be_outstanding > 0:
 		_validate_credit_customer(customer, would_be_outstanding)
 
@@ -3583,7 +3665,8 @@ def get_purchase_invoice_init():
 			"Mode of Payment Account", filters={"company": company}, pluck="parent"
 		)
 	)
-	payment_modes.sort(key=lambda m: m.name not in configured)
+	# Cash first here too — same reason as the selling side.
+	payment_modes.sort(key=lambda m: (m.name != "Cash", m.name not in configured, m.name))
 	naming_series = frappe.get_meta("Purchase Invoice").get_field("naming_series")
 	series_options = (naming_series.options or "").split("\n") if naming_series else []
 	place_of_supply_field = frappe.db.get_value(
@@ -3693,8 +3776,11 @@ def create_supplier_full(party: str):
 		supplier.supplier_primary_contact = contact.name
 		supplier.save(ignore_permissions=True)
 
-	address_fields = ("address_line1", "address_line2", "city", "pincode", "country", "district")
-	if any(data.get(f) for f in address_fields):
+	# Only a real address field counts. state/country are sent as defaults by
+	# callers even when no address was typed, and including them here used to
+	# conjure an Address whose line1 was just the customer's name.
+	address_fields = ("address_line1", "address_line2", "city", "pincode", "district")
+	if any((data.get(f) or "").strip() for f in address_fields):
 		city = (data.get("city") or "").strip()
 		pincode = data.get("pincode")
 		city_match = re.match(r"^(.*)\s-\s(\d{6})$", city)
@@ -3709,8 +3795,12 @@ def create_supplier_full(party: str):
 		address.address_line2 = data.get("address_line2") or (
 			f"{data.get('district')} District" if data.get("district") else None
 		)
-		address.city = city
-		address.state = data.get("state")
+		# City is mandatory on Address, but the counter's Add Customer form
+		# only asks for name / phone / address — same three fields Vyapar
+		# asks for. Fall back to the district, then to this shop's own, so a
+		# quick counter entry doesn't fail on a field nobody was shown.
+		address.city = city or data.get("district") or "Saran"
+		address.state = data.get("state") or "Bihar"
 		address.pincode = pincode
 		address.country = data.get("country") or "India"
 		address.append("links", {"link_doctype": "Supplier", "link_name": supplier.name})
@@ -6299,3 +6389,504 @@ def update_party_details(
 
 	frappe.db.commit()
 	return {"party": party}
+
+
+@frappe.whitelist()
+def get_add_item_init():
+	"""Defaults for the Add Item screen.
+
+	UOMs are narrowed to the ones this shop actually sells in. ERPNext ships
+	264 of them (CUBIC METER, DAY, DOZEN…), and making someone scroll that
+	list to find "Nos" is friction for no gain — setup.install.create_hardware_uoms
+	seeds the six real ones, so those lead and anything already used by an
+	existing item follows. Nothing is deleted; the full list is still there
+	for whoever needs it.
+	"""
+	company = frappe.defaults.get_user_default("Company")
+	preferred = ["Nos", "Litre", "Box", "Bundle", "Packet", "Can"]
+	existing = frappe.get_all("UOM", filters={"enabled": 1}, pluck="name")
+	in_use = frappe.get_all("Item", filters={"disabled": 0}, pluck="stock_uom", distinct=True)
+
+	uoms = [u for u in preferred if u in existing]
+	uoms += sorted({u for u in in_use if u and u not in uoms})
+
+	groups = frappe.get_all(
+		"Item Group", filters={"is_group": 0}, fields=["name"], order_by="name asc", pluck="name"
+	)
+	return {
+		"company": company,
+		"uoms": uoms,
+		"default_uom": "Nos" if "Nos" in uoms else (uoms[0] if uoms else None),
+		"item_groups": groups,
+		"default_group": "Products" if "Products" in groups else (groups[0] if groups else None),
+	}
+
+@frappe.whitelist()
+def save_item(item_json: str):
+	"""Create an item from the Vyapar-style Add Item screen.
+
+	Replaces Frappe's native Quick Entry dialog, which required Item Code,
+	Item Group and HSN/SAC, offered "Is Fixed Asset" and an "Edit Full Form"
+	escape into the raw Item form — and had no field for the sale or purchase
+	price, the first thing a shopkeeper wants to set.
+
+	The Product/Service toggle maps to is_stock_item. A Product created here
+	IS stock-tracked and its opening quantity posts as a real Material
+	Receipt: this screen is where you add something you are holding. (The
+	mid-sale POS path, quick_create_item, still makes non-stock items on
+	purpose — a brand-new item has to be sellable before any stock exists.)
+	"""
+	import json
+	import re
+
+	data = json.loads(item_json) if isinstance(item_json, str) else item_json
+	item_name = (data.get("item_name") or "").strip()
+	if not item_name:
+		frappe.throw(_("Enter an item name."))
+
+	is_service = cint(data.get("is_service"))
+
+	# Item is named by item_code here. The screen can supply one via "Assign
+	# Code"; otherwise it is slugged from the name, de-duplicated on collision.
+	item_code = (data.get("item_code") or "").strip()
+	if not item_code:
+		item_code = re.sub(r"[^A-Za-z0-9]+", "-", item_name).strip("-").upper() or "ITEM"
+	base = item_code
+	suffix = 1
+	while frappe.db.exists("Item", item_code):
+		suffix += 1
+		item_code = f"{base}-{suffix}"
+
+	company = data.get("company") or frappe.defaults.get_user_default("Company")
+	opening_qty = flt(data.get("opening_qty"))
+	sale_price = flt(data.get("sale_price"))
+	purchase_price = flt(data.get("purchase_price"))
+	# "At Price" values the opening stock; falls back to the purchase price,
+	# which is what that stock actually cost.
+	at_price = flt(data.get("at_price")) or purchase_price
+
+	item = frappe.new_doc("Item")
+	item.item_code = item_code
+	item.item_name = item_name
+	item.item_group = data.get("item_group") or ("Services" if is_service else "Products")
+	item.stock_uom = data.get("uom") or "Nos"
+	item.is_stock_item = 0 if is_service else 1
+	item.include_item_in_manufacturing = 0
+	if data.get("gst_hsn_code"):
+		item.gst_hsn_code = data.get("gst_hsn_code")
+	if data.get("barcode"):
+		item.append("barcodes", {"barcode": data.get("barcode")})
+	if data.get("location"):
+		item.custom_rack_number = data.get("location")
+	item.insert(ignore_permissions=True)
+
+	def _add_price(rate, buying):
+		if rate <= 0:
+			return
+		price = frappe.new_doc("Item Price")
+		price.item_code = item.item_code
+		price.price_list = "Standard Buying" if buying else "Standard Selling"
+		price.buying = 1 if buying else 0
+		price.selling = 0 if buying else 1
+		price.price_list_rate = rate
+		price.insert(ignore_permissions=True)
+
+	_add_price(sale_price, buying=False)
+	_add_price(purchase_price, buying=True)
+
+	warehouse = frappe.db.get_value(
+		"Warehouse", {"is_group": 0, "disabled": 0, "company": company}, "name"
+	)
+
+	# "Min Stock To Maintain" is ERPNext's reorder level — the same number
+	# get_low_stock_items() already reads when deciding what to warn about.
+	min_stock = flt(data.get("min_stock"))
+	if min_stock > 0 and warehouse and not is_service:
+		item.append(
+			"reorder_levels",
+			{
+				"warehouse": warehouse,
+				"warehouse_reorder_level": min_stock,
+				"warehouse_reorder_qty": min_stock,
+				"material_request_type": "Purchase",
+			},
+		)
+		item.save(ignore_permissions=True)
+
+	opening_posted = False
+	if opening_qty > 0 and warehouse and not is_service:
+		# Same Material Receipt path receive_stock_simple uses — a real stock
+		# ledger entry, not a back-dated fudge.
+		entry = frappe.new_doc("Stock Entry")
+		entry.company = company
+		entry.stock_entry_type = "Material Receipt"
+		entry.purpose = "Material Receipt"
+		if data.get("as_of_date"):
+			entry.set_posting_time = 1
+			entry.posting_date = data.get("as_of_date")
+		entry.append(
+			"items",
+			{
+				"item_code": item.item_code,
+				"t_warehouse": warehouse,
+				"qty": opening_qty,
+				"basic_rate": at_price,
+				"allow_zero_valuation_rate": 1 if at_price <= 0 else 0,
+			},
+		)
+		entry.insert(ignore_permissions=True)
+		entry.submit()
+		opening_posted = True
+
+	return {
+		"item_code": item.item_code,
+		"item_name": item.item_name,
+		"opening_qty": opening_qty if opening_posted else 0,
+	}
+
+
+@frappe.whitelist()
+def create_item_master(doctype: str, name_value: str):
+	"""Create an Item Group or UOM from the Items screen's Category / Unit
+	tabs.
+
+	Both used to open their native forms, which ask for a parent group, an
+	"Is Group" flag and tree placement — none of which mean anything to
+	someone naming a category "Paints". A new category is created as a leaf
+	under the existing root so it behaves like every other one.
+	"""
+	if doctype not in ("Item Group", "UOM"):
+		frappe.throw(_("Cannot create {0} here.").format(doctype))
+
+	name_value = (name_value or "").strip()
+	if not name_value:
+		frappe.throw(_("Enter a name."))
+	if frappe.db.exists(doctype, name_value):
+		frappe.throw(_("{0} already exists.").format(name_value))
+
+	doc = frappe.new_doc(doctype)
+	if doctype == "Item Group":
+		doc.item_group_name = name_value
+		doc.is_group = 0
+		parent = frappe.db.get_value("Item Group", {"is_group": 1, "parent_item_group": ""}, "name")
+		doc.parent_item_group = parent or "All Item Groups"
+	else:
+		doc.uom_name = name_value
+		doc.enabled = 1
+	doc.insert(ignore_permissions=True)
+	frappe.db.commit()
+	return {"name": doc.name}
+
+
+@frappe.whitelist()
+def rename_item_master(doctype: str, old_name: str, new_name: str):
+	"""Rename an Item Group or UOM from the Items screen.
+
+	The Category tab's edit action used to open the Item Group tree form,
+	which exposes parent group and "Is Group" — neither of which anyone
+	renaming "Paints" needs. rename_doc carries every linked item across.
+	"""
+	if doctype not in ("Item Group", "UOM"):
+		frappe.throw(_("Cannot rename {0} here.").format(doctype))
+
+	new_name = (new_name or "").strip()
+	if not new_name:
+		frappe.throw(_("Enter a name."))
+	if new_name == old_name:
+		return {"name": old_name}
+	if frappe.db.exists(doctype, new_name):
+		frappe.throw(_("{0} already exists.").format(new_name))
+
+	frappe.rename_doc(doctype, old_name, new_name, force=True, show_alert=False)
+	field = "item_group_name" if doctype == "Item Group" else "uom_name"
+	frappe.db.set_value(doctype, new_name, field, new_name)
+	frappe.db.commit()
+	return {"name": new_name}
+
+
+@frappe.whitelist()
+def create_staff_user(full_name: str, email: str, role: str = "Staff"):
+	"""Create a login for a staff member or the shop's accountant.
+
+	Both "Add User" (Sync & Share) and "Add Accountant" (Utilities) opened
+	the native User form, which is a developer surface — roles table, API
+	keys, module permissions, desk settings. All this shop needs is a name,
+	an email to log in with, and which of the two things they are.
+	"""
+	full_name = (full_name or "").strip()
+	email = (email or "").strip().lower()
+	if not full_name:
+		frappe.throw(_("Enter a name."))
+	if not email:
+		frappe.throw(_("Enter an email — it is the login id."))
+	if frappe.db.exists("User", email):
+		frappe.throw(_("A user with {0} already exists.").format(email))
+
+	parts = full_name.split(" ", 1)
+	user = frappe.new_doc("User")
+	user.email = email
+	user.first_name = title_case_a_name(parts[0])
+	if len(parts) > 1:
+		user.last_name = title_case_a_name(parts[1])
+	user.send_welcome_email = 0
+	user.user_type = "System User"
+	user.insert(ignore_permissions=True)
+
+	# Accountant gets the read-heavy accounting roles; staff get the
+	# day-to-day selling ones. Anything finer is a Settings job, not
+	# something to decide while adding a person.
+	roles = (
+		["Accounts User", "Accounts Manager"]
+		if role == "Accountant"
+		else ["Sales User", "Stock User", "Purchase User"]
+	)
+	for r in roles:
+		if frappe.db.exists("Role", r):
+			user.append("roles", {"role": r})
+	user.save(ignore_permissions=True)
+	frappe.db.commit()
+	return {"name": user.name, "email": email}
+
+
+@frappe.whitelist()
+def get_shop_profile():
+	"""The handful of company fields a shop owner actually maintains."""
+	company = frappe.defaults.get_user_default("Company")
+	if not company:
+		return {}
+	doc = frappe.get_doc("Company", company)
+	return {
+		"name": doc.name,
+		"company_name": doc.company_name,
+		"phone_no": doc.get("phone_no"),
+		"email": doc.get("email"),
+		"gstin": doc.get("gstin"),
+		"address": doc.get("address_html") or "",
+	}
+
+
+@frappe.whitelist()
+def update_shop_profile(company: str, company_name: str = None, phone_no: str = None, email: str = None, gstin: str = None):
+	"""Save the shop's own details.
+
+	Replaces a jump to the native Company form, which carries the full chart
+	of accounts, default warehouses, cost centres and fixed-asset settings —
+	none of it something to edit by accident.
+	"""
+	if not frappe.db.exists("Company", company):
+		frappe.throw(_("Company {0} not found").format(company))
+	updates = {}
+	if company_name:
+		updates["company_name"] = company_name.strip()
+	if phone_no is not None:
+		updates["phone_no"] = phone_no.strip() or None
+	if email is not None:
+		updates["email"] = email.strip() or None
+	if gstin is not None and frappe.get_meta("Company").has_field("gstin"):
+		updates["gstin"] = gstin.strip() or None
+	for k, v in updates.items():
+		frappe.db.set_value("Company", company, k, v)
+	frappe.db.commit()
+	return {"company": company}
+
+
+@frappe.whitelist()
+def get_payment_modes():
+	"""Payment modes with whether each one is usable in this company.
+
+	A Mode of Payment can be enabled yet have no Cash/Bank account wired up
+	for the company, in which case saving against it throws at the very end
+	of a sale. Surfacing that here is the difference between a setting that
+	looks fine and one that actually works.
+	"""
+	company = frappe.defaults.get_user_default("Company")
+	configured = set(
+		frappe.get_all("Mode of Payment Account", filters={"company": company}, pluck="parent")
+	)
+	rows = frappe.get_all(
+		"Mode of Payment", fields=["name", "type", "enabled"], order_by="name asc"
+	)
+	return [
+		{
+			"name": r.name,
+			"type": r.type,
+			"enabled": bool(r.enabled),
+			"ready": r.name in configured,
+		}
+		for r in rows
+	]
+
+
+@frappe.whitelist()
+def set_payment_mode_enabled(mode: str, enabled: int):
+	"""Turn one payment mode on or off."""
+	if not frappe.db.exists("Mode of Payment", mode):
+		frappe.throw(_("{0} not found").format(mode))
+	frappe.db.set_value("Mode of Payment", mode, "enabled", cint(enabled))
+	frappe.db.commit()
+	return {"mode": mode, "enabled": cint(enabled)}
+
+
+@frappe.whitelist()
+def create_payment_mode(mode_name: str, mode_type: str = "Cash"):
+	"""Add a payment mode and point it at the company's default account for
+	its kind, so it works the moment it is created rather than failing at
+	the end of the first sale that uses it."""
+	mode_name = (mode_name or "").strip()
+	if not mode_name:
+		frappe.throw(_("Enter a name."))
+	if frappe.db.exists("Mode of Payment", mode_name):
+		frappe.throw(_("{0} already exists.").format(mode_name))
+
+	company = frappe.defaults.get_user_default("Company")
+	account = frappe.db.get_value(
+		"Company", company, "default_cash_account" if mode_type == "Cash" else "default_bank_account"
+	) or frappe.db.get_value("Company", company, "default_cash_account")
+
+	doc = frappe.new_doc("Mode of Payment")
+	doc.mode_of_payment = mode_name
+	doc.type = mode_type
+	doc.enabled = 1
+	if account:
+		doc.append("accounts", {"company": company, "default_account": account})
+	doc.insert(ignore_permissions=True)
+	frappe.db.commit()
+	return {"name": doc.name}
+
+
+def _redeemable_loyalty_points(customer, program, company):
+	"""Points that a Sales Invoice can actually spend — not just points held.
+
+	ERPNext will only redeem a point entry against the same doctype that
+	earned it, and it does NOT fail when it comes up short: it writes off
+	the full rupee discount while debiting only the points it could find.
+	So a balance shown from the raw ledger can hand out money that never
+	gets deducted. This counts what redemption will really consume, which
+	is the only number safe to offer at the counter.
+	"""
+	from erpnext.accounts.doctype.loyalty_point_entry.loyalty_point_entry import (
+		get_loyalty_point_entries,
+		get_redemption_details,
+	)
+
+	entries = get_loyalty_point_entries(customer, program, company) or []
+	spent = get_redemption_details(customer, program, company) or {}
+	total = 0
+	for entry in entries:
+		if entry.get("invoice_type") != "Sales Invoice":
+			continue
+		# get_redemption_details sums the negative side of the ledger, so the
+		# amount already spent against this entry arrives as a negative
+		# number — take its magnitude rather than subtracting it directly.
+		used = abs(flt(spent.get(entry.get("name"))))
+		total += flt(entry.get("loyalty_points")) - used
+	return cint(max(total, 0))
+
+
+@frappe.whitelist()
+def get_loyalty_status(customer: str):
+	"""Points a customer has, and what they are worth.
+
+	The programme ("Santu Hardware Rewards": 1 point per ₹100, 1 point = ₹1)
+	was already collecting points on every sale — 30 entries existed before
+	this screen could show any of them. Redemption additionally needs an
+	expense account on the programme, which was never set; ensure_loyalty_setup
+	fills that in so redeeming doesn't fail at submit time.
+	"""
+	if not customer or not frappe.db.exists("Customer", customer):
+		return {"enrolled": False, "points": 0, "value": 0}
+
+	program = frappe.db.get_value("Customer", customer, "loyalty_program")
+	if not program:
+		return {"enrolled": False, "points": 0, "value": 0}
+
+	company = frappe.defaults.get_user_default("Company")
+	points = _redeemable_loyalty_points(customer, program, company)
+	factor = flt(frappe.db.get_value("Loyalty Program", program, "conversion_factor")) or 1
+	return {
+		"enrolled": True,
+		"program": program,
+		"points": points,
+		"value": points * factor,
+		"conversion_factor": factor,
+	}
+
+
+LOYALTY_EXPIRY_MONTHS = 24
+
+
+def ensure_loyalty_setup():
+	"""Give the loyalty programme the expense account redemption needs.
+
+	Points were being earned fine, but redeeming posts the rupee value to an
+	expense account and the programme had none — so the first redemption
+	would have failed at submit. Runs on install and after every migrate so
+	it can't quietly drift back.
+	"""
+	company = frappe.defaults.get_user_default("Company") or frappe.db.get_value("Company", {}, "name")
+	if not company:
+		return False
+
+	changed = False
+	for program in frappe.get_all("Loyalty Program", pluck="name"):
+		doc = frappe.get_doc("Loyalty Program", program)
+		if not cint(doc.expiry_duration):
+			# expiry_duration 0 made ERPNext stamp every point entry with
+			# expiry_date = posting_date, so points earned today were already
+			# expired today — the balance always read 0 even with a full
+			# ledger behind it. Two years is long enough that a customer who
+			# comes back seasonally still has their points.
+			doc.expiry_duration = LOYALTY_EXPIRY_MONTHS
+			doc.save(ignore_permissions=True)
+			changed = True
+			doc.reload()
+		if doc.expense_account and doc.cost_center:
+			continue
+		if not doc.expense_account:
+			# A redeemed point is a discount the shop chose to give — it
+			# belongs with selling costs, not with cost of goods.
+			doc.expense_account = frappe.db.get_value(
+				"Account", {"company": company, "account_name": "Sales Expenses", "is_group": 0}, "name"
+			) or frappe.db.get_value(
+				"Account", {"company": company, "account_name": "Marketing Expenses", "is_group": 0}, "name"
+			)
+		if not doc.cost_center:
+			doc.cost_center = frappe.db.get_value("Company", company, "cost_center") or frappe.db.get_value(
+				"Cost Center", {"company": company, "is_group": 0}, "name"
+			)
+		if doc.expense_account and doc.cost_center:
+			doc.company = doc.company or company
+			doc.save(ignore_permissions=True)
+			changed = True
+	if changed:
+		frappe.db.commit()
+	return changed
+
+
+def backfill_loyalty_expiry():
+	"""Rescue points already stamped with a same-day expiry_date.
+
+	Entries written while expiry_duration was 0 carry expiry_date =
+	posting_date, so they were dead on arrival. Push each one out to the
+	programme's real window measured from its own posting date, so a
+	customer's existing balance survives the config fix instead of being
+	silently written off.
+	"""
+	from dateutil.relativedelta import relativedelta
+
+	rows = frappe.get_all(
+		"Loyalty Point Entry",
+		filters={"loyalty_points": [">", 0]},
+		fields=["name", "posting_date", "expiry_date"],
+	)
+	fixed = 0
+	for row in rows:
+		if not row.posting_date:
+			continue
+		target = getdate(row.posting_date) + relativedelta(months=LOYALTY_EXPIRY_MONTHS)
+		if row.expiry_date and getdate(row.expiry_date) >= target:
+			continue
+		frappe.db.set_value("Loyalty Point Entry", row.name, "expiry_date", target, update_modified=False)
+		fixed += 1
+	frappe.db.commit()
+	return fixed

@@ -47,9 +47,6 @@ santu_sale.create_page = function () {
 						</div>
 						<div class="santu-sale-header-actions">
 							<button type="button" class="btn btn-primary santu-sale-add-btn">+ ${frappe.utils.escape_html((view_meta.addLabel || "+ Add Sale").replace(/^\+\s*/, ""))}</button>
-							<button type="button" class="santu-sale-settings-btn" title="Settings">
-								<img src="/assets/santu_hardware/images/items/settings_item.svg" alt="" width="20" height="20">
-							</button>
 						</div>
 					</div>
 					<div class="santu-sale-body">
@@ -87,7 +84,6 @@ santu_sale.create_page = function () {
 
 		bind_events() {
 			this.$root.find(".santu-sale-add-btn").on("click", () => this.add_sale());
-			this.$root.find(".santu-sale-settings-btn").on("click", () => frappe.set_route("Form", "Selling Settings"));
 
 			this.$root.find(".santu-sale-page-title").on("click", (e) => {
 				e.stopPropagation();

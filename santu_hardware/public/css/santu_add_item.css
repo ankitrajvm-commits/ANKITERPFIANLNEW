@@ -1,0 +1,282 @@
+/*
+ * Add Item — laid out from Vyapar's own Add Item screen (2026-08-15
+ * screenshot). Full page, not a dialog: the Product/Service toggle, HSN
+ * search, unit picker and Pricing/Stock tabs only read right at page scale.
+ */
+.santu-ai-page-main { background: #eef1f6; }
+.santu-ai {
+	display: flex;
+	flex-direction: column;
+	min-height: calc(100vh - 56px);
+	padding: 12px;
+	box-sizing: border-box;
+}
+.santu-ai-loading { padding: 40px; text-align: center; color: #71748e; }
+
+.santu-ai-card {
+	background: #fff;
+	border-radius: 8px;
+	flex: 1 1 auto;
+	padding: 0 0 8px;
+	box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06);
+}
+
+.santu-ai-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 18px 24px 14px;
+}
+.santu-ai-head-left { display: flex; align-items: center; gap: 28px; }
+.santu-ai-title { font-size: 20px; font-weight: 600; color: #1f2340; }
+
+.santu-ai-toggle-wrap { display: flex; align-items: center; gap: 10px; }
+.santu-ai-toggle-label { font-size: 14px; color: #8a8fa3; }
+.santu-ai-toggle-label.is-on { color: #2563eb; font-weight: 500; }
+.santu-ai-toggle {
+	width: 40px;
+	height: 22px;
+	border-radius: 999px;
+	border: none;
+	background: #2563eb;
+	position: relative;
+	cursor: pointer;
+	padding: 0;
+}
+.santu-ai-toggle-knob {
+	position: absolute;
+	top: 3px;
+	left: 3px;
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	background: #fff;
+	transition: left 0.15s ease;
+}
+.santu-ai-toggle.is-service .santu-ai-toggle-knob { left: 21px; }
+
+.santu-ai-icon-btn {
+	border: none;
+	background: transparent;
+	font-size: 18px;
+	color: #71748e;
+	cursor: pointer;
+	padding: 4px 8px;
+}
+.santu-ai-icon-btn:hover { color: #1f2340; }
+
+/* ---------- top fields ---------- */
+.santu-ai-fields { padding: 4px 24px 8px; }
+.santu-ai-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 16px;
+	margin-bottom: 16px;
+	flex-wrap: wrap;
+}
+.santu-ai-field { position: relative; flex: 0 0 auto; }
+.santu-ai-field-name { flex: 0 0 268px; }
+.santu-ai-field-unit,
+.santu-ai-field-image { display: flex; align-items: center; height: 44px; }
+
+.santu-ai-input {
+	height: 44px;
+	width: 268px;
+	border: 1px solid #d0d5dd;
+	border-radius: 4px;
+	padding: 0 12px;
+	font-size: 14px;
+	color: #1f2340;
+	background: #fff;
+	box-sizing: border-box;
+}
+.santu-ai-input:focus {
+	border-color: #2563eb;
+	outline: none;
+	box-shadow: none;
+}
+select.santu-ai-input { padding-right: 28px; }
+
+.santu-ai-float-label {
+	position: absolute;
+	top: -8px;
+	left: 10px;
+	background: #fff;
+	padding: 0 5px;
+	font-size: 12px;
+	color: #2563eb;
+	z-index: 1;
+	margin: 0;
+}
+.santu-ai-req { color: #ed1a3b; }
+
+.santu-ai-search-wrap { position: relative; }
+.santu-ai-search-icon {
+	position: absolute;
+	right: 12px;
+	top: 12px;
+	font-size: 14px;
+	opacity: 0.5;
+	pointer-events: none;
+}
+.santu-ai-hsn-dropdown {
+	position: absolute;
+	top: 46px;
+	left: 0;
+	width: 340px;
+	max-height: 260px;
+	overflow-y: auto;
+	background: #fff;
+	border: 1px solid #eaeaef;
+	border-radius: 6px;
+	box-shadow: 0 8px 24px rgba(16, 24, 40, 0.12);
+	z-index: 40;
+}
+.santu-ai-dd-row {
+	padding: 8px 12px;
+	cursor: pointer;
+	border-bottom: 1px solid #f3f4f8;
+	font-size: 13px;
+}
+.santu-ai-dd-row:hover { background: #f3f7ff; }
+.santu-ai-dd-row b { display: block; color: #1f2340; }
+.santu-ai-dd-row span { color: #71748e; font-size: 12px; }
+.santu-ai-dd-empty { color: #9ca3af; cursor: default; }
+
+.santu-ai-unit-btn {
+	height: 44px;
+	min-width: 146px;
+	border: none;
+	border-radius: 4px;
+	background: #ddebfd;
+	color: #2563eb;
+	font-size: 15px;
+	font-weight: 600;
+	cursor: pointer;
+}
+.santu-ai-unit-btn:hover { background: #cfe1fc; }
+
+.santu-ai-image-btn {
+	border: none;
+	background: transparent;
+	color: #2563eb;
+	font-size: 15px;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 0;
+}
+
+.santu-ai-code-wrap { position: relative; display: flex; align-items: center; }
+.santu-ai-assign-btn {
+	position: absolute;
+	right: 6px;
+	border: none;
+	border-radius: 4px;
+	background: #ddebfd;
+	color: #2563eb;
+	font-size: 13px;
+	font-weight: 600;
+	padding: 7px 12px;
+	cursor: pointer;
+}
+.santu-ai-assign-btn:hover { background: #cfe1fc; }
+
+/* ---------- tabs ---------- */
+.santu-ai-tabs {
+	display: flex;
+	gap: 26px;
+	padding: 6px 24px 0;
+	border-bottom: 1px solid #eaeaef;
+}
+.santu-ai-tab {
+	border: none;
+	background: transparent;
+	padding: 10px 2px 12px;
+	font-size: 15px;
+	color: #71748e;
+	cursor: pointer;
+	border-bottom: 2px solid transparent;
+	margin-bottom: -1px;
+}
+.santu-ai-tab.is-active { color: #ed1a3b; font-weight: 500; border-bottom-color: #ed1a3b; }
+.santu-ai-tab:disabled { color: #cbccde; cursor: not-allowed; }
+
+.santu-ai-panel { padding: 22px 24px; }
+.santu-ai-section {
+	background: #f8f9fb;
+	border-radius: 8px;
+	padding: 18px 20px;
+	margin-bottom: 18px;
+}
+.santu-ai-section-title {
+	font-size: 15px;
+	font-weight: 600;
+	color: #1f2340;
+	margin-bottom: 16px;
+}
+.santu-ai-inline { display: flex; gap: 28px; flex-wrap: wrap; align-items: center; }
+.santu-ai-pair { display: flex; align-items: center; }
+.santu-ai-pair .santu-ai-input:first-child {
+	width: 136px;
+	border-radius: 4px 0 0 4px;
+	border-right: none;
+}
+.santu-ai-pair .santu-ai-input:last-child {
+	width: 140px;
+	border-radius: 0 4px 4px 0;
+	background: #fff;
+}
+.santu-ai-pair .santu-ai-input:only-child { width: 200px; border-radius: 4px; border-right: 1px solid #d0d5dd; }
+
+.santu-ai-link {
+	border: none;
+	background: transparent;
+	color: #2563eb;
+	font-size: 15px;
+	font-weight: 500;
+	cursor: pointer;
+	padding: 14px 0 0;
+}
+.santu-ai-wholesale { margin-top: 14px; }
+
+.santu-ai-two-col { display: flex; gap: 18px; align-items: stretch; flex-wrap: wrap; }
+.santu-ai-two-col .santu-ai-section { flex: 1 1 340px; margin-bottom: 0; }
+
+.santu-ai-grid { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 16px; }
+.santu-ai-grid:last-child { margin-bottom: 0; }
+.santu-ai-cell { display: flex; flex-direction: column; gap: 6px; }
+.santu-ai-cell label { font-size: 12px; color: #71748e; margin: 0; }
+.santu-ai-cell .santu-ai-input { width: 210px; }
+
+/* ---------- footer ---------- */
+.santu-ai-footer {
+	display: flex;
+	justify-content: flex-end;
+	gap: 14px;
+	background: #fff;
+	border-radius: 8px;
+	margin-top: 10px;
+	padding: 14px 24px;
+	box-shadow: 0 -1px 3px rgba(16, 24, 40, 0.04);
+}
+.santu-ai-btn {
+	height: 40px;
+	min-width: 116px;
+	border-radius: 4px;
+	font-size: 15px;
+	font-weight: 500;
+	cursor: pointer;
+	border: 1px solid transparent;
+}
+.santu-ai-btn-ghost { background: #fff; border-color: #d0d5dd; color: #3f4155; }
+.santu-ai-btn-ghost:hover { background: #f6f7f9; }
+.santu-ai-btn-primary { background: #2563eb; color: #fff; }
+.santu-ai-btn-primary:hover { background: #1d4fd7; }
+.santu-ai-btn-primary:disabled { background: #e6e8ed; color: #a6abbd; cursor: not-allowed; }
+
+@media (max-width: 1100px) {
+	.santu-ai-input, .santu-ai-field-name { width: 100%; flex-basis: 100%; }
+	.santu-ai-row { gap: 20px; }
+}

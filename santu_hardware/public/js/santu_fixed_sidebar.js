@@ -7,7 +7,7 @@
 	// Bump whenever NAV_ITEMS changes shape — build_sidebar() reuses an
 	// already-rendered sidebar when this matches, so without a bump an open
 	// tab keeps the old menu.
-	const SIDEBAR_NAV_VERSION = "vyapar-match-3";
+	const SIDEBAR_NAV_VERSION = "vyapar-match-4";
 	const SIDEBAR_COLLAPSE_KEY = "santu_sidebar_collapsed";
 
 	const PURCHASE_CHILDREN = [
@@ -28,7 +28,7 @@
 	const NAV_ITEMS = [
 		{ type: "link", route: "santu-dashboard", icon: "🏠", label: "Home" },
 		{ type: "link", route: "santu-parties", icon: "👥", label: "Parties" },
-		{ type: "link", route: "santu-items", icon: "📦", label: "Items", quickadd: { doctype: "Item" } },
+		{ type: "link", route: "santu-items", icon: "📦", label: "Items", quickadd: { run: () => frappe.set_route("santu-add-item") } },
 		{
 			type: "group",
 			key: "sale",
@@ -41,11 +41,11 @@
 			changeEvent: "santu-sale-view-change",
 			isActive: () => {
 				const r = get_route();
-				return r[0] === "santu-sale" || r[0] === "santu-sale-invoice" || r[0] === "point-of-sale";
+				return r[0] === "santu-sale" || r[0] === "santu-sale-invoice" || r[0] === "santu-billing";
 			},
 			getView: () => {
 				if (get_route()[0] === "santu-sale-invoice") return "new_invoice";
-				if (get_route()[0] === "point-of-sale") return "pos";
+				if (get_route()[0] === "santu-billing") return "pos";
 				return sessionStorage.getItem("santu_sale_view") || "invoices";
 			},
 			children: [
@@ -57,7 +57,7 @@
 				{ view: "sales_order", label: "Sales Order", route: "santu-sale" },
 				{ view: "delivery_challan", label: "Delivery Challan", route: "santu-sale" },
 				{ view: "sales_return", label: "Sales Return / Credit Note", route: "santu-sale" },
-				{ view: "pos", label: "POS", redirect: "point-of-sale" },
+				{ view: "pos", label: "Billing (POS)", redirect: "santu-billing" },
 			],
 		},
 		{
@@ -374,7 +374,7 @@
 					<span>${frappe.utils.escape_html(company.toUpperCase())}</span>
 				</div>
 			`)
-				.on("click", () => frappe.set_route("Form", "Company", company))
+				.on("click", () => window.santu_open_shop_profile())
 				.appendTo($sidebar);
 		}
 

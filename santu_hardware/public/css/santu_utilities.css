@@ -447,3 +447,17 @@
 	.santu-utilities-barcode-layout { grid-template-columns: 1fr; }
 	.santu-utilities-map-grid { grid-template-columns: 1fr; }
 }
+
+/* Payment Modes dialog — replaced a jump to the native Mode of Payment list. */
+.santu-pm-list { display: flex; flex-direction: column; }
+.santu-pm-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 8px 2px;
+	border-bottom: 1px solid #f0f1f5;
+}
+.santu-pm-row:last-child { border-bottom: none; }
+.santu-pm-toggle { display: flex; align-items: center; gap: 10px; margin: 0; cursor: pointer; font-size: 14px; color: #3f4155; }
+.santu-pm-ok { font-size: 12px; color: #08bd7c; font-weight: 500; }
+.santu-pm-warn { font-size: 12px; color: #b45309; font-weight: 500; }

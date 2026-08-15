@@ -1,0 +1,16 @@
+{
+ "content": null,
+ "doctype": "Page",
+ "icon": "octicon octicon-credit-card",
+ "idx": 0,
+ "module": "Santu Hardware",
+ "name": "santu-billing",
+ "page_name": "santu-billing",
+ "restrict_to_domain": null,
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Billing"
+}

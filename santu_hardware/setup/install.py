@@ -18,6 +18,10 @@ def after_install():
 	create_transaction_message_defaults()
 	hide_vendor_navbar_items()
 
+	from santu_hardware.santu_hardware.api import ensure_loyalty_setup
+
+	ensure_loyalty_setup()
+
 
 def create_hardware_uoms():
 	"""Create the Units of Measure this store actually sells in.

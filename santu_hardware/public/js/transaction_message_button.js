@@ -72,7 +72,14 @@
 					? {
 						label: __("Add WhatsApp Number"),
 						action() {
-							frappe.set_route("Form", preview.party_type, preview.party_link);
+							// Was the native Customer/Supplier form; the Parties
+							// screen's own edit dialog is where a phone number
+							// gets added now.
+							frappe.route_options = {
+								party_type: preview.party_type,
+								party: preview.party_link,
+							};
+							frappe.set_route("santu-parties");
 						},
 					}
 					: undefined,
