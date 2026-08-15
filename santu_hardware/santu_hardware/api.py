@@ -7423,25 +7423,38 @@ def touch_id_login_finish(credential_id: str, authenticator_data: str, client_da
 #     lives in the printer and survives everything on this side.
 # ---------------------------------------------------------------------------
 
-SANTU_DENSITY_MIN_LEVEL = 1
-SANTU_DENSITY_MAX_LEVEL = 7
-SANTU_DENSITY_DEFAULT_LEVEL = 4
+# The TM-T82X-II's own Technical Reference Guide, page 31:
+#   "Print Density -- Selectable from -3 to +3 (light to dark). Initial
+#    setting: 0"
+#
+# Not the 1-7 / 85%-115% scale documented for the TM-T82II, which is a
+# different model. Confirmed against the hardware: writing 6 or 7 was
+# silently ignored (out of range) while writing 3 read back as 3.
+# Only the 0..+3 half is offered. The guide's range is -3 to +3, but the
+# negative half has no working encoding over this command: sending -3 as a
+# signed byte (FD 00) is rejected outright, and as 16-bit two's complement
+# (FD FF) the printer stores the literal 65533 rather than -3. Since the
+# problem being solved is "prints too light", the lighter half is not worth
+# writing a number to the printer that it demonstrably misreads. Lighter
+# settings remain available from the printer's own Software Setting Mode.
+SANTU_DENSITY_MIN_LEVEL = 0
+SANTU_DENSITY_MAX_LEVEL = 3
+SANTU_DENSITY_DEFAULT_LEVEL = 0
 
-# level -> (percent, plain-language label)
 SANTU_DENSITY_LEVELS = {
-	1: (85, "Lightest"),
-	2: (90, "Lighter"),
-	3: (95, "Slightly light"),
-	4: (100, "Normal (Epson default)"),
-	5: (105, "Slightly dark"),
-	6: (110, "Darker"),
-	7: (115, "Darkest"),
+	0: "Normal (factory setting)",
+	1: "Slightly dark",
+	2: "Darker",
+	3: "Darkest",
 }
 
 
 def _clamp_density_level(level) -> int:
-	level = cint(level) or SANTU_DENSITY_DEFAULT_LEVEL
-	return max(SANTU_DENSITY_MIN_LEVEL, min(SANTU_DENSITY_MAX_LEVEL, level))
+	# `cint(level) or DEFAULT` would be wrong here: 0 is a real level on this
+	# printer (the factory setting), not a missing value.
+	if level is None or level == "":
+		level = SANTU_DENSITY_DEFAULT_LEVEL
+	return max(SANTU_DENSITY_MIN_LEVEL, min(SANTU_DENSITY_MAX_LEVEL, cint(level)))
 
 
 @frappe.whitelist()
@@ -7452,8 +7465,7 @@ def get_density_levels():
 		"max": SANTU_DENSITY_MAX_LEVEL,
 		"default": SANTU_DENSITY_DEFAULT_LEVEL,
 		"levels": [
-			{"level": lvl, "percent": pct, "label": label}
-			for lvl, (pct, label) in sorted(SANTU_DENSITY_LEVELS.items())
+			{"level": lvl, "label": label} for lvl, label in sorted(SANTU_DENSITY_LEVELS.items())
 		],
 	}
 
@@ -7465,21 +7477,19 @@ def get_printer_density(printer_name: str):
 	for row in settings.get("printer_densities") or []:
 		if row.printer_name == printer_name:
 			level = _clamp_density_level(row.density_level)
-			pct, label = SANTU_DENSITY_LEVELS[level]
+			label = SANTU_DENSITY_LEVELS[level]
 			return {
 				"printer_name": printer_name,
 				"level": level,
-				"percent": pct,
-				"label": label,
+								"label": label,
 				"last_applied_on": row.last_applied_on,
 				"configured": True,
 			}
-	pct, label = SANTU_DENSITY_LEVELS[SANTU_DENSITY_DEFAULT_LEVEL]
+	label = SANTU_DENSITY_LEVELS[SANTU_DENSITY_DEFAULT_LEVEL]
 	return {
 		"printer_name": printer_name,
 		"level": SANTU_DENSITY_DEFAULT_LEVEL,
-		"percent": pct,
-		"label": label,
+				"label": label,
 		"last_applied_on": None,
 		"configured": False,
 	}
@@ -7530,11 +7540,10 @@ def get_density_escpos(level):
 	enter = "1D2845030001494E"
 	set_density = f"1D284504000505{n_low:02X}{n_high:02X}"
 	leave = "1D28450400024F5554"
-	pct, label = SANTU_DENSITY_LEVELS[level]
+	label = SANTU_DENSITY_LEVELS[level]
 	return {
 		"level": level,
-		"percent": pct,
-		"label": label,
+				"label": label,
 		# Sent as three separate raw chunks so the printer's own
 		# "mode change notice" after Function 1 has a moment to come back
 		# before the value is written.
@@ -7621,17 +7630,21 @@ def get_printer_diagnostics(printer_name: str = None):
 	# Until one of those is resolved there is no honest way to change
 	# density from inside the app, and the screen says so rather than
 	# offering a control that does nothing.
-	# The TM-T82X-II simply does not implement print density. Verified against
-	# the hardware over a direct USB channel: GS ( E Function 5 writes DO take
-	# on this printer -- print speed was moved 13 -> 10 and back, and read
-	# back correctly each time via Function 6 -- but customized value a=5
-	# (print density) reads 0 and refuses every value written to it. The
-	# levels 1-7 documented in the TM-T82II guide belong to a different model.
-	raw_blocked_reason = _(
-		"This printer model (TM-T82X-II) has no adjustable print density. Verified "
-		"directly against the hardware: other printer settings can be changed, but "
-		"density stays fixed at the factory value."
-	)
+	# Density is written over a direct USB connection, not through CUPS.
+	# macOS removed raw queues, so anything raw sent to a driver queue is
+	# handed to Epson's raster filter and comes out blank -- which is what
+	# every earlier attempt did. Reachability is therefore "can we open the
+	# printer's USB endpoint", not "is there a queue".
+	raw_blocked_reason = None
+	try:
+		import usb.core
+
+		if usb.core.find(idVendor=SANTU_EPSON_USB_VENDOR) is None:
+			raw_blocked_reason = _("The printer is not connected over USB.")
+	except ImportError:
+		raw_blocked_reason = _(
+			"USB support is not installed on this computer, so density cannot be changed from here."
+		)
 	try:
 		probe = subprocess.run(
 			["lpadmin", "-p", "santu_raw_probe", "-m", "raw", "-v", "file:///dev/null"],
@@ -7652,13 +7665,15 @@ def get_printer_diagnostics(printer_name: str = None):
 		# The bill itself is a rendered PDF sent as a pixel job; density rides
 		# a separate raw ESC/POS job on the same QZ Tray connection.
 		"printing_method": "QZ Tray → CUPS driver (PDF pixel job)",
-		"density_method": "QZ Tray raw ESC/POS (GS ( E, Function 5)",
+		"density_method": "Direct USB, ESC/POS (GS ( E, Function 5)",
 		"driver_options": driver_options,
 		"density_in_driver": density_in_driver,
 		"density_supported": density_supported,
 		"density_support_note": raw_blocked_reason
 		or _(
-			"The Epson driver exposes no darkness setting, so density is written straight to the printer over ESC/POS instead."
+			"The Epson driver exposes no darkness setting, and macOS no longer allows raw print "
+			"queues, so density is written straight to the printer over USB and read back to "
+			"confirm it took."
 		),
 		"queues_found": queues,
 		"density": density,
@@ -7688,7 +7703,7 @@ def get_density_test_receipt(level=None, printer_name: str = None):
 			else SANTU_DENSITY_DEFAULT_LEVEL
 		)
 	level = _clamp_density_level(level)
-	pct, label = SANTU_DENSITY_LEVELS[level]
+	label = SANTU_DENSITY_LEVELS[level]
 
 	ESC_INIT = b"\x1b@"
 	CENTER = b"\x1b\x61\x01"
@@ -7713,7 +7728,7 @@ def get_density_test_receipt(level=None, printer_name: str = None):
 	# rather than an image so the driver's halftoning cannot muddy it.
 	out += b"\xdb" * 24 + NL
 	out += rule + NL
-	out += f"Level {level} of 7  ({pct}%)".encode("ascii", "replace") + NL
+	out += f"Density {level} of 3".encode("ascii", "replace") + NL
 	out += label.encode("ascii", "replace") + NL
 	out += rule + NL
 	# Feed clear of the tear bar without cutting.
@@ -7721,7 +7736,149 @@ def get_density_test_receipt(level=None, printer_name: str = None):
 
 	return {
 		"level": level,
-		"percent": pct,
-		"label": label,
+				"label": label,
 		"data": out.hex().upper(),
 	}
+
+
+# --- Direct USB transport ---------------------------------------------------
+# macOS removed raw CUPS queues, so ESC/POS cannot reach the printer through
+# any driver queue -- every raw job is handed to Epson's raster filter and
+# comes out as blank paper. Talking to the printer's USB endpoint directly is
+# the only route left, and it is the one that works: verified end to end,
+# including reading settings back off the printer.
+SANTU_EPSON_USB_VENDOR = 0x04B8
+SANTU_USB_OUT_ENDPOINT = 0x01
+SANTU_USB_IN_ENDPOINT = 0x82
+
+
+def _usb_printer(retries: int = 10):
+	"""Claim the Epson printer's USB interface, waiting out re-enumeration.
+
+	GS ( E Function 2 performs a software reset, which drops the device off
+	the bus for a few seconds, so anything that runs after a settings change
+	has to wait for it to come back rather than fail.
+	"""
+	import time
+
+	import usb.core
+	import usb.util
+
+	for _ in range(retries):
+		dev = usb.core.find(idVendor=SANTU_EPSON_USB_VENDOR)
+		if dev is not None:
+			try:
+				dev.set_configuration()
+			except Exception:
+				pass
+			intf = dev.get_active_configuration()[(0, 0)]
+			try:
+				usb.util.claim_interface(dev, intf.bInterfaceNumber)
+			except Exception:
+				pass
+			return dev, intf
+		time.sleep(1)
+	frappe.throw(_("The printer is not connected."))
+
+
+def _usb_send(payload: bytes):
+	import usb.util
+
+	dev, intf = _usb_printer()
+	try:
+		dev.write(SANTU_USB_OUT_ENDPOINT, payload, timeout=8000)
+	finally:
+		try:
+			usb.util.release_interface(dev, intf.bInterfaceNumber)
+			usb.util.dispose_resources(dev)
+		except Exception:
+			pass
+
+
+@frappe.whitelist()
+def apply_printer_density(printer_name: str, level):
+	"""Write the density into the printer, then read it back to prove it took.
+
+	Reading back matters: this printer accepts out-of-range values silently.
+	Writing 6 left it on its previous setting and said nothing, which is
+	exactly how a density control ends up looking like it works while doing
+	nothing at all.
+	"""
+	import time
+
+	import usb.util
+
+	level = _clamp_density_level(level)
+	enter = bytes([0x1D, 0x28, 0x45, 0x03, 0x00, 0x01, 0x49, 0x4E])
+	write = bytes([0x1D, 0x28, 0x45, 0x04, 0x00, 0x05, 0x05, level, 0x00])
+	leave = bytes([0x1D, 0x28, 0x45, 0x04, 0x00, 0x02, 0x4F, 0x55, 0x54])
+	query = bytes([0x1D, 0x28, 0x45, 0x02, 0x00, 0x06, 0x05])
+
+	def drain(dev):
+		out = b""
+		for _ in range(12):
+			try:
+				out += bytes(dev.read(SANTU_USB_IN_ENDPOINT, 128, timeout=500))
+			except Exception:
+				pass
+			if out:
+				break
+			time.sleep(0.25)
+		return out
+
+	dev, intf = _usb_printer()
+	try:
+		dev.write(SANTU_USB_OUT_ENDPOINT, enter, timeout=5000)
+		drain(dev)
+		time.sleep(0.5)
+		dev.write(SANTU_USB_OUT_ENDPOINT, write, timeout=5000)
+		time.sleep(0.8)
+		# Function 2 is what commits the value -- and resets the printer.
+		dev.write(SANTU_USB_OUT_ENDPOINT, leave, timeout=5000)
+	finally:
+		try:
+			usb.util.dispose_resources(dev)
+		except Exception:
+			pass
+	time.sleep(8)
+
+	dev, intf = _usb_printer()
+	try:
+		dev.write(SANTU_USB_OUT_ENDPOINT, enter, timeout=5000)
+		drain(dev)
+		time.sleep(0.5)
+		dev.write(SANTU_USB_OUT_ENDPOINT, query, timeout=5000)
+		time.sleep(0.4)
+		reply = drain(dev)
+		dev.write(SANTU_USB_OUT_ENDPOINT, leave, timeout=5000)
+	finally:
+		try:
+			usb.util.dispose_resources(dev)
+		except Exception:
+			pass
+
+	# Reply looks like 37 27 35 1F <digits> 00 -- header, id, "5", separator,
+	# the value as ASCII, NUL.
+	readback = None
+	if reply:
+		try:
+			readback = cint(reply.decode("latin-1").split("\x1f")[-1].replace("\x00", "").strip())
+		except Exception:
+			readback = None
+
+	if readback is None or readback != level:
+		frappe.throw(
+			_("The printer did not accept density {0} — it is still on {1}.").format(
+				level, readback if readback is not None else _("its previous setting")
+			)
+		)
+
+	set_printer_density(printer_name, level, mark_applied=1)
+	return {"level": level, "label": SANTU_DENSITY_LEVELS[level], "verified": True}
+
+
+@frappe.whitelist()
+def print_density_test(printer_name: str = None, level=None):
+	receipt = get_density_test_receipt(level=level, printer_name=printer_name)
+	_usb_send(bytes.fromhex(receipt["data"]))
+	return receipt

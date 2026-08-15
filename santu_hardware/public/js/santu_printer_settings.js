@@ -1,4 +1,4 @@
-/* global frappe, santu_qz_list_printers, santu_qz_apply_print_density, santu_qz_print_density_test */
+/* global frappe, santu_qz_list_printers */
 
 // Printer Settings. Until now this did not exist — the setup wizard said
 // "printer settings live in Settings › Printer Settings", which was a place
@@ -99,7 +99,7 @@
 										<b>${__("Density cannot be changed from here on this computer.")}</b>
 										<p>${frappe.utils.escape_html(diag.density_support_note || "")}</p>
 										<p>${__(
-											"The printer's own density is unchanged and still at its factory setting. It can be set with Epson's TM Utility, or from the printer's panel, and it stays in the printer once set."
+											"Plug the printer in over USB and reopen this screen."
 										)}</p>
 									</div>`
 						}
@@ -170,9 +170,12 @@
 				try {
 					// Prints at whatever the printer is currently set to — the
 					// point is to look at the paper, not to trust the screen.
-					const r = await santu_qz_print_density_test(selected, cint($slider.val()));
+					const r = await frappe.xcall(`${API}.print_density_test`, {
+						printer_name: selected,
+						level: cint($slider.val()),
+					});
 					frappe.show_alert({
-						message: __("Test printed at level {0} ({1}%)", [r.level, r.percent]),
+						message: __("Test printed at density {0} — {1}", [r.level, r.label]),
 						indicator: "blue",
 					});
 				} catch (e) {
