@@ -17,16 +17,16 @@ BRIDGE_PORT = 18765
 BRIDGE_URL = f"http://127.0.0.1:{BRIDGE_PORT}"
 
 # ---------------------------------------------------------------------------
-# TEST MODE — every outgoing WhatsApp goes to this one number, never to the
-# real customer/supplier. Set up during testing (2026-08-16) so bills and
-# reminders cannot reach actual parties by accident.
+# Test-mode redirect (was used 2026-08-16 while WhatsApp sending was being
+# built and verified, so bills/reminders couldn't reach real parties by
+# accident). Turned off 2026-08-16 on direct request — messages now go to
+# each party's own WhatsApp number.
 #
-# To go live and message real parties: set TEST_REDIRECT_ENABLED = False.
-# Nothing else needs changing. While it is True, TEST_REDIRECT_NUMBER is the
-# ONLY number any message can reach, and _resolve_send_phone below is the one
-# gate every send path passes through.
+# To go back to sending everything to one test number: set
+# TEST_REDIRECT_ENABLED = True. _resolve_send_phone below is the one gate
+# every send path passes through, so nothing else needs changing either way.
 # ---------------------------------------------------------------------------
-TEST_REDIRECT_ENABLED = True
+TEST_REDIRECT_ENABLED = False
 TEST_REDIRECT_NUMBER = "917759069422"  # +91 77590 69422
 
 # Back-compat alias for anything importing the old name.

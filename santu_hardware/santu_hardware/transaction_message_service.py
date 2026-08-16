@@ -30,105 +30,117 @@ TRANSACTION_TYPES = [
 ]
 
 DEFAULT_TEMPLATES = {
-	"Sales Transaction": """Hello {{ customer_name }},
+	"Sales Transaction": """🧾 *{{ company_name }}*
 
-Thank you for your purchase from Santu Hardware.
+Hi {{ customer_name }},
 
-Sale Invoice: {{ invoice_no }}
-Invoice Amount: ₹{{ grand_total }}
-Received: ₹{{ paid_amount }}
-Balance: ₹{{ outstanding_amount }}
+Thank you for shopping with us!
 
-{{ invoice_link }}
+*Bill No:* {{ invoice_no }}
+*Date:* {{ posting_date }}
+*Amount:* ₹{{ grand_total }}
+{{ payment_status_block }}{{ invoice_link_line }}{{ footer_contact_line }}
 
-Thank you,
-Santu Hardware""",
-	"Purchase Transaction": """Hello {{ supplier_name }},
+We appreciate your business 🙏""",
+	"Purchase Transaction": """🧾 *{{ company_name }}*
 
-Purchase recorded at Santu Hardware.
+Hi {{ supplier_name }},
 
-Purchase Invoice: {{ invoice_no }}
-Amount: ₹{{ grand_total }}
-Date: {{ posting_date }}
+We've recorded a purchase from you.
 
-Thank you,
-Santu Hardware""",
-	"Sales Return": """Hello {{ customer_name }},
+*Bill No:* {{ invoice_no }}
+*Date:* {{ posting_date }}
+*Amount:* ₹{{ grand_total }}{{ footer_contact_line }}
 
-Your return has been processed at Santu Hardware.
+Thank you!""",
+	"Sales Return": """🧾 *{{ company_name }}*
 
-Return Invoice: {{ invoice_no }}
-Amount: ₹{{ grand_total }}
+Hi {{ customer_name }},
 
-Thank you,
-Santu Hardware""",
-	"Purchase Return": """Hello {{ supplier_name }},
+Your return has been processed.
 
-Purchase return recorded.
+*Credit Note:* {{ invoice_no }}
+*Date:* {{ posting_date }}
+*Amount:* ₹{{ grand_total }}{{ footer_contact_line }}
 
-Return Invoice: {{ invoice_no }}
-Amount: ₹{{ grand_total }}
+Thank you!""",
+	"Purchase Return": """🧾 *{{ company_name }}*
 
-Santu Hardware""",
-	"Payment In": """Hello {{ party_name }},
+Hi {{ supplier_name }},
 
-We have received your payment of ₹{{ paid_amount }}.
+A purchase return has been recorded.
 
-Reference: {{ invoice_no }}
-Remaining Balance: ₹{{ outstanding_amount }}
+*Debit Note:* {{ invoice_no }}
+*Date:* {{ posting_date }}
+*Amount:* ₹{{ grand_total }}{{ footer_contact_line }}""",
+	"Payment In": """✅ *{{ company_name }}*
 
-Thank you,
-Santu Hardware""",
-	"Payment Out": """Hello {{ party_name }},
+Hi {{ party_name }},
 
-Payment of ₹{{ paid_amount }} has been processed.
+We've received your payment. Thank you!
 
-Reference: {{ invoice_no }}
+*Amount Received:* ₹{{ paid_amount }}
+*Reference:* {{ invoice_no }}
+*Date:* {{ posting_date }}{{ balance_note_line }}{{ footer_contact_line }}""",
+	"Payment Out": """*{{ company_name }}*
 
-Santu Hardware""",
-	"Sales Order": """Hello {{ customer_name }},
+Hi {{ party_name }},
 
-Your Sales Order {{ invoice_no }} has been created.
+A payment of ₹{{ paid_amount }} has been processed.
 
-Amount: ₹{{ grand_total }}
+*Reference:* {{ invoice_no }}
+*Date:* {{ posting_date }}{{ footer_contact_line }}""",
+	"Sales Order": """🧾 *{{ company_name }}*
 
-Santu Hardware""",
-	"Purchase Order": """Hello {{ supplier_name }},
+Hi {{ customer_name }},
 
-Purchase Order {{ invoice_no }} created.
+Your Sales Order has been created.
 
-Amount: ₹{{ grand_total }}
+*Order No:* {{ invoice_no }}
+*Date:* {{ posting_date }}
+*Amount:* ₹{{ grand_total }}{{ invoice_link_line }}{{ footer_contact_line }}
 
-Santu Hardware""",
-	"Estimate / Quotation": """Hello {{ customer_name }},
+Thank you!""",
+	"Purchase Order": """🧾 *{{ company_name }}*
 
-Here is your estimate from Santu Hardware.
+Hi {{ supplier_name }},
 
-Estimate: {{ invoice_no }}
-Amount: ₹{{ grand_total }}
+A Purchase Order has been created.
 
-{{ invoice_link }}
+*Order No:* {{ invoice_no }}
+*Date:* {{ posting_date }}
+*Amount:* ₹{{ grand_total }}{{ footer_contact_line }}""",
+	"Estimate / Quotation": """🧾 *{{ company_name }}*
 
-Thank you,
-Santu Hardware""",
-	"Proforma Invoice": """Hello {{ customer_name }},
+Hi {{ customer_name }},
 
-Proforma Invoice {{ invoice_no }}
-Amount: ₹{{ grand_total }}
+Here's your estimate.
 
-{{ invoice_link }}
+*Estimate No:* {{ invoice_no }}
+*Date:* {{ posting_date }}
+*Amount:* ₹{{ grand_total }}{{ invoice_link_line }}{{ footer_contact_line }}
 
-Santu Hardware""",
-	"Delivery Challan": """Hello {{ customer_name }},
+Let us know if you'd like to go ahead!""",
+	"Proforma Invoice": """🧾 *{{ company_name }}*
 
-Delivery Challan {{ invoice_no }} has been generated.
+Hi {{ customer_name }},
 
-Santu Hardware""",
-	"Cancelled Invoice": """Hello {{ customer_name }},
+*Proforma Invoice:* {{ invoice_no }}
+*Date:* {{ posting_date }}
+*Amount:* ₹{{ grand_total }}{{ invoice_link_line }}{{ footer_contact_line }}""",
+	"Delivery Challan": """🚚 *{{ company_name }}*
 
-Invoice {{ invoice_no }} has been cancelled.
+Hi {{ customer_name }},
 
-Santu Hardware""",
+Your goods are on the way.
+
+*Delivery Challan:* {{ invoice_no }}
+*Date:* {{ posting_date }}{{ footer_contact_line }}""",
+	"Cancelled Invoice": """*{{ company_name }}*
+
+Hi {{ customer_name }},
+
+Invoice {{ invoice_no }} dated {{ posting_date }} has been cancelled.{{ footer_contact_line }}""",
 }
 
 DOCTYPE_TRANSACTION_MAP = [
@@ -313,8 +325,29 @@ def build_message_context(doc, transaction_type: str) -> dict:
 			payment_link = ""  # caller may append note
 
 	current_balance = ""
+	current_balance_amount = 0
 	if msg_settings.include_party_balance and party_type and party_name:
-		current_balance = f"{get_party_outstanding(party_type, party_name):,.2f}"
+		current_balance_amount = get_party_outstanding(party_type, party_name)
+		current_balance = f"{current_balance_amount:,.2f}"
+
+	# The template engine is plain {{ var }} substitution with no {% if %} —
+	# so "paid in full" vs "still owes money" is decided here, once, rather
+	# than every template showing a "Balance: ₹0.00" line on a fully paid
+	# bill (confusing on a receipt that just said "thank you").
+	if outstanding > 0:
+		payment_status_block = f"Paid: ₹{paid_amount:,.2f}\nBalance Due: ₹{outstanding:,.2f}"
+	else:
+		payment_status_block = "Status: Paid in full ✅"
+
+	invoice_link_line = f"\nView bill: {invoice_link}" if invoice_link else ""
+	payment_link_line = f"\nPay online: {payment_link}" if payment_link else ""
+	footer_contact_line = f"\nQuestions? Call {company_doc.phone_no}." if company_doc and company_doc.phone_no else ""
+	balance_note_line = f"\nCurrent Balance: ₹{current_balance}" if current_balance_amount > 0 else ""
+
+	try:
+		posting_date_display = frappe.utils.formatdate(getattr(doc, "posting_date", None) or today(), "dd-MMM-yyyy")
+	except Exception:
+		posting_date_display = str(getattr(doc, "posting_date", today()))
 
 	return {
 		"customer_name": customer_name,
@@ -322,13 +355,18 @@ def build_message_context(doc, transaction_type: str) -> dict:
 		"party_name": customer_name or supplier_name or party_name or "",
 		"invoice_no": doc.name,
 		"transaction_type": transaction_type,
-		"posting_date": str(getattr(doc, "posting_date", today())),
+		"posting_date": posting_date_display,
 		"grand_total": f"{grand_total:,.2f}",
 		"paid_amount": f"{paid_amount:,.2f}",
 		"outstanding_amount": f"{outstanding:,.2f}",
 		"current_balance": current_balance,
 		"payment_link": payment_link,
 		"invoice_link": invoice_link,
+		"payment_status_block": payment_status_block,
+		"invoice_link_line": invoice_link_line,
+		"payment_link_line": payment_link_line,
+		"footer_contact_line": footer_contact_line,
+		"balance_note_line": balance_note_line,
 		"company_name": company_doc.company_name if company_doc else "Santu Hardware",
 		"company_phone": company_doc.phone_no if company_doc else "",
 		"company_address": (company_doc.company_description or "") if company_doc else "",
