@@ -189,6 +189,7 @@ after_migrate = [
 	"santu_hardware.santu_hardware.api.ensure_loyalty_setup",
 	"santu_hardware.setup.install.enforce_unique_supplier_bill_numbers",
 	"santu_hardware.santu_hardware.api.migrate_privacy_pin",
+	"santu_hardware.santu_hardware.api.backfill_party_villages",
 ]
 
 # Uninstallation

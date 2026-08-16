@@ -1328,6 +1328,13 @@ def _create_customer_addresses(customer, customer_name, data):
 		address.append("links", {"link_doctype": "Customer", "link_name": customer.name})
 		address.insert(ignore_permissions=True)
 		customer.customer_primary_address = address.name
+		# Keep santu_village in step with the address. The counter screens read
+		# the village off the Customer, not the Address, so a party created
+		# through this flow used to show "No village on file" forever even with
+		# a perfectly good address on record — the same fact stored in two
+		# places, only one of which was ever written.
+		if not (customer.get("santu_village") or "").strip():
+			customer.santu_village = address.city
 		customer.save(ignore_permissions=True)
 
 	if (data.get("shipping_address") or "").strip():
@@ -1385,13 +1392,18 @@ def search_customers_by_name(query: str):
 	when the phone field is left blank (only phone dedupes today)."""
 	if not query or len(query) < 2:
 		return []
-	return frappe.get_all(
+	rows = frappe.get_all(
 		"Customer",
 		filters={"customer_name": ["like", f"%{query}%"]},
 		fields=["name", "customer_name", "mobile_no", "santu_village", "customer_details"],
 		order_by="modified desc",
 		limit_page_length=8,
 	)
+	# Same resolution the sale screen uses, so the dropdown and the party card
+	# can never disagree about where someone is from.
+	for row in rows:
+		row["santu_village"] = party_village("Customer", row["name"], row.get("santu_village"))
+	return rows
 
 
 @frappe.whitelist()
@@ -3390,6 +3402,34 @@ def get_sale_invoice_init():
 	}
 
 
+def party_village(party_type: str, party_name: str, stored_village: str = None) -> str:
+	"""Where this party is from, however it happens to be recorded.
+
+	The village lives on the Customer as `santu_village`, but a party created
+	through the address flow only ever got an Address row — so the counter
+	screens, which read the Customer field, showed "No village on file" next
+	to a party with a perfectly good address. Rather than make every screen
+	remember both places, resolve it here: the stored village first, then the
+	linked address's city.
+	"""
+	stored = (stored_village or "").strip()
+	if stored:
+		return stored
+	if not party_type or not party_name:
+		return ""
+
+	city = frappe.db.sql(
+		"""SELECT a.city FROM `tabAddress` a
+		INNER JOIN `tabDynamic Link` dl ON dl.parent = a.name
+		WHERE dl.parenttype = 'Address' AND dl.link_doctype = %s AND dl.link_name = %s
+		  AND IFNULL(a.city, '') != ''
+		ORDER BY a.address_type = 'Billing' DESC, a.modified DESC
+		LIMIT 1""",
+		(party_type, party_name),
+	)
+	return (city[0][0] if city else "") or ""
+
+
 @frappe.whitelist()
 def get_customer_details_for_sale(customer: str):
 	if not customer or not frappe.db.exists("Customer", customer):
@@ -3436,7 +3476,7 @@ def get_customer_details_for_sale(customer: str):
 		"name": cust.name,
 		"customer_name": cust.customer_name,
 		"mobile_no": cust.mobile_no,
-		"village": cust.get("santu_village"),
+		"village": party_village("Customer", cust.name, cust.get("santu_village")),
 		"address": address_line,
 		"address_line1": address_line1,
 		"outstanding_amount": outstanding,
@@ -8024,3 +8064,29 @@ def list_printers():
 	if current and current not in names:
 		names.insert(0, current)
 	return names
+
+
+def backfill_party_villages():
+	"""Copy each party's address city into santu_village where it's blank.
+
+	The village and the address were two records of the same fact and only
+	one was ever written by the newer party-creation flow, so parties with a
+	real address still read "No village on file". Reads now fall back to the
+	address, but storing it keeps filtering and reporting (which query the
+	column directly) honest too. Only fills blanks — never overwrites a
+	village someone typed.
+	"""
+	filled = 0
+	for party_type in ("Customer", "Supplier"):
+		field = "santu_village"
+		if not frappe.db.has_column(party_type, field):
+			continue
+		for name in frappe.get_all(
+			party_type, filters={field: ["in", [None, ""]]}, pluck="name"
+		):
+			city = party_village(party_type, name, None)
+			if city:
+				frappe.db.set_value(party_type, name, field, city, update_modified=False)
+				filled += 1
+	frappe.db.commit()
+	return filled

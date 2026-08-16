@@ -418,7 +418,7 @@ const santu_sale_pos = {
 					</div>
 				</div>
 				<div class="santu-si2-actionbar-right">
-					<button type="button" class="santu-si2-btn" data-action="share">Share ▾</button>
+					<button type="button" class="santu-si2-btn" data-action="share">Share</button>
 					<button type="button" class="santu-si2-btn" data-action="save_print">Save &amp; Print</button>
 					<button type="button" class="santu-si2-btn santu-si2-btn-primary" data-action="save">Save <span class="santu-si2-kbd">Ctrl+S</span></button>
 				</div>
