@@ -38,7 +38,23 @@ def _bridge_dir() -> Path:
 
 
 def _site_dir() -> Path:
-	path = Path(frappe.get_site_path("private", "files", "santu_smart_connect"))
+	# .resolve() is not optional here: frappe.get_site_path() returns a path
+	# relative to the CURRENT PROCESS's cwd whenever that cwd already sits
+	# inside sites/ (true for bench execute, and for the site path Frappe's
+	# own workers run from) -- it only looks absolute when the caller's cwd
+	# happens to be the bench root. That relative string is what gets put in
+	# SANTU_WA_AUTH_DIR below and handed to the bridge's Node child process,
+	# which is spawned with cwd=whatsapp_bridge/. Node then resolves the
+	# *same* relative text against *its own* cwd, not this process's --
+	# producing whatsapp_bridge/site1.local/private/files/... instead of the
+	# real site path. That stray, cwd-dependent folder is where a linked
+	# WhatsApp session actually ended up living (found and recovered
+	# 2026-08-16) while every status/auth check elsewhere kept reading the
+	# real, empty one -- which is what made the link look perpetually
+	# freshly-logged-out. Resolving to an absolute path here, once, in the
+	# parent process, makes the path immune to whatever cwd the child ends
+	# up with.
+	path = Path(frappe.get_site_path("private", "files", "santu_smart_connect")).resolve()
 	path.mkdir(parents=True, exist_ok=True)
 	(path / "auth").mkdir(exist_ok=True)
 	return path
@@ -193,23 +209,46 @@ def _tail_log(n: int = 40) -> str:
 
 
 def start_bridge(fresh: bool = False) -> dict:
+	"""(Re)start the WhatsApp bridge process.
+
+	Nothing supervises this Node process across a bench restart, a Frappe
+	worker recycle, or the Mac itself restarting, so `status` is almost
+	never literally "CONNECTED" the instant something needs to send a
+	message right after one of those. That used to be treated the same as
+	"the user asked to log out": the saved session (auth/creds.json) got
+	deleted here on every such restart, forcing a fresh QR scan and
+	invalidating the previous linked device -- which is what "WhatsApp
+	hamesha logout ho jaata hai" actually was. A restarted process reusing
+	its existing auth files resumes the same linked session on its own
+	(that is the entire point of `useMultiFileAuthState` persisting them);
+	there is nothing to regenerate.
+
+	The saved session is discarded ONLY when the caller explicitly asks
+	for `fresh=True` (a real "log out and link a new device" action, e.g.
+	from a "Generate New QR" button) or when WhatsApp itself reports the
+	device logged out (handled inside bridge.js, not here).
+	"""
 	st = read_bridge_status(public=False)
 	if not fresh and (st.get("state") or "").upper() == "CONNECTED" and _alive():
 		return _public_status(st)
 
-	if fresh or (st.get("state") or "").upper() != "CONNECTED":
-		stop_bridge(logout=fresh)
+	stop_bridge(logout=fresh)
+
+	if fresh:
 		auth = _site_dir() / "auth"
 		shutil.rmtree(auth, ignore_errors=True)
 		auth.mkdir(parents=True, exist_ok=True)
-		try:
-			_status_file().unlink()
-		except Exception:
-			pass
-		try:
-			(_site_dir() / "bridge.log").write_text("")
-		except Exception:
-			pass
+
+	# Only the current process's own transient status/log gets reset here —
+	# never the saved session above.
+	try:
+		_status_file().unlink()
+	except Exception:
+		pass
+	try:
+		(_site_dir() / "bridge.log").write_text("")
+	except Exception:
+		pass
 
 	if _alive() or _port_pids(BRIDGE_PORT):
 		stop_bridge(logout=False)

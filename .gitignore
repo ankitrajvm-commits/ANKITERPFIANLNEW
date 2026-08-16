@@ -5,3 +5,12 @@
 tags
 node_modules
 __pycache__
+
+# WhatsApp linked-device session (creds.json etc). Belongs only in the real
+# site's private/files dir (santu_smart_connect), written there by
+# smart_connect_bridge.py -- but a wrong cwd/env during manual testing has
+# produced a stray copy nested inside this app's own source tree before
+# (2026-08-16), which is both junk and a way to leak session keys into git.
+# This blocks that class of mistake from ever being committed.
+santu_hardware/whatsapp_bridge/site1.local/
+santu_hardware/whatsapp_bridge/*/private/
