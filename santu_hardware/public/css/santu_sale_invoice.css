@@ -734,6 +734,21 @@ body[data-route="santu-sale-invoice"] .page-content {
 	color: #111827;
 }
 
+.santu-si2-payment-summary-section {
+	border-top: 2px solid #e5e7eb;
+	margin-top: 12px;
+	padding-top: 12px;
+}
+
+.santu-si2-payment-summary-title {
+	font-size: 13px;
+	font-weight: 700;
+	color: #6b7280;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	margin-bottom: 8px;
+}
+
 /* ---------- Action bar ---------- */
 .santu-si2-actionbar {
 	display: flex;

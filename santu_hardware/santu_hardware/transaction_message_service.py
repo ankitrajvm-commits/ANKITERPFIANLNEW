@@ -38,8 +38,12 @@ Thank you for shopping with us!
 
 *Bill No:* {{ invoice_no }}
 *Date:* {{ posting_date }}
-*Amount:* ₹{{ grand_total }}
-{{ payment_status_block }}{{ invoice_link_line }}{{ footer_contact_line }}
+
+💰 *Payment Breakdown:*
+*Total Bill:* ₹{{ grand_total }}
+*Amount Paid:* ₹{{ paid_amount }}
+*Balance Due:* ₹{{ outstanding_amount }}
+{{ invoice_link_line }}{{ footer_contact_line }}
 
 We appreciate your business 🙏""",
 	"Purchase Transaction": """🧾 *{{ company_name }}*

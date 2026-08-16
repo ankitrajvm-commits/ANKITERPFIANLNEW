@@ -255,6 +255,7 @@ doc_events = {
 		"before_validate": "santu_hardware.santu_hardware.api.strip_gst_line_items",
 		"validate": "santu_hardware.santu_hardware.api.strip_gst_line_items",
 		"before_submit": "santu_hardware.santu_hardware.api.apply_billing_defaults",
+		"onload": "santu_hardware.santu_hardware.api.update_payment_summary_fields",
 		"on_submit": [
 			"santu_hardware.santu_hardware.api.save_invoice_pdf_to_dated_folder",
 			"santu_hardware.santu_hardware.transaction_message_service.on_transaction_submit",

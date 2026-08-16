@@ -36,7 +36,12 @@ const SANTU_SI2_STORAGE_KEY = "santu_sale_pos_tabs_v1";
 const SANTU_SI2_DEFAULT_TERMS =
 	"The goods returned can only be exchanged at store only. Call before making any exchange or return confirmation.";
 
-const santu_sale_pos = {
+// Explicitly on `window`, not a top-level `const`: a classic script's
+// top-level const lives in the global lexical environment, not on window,
+// so `window.santu_sale_pos` read undefined everywhere it was checked —
+// including on_page_show above, which meant returning to this screen after
+// it was already open never re-rendered or applied a prefill.
+window.santu_sale_pos = {
 	init(page) {
 		this.page = page;
 		this.init_data = null;
@@ -284,17 +289,6 @@ const santu_sale_pos = {
 					</label>
 					<span class="santu-si2-mode-label${tab.payment_mode === "cash" ? " is-active" : ""}" data-mode="cash">Cash</span>
 				</div>
-				${
-					tab.payment_mode === "cash"
-						? `<select class="santu-si2-mop">${(this.init_data.payment_modes || [])
-								.map((m) => `<option value="${frappe.utils.escape_html(m.name)}" ${m.name === tab.mode_of_payment ? "selected" : ""}>${frappe.utils.escape_html(m.name)}</option>`)
-								.join("")}</select>
-							<label class="santu-si2-paid-now-label">Paid Now
-								<input type="number" class="santu-si2-paid-now" min="0" step="any" placeholder="Full amount" value="${tab.paid_amount != null ? tab.paid_amount : ""}">
-							</label>
-							<span class="santu-si2-remaining-note" style="display:none;"></span>`
-						: ""
-				}
 			</div>
 
 			<div class="santu-si2-toprow">
@@ -395,6 +389,38 @@ const santu_sale_pos = {
 					<div class="santu-si2-summary-row santu-si2-summary-total">
 						<span>Total</span>
 						<span class="santu-si2-figures santu-si2-sum-total">₹ 0</span>
+					</div>
+					<div class="santu-si2-payment-summary-title">Payment Summary</div>
+
+<div class="santu-si2-summary-row">
+    <span>Total This Amount</span>
+    <span class="santu-si2-figures santu-si2-payment-total">₹ 0</span>
+</div>
+
+<div class="santu-si2-summary-row">
+	<span>Mode of Payment</span>
+	<select class="santu-si2-mop">${(this.init_data.payment_modes || [])
+		.map((m) => `<option value="${frappe.utils.escape_html(m.name)}" ${m.name === tab.mode_of_payment ? "selected" : ""}>${frappe.utils.escape_html(m.name)}</option>`)
+		.join("")}</select>
+</div>
+
+<div class="santu-si2-summary-row santu-si2-received-row">
+    <span>Received Amount</span>
+    <input
+        type="number"
+        class="santu-si2-received-input"
+        min="0"
+        step="0.01"
+        value="${tab.paid_amount != null ? tab.paid_amount : (tab.payment_mode === "cash" ? "" : "0")}"
+        placeholder="${tab.payment_mode === "cash" ? "Full amount" : "0"}"
+    >
+</div>
+<div class="santu-si2-remaining-note" style="display:none;"></div>
+
+<div class="santu-si2-summary-row">
+    <span>Baaki Amount</span>
+    <span class="santu-si2-figures santu-si2-payment-left">₹ 0</span>
+</div>
 					</div>
 				</div>
 			</div>
@@ -855,6 +881,20 @@ const santu_sale_pos = {
 		row._net_amount = after_disc;
 	},
 
+	// What was actually received, whatever the Cash/Credit toggle happens to
+	// say — used by totals, save-validation and the save payload alike, so
+	// the three can't drift out of sync the way they used to. A brand new
+	// tab (paid_amount still null) falls back to the toggle's own default:
+	// Cash implies "the whole bill, unless typed otherwise", Credit implies
+	// "nothing yet". Once the counter types an amount — in EITHER mode —
+	// that typed figure is what counts. This is exactly the "₹500 bill,
+	// ₹200 handed over, ₹300 to the khata" case: nothing about the toggle
+	// needs to change for a partial payment to register.
+	_effective_paid_amount(tab) {
+		if (tab.paid_amount != null) return Math.max(Number(tab.paid_amount) || 0, 0);
+		return tab.payment_mode === "cash" ? tab._computed_total || 0 : 0;
+	},
+
 	_recalc_totals() {
 		const tab = this._active_tab();
 		let qty_total = 0;
@@ -884,19 +924,31 @@ const santu_sale_pos = {
 				.text("₹ " + santu_sale_invoice.utils.format_money(row.amount).replace("₹ ", ""));
 		});
 
-		if (tab.payment_mode === "cash") {
-			const $paidInput = this.$root.find(".santu-si2-paid-now");
-			$paidInput.attr("placeholder", "Full amount: ₹ " + santu_sale_invoice.utils.format_money(rounded).replace("₹ ", ""));
-			const $note = this.$root.find(".santu-si2-remaining-note");
-			const paid = tab.paid_amount == null ? rounded : Number(tab.paid_amount) || 0;
-			const remaining = Math.max(rounded - paid, 0);
-			if (tab.paid_amount != null && remaining > 0) {
-				$note
-					.text("Remaining ₹ " + santu_sale_invoice.utils.format_money(remaining).replace("₹ ", "") + " will be added to the customer's account")
-					.show();
-			} else {
-				$note.hide();
-			}
+		// Update Payment Summary — Baaki now tracks whatever was actually
+		// typed into Received Amount, in either Cash or Credit mode. Before
+		// this, a partial receipt only ever registered while the Cash
+		// toggle was on; typing "200" here while a new sale's default
+		// Credit mode was still selected silently did nothing to Baaki.
+		const paid = this._effective_paid_amount(tab);
+		const left = Math.max(rounded - paid, 0);
+		this.$root.find(".santu-si2-payment-total").text(
+			"₹ " + santu_sale_invoice.utils.format_money(rounded).replace("₹ ", "")
+		);
+		this.$root.find(".santu-si2-payment-left").text(
+			"₹ " + santu_sale_invoice.utils.format_money(left).replace("₹ ", "")
+		);
+		this.$root.find(".santu-si2-received-input").attr(
+			"placeholder",
+			tab.payment_mode === "cash" ? "Full amount: ₹ " + santu_sale_invoice.utils.format_money(rounded).replace("₹ ", "") : "0"
+		);
+
+		const $note = this.$root.find(".santu-si2-remaining-note");
+		if (tab.paid_amount != null && left > 0) {
+			$note
+				.text("Remaining ₹ " + santu_sale_invoice.utils.format_money(left).replace("₹ ", "") + " will be added to the customer's account")
+				.show();
+		} else {
+			$note.hide();
 		}
 	},
 
@@ -919,15 +971,22 @@ const santu_sale_pos = {
 			tab.mode_of_payment = e.target.value;
 			this._save_debounced();
 		});
-		$root.find(".santu-si2-paid-now").on(
-			"input",
-			santu_sale_invoice.utils.debounce((e) => {
-				const v = e.target.value;
-				tab.paid_amount = v === "" ? null : Math.max(Number(v) || 0, 0);
-				this._save_debounced();
-				this._recalc_totals();
-			})
-		);
+		$root.find(".santu-si2-received-input").on(
+    "input",
+    santu_sale_invoice.utils.debounce((e) => {
+        const total = Number(tab._computed_total) || 0;
+        let received = Number(e.target.value) || 0;
+
+        // Received amount cannot exceed invoice total
+        received = Math.max(0, Math.min(received, total));
+
+        e.target.value = received;
+        tab.paid_amount = received;
+
+        this._save_debounced();
+        this._recalc_totals();
+    })
+);
 
 		const $custSearch = $root.find(".santu-si2-customer-search");
 		$custSearch.on(
@@ -1300,7 +1359,7 @@ const santu_sale_pos = {
 		// the only caller of save_sale_invoice) — this is just so the
 		// cashier finds out before typing the whole sale, not after.
 		const total = tab._computed_total || 0;
-		const paid = tab.payment_mode === "cash" ? (tab.paid_amount != null ? Number(tab.paid_amount) : total) : 0;
+		const paid = this._effective_paid_amount(tab);
 		const outstanding = Math.max(total - paid, 0);
 		if (outstanding > 0) {
 			const d = tab.customer_details || {};
@@ -1329,13 +1388,23 @@ const santu_sale_pos = {
 		frappe.dom.freeze(__("Saving…"));
 		this._ensure_customer_before_save(tab)
 			.then((customer) => {
+				// Sent to the backend, not the raw toggle: the server marks the
+				// invoice is_pos=1 whenever payment_mode is "cash", and — this
+				// is the part that bites — an empty `payments` array under
+				// is_pos=1 makes it default to the FULL grand total being paid
+				// (see save_sale_invoice's added_payment fallback). So "cash"
+				// may only be sent when there is a real amount to attach to
+				// it; a zero/blank receipt must report as "credit" or a
+				// partial/no payment would get silently marked paid in full.
+				const paid = this._effective_paid_amount(tab);
+				const effective_mode = paid > 0 ? "cash" : "credit";
 				const payload = {
 					customer,
 					company: this.init_data.company,
 					warehouse: this.init_data.warehouse,
 					posting_date: tab.posting_date,
 					selling_price_list: this.init_data.selling_price_list,
-					payment_mode: tab.payment_mode,
+					payment_mode: effective_mode,
 					place_of_supply: tab.place_of_supply || null,
 					additional_discount_amount: tab.additional_discount_amount || 0,
 					terms: tab.terms || null,
@@ -1349,8 +1418,8 @@ const santu_sale_pos = {
 						discount_amount: r.discount_amount || 0,
 					})),
 					payments:
-						tab.payment_mode === "cash" && tab.mode_of_payment
-							? [{ mode_of_payment: tab.mode_of_payment, amount: tab.paid_amount != null ? tab.paid_amount : null }]
+						effective_mode === "cash" && tab.mode_of_payment
+							? [{ mode_of_payment: tab.mode_of_payment, amount: paid }]
 							: [],
 				};
 

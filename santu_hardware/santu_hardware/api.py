@@ -1118,6 +1118,24 @@ def strip_gst_line_items(doc, method=None):
 	doc.set("taxes", [])
 
 
+def update_payment_summary_fields(doc, method=None):
+	"""Populate the custom Payment Summary fields on Sales Invoice / POS Invoice.
+	
+	This onload hook fills in:
+	- custom_total_bill_amount: Total invoice amount
+	- custom_payment_received: Amount already paid
+	- custom_balance_remaining: Balance still due
+	
+	These fields are read-only and show the payment breakdown clearly to the user.
+	"""
+	if doc.doctype not in ("Sales Invoice", "POS Invoice"):
+		return
+	
+	doc.custom_total_bill_amount = doc.grand_total or 0
+	doc.custom_payment_received = doc.paid_amount or 0
+	doc.custom_balance_remaining = doc.outstanding_amount or 0
+
+
 def _get_dated_invoice_folder(posting_date):
 	"""Invoices / YYYY / Month / YYYY-MM-DD — created on demand, not
 	pre-built, so this only ever creates the handful of folders actually
