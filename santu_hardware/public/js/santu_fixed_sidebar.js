@@ -7,7 +7,7 @@
 	// Bump whenever NAV_ITEMS changes shape — build_sidebar() reuses an
 	// already-rendered sidebar when this matches, so without a bump an open
 	// tab keeps the old menu.
-	const SIDEBAR_NAV_VERSION = "vyapar-match-9";
+	const SIDEBAR_NAV_VERSION = "vyapar-match-10";
 	const SIDEBAR_COLLAPSE_KEY = "santu_sidebar_collapsed";
 
 	const PURCHASE_CHILDREN = [
@@ -367,15 +367,9 @@
 
 		const company = frappe.boot.sysdefaults && frappe.boot.sysdefaults.company;
 		if (company) {
-			const initials = company
-				.split(" ")
-				.map((w) => w[0])
-				.join("")
-				.slice(0, 2)
-				.toUpperCase();
 			$(`
 				<div class="santu-app-sidebar-company">
-					<span class="santu-app-sidebar-company-badge">${frappe.utils.escape_html(initials)}</span>
+					<img class="santu-app-sidebar-company-badge" src="/assets/santu_hardware/images/logo.svg" alt="">
 					<span>${frappe.utils.escape_html(company.toUpperCase())}</span>
 				</div>
 			`)

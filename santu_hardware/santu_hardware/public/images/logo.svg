@@ -1,0 +1,34 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Santu Hardware">
+	<rect width="256" height="256" rx="54" fill="#171F5D"/>
+
+	<!-- roof -->
+	<polyline points="42,140 128,66 214,140" fill="none" stroke="#F5811F" stroke-width="13"
+		stroke-linecap="round" stroke-linejoin="round"/>
+
+	<!-- window -->
+	<g fill="#FFFFFF">
+		<rect x="115" y="90" width="13" height="13" rx="2"/>
+		<rect x="132" y="90" width="13" height="13" rx="2"/>
+		<rect x="115" y="107" width="13" height="13" rx="2"/>
+		<rect x="132" y="107" width="13" height="13" rx="2"/>
+	</g>
+
+	<!-- S -->
+	<text x="34" y="205" font-family="Arial, 'Helvetica Neue', sans-serif" font-weight="800"
+		font-size="118" fill="#FFFFFF">S</text>
+
+	<!-- H -->
+	<text x="120" y="205" font-family="Arial, 'Helvetica Neue', sans-serif" font-weight="800"
+		font-size="118" fill="#FFFFFF">H</text>
+
+	<!-- hammer, overlaid on the H's right stroke -->
+	<rect x="196" y="128" width="17" height="82" rx="6" fill="#F5811F"/>
+	<path d="M 168 118
+		Q 168 100 190 98
+		L 222 98
+		Q 240 100 240 118
+		Q 240 136 222 138
+		L 204 138
+		Q 195 138 190 132
+		Z" fill="#FFFFFF"/>
+</svg>

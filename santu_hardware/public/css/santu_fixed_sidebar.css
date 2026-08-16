@@ -166,14 +166,9 @@
 	width: 26px;
 	height: 26px;
 	border-radius: 6px;
-	background: var(--santu-brand, #e0393e);
-	color: #fff;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	font-size: 13px;
-	font-weight: 700;
 	flex-shrink: 0;
+	display: block;
+	object-fit: contain;
 }
 
 /* ---------- Collapse/expand toggle ---------- */

@@ -17,6 +17,7 @@ def after_install():
 	create_transaction_message_fields()
 	create_transaction_message_defaults()
 	hide_vendor_navbar_items()
+	apply_santu_branding()
 
 	from santu_hardware.santu_hardware.api import ensure_loyalty_setup
 
@@ -324,6 +325,44 @@ def hide_vendor_navbar_items():
 				changed = True
 	if changed:
 		settings.save(ignore_permissions=True)
+		frappe.db.commit()
+	return changed
+
+
+SANTU_LOGO_URL = "/assets/santu_hardware/images/logo.svg"
+
+
+def apply_santu_branding():
+	"""Put the shop's own logo where Frappe would otherwise show its own.
+
+	hooks.py's `app_logo_url` only wins when Navbar Settings has nothing
+	set — a fresh site, or one set up before this app existed, can still
+	have Navbar/Website Settings pointing at nothing (falling back to
+	Frappe's own framework logo) or at an old value. Setting it here
+	directly is what actually guarantees the navbar and the website show
+	this shop's mark, rather than depending on hook-resolution order.
+	"""
+	changed = False
+
+	navbar = frappe.get_single("Navbar Settings")
+	if navbar.app_logo != SANTU_LOGO_URL:
+		navbar.app_logo = SANTU_LOGO_URL
+		navbar.save(ignore_permissions=True)
+		changed = True
+
+	website = frappe.get_single("Website Settings")
+	website_changed = False
+	if website.app_logo != SANTU_LOGO_URL:
+		website.app_logo = SANTU_LOGO_URL
+		website_changed = True
+	if website.favicon != SANTU_LOGO_URL:
+		website.favicon = SANTU_LOGO_URL
+		website_changed = True
+	if website_changed:
+		website.save(ignore_permissions=True)
+		changed = True
+
+	if changed:
 		frappe.db.commit()
 	return changed
 

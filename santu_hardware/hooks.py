@@ -5,6 +5,11 @@ app_description = "Hardware store management system built on ERPNext for invento
 app_email = "ankitrajvm@gmail.com"
 app_license = "mit"
 
+# Shown in the top-left of every Desk page (frappe.boot.app_logo_url, via
+# Navbar Settings -> get_app_logo() in frappe core) and reused as the site
+# favicon / website logo below.
+app_logo_url = "/assets/santu_hardware/images/logo.svg"
+
 # Apps
 # ------------------
 
@@ -32,7 +37,7 @@ app_license = "mit"
 # without a version bump, browsers keep serving a stale copy after every
 # edit during active development. Bump the number whenever these files
 # change.
-SANTU_ASSET_VERSION = "305"
+SANTU_ASSET_VERSION = "306"
 app_include_css = [
 	f"/assets/santu_hardware/css/design_system.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/vyapar_theme.css?v={SANTU_ASSET_VERSION}",
@@ -186,6 +191,7 @@ after_install = "santu_hardware.setup.install.after_install"
 # undoing the choice (2026-08-15).
 after_migrate = [
 	"santu_hardware.setup.install.hide_vendor_navbar_items",
+	"santu_hardware.setup.install.apply_santu_branding",
 	"santu_hardware.santu_hardware.api.ensure_loyalty_setup",
 	"santu_hardware.setup.install.enforce_unique_supplier_bill_numbers",
 	"santu_hardware.santu_hardware.api.migrate_privacy_pin",
