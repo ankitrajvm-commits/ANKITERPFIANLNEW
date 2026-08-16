@@ -1250,8 +1250,28 @@ window.santu_sale_pos = {
 				},
 			});
 			d.show();
-		} else {
-			frappe.show_alert({ message: __("Available after the first save, from the invoice's own attachment panel."), indicator: "blue" });
+		} else if (kind === "image" || kind === "document") {
+			// A brand-new tab has no Sales Invoice to attach a file TO yet —
+			// Frappe's uploader needs a real saved document. This used to
+			// show the same "available after the first save" message
+			// forever, even once the bill genuinely had been saved and
+			// tab.saved_invoice was sitting right there — the promise never
+			// actually got kept. Now it does.
+			if (!tab.saved_invoice) {
+				frappe.show_alert({
+					message: __("Save the bill first, then add a {0} from here.", [kind === "image" ? __("photo") : __("document")]),
+					indicator: "blue",
+				});
+				return;
+			}
+			new frappe.ui.FileUploader({
+				doctype: "Sales Invoice",
+				docname: tab.saved_invoice.name,
+				restrictions: kind === "image" ? { allowed_file_types: ["image/*"] } : {},
+				on_success: () => {
+					frappe.show_alert({ message: __("Attached."), indicator: "green" });
+				},
+			});
 		}
 	},
 
