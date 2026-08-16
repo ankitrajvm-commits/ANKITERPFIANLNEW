@@ -50,114 +50,11 @@
 	}
 
 	async function open_send_dialog(frm) {
-		frappe.dom.freeze(__("Loading preview…"));
-		let preview;
-		try {
-			preview = await frappe.xcall(
-				"santu_hardware.santu_hardware.transaction_message_api.get_send_preview",
-				{ doctype: frm.doctype, name: frm.doc.name }
-			);
-		} catch (e) {
-			frappe.dom.unfreeze();
-			frappe.msgprint(e.message || __("Failed to load preview"));
+		if (window.santu_whatsapp_share) {
+			await window.santu_whatsapp_share.send_transaction(frm.doctype, frm.doc.name);
 			return;
 		}
-		frappe.dom.unfreeze();
-
-		if (!preview.phone) {
-			frappe.msgprint({
-				title: __("No WhatsApp Number"),
-				message: __("No WhatsApp number found for this party."),
-				primary_action: preview.party_link
-					? {
-						label: __("Add WhatsApp Number"),
-						action() {
-							// Was the native Customer/Supplier form; the Parties
-							// screen's own edit dialog is where a phone number
-							// gets added now.
-							frappe.route_options = {
-								party_type: preview.party_type,
-								party: preview.party_link,
-							};
-							frappe.set_route("santu-parties");
-						},
-					}
-					: undefined,
-			});
-			return;
-		}
-
-		if (!preview.configured || preview.connected === false) {
-			frappe.msgprint({
-				title: __("WhatsApp Not Connected"),
-				message: __("WhatsApp is not connected. Configure and connect in Parties → WhatsApp Connect."),
-				primary_action: {
-					label: __("Open WhatsApp Connect"),
-					action() { frappe.set_route("santu-whatsapp-connect"); },
-				},
-			});
-			return;
-		}
-
-		if (!preview.configured) {
-			frappe.msgprint({
-				title: __("WhatsApp Not Configured"),
-				message: __("WhatsApp integration is not configured. Configure it in Settings → Transaction Message."),
-				primary_action: {
-					label: __("Open Settings"),
-					action() {
-						frappe.set_route("santu-transaction-message");
-					},
-				},
-			});
-			return;
-		}
-
-		let message = preview.message;
-		const d = new frappe.ui.Dialog({
-			title: __("Send WhatsApp"),
-			fields: [
-				{
-					fieldtype: "HTML",
-					fieldname: "info",
-					options: `<p><b>${__("Customer")}:</b> ${frappe.utils.escape_html(preview.party_name)}<br>
-						<b>${__("WhatsApp")}:</b> +${frappe.utils.escape_html(preview.phone)}</p>`,
-				},
-				{
-					fieldtype: "HTML",
-					fieldname: "preview_html",
-					options: `<div class="santu-wa-dialog-preview">${frappe.utils.escape_html(message)}</div>`,
-				},
-				{
-					fieldtype: "Small Text",
-					fieldname: "custom_message",
-					label: __("Edit Message"),
-					default: message,
-				},
-			],
-			primary_action_label: __("Send WhatsApp"),
-			primary_action(values) {
-				d.hide();
-				frappe.dom.freeze(__("Sending…"));
-				frappe.xcall("santu_hardware.santu_hardware.transaction_message_api.send_whatsapp_message", {
-					doctype: frm.doctype,
-					name: frm.doc.name,
-					custom_message: values.custom_message,
-				}).then((r) => {
-					frappe.dom.unfreeze();
-					if (r.ok) {
-						frappe.show_alert({ message: __("WhatsApp message sent"), indicator: "green" });
-						frm.reload_doc();
-					} else {
-						frappe.msgprint({ title: __("Failed"), message: r.error || __("WhatsApp message failed."), indicator: "red" });
-					}
-				}).catch((e) => {
-					frappe.dom.unfreeze();
-					frappe.msgprint(e.message);
-				});
-			},
-		});
-		d.show();
+		frappe.msgprint(__("WhatsApp share is loading — please try again."));
 	}
 
 	SUPPORTED.forEach((doctype) => {
@@ -167,25 +64,4 @@
 			},
 		});
 	});
-
-	// Global helper for post-sale popup — use API when configured
-	window.santu_send_whatsapp_api = async function (doc, customer_mobile) {
-		const preview = await frappe.xcall(
-			"santu_hardware.santu_hardware.transaction_message_api.get_send_preview",
-			{ doctype: doc.doctype, name: doc.name }
-		);
-		if (preview.configured && preview.phone) {
-			const r = await frappe.xcall(
-				"santu_hardware.santu_hardware.transaction_message_api.send_whatsapp_message",
-				{ doctype: doc.doctype, name: doc.name }
-			);
-			if (r.ok) {
-				frappe.show_alert({ message: __("WhatsApp message sent"), indicator: "green" });
-				return true;
-			}
-			if (r.error) frappe.msgprint(r.error);
-			return false;
-		}
-		return false;
-	};
 })();

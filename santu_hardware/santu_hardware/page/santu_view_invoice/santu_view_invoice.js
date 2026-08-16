@@ -420,29 +420,6 @@ window.santu_view_invoice_page = {
 
 	_send_whatsapp() {
 		const d = this.data;
-		frappe.xcall("santu_hardware.santu_hardware.transaction_message_api.get_send_preview", {
-			doctype: d.doctype,
-			name: d.name,
-		}).then((preview) => {
-			const dlg = new frappe.ui.Dialog({
-				title: __("Send on WhatsApp"),
-				fields: [
-					{ fieldtype: "Data", fieldname: "phone", label: "Phone", default: preview.phone_display || preview.phone, read_only: 1 },
-					{ fieldtype: "Small Text", fieldname: "message", label: "Message", default: preview.message },
-				],
-				primary_action_label: __("Send"),
-				primary_action: (v) => {
-					frappe.xcall("santu_hardware.santu_hardware.transaction_message_api.send_whatsapp_message", {
-						doctype: d.doctype,
-						name: d.name,
-						custom_message: v.message,
-					}).then(() => {
-						frappe.show_alert({ message: __("Sent"), indicator: "green" });
-						dlg.hide();
-					});
-				},
-			});
-			dlg.show();
-		});
+		window.santu_whatsapp_share.send_transaction(d.doctype, d.name);
 	},
 };

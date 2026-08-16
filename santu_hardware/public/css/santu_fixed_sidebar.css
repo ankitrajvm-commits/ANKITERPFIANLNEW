@@ -342,3 +342,19 @@ body.santu-fixed-sidebar:not(.santu-kiosk-mode) .navbar {
 		z-index: 1080;
 	}
 }
+
+/* Native ERPNext workspaces/lists/forms must never paint — redirect in JS. */
+body.santu-fixed-sidebar:not(.santu-kiosk-mode) .layout-side-section:has(.desk-sidebar),
+body.santu-fixed-sidebar:not(.santu-kiosk-mode) .desk-sidebar {
+	display: none !important;
+}
+
+body[data-route^="Workspaces"] .page-container,
+body[data-route^="List/"] .page-container,
+body[data-route^="Form/"] .page-container,
+body[data-route^="query-report"] .page-container,
+body[data-route^="dashboard-view"] .page-container,
+body[data-route="Tree"] .page-container {
+	opacity: 0 !important;
+	pointer-events: none !important;
+}

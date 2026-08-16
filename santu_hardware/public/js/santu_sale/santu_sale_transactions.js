@@ -63,7 +63,10 @@ santu_sale.transactions = {
 		$header.find(".santu-sale-txn-search-btn").on("click", () => {
 			$search_panel.slideToggle(150, () => $search_panel.find("input").focus());
 		});
-		$header.find(".santu-sale-txn-chart-btn").on("click", () => frappe.set_route("query-report", "Sales Register"));
+		$header.find(".santu-sale-txn-chart-btn").on("click", () => {
+			if (window.santu_open_report) window.santu_open_report("sale");
+			else frappe.set_route("santu-reports");
+		});
 		$header.find(".santu-sale-txn-export-btn").on("click", () => santu_sale.utils.export_csv(transactions));
 		$header.find(".santu-sale-txn-print-btn").on("click", () => window.print());
 
@@ -297,11 +300,11 @@ santu_sale.transactions = {
 			return;
 		}
 		if (action === "share") {
-			const url = `${window.location.origin}/app/${frappe.router.slug(t.doctype)}/${encodeURIComponent(t.invoice_no)}`;
-			if (navigator.clipboard) {
-				navigator.clipboard.writeText(url).then(() => frappe.show_alert({ message: "Link copied", indicator: "green" }));
+			if (!t.doctype || !t.invoice_no) return;
+			if (window.santu_whatsapp_share) {
+				window.santu_whatsapp_share.send_transaction(t.doctype, t.invoice_no);
 			} else {
-				frappe.msgprint(url);
+				frappe.msgprint(__("WhatsApp share is loading — please try again."));
 			}
 			return;
 		}
@@ -322,7 +325,7 @@ santu_sale.transactions = {
 					},
 				});
 			}
-			items.push({ label: __("Copy Link"), action: () => this._row_action("share", t) });
+			items.push({ label: __("Send on WhatsApp"), action: () => this._row_action("share", t) });
 			const d = new frappe.ui.Dialog({ title: t.invoice_no, fields: [{ fieldtype: "HTML", fieldname: "menu" }] });
 			const $menu = $(`<div class="santu-sale-row-menu"></div>`);
 			items.forEach((item) => {

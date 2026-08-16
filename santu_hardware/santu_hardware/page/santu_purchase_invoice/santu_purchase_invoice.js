@@ -1,4 +1,4 @@
-/* global frappe, santu_purchase_invoice */
+/* global frappe, santu_purchase_invoice, santu_party_inline */
 // Santu Hardware — Purchase Invoice screen (2026-08-15 direct request: reuse
 // the exact same quick-entry UI/UX as the Sale Invoice screen, instead of
 // ERPNext's native New Purchase Invoice form). Backs onto a real Purchase
@@ -9,7 +9,10 @@
 // buying) — see that file for the fuller design notes this mirrors.
 frappe.pages["santu-purchase-invoice"].on_page_load = function (wrapper) {
 	frappe.require(
-		["/assets/santu_hardware/js/santu_purchase_invoice/santu_purchase_invoice_api.js"],
+		[
+			"/assets/santu_hardware/js/santu_purchase_invoice/santu_purchase_invoice_api.js",
+			"/assets/santu_hardware/js/santu_party_inline/santu_party_inline.js",
+		],
 		() => {
 			const page = frappe.ui.make_app_page({ parent: wrapper, title: "Purchase", single_column: true });
 			$(page.wrapper).find(".page-head").hide();
@@ -100,6 +103,7 @@ const santu_purchase_pos = {
 			supplier: null,
 			supplier_details: null,
 			phone: "",
+			address: "",
 			payment_mode: "credit",
 			mode_of_payment: (this.init_data.payment_modes[0] || {}).name || null,
 			paid_amount: null,
@@ -284,11 +288,7 @@ const santu_purchase_pos = {
 
 			<div class="santu-si2-toprow">
 				<div class="santu-si2-customer-col">
-					<div class="santu-si2-customer-search-wrap">
-						<input type="text" class="santu-si2-customer-search" placeholder="Search by Name/Phone *" autocomplete="off">
-						<div class="santu-si2-customer-dropdown" style="display:none;"></div>
-					</div>
-					<input type="text" class="santu-si2-phone" placeholder="Phone No.">
+					${santu_party_inline.fields_html({ placeholder: "Party Name *" })}
 				</div>
 				<div class="santu-si2-customer-info"></div>
 				<div class="santu-si2-invoice-info">
@@ -412,112 +412,41 @@ const santu_purchase_pos = {
 		this._bind_body_events();
 	},
 
-	// ---------- supplier ----------
-	_render_customer_info() {
-		const tab = this._active_tab();
-		const $info = this.$root.find(".santu-si2-customer-info");
-		const $search = this.$root.find(".santu-si2-customer-search");
-		const $phone = this.$root.find(".santu-si2-phone");
-		if (!tab.supplier) {
-			$info.empty();
-			return;
-		}
-		$search.val(tab.supplier_details ? tab.supplier_details.supplier_name : tab.supplier);
-		$phone.val((tab.supplier_details && tab.supplier_details.mobile_no) || tab.phone || "");
-		const d = tab.supplier_details || {};
-		const outstanding = d.outstanding_amount || 0;
-		$info.html(`
-			<div class="santu-si2-cust-card">
-				<div class="santu-si2-cust-name">${frappe.utils.escape_html(d.supplier_name || tab.supplier)}
-					<button type="button" class="santu-si2-cust-clear" title="Change supplier">×</button>
-				</div>
-				${d.address ? `<div class="santu-si2-cust-sub">${frappe.utils.escape_html(d.address)}</div>` : ""}
-				<div class="santu-si2-cust-stats">
-					<span class="${outstanding > 0 ? "santu-si2-warn-text" : ""}">Payable: ₹ ${santu_purchase_invoice.utils.format_money(outstanding).replace("₹ ", "")}</span>
-				</div>
-			</div>
-		`);
-		$info.find(".santu-si2-cust-clear").on("click", () => {
-			tab.supplier = null;
-			tab.supplier_details = null;
-			this._save_debounced();
-			this._render_body();
+	// ---------- supplier (inline party fields via santu_party_inline) ----------
+	_party_ctx() {
+		return santu_party_inline.make_ctx(this, santu_party_inline.SUPPLIER, {
+			ddNamespace: "santu-pi-dd",
+			walkin: false,
 		});
 	},
 
+	_render_customer_info() {
+		santu_party_inline.render_info(this._party_ctx());
+	},
+
 	_customer_search(q) {
-		const $dd = this.$root.find(".santu-si2-customer-dropdown");
-		if (!q || q.length < 2) {
-			$dd.hide().empty();
-			return;
-		}
-		santu_purchase_invoice.api.search_suppliers(q).then((rows) => {
-			$dd.empty();
-
-			const exact_match = rows.some((s) => (s.supplier_name || "").trim().toLowerCase() === q.trim().toLowerCase());
-
-			rows.forEach((s) => {
-				const $row = $(`
-					<div class="santu-si2-dd-row" data-customer="${frappe.utils.escape_html(s.name)}">
-						<div class="santu-si2-dd-row-main">
-							<div class="santu-si2-dd-row-text">
-								<b>${frappe.utils.escape_html(s.supplier_name)}</b>
-								${s.mobile_no ? `<span>${frappe.utils.escape_html(s.mobile_no)}</span>` : ""}
-							</div>
-							<button type="button" class="santu-si2-dd-expand" title="More info">▸</button>
-						</div>
-						<div class="santu-si2-dd-row-info" style="display:none;">
-							<textarea class="santu-si2-dd-row-note" placeholder="Add a note to identify this supplier">${frappe.utils.escape_html(s.supplier_details || "")}</textarea>
-							<button type="button" class="santu-si2-dd-row-note-save">Save note</button>
-						</div>
-					</div>
-				`).appendTo($dd);
-
-				$row.find(".santu-si2-dd-row-main").on("click", () => this._select_customer(s.name));
-
-				$row.find(".santu-si2-dd-expand").on("click", (e) => {
-					e.stopPropagation();
-					$row.find(".santu-si2-dd-row-info").toggle();
-				});
-
-				$row.find(".santu-si2-dd-row-note, .santu-si2-dd-row-note-save").on("click", (e) => e.stopPropagation());
-				$row.find(".santu-si2-dd-row-note-save").on("click", () => {
-					const note = $row.find(".santu-si2-dd-row-note").val();
-					santu_purchase_invoice.api.update_supplier_note(s.name, note).then(() => {
-						s.supplier_details = note;
-						frappe.show_alert({ message: "Note saved", indicator: "green" });
-					});
-				});
-			});
-
-			if (!exact_match) {
-				$(`<div class="santu-si2-dd-row santu-si2-dd-add" data-add="1">+ Add "${frappe.utils.escape_html(q)}" as new supplier</div>`)
-					.on("click", () => this._open_add_party_dialog(q))
-					.appendTo($dd);
-			}
-
-			$dd.show();
-		});
+		santu_party_inline.run_search(this._party_ctx(), q);
 	},
 
 	_select_customer(name) {
 		const tab = this._active_tab();
 		const supplier_changed = tab.supplier !== name;
-		tab.supplier = name;
-		this.$root.find(".santu-si2-customer-dropdown").hide().empty();
-		santu_purchase_invoice.api.supplier_details(name).then((d) => {
-			tab.supplier_details = d;
-			this._save_debounced();
-			this._render_customer_info();
+		santu_party_inline.select_party(this._party_ctx(), name, {
+			onSelected: () => {
+				if (supplier_changed && tab.items.length) this._refresh_row_taxes();
+				else this._render_customer_info();
+			},
 		});
-		// GST depends on who is selling: a registered supplier adds CGST+SGST
-		// (or IGST from out of state), an unregistered one adds nothing. Rows
-		// already in the table were priced against whoever was selected when
-		// they were added — which is nobody, if the operator scanned goods
-		// first and picked the supplier after, the way a delivery actually
-		// arrives. Without this, the screen would show a tax-free total and
-		// then save a bill 18% larger.
-		if (supplier_changed && tab.items.length) this._refresh_row_taxes();
+	},
+
+	_open_add_party_dialog(name) {
+		santu_party_inline.open_advanced_dialog(this._party_ctx(), name);
+	},
+
+	_ensure_party_before_save(tab) {
+		const ctx = this._party_ctx();
+		ctx.tab = tab;
+		return santu_party_inline.ensure_before_save(ctx);
 	},
 
 	_refresh_row_taxes() {
@@ -536,15 +465,6 @@ const santu_purchase_pos = {
 		).then(() => {
 			this._save_debounced();
 			this._render_items();
-		});
-	},
-
-	_open_add_party_dialog(name) {
-		const phone = this.$root.find(".santu-si2-phone").val();
-		santu_purchase_invoice.utils.open_add_party_dialog({
-			name,
-			phone,
-			on_created: (supplier_name) => this._select_customer(supplier_name),
 		});
 	},
 
@@ -1165,22 +1085,7 @@ const santu_purchase_pos = {
 	},
 
 	_send_whatsapp(tab) {
-		santu_purchase_invoice.api.whatsapp_preview("Purchase Invoice", tab.saved_invoice.name).then((preview) => {
-			const d = new frappe.ui.Dialog({
-				title: __("Send on WhatsApp"),
-				fields: [
-					{ fieldtype: "Data", fieldname: "phone", label: "Phone", default: preview.phone_display || preview.phone, read_only: 1 },
-					{ fieldtype: "Small Text", fieldname: "message", label: "Message", default: preview.message },
-				],
-				primary_action_label: __("Send"),
-				primary_action: (v) => {
-					santu_purchase_invoice.api.whatsapp_send("Purchase Invoice", tab.saved_invoice.name, v.message).then(() => {
-						frappe.show_alert({ message: __("Sent"), indicator: "green" });
-						d.hide();
-					});
-				},
-			});
-			d.show();
-		});
+		if (!tab.saved_invoice) return;
+		window.santu_whatsapp_share.send_transaction("Purchase Invoice", tab.saved_invoice.name);
 	},
 };

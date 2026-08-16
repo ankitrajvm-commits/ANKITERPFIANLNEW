@@ -55,10 +55,54 @@ def connect():
 	connect_settings = frappe.get_single("Santu WhatsApp Connect Settings")
 	if not connect_settings.terms_accepted:
 		frappe.throw("Please accept the Standard Usage Terms first.")
+	return start_smart_connect()
+
+
+def _sync_wa_from_bridge(st: dict):
 	wa = frappe.get_single("Santu WhatsApp Settings")
-	if not wa.enabled:
-		frappe.throw("Enable WhatsApp and configure Meta Cloud API credentials in Transaction Message → WhatsApp first.")
-	return connect_whatsapp()
+	state = (st.get("state") or "").upper()
+	if state == "CONNECTED":
+		wa.enabled = 1
+		wa.connect_state = "CONNECTED"
+		wa.connection_status = "Connected"
+		wa.display_phone_number = st.get("phone") or wa.display_phone_number
+		wa.last_test_error = ""
+	elif state == "QR":
+		wa.connect_state = "CONNECTING"
+		wa.connection_status = "Not Connected"
+	elif state in ("CONNECTING", "RECONNECTING"):
+		wa.connect_state = state
+	elif state == "ERROR":
+		wa.connect_state = "ERROR"
+		wa.connection_status = "Failed"
+		wa.last_test_error = (st.get("error") or "")[:500]
+	wa.save(ignore_permissions=True)
+	frappe.db.commit()
+
+
+@frappe.whitelist()
+def start_smart_connect():
+	"""Start Party Smart Connect (QR / linked-device login)."""
+	frappe.only_for("System Manager")
+	from santu_hardware.santu_hardware.smart_connect_bridge import start_bridge
+
+	connect_settings = frappe.get_single("Santu WhatsApp Connect Settings")
+	if not connect_settings.terms_accepted:
+		frappe.throw("Please accept the Standard Usage Terms first.")
+	st = start_bridge(fresh=True)
+	_sync_wa_from_bridge(st)
+	return {"ok": True, **st}
+
+
+@frappe.whitelist()
+def get_qr_status():
+	_require_access()
+	from santu_hardware.santu_hardware.smart_connect_bridge import read_bridge_status
+
+	st = read_bridge_status()
+	if (st.get("state") or "").upper() == "CONNECTED":
+		_sync_wa_from_bridge(st)
+	return st
 
 
 @frappe.whitelist()

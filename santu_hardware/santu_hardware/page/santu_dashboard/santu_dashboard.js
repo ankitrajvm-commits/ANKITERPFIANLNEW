@@ -383,7 +383,8 @@ function open_widget_route(w) {
 		return;
 	}
 	if (w.report_name) {
-		frappe.set_route("query-report", w.report_name);
+		if (window.santu_open_report) window.santu_open_report("");
+		else frappe.set_route("santu-reports");
 		return;
 	}
 	// No `doctype` branch here any more: the Google Profile Manager card was

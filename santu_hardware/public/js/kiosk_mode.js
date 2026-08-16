@@ -156,8 +156,22 @@ function santu_apply_kiosk_mode() {
 	// a real destination again later — same precedent as
 	// santu_redirect_cashier_to_billing() above).
 	clearInterval(santu_dashboard_poll_timer);
-	if (route && route[0] === "Workspaces" && (route[1] || "Home") === "Home") {
-		frappe.set_route("santu-dashboard");
+	if (route && route[0] === "Workspaces") {
+		const ws = route[1] || "Home";
+		const dest = {
+			Home: "santu-dashboard",
+			Accounting: "santu-cash-bank",
+			Selling: "santu-sale",
+			Buying: "santu-purchase",
+			Stock: "santu-stock",
+			Settings: "santu-utilities",
+			Users: "santu-utilities",
+			Staff: "santu-utilities",
+			"ERPNext Settings": "santu-utilities",
+			CRM: "santu-parties",
+		}[ws] || "santu-dashboard";
+		frappe.set_route(dest);
+		return;
 	}
 
 	// Also fires on the native "Accounts Dashboard" (route ["dashboard-view",
@@ -401,7 +415,7 @@ function santu_render_status_bar() {
 	$bar.find(".santu-status-home").on("click keydown", (e) => {
 		if (e.type === "keydown" && e.key !== "Enter" && e.key !== " ") return;
 		e.preventDefault();
-		frappe.set_route("Workspaces", "Home");
+		frappe.set_route("santu-dashboard");
 	});
 }
 

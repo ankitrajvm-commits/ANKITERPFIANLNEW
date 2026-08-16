@@ -74,6 +74,144 @@ santu_utilities.views = {
 		render();
 	},
 
+	/* ── Shop Profile (Vyapar company details page) ─────────── */
+	async render_shop_profile($wrap) {
+		$wrap.html(`<div class="santu-shop-profile-loading">Loading…</div>`);
+		const p = await frappe.xcall("santu_hardware.santu_hardware.api.get_shop_profile");
+		if (!p || !p.name) {
+			$wrap.html(`<div class="santu-utilities-error">No company is set for this user.</div>`);
+			return;
+		}
+
+		const esc = frappe.utils.escape_html;
+		const val = (k) => esc(p[k] || "");
+		const states = [
+			"Andaman and Nicobar Islands", "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar",
+			"Chandigarh", "Chhattisgarh", "Dadra and Nagar Haveli and Daman and Diu", "Delhi", "Goa",
+			"Gujarat", "Haryana", "Himachal Pradesh", "Jammu and Kashmir", "Jharkhand", "Karnataka",
+			"Kerala", "Ladakh", "Lakshadweep", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya",
+			"Mizoram", "Nagaland", "Odisha", "Puducherry", "Punjab", "Rajasthan", "Sikkim",
+			"Tamil Nadu", "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
+		];
+		const state = p.state || "Bihar";
+		const state_opts = states
+			.map((s) => `<option value="${esc(s)}"${s === state ? " selected" : ""}>${esc(s)}</option>`)
+			.join("");
+		const initials = (p.company_name || p.name || "SH")
+			.split(" ")
+			.map((w) => w[0])
+			.join("")
+			.slice(0, 2)
+			.toUpperCase();
+		const logo = p.company_logo
+			? `<img class="santu-shop-logo-img" src="${esc(p.company_logo)}" alt="">`
+			: `<span class="santu-shop-logo-initials">${esc(initials)}</span>`;
+
+		$wrap.html(`
+			<div class="santu-shop-profile">
+				<div class="santu-shop-card">
+					<div class="santu-shop-head">
+						<div class="santu-shop-title">Shop Profile</div>
+						<button type="button" class="santu-shop-save">Save</button>
+					</div>
+					<div class="santu-shop-body">
+						<div class="santu-shop-logo-col">
+							<div class="santu-shop-logo">${logo}</div>
+							<button type="button" class="santu-shop-logo-btn">Add Logo</button>
+							<input type="hidden" name="company_logo" value="${val("company_logo")}">
+						</div>
+						<div class="santu-shop-fields">
+							<label class="santu-shop-field">
+								<span>Business Name</span>
+								<input type="text" name="company_name" value="${val("company_name")}" maxlength="140">
+							</label>
+							<div class="santu-shop-row">
+								<label class="santu-shop-field">
+									<span>Phone</span>
+									<input type="text" name="phone_no" value="${val("phone_no")}" maxlength="20">
+								</label>
+								<label class="santu-shop-field">
+									<span>Email</span>
+									<input type="email" name="email" value="${val("email")}" maxlength="140">
+								</label>
+							</div>
+							<div class="santu-shop-row">
+								<label class="santu-shop-field">
+									<span>GSTIN</span>
+									<input type="text" name="gstin" value="${val("gstin")}" maxlength="15" style="text-transform:uppercase">
+								</label>
+								<label class="santu-shop-field">
+									<span>Website</span>
+									<input type="text" name="website" value="${val("website")}" maxlength="140">
+								</label>
+							</div>
+							<label class="santu-shop-field">
+								<span>Billing Address</span>
+								<textarea name="address" rows="2">${val("address")}</textarea>
+							</label>
+							<div class="santu-shop-row">
+								<label class="santu-shop-field">
+									<span>City</span>
+									<input type="text" name="city" value="${val("city")}">
+								</label>
+								<label class="santu-shop-field">
+									<span>State</span>
+									<select name="state">${state_opts}</select>
+								</label>
+								<label class="santu-shop-field santu-shop-field-pin">
+									<span>Pincode</span>
+									<input type="text" name="pincode" value="${val("pincode")}" maxlength="6">
+								</label>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		`);
+
+		const $form = $wrap.find(".santu-shop-profile");
+		const read = (name) => ($form.find(`[name="${name}"]`).val() || "").trim();
+
+		$form.find(".santu-shop-logo-btn").on("click", () => {
+			new frappe.ui.FileUploader({
+				allow_multiple: false,
+				restrictions: { allowed_file_types: ["image/*"] },
+				on_success(file) {
+					$form.find("[name=company_logo]").val(file.file_url);
+					$form.find(".santu-shop-logo").html(`<img class="santu-shop-logo-img" src="${esc(file.file_url)}" alt="">`);
+				},
+			});
+		});
+
+		$form.find(".santu-shop-save").on("click", () => {
+			const company_name = read("company_name");
+			if (!company_name) {
+				frappe.show_alert({ message: "Business Name is required", indicator: "red" });
+				return;
+			}
+			frappe.dom.freeze(__("Saving…"));
+			frappe
+				.xcall("santu_hardware.santu_hardware.api.update_shop_profile", {
+					company: p.name,
+					company_name,
+					phone_no: read("phone_no"),
+					email: read("email"),
+					gstin: read("gstin").toUpperCase(),
+					website: read("website"),
+					address: read("address"),
+					city: read("city"),
+					state: read("state"),
+					pincode: read("pincode"),
+					company_logo: read("company_logo"),
+				})
+				.then(() => {
+					frappe.dom.unfreeze();
+					frappe.show_alert({ message: "Saved", indicator: "green" });
+				})
+				.catch(() => frappe.dom.unfreeze());
+		});
+	},
+
 	_render_barcode_import($wrap, onBack) {
 		$wrap.html(`
 			<div class="santu-utilities-toolbar">
@@ -815,7 +953,10 @@ santu_utilities.views = {
 			frappe.show_alert({ message: "Backup created", indicator: "green" });
 		});
 		$wrap.find(".santu-fy-close").on("click", () => {
-			frappe.confirm("Open ERPNext Period Closing Voucher?", () => frappe.set_route("List", "Period Closing Voucher"));
+			frappe.confirm(
+				"This will close the financial year in your books. Continue?",
+				() => frappe.show_alert({ message: "Use Shop Profile / your accountant to finish year-end from Utilities.", indicator: "blue" })
+			);
 		});
 	},
 };

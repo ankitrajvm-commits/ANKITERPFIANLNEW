@@ -169,8 +169,8 @@ def widget_catalog(metrics: dict, low_stock_count: int = 0, period: str = "This 
 			"kind": "currency",
 			"value": metrics.get("stock_value") or 0,
 			"period": "As of Now",
-			"route": "query-report",
-			"report_name": "Stock Balance",
+			"route": "santu-reports",
+			"report_id": "stock_summary_item_category",
 		},
 		{
 			"key": "cash_in_hand",

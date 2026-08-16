@@ -215,15 +215,26 @@ body[data-route="santu-sale-invoice"] .page-content {
 }
 
 .santu-si2-customer-col {
+	flex: 1;
+	min-width: 0;
+}
+.santu-si2-customer-fields {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.santu-si2-customer-row1 {
 	display: flex;
 	gap: 10px;
 }
 .santu-si2-customer-search-wrap {
 	position: relative;
 	flex: 1;
+	min-width: 0;
 }
 .santu-si2-customer-search,
-.santu-si2-phone {
+.santu-si2-phone,
+.santu-si2-address {
 	width: 100%;
 	border: 1px solid #d1d5db;
 	padding: 10px 12px;
@@ -231,15 +242,32 @@ body[data-route="santu-sale-invoice"] .page-content {
 	background: #fff;
 	box-sizing: border-box;
 	border-radius: 8px;
+	font-family: inherit;
+	resize: vertical;
 }
 .santu-si2-customer-search {
 	text-transform: uppercase;
 }
 .santu-si2-phone {
 	max-width: 160px;
+	flex-shrink: 0;
+}
+.santu-si2-address {
+	min-height: 44px;
+	line-height: 1.35;
+}
+.santu-si2-party-advanced {
+	font-size: 12px;
+	color: #2563eb;
+	text-decoration: none;
+	align-self: flex-start;
+}
+.santu-si2-party-advanced:hover {
+	text-decoration: underline;
 }
 .santu-si2-customer-search:focus,
-.santu-si2-phone:focus {
+.santu-si2-phone:focus,
+.santu-si2-address:focus {
 	outline: none;
 	border-color: #2563eb;
 }
@@ -390,6 +418,17 @@ body[data-route="santu-sale-invoice"] .page-content {
 }
 .santu-si2-dd-add:hover {
 	background: #f3f4f6;
+}
+.santu-si2-dd-advanced {
+	color: #6b7280;
+	font-size: 13px;
+	padding: 8px 12px;
+	cursor: pointer;
+	border-top: 1px solid #e5e7eb;
+}
+.santu-si2-dd-advanced:hover {
+	background: #f9fafb;
+	color: #2563eb;
 }
 
 .santu-si2-dd-expand {
@@ -818,6 +857,9 @@ body[data-route="santu-sale-invoice"] .page-content {
 	}
 	.santu-si2-lowerrow {
 		grid-template-columns: 1fr;
+	}
+	.santu-si2-phone {
+		max-width: none;
 	}
 }
 

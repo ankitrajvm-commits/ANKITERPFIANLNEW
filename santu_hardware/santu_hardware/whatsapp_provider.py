@@ -14,6 +14,16 @@ class WhatsAppProviderError(Exception):
 	pass
 
 
+def _guard_recipient(to: str) -> str:
+	"""Last line before the network: run the recipient through the one test-mode
+	gate. The bridge transport already does this inside send_via_bridge; this
+	makes the Meta Cloud transport self-guard too, so neither can ever put a
+	real party's number on the wire while test redirect is on."""
+	from santu_hardware.santu_hardware.smart_connect_bridge import _resolve_send_phone
+
+	return _resolve_send_phone(to)
+
+
 class WhatsAppProvider(ABC):
 	@abstractmethod
 	def test_connection(self) -> dict:
@@ -52,6 +62,7 @@ class MetaCloudAPIProvider(WhatsAppProvider):
 		return {"ok": True, "display_phone_number": data.get("display_phone_number"), "verified_name": data.get("verified_name")}
 
 	def send_text(self, to: str, body: str) -> dict:
+		to = _guard_recipient(to)
 		url = f"{self.api_url}/{self.phone_number_id}/messages"
 		payload = {
 			"messaging_product": "whatsapp",
@@ -81,6 +92,7 @@ class MetaCloudAPIProvider(WhatsAppProvider):
 		return result.get("id")
 
 	def send_document(self, to: str, file_bytes: bytes, filename: str, caption: str = "") -> dict:
+		to = _guard_recipient(to)
 		media_id = self._upload_media(file_bytes, filename)
 		url = f"{self.api_url}/{self.phone_number_id}/messages"
 		doc_payload = {"id": media_id, "filename": filename}
@@ -101,6 +113,7 @@ class MetaCloudAPIProvider(WhatsAppProvider):
 		return {"provider_message_id": msg_id, "raw": data}
 
 	def send_document_link(self, to: str, link: str, filename: str, caption: str = "") -> dict:
+		to = _guard_recipient(to)
 		url = f"{self.api_url}/{self.phone_number_id}/messages"
 		doc_payload = {"link": link, "filename": filename}
 		if caption:
@@ -120,8 +133,37 @@ class MetaCloudAPIProvider(WhatsAppProvider):
 		return {"provider_message_id": msg_id, "raw": data}
 
 
+class SmartConnectProvider(WhatsAppProvider):
+	"""Phone WhatsApp linked as a desktop device (Party Smart Connect)."""
+
+	def test_connection(self) -> dict:
+		from santu_hardware.santu_hardware.smart_connect_bridge import read_bridge_status, start_bridge
+
+		st = start_bridge()
+		if st.get("state") != "CONNECTED":
+			st = read_bridge_status()
+		if st.get("state") != "CONNECTED":
+			raise WhatsAppProviderError(st.get("error") or "Scan the QR code to link WhatsApp.")
+		return {"ok": True, "display_phone_number": st.get("phone") or ""}
+
+	def send_text(self, to: str, body: str) -> dict:
+		from santu_hardware.santu_hardware.smart_connect_bridge import send_via_bridge
+
+		return send_via_bridge(to, body)
+
+	def send_document(self, to: str, file_bytes: bytes, filename: str, caption: str = "") -> dict:
+		from santu_hardware.santu_hardware.smart_connect_bridge import send_document_via_bridge
+
+		return send_document_via_bridge(to, file_bytes, filename, caption=caption)
+
+
 def get_whatsapp_provider():
+	from santu_hardware.santu_hardware.smart_connect_bridge import read_bridge_status
+
 	settings = frappe.get_single("Santu WhatsApp Settings")
+	st = read_bridge_status()
+	if st.get("state") == "CONNECTED":
+		return SmartConnectProvider()
 	if not settings.enabled:
 		return None
 	if settings.provider == "Meta Cloud API":
@@ -130,6 +172,10 @@ def get_whatsapp_provider():
 
 
 def is_whatsapp_configured() -> bool:
+	from santu_hardware.santu_hardware.smart_connect_bridge import read_bridge_status
+
+	if read_bridge_status().get("state") == "CONNECTED":
+		return True
 	settings = frappe.get_single("Santu WhatsApp Settings")
 	return bool(
 		settings.enabled

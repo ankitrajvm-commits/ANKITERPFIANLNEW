@@ -12,3 +12,7 @@ frappe.pages["santu-whatsapp-connect"].on_page_load = function (wrapper) {
 		}
 	);
 };
+
+frappe.pages["santu-whatsapp-connect"].on_page_show = function (wrapper) {
+	$(wrapper).find(".page-head").hide();
+};

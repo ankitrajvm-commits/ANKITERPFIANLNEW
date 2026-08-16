@@ -4,139 +4,160 @@ frappe.pages["santu-low-stock"].on_page_load = function (wrapper) {
 		title: "Low Stock",
 		single_column: true,
 	});
-
-	$(page.wrapper).find(".page-head .page-actions").hide();
-
+	$(page.wrapper).find(".page-head").hide();
+	$(page.main).addClass("santu-lowstock-page-main");
 	render_low_stock(page);
 };
 
+frappe.pages["santu-low-stock"].on_page_show = function (wrapper) {
+	$(wrapper).find(".page-head").hide();
+};
+
 const SANTU_LOW_STOCK_SECTIONS = [
-	{ status: "out", label: "Out of Stock", icon: "🔴", tone: "urgent" },
-	{ status: "low", label: "Low Stock", icon: "🟠", tone: "warning" },
-	{ status: "running_out_soon", label: "Selling Fast — Running Out Soon", icon: "🟡", tone: "notice" },
+	{ status: "out", label: "Out of Stock", tone: "out" },
+	{ status: "low", label: "Low Stock", tone: "low" },
+	{ status: "running_out_soon", label: "Running Out", tone: "soon" },
 ];
 
 function render_low_stock(page) {
-	const $root = $(`<div class="santu-lowstock"></div>`).appendTo(page.body);
-
-	$root.html(`
-		<div class="santu-lowstock-filters">
-			<input type="text" class="form-control santu-lowstock-search" placeholder="Search item...">
-			<button class="btn btn-default santu-lowstock-share">Share List on WhatsApp</button>
+	const $root = $(`
+		<div class="santu-lowstock">
+			<div class="santu-lowstock-page-header">
+				<div class="santu-lowstock-title-text">Low Stock</div>
+				<div class="santu-lowstock-header-actions">
+					<button type="button" class="santu-lowstock-share-btn">Share</button>
+					<button type="button" class="santu-lowstock-add-btn">+ Receive Stock</button>
+				</div>
+			</div>
+			<div class="santu-lowstock-tabs"></div>
+			<div class="santu-lowstock-toolbar">
+				<input type="text" class="santu-lowstock-search" placeholder="Search item">
+			</div>
+			<div class="santu-lowstock-card">
+				<div class="santu-lowstock-body"></div>
+			</div>
 		</div>
-		<div class="santu-lowstock-summary"></div>
-		<div class="santu-lowstock-body"></div>
-	`);
+	`).appendTo(page.body);
 
-	const $search = $root.find(".santu-lowstock-search");
+	const state = { tab: "all", search: "", rows: [] };
 
-	let all_rows = [];
-
-	const reload = async () => {
-		$root.find(".santu-lowstock-body").html(`<div class="santu-dash-loading">Loading...</div>`);
-		all_rows = await frappe.xcall("santu_hardware.santu_hardware.api.get_low_stock_items");
-		render_rows($root, all_rows, $search.val());
-	};
-
-	let debounce;
-	$search.on("input", () => {
-		clearTimeout(debounce);
-		debounce = setTimeout(() => render_rows($root, all_rows, $search.val()), 200);
+	const tabs = [{ status: "all", label: "All" }, ...SANTU_LOW_STOCK_SECTIONS];
+	const $tabs = $root.find(".santu-lowstock-tabs");
+	tabs.forEach((t) => {
+		$(`<button type="button" class="santu-lowstock-tab${t.status === "all" ? " is-active" : ""}" data-tab="${t.status}">${t.label}</button>`)
+			.on("click", function () {
+				state.tab = t.status;
+				$tabs.find(".santu-lowstock-tab").removeClass("is-active");
+				$(this).addClass("is-active");
+				paint();
+			})
+			.appendTo($tabs);
 	});
 
-	$root.find(".santu-lowstock-share").on("click", () => share_low_stock_on_whatsapp(all_rows));
+	let debounce;
+	$root.find(".santu-lowstock-search").on("input", function () {
+		state.search = this.value;
+		clearTimeout(debounce);
+		debounce = setTimeout(paint, 200);
+	});
+	$root.find(".santu-lowstock-share-btn").on("click", () => share_low_stock_on_whatsapp(state.rows));
+	$root.find(".santu-lowstock-add-btn").on("click", () => frappe.set_route("santu-receive-stock"));
 
-	reload();
+	function paint() {
+		render_rows($root, state.rows, state.search, state.tab);
+	}
+
+	$root.find(".santu-lowstock-body").html(`<div class="santu-lowstock-loading">Loading…</div>`);
+	frappe
+		.xcall("santu_hardware.santu_hardware.api.get_low_stock_items")
+		.then((rows) => {
+			state.rows = rows || [];
+			paint();
+		})
+		.catch(() => {
+			$root.find(".santu-lowstock-body").html(`<div class="santu-lowstock-empty-text">Could not load low stock.</div>`);
+		});
 }
 
-function render_rows($root, rows, search) {
+function render_rows($root, rows, search, tab) {
 	const term = (search || "").trim().toLowerCase();
-	const filtered = term
+	let filtered = term
 		? rows.filter(
 				(r) =>
-					r.item_name.toLowerCase().includes(term) || r.item_code.toLowerCase().includes(term)
+					(r.item_name || "").toLowerCase().includes(term) ||
+					(r.item_code || "").toLowerCase().includes(term)
 			)
-		: rows;
-
-	const $summary = $root.find(".santu-lowstock-summary");
-	const out_count = rows.filter((r) => r.status === "out").length;
-	const low_count = rows.filter((r) => r.status === "low").length;
-	const soon_count = rows.filter((r) => r.status === "running_out_soon").length;
-
-	if (!rows.length) {
-		$summary.html(`<div class="santu-lowstock-allgood">✅ Everything is in stock — nothing is low.</div>`);
-	} else {
-		$summary.html(`
-			<div class="santu-lowstock-summary-row">
-				${out_count ? `<div class="santu-lowstock-chip santu-tone-urgent">🔴 ${out_count} Out of Stock</div>` : ""}
-				${low_count ? `<div class="santu-lowstock-chip santu-tone-warning">🟠 ${low_count} Low Stock</div>` : ""}
-				${soon_count ? `<div class="santu-lowstock-chip santu-tone-notice">🟡 ${soon_count} Running Out Soon</div>` : ""}
-			</div>
-		`);
-	}
+		: rows.slice();
+	if (tab && tab !== "all") filtered = filtered.filter((r) => r.status === tab);
 
 	const $body = $root.find(".santu-lowstock-body");
 	$body.empty();
 
-	if (!rows.length) return;
-
-	if (term && !filtered.length) {
-		$body.append(`<div class="santu-dash-recent-empty">No matching item.</div>`);
+	if (!rows.length) {
+		$body.html(`
+			<div class="santu-lowstock-empty">
+				<div class="santu-lowstock-empty-title">No Low Stock Items.</div>
+				<div class="santu-lowstock-empty-text">Everything is above its alert level.</div>
+			</div>
+		`);
 		return;
 	}
 
-	// Two Item masters can share the exact same name (confirmed live: this
-	// shop has duplicate item records like two "WUDFIN PU-11 CLEAR 1LT
-	// 10X1" — one at 0 qty, one at 1 qty) — without disambiguation a
-	// shopkeeper scanning the Out of Stock list sees that name once,
-	// assumes that's the only one, and never notices the second, distinct
-	// item sitting in the Low Stock section below (2026-08-06, reported
-	// live: "1 stock wala item show hi nahi ho raha", actually was showing
-	// correctly but looked identical to its 0-stock namesake).
+	if (!filtered.length) {
+		$body.html(`<div class="santu-lowstock-empty-text">No matching item.</div>`);
+		return;
+	}
+
 	const name_counts = {};
 	filtered.forEach((r) => {
 		name_counts[r.item_name] = (name_counts[r.item_name] || 0) + 1;
 	});
 
-	SANTU_LOW_STOCK_SECTIONS.forEach((section) => {
-		const section_rows = filtered.filter((r) => r.status === section.status);
-		if (!section_rows.length) return;
+	const $wrap = $(`
+		<div class="santu-lowstock-table-wrap">
+			<table class="santu-lowstock-table">
+				<thead>
+					<tr>
+						<th>Item</th>
+						<th class="num">Qty</th>
+						<th class="num">Reorder</th>
+						<th>Status</th>
+						<th class="num">Order</th>
+					</tr>
+				</thead>
+				<tbody></tbody>
+			</table>
+		</div>
+	`).appendTo($body);
+	const $tbody = $wrap.find("tbody");
+	filtered.forEach((row) => $tbody.append(build_row(row, name_counts[row.item_name] > 1)));
+}
 
-		const $section = $(`
-			<div class="santu-lowstock-section">
-				<div class="santu-lowstock-section-title santu-tone-${section.tone}">${section.icon} ${section.label} (${section_rows.length})</div>
-				<div class="santu-lowstock-list"></div>
-			</div>
-		`).appendTo($body);
-
-		const $list = $section.find(".santu-lowstock-list");
-		section_rows.forEach((row) => $list.append(build_row(row, name_counts[row.item_name] > 1)));
-	});
+function status_label(status) {
+	if (status === "out") return { text: "Out of Stock", cls: "santu-lowstock-pill-out" };
+	if (status === "low") return { text: "Low Stock", cls: "santu-lowstock-pill-low" };
+	return { text: "Running Out", cls: "santu-lowstock-pill-soon" };
 }
 
 function build_row(row, show_code) {
-	let meta;
-	if (row.status === "out") {
-		meta = `0 ${frappe.utils.escape_html(row.stock_uom)} left`;
-	} else if (row.status === "low") {
-		meta = `${row.available_qty} ${frappe.utils.escape_html(row.stock_uom)} left · reorder level ${row.reorder_level}`;
-	} else {
-		meta = `${row.available_qty} ${frappe.utils.escape_html(row.stock_uom)} left · selling ~${row.daily_pace}/day · ~${row.days_remaining} days remaining`;
-	}
-	if (show_code) {
-		meta += ` · <span class="santu-lowstock-row-code">${frappe.utils.escape_html(row.item_code)}</span>`;
-	}
+	const esc = frappe.utils.escape_html;
+	const st = status_label(row.status);
+	const qty_cls = row.status === "out" ? "santu-lowstock-qty-out" : row.status === "low" ? "santu-lowstock-qty-low" : "santu-lowstock-qty-soon";
+	const name = show_code
+		? `${esc(row.item_name)} <span class="santu-lowstock-code">${esc(row.item_code)}</span>`
+		: esc(row.item_name);
+	const order = row.suggested_reorder_qty > 0 ? row.suggested_reorder_qty : "—";
 
 	return $(`
-		<div class="santu-lowstock-row" role="button" tabindex="0">
-			<div class="santu-lowstock-row-main">
-				<div class="santu-lowstock-row-name">${frappe.utils.escape_html(row.item_name)}</div>
-				<div class="santu-lowstock-row-meta">${meta}</div>
-			</div>
-			<div class="santu-lowstock-row-suggest">
-				${row.suggested_reorder_qty > 0 ? `Order ~${row.suggested_reorder_qty}` : ""}
-			</div>
-		</div>
+		<tr class="santu-lowstock-row">
+			<td>
+				<div class="santu-lowstock-name">${name}</div>
+			</td>
+			<td class="num ${qty_cls}">${row.available_qty} ${esc(row.stock_uom || "")}</td>
+			<td class="num">${row.reorder_level}</td>
+			<td><span class="santu-lowstock-pill ${st.cls}">${st.text}</span></td>
+			<td class="num">${order}</td>
+		</tr>
 	`).on("click", () => {
 		frappe.route_options = { item_code: row.item_code };
 		frappe.set_route("santu-items");
@@ -153,7 +174,7 @@ function share_low_stock_on_whatsapp(rows) {
 	SANTU_LOW_STOCK_SECTIONS.forEach((section) => {
 		const section_rows = rows.filter((r) => r.status === section.status);
 		if (!section_rows.length) return;
-		lines.push(`${section.icon} ${section.label}:`);
+		lines.push(`*${section.label}:*`);
 		section_rows.forEach((r) => {
 			const qty_text = r.status === "out" ? "0" : `${r.available_qty}`;
 			lines.push(`- ${r.item_name} (${qty_text} ${r.stock_uom} left${r.suggested_reorder_qty ? `, order ~${r.suggested_reorder_qty}` : ""})`);
@@ -161,6 +182,5 @@ function share_low_stock_on_whatsapp(rows) {
 		lines.push("");
 	});
 
-	const message = lines.join("\n").trim();
-	window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank");
+	window.open(`https://wa.me/?text=${encodeURIComponent(lines.join("\n").trim())}`, "_blank");
 }

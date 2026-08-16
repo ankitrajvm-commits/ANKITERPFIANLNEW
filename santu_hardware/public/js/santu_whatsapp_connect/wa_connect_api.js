@@ -8,6 +8,8 @@ santu_wa_connect.api = {
 	settings() { return frappe.xcall(`${WA_CONNECT_API}.get_connect_settings`); },
 	saveSettings(s) { return frappe.xcall(`${WA_CONNECT_API}.save_connect_settings`, { settings: s }); },
 	acceptTerms() { return frappe.xcall(`${WA_CONNECT_API}.accept_terms`); },
+	startSmartConnect() { return frappe.xcall(`${WA_CONNECT_API}.start_smart_connect`); },
+	qrStatus() { return frappe.xcall(`${WA_CONNECT_API}.get_qr_status`); },
 	connect() { return frappe.xcall(`${WA_CONNECT_API}.connect`); },
 	disconnect() { return frappe.xcall(`${WA_CONNECT_API}.disconnect`); },
 	refresh() { return frappe.xcall(`${WA_CONNECT_API}.refresh`); },

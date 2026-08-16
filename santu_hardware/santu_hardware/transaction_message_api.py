@@ -27,6 +27,20 @@ TEMPLATE_VARIABLES = [
 ]
 
 
+def _require_access():
+	frappe.only_for(
+		(
+			"System Manager",
+			"Administrator",
+			"Sales Manager",
+			"Accounts Manager",
+			"Sales User",
+			"Accounts User",
+			"Stock User",
+		)
+	)
+
+
 def _require_manager():
 	frappe.only_for(("System Manager", "Administrator", "Sales Manager", "Accounts Manager"))
 
@@ -153,14 +167,14 @@ def get_message_preview(transaction_type: str = "Sales Transaction", template: s
 
 @frappe.whitelist()
 def send_whatsapp_message(doctype: str, name: str, custom_message: str = None, phone_field: str = "mobile"):
-	_require_manager()
+	_require_access()
 	return send_transaction_message(doctype, name, custom_message=custom_message, phone_field=phone_field, force=True)
 
 
 @frappe.whitelist()
 def get_send_preview(doctype: str, name: str, phone_field: str = "mobile"):
 	"""Preview before sending — includes party phone and message body."""
-	_require_manager()
+	_require_access()
 	from santu_hardware.santu_hardware.transaction_message_service import (
 		build_message_context,
 		get_party_phone,
@@ -176,6 +190,11 @@ def get_send_preview(doctype: str, name: str, phone_field: str = "mobile"):
 	message = render_template(template, context)
 	phone = get_party_phone(context.get("_party_type"), context.get("_party_name"), phone_field)
 
+	from santu_hardware.santu_hardware.smart_connect_bridge import (
+		TEST_REDIRECT_ENABLED,
+		TEST_REDIRECT_NUMBER,
+	)
+
 	return {
 		"party_name": context.get("party_name"),
 		"phone": phone,
@@ -187,6 +206,11 @@ def get_send_preview(doctype: str, name: str, phone_field: str = "mobile"):
 		"party_type": context.get("_party_type"),
 		"party_doctype": context.get("_party_type"),
 		"party_link": context.get("_party_name"),
+		# Shown so the dialog can say where this will REALLY go — the party's
+		# own number above stays visible so it's obvious a redirect is even
+		# happening, rather than the two numbers silently disagreeing.
+		"test_redirect_active": bool(TEST_REDIRECT_ENABLED),
+		"test_redirect_number": TEST_REDIRECT_NUMBER if TEST_REDIRECT_ENABLED else None,
 	}
 
 

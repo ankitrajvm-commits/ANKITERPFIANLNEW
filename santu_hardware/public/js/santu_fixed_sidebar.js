@@ -7,7 +7,7 @@
 	// Bump whenever NAV_ITEMS changes shape — build_sidebar() reuses an
 	// already-rendered sidebar when this matches, so without a bump an open
 	// tab keeps the old menu.
-	const SIDEBAR_NAV_VERSION = "vyapar-match-7";
+	const SIDEBAR_NAV_VERSION = "vyapar-match-9";
 	const SIDEBAR_COLLAPSE_KEY = "santu_sidebar_collapsed";
 
 	const PURCHASE_CHILDREN = [
@@ -133,7 +133,7 @@
 			getView: () => sessionStorage.getItem("santu_utilities_view") || "import_items",
 			children: [
 				{ view: "import_items", label: "Import Items", route: "santu-utilities" },
-				{ view: "shop_profile", label: "Shop Profile", run: () => window.santu_open_shop_profile() },
+				{ view: "shop_profile", label: "Shop Profile", route: "santu-utilities" },
 				{ view: "payment_modes", label: "Payment Modes", run: () => window.santu_open_payment_modes() },
 				{ view: "cost_price_lock", label: "Cost Price Lock", run: () => window.santu_privacy.manage_dialog() },
 				{ view: "accountant_access", label: "Accountant Access", route: "santu-utilities" },
@@ -148,7 +148,13 @@
 				{ view: "close_fy", label: "Close Financial Year", route: "santu-utilities" },
 			],
 		},
-		{ type: "workspace", route: "Settings", icon: "⚙️", label: "Settings" },
+		{
+			type: "link",
+			route: "santu-utilities",
+			icon: "⚙️",
+			label: "Settings",
+			run: () => frappe.set_route("santu-utilities"),
+		},
 		{
 			type: "group",
 			key: "more",
@@ -156,27 +162,11 @@
 			label: "More",
 			no_default_nav: true,
 			storageExpanded: "santu_more_sidebar_expanded",
-			isActive: () => {
-				const r = get_route();
-				// santu-cash-bank is reached from the Accounting workspace's
-				// own "Cash & Bank" shortcut, so it counts as being inside
-				// this group too — otherwise opening it would leave nothing
-				// highlighted in the sidebar.
-				if (r[0] === "santu-cash-bank") return true;
-				return r[0] === "Workspaces" && ["Accounting", "ERPNext Settings"].includes(r[1]);
-			},
-			getView: () => {
-				const r = get_route();
-				if (r[0] === "santu-cash-bank") return "Accounting";
-				return r[0] === "Workspaces" ? r[1] : null;
-			},
+			route: "santu-cash-bank",
+			isActive: () => get_route()[0] === "santu-cash-bank",
+			getView: () => (get_route()[0] === "santu-cash-bank" ? "cash_bank" : null),
 			children: [
-				// 2026-08-15 direct request: "cash and bank section mujjhe
-				// faltoo ka lag raha hai, ise more me dalo" — demoted from a
-				// top-level item to a More entry rather than removed, since
-				// it's still the only way into the Accounting workspace.
-				{ view: "Accounting", label: "Cash & Bank", type: "workspace", route: "Accounting" },
-				{ view: "ERPNext Settings", label: "ERPNext Settings", type: "workspace", route: "ERPNext Settings" },
+				{ view: "cash_bank", label: "Cash & Bank", redirect: "santu-cash-bank" },
 			],
 		},
 	];

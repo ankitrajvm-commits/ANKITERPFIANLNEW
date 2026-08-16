@@ -323,6 +323,15 @@ santu_sale_invoice.api = {
 	update_customer_note(customer, note) {
 		return frappe.xcall("santu_hardware.santu_hardware.api.update_customer_note", { customer, note });
 	},
+	update_customer_inline(party, party_name, phone, address) {
+		return frappe.xcall("santu_hardware.santu_hardware.api.update_party_details", {
+			party_type: "Customer",
+			party,
+			party_name: party_name || undefined,
+			phone: phone != null ? phone : undefined,
+			address: address != null ? address : undefined,
+		});
+	},
 	search_items(q) {
 		return frappe.xcall("santu_hardware.santu_hardware.api.search_products", { query: q, limit: 15 });
 	},

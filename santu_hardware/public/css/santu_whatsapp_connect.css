@@ -257,6 +257,143 @@
 .santu-wa-drawer-body label { display: block; margin-bottom: 10px; }
 .santu-wa-drawer-body .btn-block { margin-bottom: 8px; text-align: left; }
 
+/* Party Smart Connect — Get Started / QR */
+.santu-psc {
+	flex: 1;
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	min-height: 0;
+	background: #f3f4f8;
+}
+.santu-psc-left {
+	background: #fff;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+	padding: 48px 40px;
+}
+.santu-psc-hero { width: 88px; height: 88px; margin-bottom: 16px; }
+.santu-psc-kicker {
+	color: #08bd7c;
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	margin-bottom: 8px;
+}
+.santu-psc-left h2 {
+	margin: 0 0 10px;
+	font-size: 24px;
+	font-weight: 600;
+	color: #3f4155;
+}
+.santu-psc-left p {
+	max-width: 360px;
+	color: #71748e;
+	font-size: 14px;
+	line-height: 22px;
+}
+.santu-psc-right {
+	padding: 48px 40px;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+}
+.santu-psc-new {
+	display: inline-flex;
+	align-self: flex-start;
+	background: #ed1a3b;
+	color: #fff;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	padding: 3px 8px;
+	border-radius: 4px;
+	margin-bottom: 12px;
+}
+.santu-psc-right h3 {
+	margin: 0 0 8px;
+	font-size: 20px;
+	font-weight: 600;
+	color: #3f4155;
+}
+.santu-psc-muted { color: #71748e; font-size: 14px; line-height: 22px; max-width: 380px; }
+.santu-psc-cta {
+	margin-top: 20px;
+	height: 40px;
+	padding: 0 24px;
+	border: none;
+	border-radius: 4px;
+	background: #ed1a3b;
+	color: #fff;
+	font-size: 14px;
+	font-weight: 600;
+	cursor: pointer;
+	align-self: flex-start;
+}
+.santu-psc-cta:disabled { opacity: 0.45; cursor: not-allowed; }
+.santu-psc-cta:not(:disabled):hover { background: #d41634; }
+.santu-psc-link {
+	margin-top: 12px;
+	border: none;
+	background: none;
+	color: #0075e8;
+	font-size: 14px;
+	cursor: pointer;
+	align-self: flex-start;
+	padding: 0;
+}
+.santu-psc-intro {
+	grid-template-columns: 1fr;
+	align-items: center;
+	justify-items: center;
+}
+.santu-psc-intro-card {
+	background: #fff;
+	border-radius: 4px;
+	padding: 32px 36px;
+	width: min(480px, calc(100% - 32px));
+	box-shadow: 0 1px 3px rgba(63, 65, 85, 0.08);
+}
+.santu-psc-intro-icon { width: 48px; height: 48px; margin-bottom: 12px; }
+.santu-psc-intro-card h2 { font-size: 20px; font-weight: 600; color: #3f4155; margin: 0 0 16px; }
+.santu-psc-steps { margin: 0 0 8px; padding-left: 20px; color: #3f4155; font-size: 14px; line-height: 28px; }
+.santu-psc-qr-wrap {
+	flex: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: #f3f4f8;
+}
+.santu-psc-qr-card {
+	background: #fff;
+	border-radius: 4px;
+	padding: 28px 32px 32px;
+	text-align: center;
+	box-shadow: 0 1px 3px rgba(63, 65, 85, 0.08);
+}
+.santu-psc-qr-title { font-size: 20px; font-weight: 600; color: #3f4155; margin-bottom: 16px; }
+.santu-psc-qr-box {
+	width: 280px;
+	height: 280px;
+	margin: 0 auto 16px;
+	border: 1px solid #eaeaef;
+	border-radius: 4px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: #fff;
+}
+.santu-psc-qr-box img { width: 260px; height: 260px; }
+.santu-psc-qr-wait { color: #71748e; font-size: 14px; padding: 16px; }
+.santu-psc-qr-help { color: #71748e; font-size: 13px; line-height: 20px; margin: 0; max-width: 280px; }
+
+@media (max-width: 900px) {
+	.santu-psc { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 900px) {
 	.santu-wa-connect-setup { grid-template-columns: 1fr; }
 	.santu-wa-workspace { grid-template-columns: 1fr; }

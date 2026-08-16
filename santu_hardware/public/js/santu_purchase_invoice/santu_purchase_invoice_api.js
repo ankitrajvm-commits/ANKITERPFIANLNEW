@@ -295,6 +295,15 @@ santu_purchase_invoice.api = {
 	update_supplier_note(supplier, note) {
 		return frappe.xcall("santu_hardware.santu_hardware.api.update_supplier_note", { supplier, note });
 	},
+	update_supplier_inline(party, party_name, phone, address) {
+		return frappe.xcall("santu_hardware.santu_hardware.api.update_party_details", {
+			party_type: "Supplier",
+			party,
+			party_name: party_name || undefined,
+			phone: phone != null ? phone : undefined,
+			address: address != null ? address : undefined,
+		});
+	},
 	search_items(q) {
 		return frappe.xcall("santu_hardware.santu_hardware.api.search_products", { query: q, limit: 15 });
 	},

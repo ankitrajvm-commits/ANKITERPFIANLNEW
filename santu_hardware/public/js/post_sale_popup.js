@@ -164,57 +164,12 @@ async function santu_show_post_sale_popup(doc) {
 	d.show();
 }
 
-// Phase 3, no WhatsApp Business API — that needs a paid account this
-// shop doesn't have (confirmed directly, 2026-07-30). A wa.me link opens
-// WhatsApp with the customer's number and this message pre-filled; the
-// owner still taps Send themselves, and separately gets the PDF so it
-// can be attached by hand — WhatsApp's click-to-chat links can pre-fill
-// text but can't pre-attach a file, that's a WhatsApp platform
-// limitation, not something more code here can work around. Swappable
-// later for a real Messaging Service abstraction (WhatsApp API/SMS/
-// Email/Telegram) without touching the billing flow that calls it, if
-// this shop ever gets one of those accounts — this function is already
-// the one seam billing code depends on.
 function santu_share_on_whatsapp(doc, customer_mobile) {
-	// Try official WhatsApp API when configured
-	if (window.santu_send_whatsapp_api) {
-		window.santu_send_whatsapp_api(doc, customer_mobile).then((sent) => {
-			if (sent) return;
-			santu_share_on_whatsapp_fallback(doc, customer_mobile);
-		}).catch(() => santu_share_on_whatsapp_fallback(doc, customer_mobile));
+	if (window.santu_whatsapp_share) {
+		window.santu_whatsapp_share.send_transaction(doc.doctype, doc.name);
 		return;
 	}
-	santu_share_on_whatsapp_fallback(doc, customer_mobile);
-}
-
-function santu_share_on_whatsapp_fallback(doc, customer_mobile) {
-	let mobile = (customer_mobile || "").replace(/\D/g, "");
-	if (mobile.length === 10) mobile = "91" + mobile;
-
-	const amount = format_currency(doc.grand_total, doc.currency).replace(/^\D+/, "");
-	// docstatus 0 = not yet submitted (shared from Review Bill, before
-	// "Complete Sale") — same "not a tax invoice" distinction the print
-	// format itself now makes, so a bill shared before the sale is final
-	// doesn't read as a completed purchase.
-	const message =
-		doc.docstatus === 1
-			? `Hello ${doc.customer_name || doc.customer},\n\n` +
-			  `Thank you for shopping at\nSantu Hardware.\n\n` +
-			  `Invoice No:\n${doc.name}\n\n` +
-			  `Amount:\n₹${amount}\n\n` +
-			  `Your invoice is attached.\n\nThank you.`
-			: `Hello ${doc.customer_name || doc.customer},\n\n` +
-			  `Here's a quotation from\nSantu Hardware.\n\n` +
-			  `Amount:\n₹${amount}\n\n` +
-			  `This is a quotation, not a final tax invoice — prices may change.\n\nThank you.`;
-
-	window.open(`https://wa.me/${mobile}?text=${encodeURIComponent(message)}`, "_blank");
-
-	frappe.show_alert({
-		message: __("Downloading the PDF to attach in WhatsApp..."),
-		indicator: "blue",
-	});
-	santu_get_pdf_info(doc).then((info) => santu_download_pdf_blob(info.base64, `${doc.name}.pdf`));
+	frappe.msgprint(__("WhatsApp share is loading — please try again."));
 }
 
 // Reprint Last Invoice — Phase 1/6. Looks up the most recent submitted

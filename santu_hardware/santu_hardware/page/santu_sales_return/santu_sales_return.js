@@ -1,4 +1,4 @@
-/* global frappe, santu_sale_invoice, santu_sales_return */
+/* global frappe, santu_sale_invoice, santu_sales_return, santu_party_inline */
 // Santu Hardware — Sales Return / Credit Note screen (2026-08-15 direct
 // request: "sale return ka v same vyapaar ui kro and abhi wala delete kr
 // dena" — "+ Add Sales Return" opened the native Sales Invoice form with
@@ -19,6 +19,7 @@ frappe.pages["santu-sales-return"].on_page_load = function (wrapper) {
 	frappe.require(
 		[
 			"/assets/santu_hardware/js/santu_sale_invoice/santu_sale_invoice_api.js",
+			"/assets/santu_hardware/js/santu_party_inline/santu_party_inline.js",
 			"/assets/santu_hardware/js/santu_sales_return/santu_sales_return_api.js",
 		],
 		() => {
@@ -95,6 +96,7 @@ window.santu_sales_return_page = {
 			customer: null,
 			customer_details: null,
 			phone: "",
+			address: "",
 			items: [],
 			additional_discount_amount: 0,
 			round_off: true,
@@ -208,11 +210,7 @@ window.santu_sales_return_page = {
 
 			<div class="santu-si2-toprow">
 				<div class="santu-si2-customer-col">
-					<div class="santu-si2-customer-search-wrap">
-						<input type="text" class="santu-si2-customer-search" placeholder="Search by Name/Phone *" autocomplete="off">
-						<div class="santu-si2-customer-dropdown" style="display:none;"></div>
-					</div>
-					<input type="text" class="santu-si2-phone" placeholder="Phone No.">
+					${santu_party_inline.fields_html()}
 				</div>
 				<div class="santu-si2-customer-info"></div>
 				<div class="santu-si2-invoice-info">
@@ -326,93 +324,30 @@ window.santu_sales_return_page = {
 		this._bind_body_events();
 	},
 
-	// ---------- customer (identical UX to Sale Invoice) ----------
+	// ---------- customer (inline party fields via santu_party_inline) ----------
+	_party_ctx() {
+		return santu_party_inline.make_ctx(this, santu_party_inline.CUSTOMER, { ddNamespace: "santu-sr-dd" });
+	},
+
 	_render_customer_info() {
-		const tab = this._active_tab();
-		const $info = this.$root.find(".santu-si2-customer-info");
-		const $search = this.$root.find(".santu-si2-customer-search");
-		const $phone = this.$root.find(".santu-si2-phone");
-		if (!tab.customer) {
-			$info.empty();
-			return;
-		}
-		$search.val(tab.customer_details ? tab.customer_details.customer_name : tab.customer);
-		$phone.val((tab.customer_details && tab.customer_details.mobile_no) || tab.phone || "");
-		const d = tab.customer_details || {};
-		$info.html(`
-			<div class="santu-si2-cust-card">
-				<div class="santu-si2-cust-name">${frappe.utils.escape_html(d.customer_name || tab.customer)}
-					<button type="button" class="santu-si2-cust-clear" title="Change customer">×</button>
-				</div>
-				${d.village ? `<div class="santu-si2-cust-sub">${frappe.utils.escape_html(d.village)}</div>` : ""}
-			</div>
-		`);
-		$info.find(".santu-si2-cust-clear").on("click", () => {
-			tab.customer = null;
-			tab.customer_details = null;
-			this._save_debounced();
-			this._render_body();
-		});
+		santu_party_inline.render_info(this._party_ctx());
 	},
 
 	_customer_search(q) {
-		const $dd = this.$root.find(".santu-si2-customer-dropdown");
-		if (!q || q.length < 2) {
-			$dd.hide().empty();
-			return;
-		}
-		santu_sale_invoice.api.search_customers(q).then((raw_rows) => {
-			$dd.empty();
-			const seen_walkin = new Set();
-			const rows = raw_rows.filter((c) => {
-				const key = (c.customer_name || "").trim().toLowerCase();
-				if (key !== "walk-in customer") return true;
-				if (seen_walkin.has(key)) return false;
-				seen_walkin.add(key);
-				return true;
-			});
-			const exact_match = rows.some((c) => (c.customer_name || "").trim().toLowerCase() === q.trim().toLowerCase());
-
-			rows.forEach((c) => {
-				$(`
-					<div class="santu-si2-dd-row" data-customer="${frappe.utils.escape_html(c.name)}">
-						<div class="santu-si2-dd-row-main">
-							<div class="santu-si2-dd-row-text">
-								<b>${frappe.utils.escape_html(c.customer_name)}</b>
-								${c.mobile_no ? `<span>${frappe.utils.escape_html(c.mobile_no)}</span>` : ""}
-							</div>
-						</div>
-					</div>
-				`)
-					.on("click", () => this._select_customer(c.name))
-					.appendTo($dd);
-			});
-
-			if (!exact_match) {
-				$(`<div class="santu-si2-dd-row santu-si2-dd-add" data-add="1">+ Add "${frappe.utils.escape_html(q)}" as new customer</div>`)
-					.on("click", () => this._open_add_party_dialog(q))
-					.appendTo($dd);
-			}
-			$dd.show();
-		});
+		santu_party_inline.run_search(this._party_ctx(), q);
 	},
 
 	_select_customer(name) {
 		const tab = this._active_tab();
-		tab.customer = name;
-		this.$root.find(".santu-si2-customer-dropdown").hide().empty();
-		santu_sale_invoice.api.customer_details(name).then((d) => {
-			tab.customer_details = d;
-			this._save_debounced();
-			this._render_customer_info();
-		});
-		// Load this customer's bills so "Return Against" has something to
-		// offer. Changing customer invalidates any previously picked bill.
-		tab.return_against = null;
-		santu_sales_return.api.returnable_invoices(name).then((rows) => {
-			tab.return_invoices = rows || [];
-			this._save_debounced();
-			this._render_body();
+		santu_party_inline.select_party(this._party_ctx(), name, {
+			onSelected: () => {
+				tab.return_against = null;
+				santu_sales_return.api.returnable_invoices(name).then((rows) => {
+					tab.return_invoices = rows || [];
+					this._save_debounced();
+					this._render_body();
+				});
+			},
 		});
 	},
 
@@ -461,12 +396,13 @@ window.santu_sales_return_page = {
 	},
 
 	_open_add_party_dialog(name) {
-		const phone = this.$root.find(".santu-si2-phone").val();
-		santu_sale_invoice.utils.open_add_party_dialog({
-			name,
-			phone,
-			on_created: (customer_name) => this._select_customer(customer_name),
-		});
+		santu_party_inline.open_advanced_dialog(this._party_ctx(), name);
+	},
+
+	_ensure_party_before_save(tab) {
+		const ctx = this._party_ctx();
+		ctx.tab = tab;
+		return santu_party_inline.ensure_before_save(ctx);
 	},
 
 	// ---------- items (identical UX to Sale Invoice, no stock warnings) ----------
@@ -657,25 +593,8 @@ window.santu_sales_return_page = {
 		const tab = this._active_tab();
 		const $root = this.$root;
 
-		const $custSearch = $root.find(".santu-si2-customer-search");
-		$custSearch.on(
-			"input",
-			santu_sale_invoice.utils.debounce((e) => this._customer_search(e.target.value))
-		);
-		$custSearch.on("focus", (e) => {
-			if (e.target.value) this._customer_search(e.target.value);
-		});
-		$(document)
-			.off("click.santu-so-dd")
-			.on("click.santu-so-dd", (e) => {
-				if (!$(e.target).closest(".santu-si2-customer-search-wrap, .santu-si2-item-search-wrap, .santu-si2-item-dropdown").length) {
-					$root.find(".santu-si2-customer-dropdown, .santu-si2-item-dropdown").hide();
-				}
-			});
-		$root.find(".santu-si2-phone").on("change", (e) => {
-			tab.phone = e.target.value;
-			this._save_debounced();
-		});
+		santu_party_inline.bind_search_events(this._party_ctx());
+		santu_party_inline.bind_field_events(this._party_ctx());
 
 		$root.find(".santu-si2-posting-date").on("change", (e) => {
 			tab.posting_date = e.target.value;
@@ -918,8 +837,8 @@ window.santu_sales_return_page = {
 	},
 
 	_validate_before_save(tab) {
-		if (!tab.customer) {
-			frappe.msgprint(__("Please select a customer."));
+		if (!santu_party_inline.has_party_or_name(this.$root, tab, santu_party_inline.CUSTOMER)) {
+			frappe.msgprint(__("Please enter a party name or select a customer."));
 			return false;
 		}
 		if (!tab.items.length) {
@@ -938,34 +857,36 @@ window.santu_sales_return_page = {
 	_save_return(tab) {
 		if (!this._validate_before_save(tab)) return;
 
-		const payload = {
-			customer: tab.customer,
-			company: this.init_data.company,
-			warehouse: this.init_data.warehouse,
-			posting_date: tab.posting_date,
-			return_against: tab.return_against || null,
-			warehouse: this.init_data.warehouse,
-			reason: tab.reason || null,
-			selling_price_list: this.init_data.selling_price_list,
-			place_of_supply: tab.place_of_supply || null,
-			additional_discount_amount: tab.additional_discount_amount || 0,
-			terms: tab.terms || null,
-			description: tab.description || null,
-			items: tab.items.map((r) => ({
-				item_code: r.item_code,
-				qty: r.qty,
-				rate: r.rate,
-				uom: r.uom,
-				sales_invoice_item: r.sales_invoice_item || null,
-				discount_percentage: r.discount_percentage || 0,
-				discount_amount: r.discount_amount || 0,
-			})),
-		};
-
 		frappe.dom.freeze(__("Saving…"));
-		santu_sales_return.api
-			.save(payload, 1)
+		this._ensure_party_before_save(tab)
+			.then((customer) => {
+				const payload = {
+					customer,
+					company: this.init_data.company,
+					warehouse: this.init_data.warehouse,
+					posting_date: tab.posting_date,
+					return_against: tab.return_against || null,
+					reason: tab.reason || null,
+					selling_price_list: this.init_data.selling_price_list,
+					place_of_supply: tab.place_of_supply || null,
+					additional_discount_amount: tab.additional_discount_amount || 0,
+					terms: tab.terms || null,
+					description: tab.description || null,
+					items: tab.items.map((r) => ({
+						item_code: r.item_code,
+						qty: r.qty,
+						rate: r.rate,
+						uom: r.uom,
+						sales_invoice_item: r.sales_invoice_item || null,
+						discount_percentage: r.discount_percentage || 0,
+						discount_amount: r.discount_amount || 0,
+					})),
+				};
+
+				return santu_sales_return.api.save(payload, 1);
+			})
 			.then((r) => {
+				if (!r) return;
 				frappe.dom.unfreeze();
 				tab.saved_return = r;
 				this._save_debounced();

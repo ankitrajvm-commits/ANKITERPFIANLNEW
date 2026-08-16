@@ -660,3 +660,147 @@
 .santu-prn-blocked p {
 	margin: 6px 0 0;
 }
+
+/* Shop Profile — Vyapar company details page (replaces Frappe Dialog) */
+.santu-utilities:has(.santu-shop-profile) {
+	padding: 0;
+	background: #f3f4f8;
+	min-height: calc(100vh - 56px);
+}
+.santu-utilities:has(.santu-shop-profile) .santu-utilities-header {
+	display: none;
+}
+.santu-shop-profile-loading {
+	padding: 48px;
+	text-align: center;
+	color: #71748e;
+}
+.santu-shop-profile {
+	padding: 12px 16px 24px;
+	box-sizing: border-box;
+}
+.santu-shop-card {
+	background: #fff;
+	border-radius: 4px;
+	box-shadow: 0 1px 3px rgba(63, 65, 85, 0.08);
+	max-width: 920px;
+}
+.santu-shop-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 16px 20px;
+	border-bottom: 1px solid #eaeaef;
+}
+.santu-shop-title {
+	color: #3f4155;
+	font-size: 20px;
+	font-weight: 600;
+	line-height: 26px;
+}
+.santu-shop-save {
+	background: #ed1a3b !important;
+	border: none;
+	color: #fff;
+	height: 32px;
+	padding: 0 18px;
+	border-radius: 4px;
+	font-size: 14px;
+	font-weight: 600;
+	cursor: pointer;
+}
+.santu-shop-save:hover { background: #d41634 !important; }
+.santu-shop-body {
+	display: flex;
+	gap: 28px;
+	padding: 24px 20px 28px;
+}
+.santu-shop-logo-col {
+	width: 140px;
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 10px;
+}
+.santu-shop-logo {
+	width: 96px;
+	height: 96px;
+	border-radius: 4px;
+	border: 1.5px dashed #cbccde;
+	background: #f3f4f8;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	overflow: hidden;
+}
+.santu-shop-logo-img {
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+}
+.santu-shop-logo-initials {
+	color: #ed1a3b;
+	font-size: 28px;
+	font-weight: 700;
+}
+.santu-shop-logo-btn {
+	border: none;
+	background: transparent;
+	color: #0075e8;
+	font-size: 13px;
+	font-weight: 500;
+	cursor: pointer;
+	padding: 0;
+}
+.santu-shop-fields {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+.santu-shop-row {
+	display: flex;
+	gap: 14px;
+}
+.santu-shop-field {
+	flex: 1 1 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+}
+.santu-shop-field-pin { flex: 0 0 140px; }
+.santu-shop-field span {
+	color: #71748e;
+	font-size: 12px;
+	font-weight: 400;
+	line-height: 16px;
+}
+.santu-shop-field input,
+.santu-shop-field select,
+.santu-shop-field textarea {
+	width: 100%;
+	box-sizing: border-box;
+	border: 1px solid #eaeaef;
+	border-radius: 4px;
+	padding: 8px 12px;
+	font-size: 14px;
+	color: #3f4155;
+	background: #fff;
+	font-family: inherit;
+}
+.santu-shop-field input:focus,
+.santu-shop-field select:focus,
+.santu-shop-field textarea:focus {
+	outline: none;
+	border-color: #0075e8;
+}
+.santu-shop-field textarea { resize: vertical; min-height: 64px; }
+
+@media (max-width: 720px) {
+	.santu-shop-body { flex-direction: column; }
+	.santu-shop-row { flex-direction: column; }
+	.santu-shop-field-pin { flex: 1 1 auto; }
+}

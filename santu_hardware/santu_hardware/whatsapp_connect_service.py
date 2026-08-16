@@ -288,8 +288,8 @@ def send_transaction_from_connect(doctype: str, name: str, custom_message: str =
 	if msg_settings.attach_invoice_pdf and doctype in ("Sales Invoice", "POS Invoice", "Purchase Invoice", "Quotation", "Delivery Note"):
 		try:
 			attachment_bytes, filename = get_invoice_pdf_bytes(doc)
-		except Exception:
-			pass
+		except Exception as e:
+			frappe.log_error(title="WhatsApp PDF attach failed", message=frappe.get_traceback())
 
 	return send_chat_message(
 		phone,

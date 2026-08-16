@@ -103,6 +103,7 @@ const santu_sale_pos = {
 			customer: null,
 			customer_details: null,
 			phone: "",
+			address: "",
 			payment_mode: "credit",
 			mode_of_payment: (this.init_data.payment_modes[0] || {}).name || null,
 			paid_amount: null, // null = "full amount" (Cash mode); a number less than the total = partial payment, remainder goes to the customer's account
@@ -170,11 +171,11 @@ const santu_sale_pos = {
 					qty: r.qty,
 					uom: r.uom || row.uom || row.stock_uom,
 					uom_options: row.uom ? [row.uom, row.stock_uom].filter((v, i, a) => v && a.indexOf(v) === i) : [row.stock_uom],
-					rate: r.rate,
+					rate: row.price_list_rate || row.rate || r.rate || 0,
 					discount_percentage: r.discount_percentage || 0,
 					discount_amount: r.discount_amount || 0,
 					tax_rate: row.tax_rate || 0,
-					amount: r.amount || r.qty * r.rate,
+					amount: r.amount || r.qty * (row.price_list_rate || row.rate || r.rate || 0),
 				});
 				this._save_debounced();
 				this._render_items();
@@ -298,11 +299,17 @@ const santu_sale_pos = {
 
 			<div class="santu-si2-toprow">
 				<div class="santu-si2-customer-col">
-					<div class="santu-si2-customer-search-wrap">
-						<input type="text" class="santu-si2-customer-search" placeholder="Search by Name/Phone *" autocomplete="off">
-						<div class="santu-si2-customer-dropdown" style="display:none;"></div>
+					<div class="santu-si2-customer-fields">
+						<div class="santu-si2-customer-row1">
+							<div class="santu-si2-customer-search-wrap">
+								<input type="text" class="santu-si2-customer-search" placeholder="Party Name *" autocomplete="off">
+								<div class="santu-si2-customer-dropdown" style="display:none;"></div>
+							</div>
+							<input type="text" class="santu-si2-phone" placeholder="Phone No.">
+						</div>
+						<textarea class="santu-si2-address" placeholder="Address" rows="2"></textarea>
+						<a href="#" class="santu-si2-party-advanced">${__("GST & more details…")}</a>
 					</div>
-					<input type="text" class="santu-si2-phone" placeholder="Phone No.">
 				</div>
 				<div class="santu-si2-customer-info"></div>
 				<div class="santu-si2-invoice-info">
@@ -424,17 +431,35 @@ const santu_sale_pos = {
 	},
 
 	// ---------- customer ----------
+	_get_inline_customer_fields() {
+		const tab = this._active_tab();
+		const name = (this.$root.find(".santu-si2-customer-search").val() || "").trim();
+		const phone = (this.$root.find(".santu-si2-phone").val() || "").trim();
+		const address = (this.$root.find(".santu-si2-address").val() || "").trim();
+		tab.phone = phone;
+		tab.address = address;
+		return { name, phone, address };
+	},
+
+	_sync_inline_customer_fields() {
+		const tab = this._active_tab();
+		const $search = this.$root.find(".santu-si2-customer-search");
+		const $phone = this.$root.find(".santu-si2-phone");
+		const $address = this.$root.find(".santu-si2-address");
+		const d = tab.customer_details || {};
+		$search.val(d.customer_name || tab.customer || "");
+		$phone.val(d.mobile_no || tab.phone || "");
+		$address.val(d.address_line1 || tab.address || "");
+	},
+
 	_render_customer_info() {
 		const tab = this._active_tab();
 		const $info = this.$root.find(".santu-si2-customer-info");
-		const $search = this.$root.find(".santu-si2-customer-search");
-		const $phone = this.$root.find(".santu-si2-phone");
+		this._sync_inline_customer_fields();
 		if (!tab.customer) {
 			$info.empty();
 			return;
 		}
-		$search.val(tab.customer_details ? tab.customer_details.customer_name : tab.customer);
-		$phone.val((tab.customer_details && tab.customer_details.mobile_no) || tab.phone || "");
 		const d = tab.customer_details || {};
 		const outstanding = d.outstanding_amount || 0;
 		$info.html(`
@@ -452,6 +477,8 @@ const santu_sale_pos = {
 		$info.find(".santu-si2-cust-clear").on("click", () => {
 			tab.customer = null;
 			tab.customer_details = null;
+			tab.phone = "";
+			tab.address = "";
 			this._save_debounced();
 			this._render_body();
 		});
@@ -526,7 +553,10 @@ const santu_sale_pos = {
 			}
 
 			if (!exact_match) {
-				$(`<div class="santu-si2-dd-row santu-si2-dd-add" data-add="1">+ Add "${frappe.utils.escape_html(q)}" as new customer</div>`)
+				$(`<div class="santu-si2-dd-row santu-si2-dd-add" data-add="1">+ Use "${frappe.utils.escape_html(q)}" as new customer</div>`)
+					.on("click", () => this._use_new_customer_name(q))
+					.appendTo($dd);
+				$(`<div class="santu-si2-dd-row santu-si2-dd-advanced">+ Add with GST &amp; address details</div>`)
 					.on("click", () => this._open_add_party_dialog(q))
 					.appendTo($dd);
 			}
@@ -557,29 +587,91 @@ const santu_sale_pos = {
 	},
 
 	_use_walkin_customer() {
-		const existing = frappe.boot.sysdefaults && frappe.boot.sysdefaults.customer;
 		santu_sale_invoice.api.search_customers("Walk-in").then((rows) => {
 			const walkin = rows.find((r) => r.customer_name === "Walk-in Customer");
 			if (walkin) {
 				this._select_customer(walkin.name);
 			} else {
-				this._quick_add_customer("Walk-in Customer");
+				santu_sale_invoice.api.create_customer("Walk-in Customer", null, null).then((customer_name) => {
+					this._select_customer(customer_name);
+				});
 			}
 		});
 	},
 
-	_quick_add_customer(name) {
-		const phone = this.$root.find(".santu-si2-phone").val();
-		santu_sale_invoice.api.create_customer(name, phone || null, null).then((customer_name) => {
-			this._select_customer(customer_name);
-			frappe.show_alert({ message: __("Customer added"), indicator: "green" });
+	_use_new_customer_name(name) {
+		const tab = this._active_tab();
+		tab.customer = null;
+		tab.customer_details = null;
+		this.$root.find(".santu-si2-customer-search").val(name);
+		this.$root.find(".santu-si2-customer-dropdown").hide().empty();
+		this._save_debounced();
+		this.$root.find(".santu-si2-phone").focus();
+	},
+
+	_ensure_customer_before_save(tab) {
+		const { name, phone, address } = this._get_inline_customer_fields();
+
+		if (tab.customer) {
+			const d = tab.customer_details || {};
+			const currentName = (d.customer_name || "").trim();
+			const currentPhone = (d.mobile_no || "").trim();
+			const currentAddress = (d.address_line1 || "").trim();
+			const nameChanged = name && name !== currentName;
+			const phoneChanged = phone !== currentPhone;
+			const addressChanged = address !== currentAddress;
+
+			if (nameChanged || phoneChanged || addressChanged) {
+				return santu_sale_invoice.api
+					.update_customer_inline(
+						tab.customer,
+						nameChanged ? name : null,
+						phoneChanged ? phone : null,
+						addressChanged ? address : null
+					)
+					.then((r) => {
+						if (r.party && r.party !== tab.customer) tab.customer = r.party;
+						return santu_sale_invoice.api.customer_details(tab.customer).then((details) => {
+							tab.customer_details = details;
+							this._save_debounced();
+							return tab.customer;
+						});
+					});
+			}
+			return Promise.resolve(tab.customer);
+		}
+
+		if (!name) {
+			frappe.msgprint(__("Please enter a party name or select a customer."));
+			return Promise.reject();
+		}
+
+		if (!phone && !address) {
+			frappe.msgprint(__("Add a phone number or an address for {0} — one of the two is needed.", [name]));
+			return Promise.reject();
+		}
+
+		const payload = { customer_name: name, phone: phone || null };
+		if (address) {
+			payload.address_line1 = address;
+			payload.state = "Bihar";
+			payload.country = "India";
+		}
+
+		return santu_sale_invoice.api.create_customer_full(payload).then((customer_name) => {
+			tab.customer = customer_name;
+			return santu_sale_invoice.api.customer_details(customer_name).then((d) => {
+				tab.customer_details = d;
+				this._save_debounced();
+				return customer_name;
+			});
 		});
 	},
 
 	_open_add_party_dialog(name) {
-		const phone = this.$root.find(".santu-si2-phone").val();
+		const { phone } = this._get_inline_customer_fields();
 		santu_sale_invoice.utils.open_add_party_dialog({
-			name,
+			name: name || (this.$root.find(".santu-si2-customer-search").val() || "").trim(),
 			phone,
 			on_created: (customer_name) => this._select_customer(customer_name),
 		});
@@ -852,9 +944,18 @@ const santu_sale_pos = {
 					$root.find(".santu-si2-customer-dropdown, .santu-si2-item-dropdown").hide();
 				}
 			});
-		$root.find(".santu-si2-phone").on("change", (e) => {
+		$root.find(".santu-si2-phone").on("change input", (e) => {
 			tab.phone = e.target.value;
 			this._save_debounced();
+		});
+		$root.find(".santu-si2-address").on("change input", (e) => {
+			tab.address = e.target.value;
+			this._save_debounced();
+		});
+		$root.find(".santu-si2-party-advanced").on("click", (e) => {
+			e.preventDefault();
+			const name = (this.$root.find(".santu-si2-customer-search").val() || "").trim();
+			this._open_add_party_dialog(name);
 		});
 
 		$root.find(".santu-si2-posting-date").on("change", (e) => {
@@ -1162,7 +1263,11 @@ const santu_sale_pos = {
 				frappe.msgprint(__("Save the sale first."));
 				return;
 			}
-			window.santu_open_invoice_view("Sales Invoice", tab.saved_invoice.name);
+			if (window.santu_whatsapp_share) {
+				window.santu_whatsapp_share.send_transaction("Sales Invoice", tab.saved_invoice.name);
+			} else {
+				frappe.msgprint(__("WhatsApp share is loading — please try again."));
+			}
 			return;
 		}
 		if (action === "save" || action === "save_print" || action === "submit_draft") {
@@ -1172,8 +1277,9 @@ const santu_sale_pos = {
 	},
 
 	_validate_before_save(tab) {
-		if (!tab.customer) {
-			frappe.msgprint(__("Please select a customer."));
+		const { name, phone, address } = this._get_inline_customer_fields();
+		if (!tab.customer && !name) {
+			frappe.msgprint(__("Please enter a party name or select a customer."));
 			return false;
 		}
 		if (!tab.items.length) {
@@ -1198,16 +1304,18 @@ const santu_sale_pos = {
 		const outstanding = Math.max(total - paid, 0);
 		if (outstanding > 0) {
 			const d = tab.customer_details || {};
-			const name = (d.customer_name || "").trim().toLowerCase();
-			if (name === "walk-in customer") {
+			const displayName = (name || d.customer_name || tab.customer || "").trim().toLowerCase();
+			if (displayName === "walk-in customer") {
 				frappe.msgprint(__("Walk-in Customer cannot have an outstanding balance. Select or add a proper customer for a credit/baaki sale."));
 				return false;
 			}
+			const hasPhone = phone || d.mobile_no || tab.phone;
+			const hasAddress = address || d.address_line1 || d.address || tab.address;
 			const missing = [];
-			if (!d.mobile_no && !tab.phone) missing.push(__("Phone Number"));
-			if (!d.address) missing.push(__("Address"));
+			if (!hasPhone) missing.push(__("Phone Number"));
+			if (!hasAddress) missing.push(__("Address"));
 			if (missing.length) {
-				frappe.msgprint(__("{0} required for {1} to have an outstanding balance (baaki).", [missing.join(" " + __("and") + " "), d.customer_name || tab.customer]));
+				frappe.msgprint(__("{0} required for {1} to have an outstanding balance (baaki).", [missing.join(" " + __("and") + " "), name || d.customer_name || tab.customer]));
 				return false;
 			}
 		}
@@ -1218,36 +1326,39 @@ const santu_sale_pos = {
 		if (!this._validate_before_save(tab)) return;
 		const submit = action !== "submit_draft" ? 1 : 0;
 
-		const payload = {
-			customer: tab.customer,
-			company: this.init_data.company,
-			warehouse: this.init_data.warehouse,
-			posting_date: tab.posting_date,
-			selling_price_list: this.init_data.selling_price_list,
-			payment_mode: tab.payment_mode,
-			place_of_supply: tab.place_of_supply || null,
-			additional_discount_amount: tab.additional_discount_amount || 0,
-			terms: tab.terms || null,
-			description: tab.description || null,
-			items: tab.items.map((r) => ({
-				item_code: r.item_code,
-				qty: r.qty,
-				rate: r.rate,
-				uom: r.uom,
-				discount_percentage: r.discount_percentage || 0,
-				discount_amount: r.discount_amount || 0,
-			})),
-			payments:
-				tab.payment_mode === "cash" && tab.mode_of_payment
-					? [{ mode_of_payment: tab.mode_of_payment, amount: tab.paid_amount != null ? tab.paid_amount : null }]
-					: [],
-		};
-
 		frappe.dom.freeze(__("Saving…"));
-		santu_sale_invoice.api
-			.save(payload, submit)
+		this._ensure_customer_before_save(tab)
+			.then((customer) => {
+				const payload = {
+					customer,
+					company: this.init_data.company,
+					warehouse: this.init_data.warehouse,
+					posting_date: tab.posting_date,
+					selling_price_list: this.init_data.selling_price_list,
+					payment_mode: tab.payment_mode,
+					place_of_supply: tab.place_of_supply || null,
+					additional_discount_amount: tab.additional_discount_amount || 0,
+					terms: tab.terms || null,
+					description: tab.description || null,
+					items: tab.items.map((r) => ({
+						item_code: r.item_code,
+						qty: r.qty,
+						rate: r.rate,
+						uom: r.uom,
+						discount_percentage: r.discount_percentage || 0,
+						discount_amount: r.discount_amount || 0,
+					})),
+					payments:
+						tab.payment_mode === "cash" && tab.mode_of_payment
+							? [{ mode_of_payment: tab.mode_of_payment, amount: tab.paid_amount != null ? tab.paid_amount : null }]
+							: [],
+				};
+
+				return santu_sale_invoice.api.save(payload, submit);
+			})
 			.then((r) => {
 				frappe.dom.unfreeze();
+				if (!r) return;
 				tab.saved_invoice = r;
 				this._save_debounced();
 				frappe.show_alert({ message: __("Saved {0}", [r.name]), indicator: "green" });
@@ -1260,22 +1371,7 @@ const santu_sale_pos = {
 	},
 
 	_send_whatsapp(tab) {
-		santu_sale_invoice.api.whatsapp_preview("Sales Invoice", tab.saved_invoice.name).then((preview) => {
-			const d = new frappe.ui.Dialog({
-				title: __("Send on WhatsApp"),
-				fields: [
-					{ fieldtype: "Data", fieldname: "phone", label: "Phone", default: preview.phone_display || preview.phone, read_only: 1 },
-					{ fieldtype: "Small Text", fieldname: "message", label: "Message", default: preview.message },
-				],
-				primary_action_label: __("Send"),
-				primary_action: (v) => {
-					santu_sale_invoice.api.whatsapp_send("Sales Invoice", tab.saved_invoice.name, v.message).then(() => {
-						frappe.show_alert({ message: __("Sent"), indicator: "green" });
-						d.hide();
-					});
-				},
-			});
-			d.show();
-		});
+		if (!tab.saved_invoice) return;
+		window.santu_whatsapp_share.send_transaction("Sales Invoice", tab.saved_invoice.name);
 	},
 };

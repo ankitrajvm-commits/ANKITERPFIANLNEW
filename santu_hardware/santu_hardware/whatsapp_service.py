@@ -13,10 +13,22 @@ from santu_hardware.santu_hardware.whatsapp_provider import (
 
 
 def get_connection_state() -> dict:
+	from santu_hardware.santu_hardware.smart_connect_bridge import read_bridge_status
+
 	wa = frappe.get_single("Santu WhatsApp Settings")
 	connect = frappe.get_single("Santu WhatsApp Connect Settings")
+	smart = read_bridge_status()
+	smart_state = (smart.get("state") or "").upper()
 
-	if not wa.enabled:
+	if smart_state == "CONNECTED":
+		state = "CONNECTED"
+	elif smart_state == "QR":
+		state = "QR"
+	elif smart_state in ("CONNECTING", "RECONNECTING"):
+		state = smart_state
+	elif smart_state == "LOGGED_OUT":
+		state = "LOGGED_OUT"
+	elif not wa.enabled:
 		state = "DISCONNECTED"
 	elif wa.connect_state == "LOGGED_OUT":
 		state = "LOGGED_OUT"
@@ -33,12 +45,14 @@ def get_connection_state() -> dict:
 
 	return {
 		"state": state,
-		"configured": is_whatsapp_configured(),
-		"enabled": bool(wa.enabled),
-		"display_phone": wa.display_phone_number or wa.sender_number or "",
-		"provider": wa.provider,
+		"configured": is_whatsapp_configured() or smart_state in ("QR", "CONNECTING", "CONNECTED"),
+		"enabled": bool(wa.enabled) or smart_state == "CONNECTED",
+		"display_phone": smart.get("phone") or wa.display_phone_number or wa.sender_number or "",
+		"provider": "Smart Connect" if smart_state in ("QR", "CONNECTING", "CONNECTED", "RECONNECTING") else wa.provider,
 		"terms_accepted": bool(connect.terms_accepted),
-		"last_error": wa.last_test_error or "",
+		"last_error": smart.get("error") or wa.last_test_error or "",
+		"qr": smart.get("qr") or "",
+		"smart_connect": True,
 	}
 
 
@@ -82,10 +96,14 @@ def connect_whatsapp() -> dict:
 
 
 def disconnect_whatsapp() -> dict:
+	from santu_hardware.santu_hardware.smart_connect_bridge import stop_bridge
+
+	stop_bridge(logout=True)
 	wa = frappe.get_single("Santu WhatsApp Settings")
 	wa.enabled = 0
 	wa.connect_state = "LOGGED_OUT"
 	wa.connection_status = "Not Connected"
+	wa.display_phone_number = ""
 	wa.save(ignore_permissions=True)
 	frappe.db.commit()
 	return {"ok": True, "state": "LOGGED_OUT"}
@@ -137,10 +155,13 @@ def send_chat_message(
 	)
 
 	try:
+		from santu_hardware.santu_hardware.smart_connect_bridge import _resolve_send_phone
+
+		send_phone = _resolve_send_phone(phone)
 		if attachment_bytes and attachment_filename:
-			result = provider.send_document(phone, attachment_bytes, attachment_filename, caption=body[:1024])
+			result = provider.send_document(send_phone, attachment_bytes, attachment_filename, caption=body[:1024])
 		else:
-			result = provider.send_text(phone, body)
+			result = provider.send_text(send_phone, body)
 
 		chat.status = "Sent"
 		chat.provider_message_id = result.get("provider_message_id")

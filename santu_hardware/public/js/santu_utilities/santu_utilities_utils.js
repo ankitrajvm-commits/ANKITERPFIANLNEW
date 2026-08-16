@@ -3,6 +3,7 @@ frappe.provide("santu_utilities");
 
 santu_utilities.VIEWS = {
 	import_items: { title: "Import Items", label: "Import Items" },
+	shop_profile: { title: "Shop Profile", label: "Shop Profile" },
 	accountant_access: { title: "Accountant Access", label: "Accountant Access" },
 	barcode_generator: { title: "Barcode Generator", label: "Barcode Generator" },
 	bulk_update: { title: "Update Items In Bulk", label: "Update Items In Bulk" },

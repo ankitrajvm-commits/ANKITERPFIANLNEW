@@ -1,0 +1,16 @@
+{
+  "name": "santu-smart-connect",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Party Smart Connect — WhatsApp linked-device bridge (Baileys)",
+  "main": "bridge.js",
+  "scripts": {
+    "start": "node bridge.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.22",
+    "pino": "^10.3.1",
+    "qrcode": "^1.5.4"
+  }
+}

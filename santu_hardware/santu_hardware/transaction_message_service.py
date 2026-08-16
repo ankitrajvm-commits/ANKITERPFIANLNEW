@@ -337,13 +337,41 @@ def build_message_context(doc, transaction_type: str) -> dict:
 	}
 
 
+def _ensure_print_request():
+	"""Print formats call frappe.call() which needs an HTTP request context."""
+	if getattr(frappe.local, "request", None):
+		return
+	from werkzeug.test import EnvironBuilder
+	from werkzeug.wrappers import Request
+
+	frappe.local.request = Request(EnvironBuilder(method="GET").get_environ())
+
+
 def get_invoice_pdf_bytes(doc) -> tuple[bytes, str]:
-	print_format = frappe.db.get_value("DocType", doc.doctype, "default_print_format")
+	"""Thermal bill PDF for WhatsApp attachment."""
+	from santu_hardware.santu_hardware.api import _thermal_pdf_bytes
+
+	thermal_formats = {
+		"Sales Invoice": "Santu Hardware Thermal Bill (Sales Invoice)",
+		"POS Invoice": "Santu Hardware Thermal Bill",
+	}
+	print_format = thermal_formats.get(doc.doctype)
 	if not print_format:
-		print_format = frappe.db.get_value("Property Setter", {"doc_type": doc.doctype, "property": "default_print_format"}, "value")
-	if not print_format:
-		frappe.throw(f"No print format configured for {doc.doctype}")
-	pdf_bytes = frappe.get_print(doc.doctype, doc.name, print_format, as_pdf=True)
+		print_format = frappe.db.get_value("DocType", doc.doctype, "default_print_format")
+		if not print_format:
+			print_format = frappe.db.get_value(
+				"Property Setter",
+				{"doc_type": doc.doctype, "property": "default_print_format"},
+				"value",
+			)
+		if not print_format:
+			frappe.throw(f"No print format configured for {doc.doctype}")
+		_ensure_print_request()
+		pdf_bytes = frappe.get_print(doc.doctype, doc.name, print_format, as_pdf=True)
+		return pdf_bytes, f"{doc.name}.pdf"
+
+	_ensure_print_request()
+	pdf_bytes = _thermal_pdf_bytes(doc.doctype, doc.name, print_format)
 	return pdf_bytes, f"{doc.name}.pdf"
 
 
@@ -400,7 +428,8 @@ def send_transaction_message(
 			"ok": False,
 			"configured": conn.get("configured"),
 			"connected": False,
-			"message": "WhatsApp is not connected. Open Parties → WhatsApp Connect to connect.",
+			"error": "WhatsApp is not connected. Open Grow Your Business → WhatsApp Connect.",
+			"message": "WhatsApp is not connected. Open Grow Your Business → WhatsApp Connect.",
 			"preview": message_body,
 			"phone": phone,
 			"party_name": context.get("party_name"),

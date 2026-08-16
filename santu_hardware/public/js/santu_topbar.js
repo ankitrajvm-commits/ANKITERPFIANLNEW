@@ -34,7 +34,15 @@
 	];
 	window.santu_open_invoice_view = function (doctype, name) {
 		if (!SANTU_VIEWABLE_DOCTYPES.includes(doctype)) {
-			frappe.set_route("Form", doctype, name);
+			if (doctype === "Customer" || doctype === "Supplier") {
+				frappe.set_route("santu-parties");
+				return;
+			}
+			if (doctype === "Item") {
+				frappe.set_route("santu-items");
+				return;
+			}
+			frappe.set_route("santu-dashboard");
 			return;
 		}
 		frappe.route_options = { doctype, name };
@@ -95,7 +103,102 @@
 			frappe.set_route("santu-sale");
 			$(document).trigger("santu-sale-view-change");
 		},
+		Quotation: () => {
+			sessionStorage.setItem("santu_sale_view", "quotation");
+			frappe.set_route("santu-sale");
+			$(document).trigger("santu-sale-view-change");
+		},
+		"POS Invoice": () => {
+			sessionStorage.setItem("santu_sale_view", "invoices");
+			frappe.set_route("santu-sale");
+			$(document).trigger("santu-sale-view-change");
+		},
+		Item: () => frappe.set_route("santu-items"),
+		Customer: () => frappe.set_route("santu-parties"),
+		Supplier: () => frappe.set_route("santu-parties"),
+		Contact: () => frappe.set_route("santu-parties"),
+		Address: () => frappe.set_route("santu-parties"),
+		"Stock Entry": () => frappe.set_route("santu-stock"),
+		Warehouse: () => frappe.set_route("santu-stock"),
+		"Item Group": () => frappe.set_route("santu-items"),
+		Account: () => frappe.set_route("santu-cash-bank"),
+		Company: () => window.santu_open_shop_profile && window.santu_open_shop_profile(),
+		"Mode of Payment": () => window.santu_open_payment_modes && window.santu_open_payment_modes(),
+		User: () => {
+			sessionStorage.setItem("santu_utilities_view", "accountant_access");
+			frappe.set_route("santu-utilities");
+			$(document).trigger("santu-utilities-view-change");
+		},
 	};
+
+	function go_santu_report(report_id) {
+		sessionStorage.setItem("santu_reports_selected", report_id || "");
+		frappe.set_route("santu-reports");
+	}
+	window.santu_open_report = go_santu_report;
+
+	const SANTU_QUERY_REPORT_IDS = {
+		"Stock Balance": "stock_summary_item_category",
+		"Sales Register": "sale",
+		"Purchase Register": "purchase",
+		"General Ledger": "day_book",
+		"Stock Ledger": "stock_detail",
+		"Profit and Loss Statement": "profit_and_loss",
+		"Gross Profit": "bill_wise_profit",
+		"Cash Flow": "cash_flow",
+		"Trial Balance": "trial_balance",
+		"Balance Sheet": "balance_sheet",
+		"GSTR-1": "gstr1",
+		"GST Purchase Register": "gstr2",
+		"GSTR-3B Details": "gstr3b",
+		"Item-wise Sales Register": "party_report_by_item",
+		"HSN-wise-summary of outward supplies": "sale_summary_hsn",
+		"Bank Reconciliation Statement": "bank_statement",
+		"Sales Order Analysis": "sale_orders",
+	};
+
+	function go_workspace(name) {
+		const key = name || "Home";
+		const map = {
+			Home: () => frappe.set_route("santu-dashboard"),
+			home: () => frappe.set_route("santu-dashboard"),
+			Accounting: () => frappe.set_route("santu-cash-bank"),
+			accounting: () => frappe.set_route("santu-cash-bank"),
+			Selling: () => SANTU_LIST_VIEW_REDIRECTS["Sales Invoice"](),
+			selling: () => SANTU_LIST_VIEW_REDIRECTS["Sales Invoice"](),
+			Buying: () => SANTU_LIST_VIEW_REDIRECTS["Purchase Invoice"](),
+			buying: () => SANTU_LIST_VIEW_REDIRECTS["Purchase Invoice"](),
+			Stock: () => frappe.set_route("santu-stock"),
+			stock: () => frappe.set_route("santu-stock"),
+			Settings: () => frappe.set_route("santu-utilities"),
+			settings: () => frappe.set_route("santu-utilities"),
+			Users: () => {
+				sessionStorage.setItem("santu_utilities_view", "accountant_access");
+				frappe.set_route("santu-utilities");
+				$(document).trigger("santu-utilities-view-change");
+			},
+			users: () => {
+				sessionStorage.setItem("santu_utilities_view", "accountant_access");
+				frappe.set_route("santu-utilities");
+				$(document).trigger("santu-utilities-view-change");
+			},
+			Staff: () => {
+				sessionStorage.setItem("santu_utilities_view", "accountant_access");
+				frappe.set_route("santu-utilities");
+				$(document).trigger("santu-utilities-view-change");
+			},
+			staff: () => {
+				sessionStorage.setItem("santu_utilities_view", "accountant_access");
+				frappe.set_route("santu-utilities");
+				$(document).trigger("santu-utilities-view-change");
+			},
+			"ERPNext Settings": () => frappe.set_route("santu-utilities"),
+			"erpnext-settings": () => frappe.set_route("santu-utilities"),
+			CRM: () => frappe.set_route("santu-parties"),
+			crm: () => frappe.set_route("santu-parties"),
+		};
+		(map[key] || (() => frappe.set_route("santu-dashboard")))();
+	}
 
 	// Where "create a new <doctype>" should go instead of the native form.
 	// Module scope (not tucked inside the ListView patch) because two
@@ -117,6 +220,11 @@
 		"Purchase Order": () => frappe.set_route("santu-purchase-order"),
 		"Delivery Note": () => frappe.set_route("santu-delivery-challan"),
 		"Journal Entry": () => frappe.set_route("santu-expense"),
+		Quotation: () => frappe.set_route("santu-estimate"),
+		"POS Invoice": () => frappe.set_route("santu-billing"),
+		Item: () => frappe.set_route("santu-add-item"),
+		Customer: () => frappe.set_route("santu-parties"),
+		Supplier: () => frappe.set_route("santu-parties"),
 	};
 
 	// Single shared "collect/pay money" dialog (2026-08-15 direct request:
@@ -236,7 +344,12 @@
 	function open_more_menu($anchor) {
 		const items = [
 			{ label: "Privacy", action: () => toggle_dashboard_privacy() },
-			{ label: "Settings", action: () => frappe.set_route("Workspaces", "Settings") },
+			{
+				label: "Settings",
+				action: () => {
+					frappe.set_route("santu-utilities");
+				},
+			},
 			{ label: "Reports", action: () => frappe.set_route("santu-reports") },
 			{ label: "Log out", action: () => frappe.app.logout() },
 		];
@@ -507,9 +620,53 @@
 				setTimeout(SANTU_LIST_VIEW_REDIRECTS[route[1]], 0);
 				return;
 			}
+			if (route && (route[0] === "Workspaces" || route[0] === "workspace")) {
+				setTimeout(() => go_workspace(route[1] || "Home"), 0);
+				return;
+			}
+			if (route && (route[0] === "query-report" || route[0] === "query_report")) {
+				const report_name = decodeURIComponent(route.slice(1).join("/") || "");
+				setTimeout(() => go_santu_report(SANTU_QUERY_REPORT_IDS[report_name] || ""), 0);
+				return;
+			}
+			if (route && (route[0] === "dashboard-view" || route[0] === "dashboard" || route[0] === "Dashboard")) {
+				setTimeout(() => frappe.set_route("santu-dashboard"), 0);
+				return;
+			}
+			if (route && route[0] === "point-of-sale") {
+				const cashier = frappe.user.has_role("Cashier") && !frappe.user.has_role("System Manager");
+				if (!cashier) {
+					setTimeout(() => frappe.set_route("santu-billing"), 0);
+					return;
+				}
+			}
+			if (route && (route[0] === "Tree" || (route[0] === "List" && route[2] === "Tree")) && SANTU_LIST_VIEW_REDIRECTS[route[1]]) {
+				setTimeout(SANTU_LIST_VIEW_REDIRECTS[route[1]], 0);
+				return;
+			}
+			if (route && route[0] === "Form" && route[1] && SANTU_LIST_VIEW_REDIRECTS[route[1]] && !SANTU_VIEWABLE_DOCTYPES.includes(route[1])) {
+				setTimeout(SANTU_LIST_VIEW_REDIRECTS[route[1]], 0);
+				return;
+			}
 			return original_render_page();
 		};
 		frappe.router.render_page._santu_patched = true;
+	}
+
+	if (frappe.router && typeof frappe.router.make_url === "function" && !frappe.router.make_url._santu_patched) {
+		const original_make_url = frappe.router.make_url.bind(frappe.router);
+		frappe.router.make_url = function (params) {
+			const has_path = (params || []).some((a) => a && !$.isPlainObject(a));
+			if (!has_path) {
+				const cashier = frappe.user.has_role("Cashier") && !frappe.user.has_role("System Manager");
+				if (cashier) {
+					return localStorage.getItem("santu_current_staff") ? "/app/point-of-sale" : "/app/shift-start";
+				}
+				return "/app/santu-dashboard";
+			}
+			return original_make_url(params);
+		};
+		frappe.router.make_url._santu_patched = true;
 	}
 })();
 
@@ -550,41 +707,13 @@ window.santu_open_add_user = function (role, on_created) {
 	d.show();
 };
 
-// Shop's own details. Both callers used to open the native Company form,
-// which carries the chart of accounts, default warehouses, cost centres and
-// fixed-asset settings — nothing a shop owner should edit by accident.
 window.santu_open_shop_profile = function () {
-	frappe.xcall("santu_hardware.santu_hardware.api.get_shop_profile").then((p) => {
-		if (!p || !p.name) return;
-		const d = new frappe.ui.Dialog({
-			title: __("Shop Details"),
-			fields: [
-				{ fieldtype: "Data", fieldname: "company_name", label: __("Shop Name"), reqd: 1, default: p.company_name },
-				{ fieldtype: "Data", fieldname: "phone_no", label: __("Phone"), default: p.phone_no || "" },
-				{ fieldtype: "Data", fieldname: "email", label: __("Email"), default: p.email || "" },
-				{ fieldtype: "Data", fieldname: "gstin", label: __("GSTIN"), default: p.gstin || "" },
-			],
-			primary_action_label: __("Save"),
-			primary_action: (v) => {
-				frappe.dom.freeze(__("Saving…"));
-				frappe
-					.xcall("santu_hardware.santu_hardware.api.update_shop_profile", {
-						company: p.name,
-						company_name: v.company_name,
-						phone_no: v.phone_no || "",
-						email: v.email || "",
-						gstin: v.gstin || "",
-					})
-					.then(() => {
-						frappe.dom.unfreeze();
-						d.hide();
-						frappe.show_alert({ message: __("Saved"), indicator: "green" });
-					})
-					.catch(() => frappe.dom.unfreeze());
-			},
-		});
-		d.show();
-	});
+	sessionStorage.setItem("santu_utilities_view", "shop_profile");
+	if ((frappe.get_route() || [])[0] === "santu-utilities") {
+		$(document).trigger("santu-utilities-view-change");
+		return;
+	}
+	frappe.set_route("santu-utilities");
 };
 
 // Manage payment modes. Replaced a jump to the native Mode of Payment list

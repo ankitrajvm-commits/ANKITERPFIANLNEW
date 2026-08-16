@@ -849,6 +849,23 @@ def get_invoice_pdf_base64(doctype: str, name: str, print_format: str):
 	return base64.b64encode(pdf_bytes).decode("ascii")
 
 
+def _pdfkit_configuration():
+	"""Locate wkhtmltopdf for background/API PDF generation (no shell PATH)."""
+	import os
+	import shutil
+
+	from pdfkit.configuration import Configuration
+
+	for path in (
+		shutil.which("wkhtmltopdf"),
+		"/usr/local/bin/wkhtmltopdf",
+		"/opt/homebrew/bin/wkhtmltopdf",
+	):
+		if path and os.path.isfile(path):
+			return Configuration(wkhtmltopdf=path)
+	return None
+
+
 def _thermal_pdf_bytes(doctype: str, name: str, print_format: str) -> bytes:
 	"""Renders a thermal-roll PDF sized to match the actual paper width and
 	content height, instead of the framework's default A4 page.
@@ -909,7 +926,12 @@ def _thermal_pdf_bytes(doctype: str, name: str, print_format: str) -> bytes:
 	options.update(get_cookie_options())
 
 	try:
-		return pdfkit.from_string(html, options=options, verbose=True)
+		return pdfkit.from_string(
+			html,
+			options=options,
+			configuration=_pdfkit_configuration(),
+			verbose=True,
+		)
 	finally:
 		cleanup(options)
 
@@ -3374,6 +3396,7 @@ def get_customer_details_for_sale(customer: str):
 		return {}
 	cust = frappe.get_doc("Customer", customer)
 	address_line = None
+	address_line1 = None
 	if cust.customer_primary_address:
 		addr = frappe.db.get_value(
 			"Address",
@@ -3382,6 +3405,7 @@ def get_customer_details_for_sale(customer: str):
 			as_dict=True,
 		)
 		if addr:
+			address_line1 = addr.address_line1 or ""
 			address_line = ", ".join(filter(None, [addr.address_line1, addr.city, addr.state, addr.pincode]))
 
 	company = frappe.defaults.get_user_default("Company")
@@ -3414,6 +3438,7 @@ def get_customer_details_for_sale(customer: str):
 		"mobile_no": cust.mobile_no,
 		"village": cust.get("santu_village"),
 		"address": address_line,
+		"address_line1": address_line1,
 		"outstanding_amount": outstanding,
 		"credit_limit": credit_limit,
 	}
@@ -3461,6 +3486,9 @@ def get_sale_item_row(customer: str, item_code: str, warehouse: str = None, qty:
 	# rate in this column would promise a tax line that never appears on
 	# the bill or in the total.
 	row["tax_rate"] = 0
+	if not flt(row.get("rate")) and flt(row.get("price_list_rate")):
+		row["rate"] = row["price_list_rate"]
+		row["amount"] = flt(row.get("qty") or qty) * flt(row["rate"])
 	return row
 
 
@@ -3822,6 +3850,7 @@ def get_supplier_details_for_purchase(supplier: str):
 		return {}
 	sup = frappe.get_doc("Supplier", supplier)
 	address_line = None
+	address_line1 = None
 	if sup.supplier_primary_address:
 		addr = frappe.db.get_value(
 			"Address",
@@ -3830,6 +3859,7 @@ def get_supplier_details_for_purchase(supplier: str):
 			as_dict=True,
 		)
 		if addr:
+			address_line1 = addr.address_line1 or ""
 			address_line = ", ".join(filter(None, [addr.address_line1, addr.city, addr.state, addr.pincode]))
 
 	outstanding = flt(
@@ -3844,6 +3874,7 @@ def get_supplier_details_for_purchase(supplier: str):
 		"supplier_name": sup.supplier_name,
 		"mobile_no": sup.mobile_no,
 		"address": address_line,
+		"address_line1": address_line1,
 		"outstanding_amount": outstanding,
 	}
 
@@ -6753,6 +6784,60 @@ def create_staff_user(full_name: str, email: str, role: str = "Staff"):
 	return {"name": user.name, "email": email}
 
 
+def _company_address_name(company: str):
+	return frappe.db.get_value(
+		"Dynamic Link",
+		{"link_doctype": "Company", "link_name": company, "parenttype": "Address"},
+		"parent",
+	)
+
+
+def _company_address_fields(company: str) -> dict:
+	name = _company_address_name(company)
+	if not name or not frappe.db.exists("Address", name):
+		return {
+			"address_name": None,
+			"address": "",
+			"address_line2": "",
+			"city": "",
+			"state": "Bihar",
+			"pincode": "",
+		}
+	addr = frappe.get_doc("Address", name)
+	return {
+		"address_name": addr.name,
+		"address": addr.address_line1 or "",
+		"address_line2": addr.address_line2 or "",
+		"city": addr.city or "",
+		"state": addr.state or "Bihar",
+		"pincode": addr.pincode or "",
+	}
+
+
+def _save_company_address(company: str, data: dict):
+	name = _company_address_name(company)
+	values = {
+		"address_line1": (data.get("address") or "").strip() or company,
+		"address_line2": (data.get("address_line2") or "").strip() or None,
+		"city": (data.get("city") or "").strip() or "Patna",
+		"state": (data.get("state") or "").strip() or "Bihar",
+		"pincode": (data.get("pincode") or "").strip() or None,
+		"country": "India",
+	}
+	if name and frappe.db.exists("Address", name):
+		for k, v in values.items():
+			frappe.db.set_value("Address", name, k, v)
+		return name
+	addr = frappe.new_doc("Address")
+	addr.address_title = company
+	addr.address_type = "Billing"
+	for k, v in values.items():
+		addr.set(k, v)
+	addr.append("links", {"link_doctype": "Company", "link_name": company})
+	addr.insert(ignore_permissions=True)
+	return addr.name
+
+
 @frappe.whitelist()
 def get_shop_profile():
 	"""The handful of company fields a shop owner actually maintains."""
@@ -6760,24 +6845,35 @@ def get_shop_profile():
 	if not company:
 		return {}
 	doc = frappe.get_doc("Company", company)
-	return {
+	out = {
 		"name": doc.name,
 		"company_name": doc.company_name,
-		"phone_no": doc.get("phone_no"),
-		"email": doc.get("email"),
-		"gstin": doc.get("gstin"),
-		"address": doc.get("address_html") or "",
+		"phone_no": doc.get("phone_no") or "",
+		"email": doc.get("email") or "",
+		"website": doc.get("website") or "",
+		"gstin": doc.get("gstin") or "",
+		"company_logo": doc.get("company_logo") or "",
 	}
+	out.update(_company_address_fields(company))
+	return out
 
 
 @frappe.whitelist()
-def update_shop_profile(company: str, company_name: str = None, phone_no: str = None, email: str = None, gstin: str = None):
-	"""Save the shop's own details.
-
-	Replaces a jump to the native Company form, which carries the full chart
-	of accounts, default warehouses, cost centres and fixed-asset settings —
-	none of it something to edit by accident.
-	"""
+def update_shop_profile(
+	company: str,
+	company_name: str = None,
+	phone_no: str = None,
+	email: str = None,
+	gstin: str = None,
+	website: str = None,
+	address: str = None,
+	address_line2: str = None,
+	city: str = None,
+	state: str = None,
+	pincode: str = None,
+	company_logo: str = None,
+):
+	"""Save the shop's own details on the Vyapar Shop Profile page."""
 	if not frappe.db.exists("Company", company):
 		frappe.throw(_("Company {0} not found").format(company))
 	updates = {}
@@ -6787,10 +6883,24 @@ def update_shop_profile(company: str, company_name: str = None, phone_no: str = 
 		updates["phone_no"] = phone_no.strip() or None
 	if email is not None:
 		updates["email"] = email.strip() or None
+	if website is not None:
+		updates["website"] = website.strip() or None
 	if gstin is not None and frappe.get_meta("Company").has_field("gstin"):
 		updates["gstin"] = gstin.strip() or None
+	if company_logo is not None:
+		updates["company_logo"] = company_logo.strip() or None
 	for k, v in updates.items():
 		frappe.db.set_value("Company", company, k, v)
+	_save_company_address(
+		company,
+		{
+			"address": address,
+			"address_line2": address_line2,
+			"city": city,
+			"state": state,
+			"pincode": pincode,
+		},
+	)
 	frappe.db.commit()
 	return {"company": company}
 

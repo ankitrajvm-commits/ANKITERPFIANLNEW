@@ -12,71 +12,167 @@ santu_wa_connect.init = async function ($parent) {
 santu_wa_connect.render = async function () {
 	const status = await santu_wa_connect.api.status();
 	santu_wa_connect.state.status = status;
-	if (status.state !== "CONNECTED") {
-		santu_wa_connect.renderConnectScreen(status);
-	} else {
+	if (status.state === "CONNECTED") {
 		santu_wa_connect.renderWorkspace(status);
+		return;
 	}
+	if (status.state === "QR" || status.state === "CONNECTING" || status.state === "RECONNECTING") {
+		santu_wa_connect.renderQrScreen(status);
+		return;
+	}
+	santu_wa_connect.renderConnectScreen(status);
 };
 
 santu_wa_connect.renderConnectScreen = function (status) {
-	const stateLabel = {
-		DISCONNECTED: "🔴 WhatsApp disconnected",
-		CONNECTING: "🟡 Connecting…",
-		RECONNECTING: "🟡 Reconnecting…",
-		ERROR: "🔴 Connection error",
-		LOGGED_OUT: "🔴 Logged out",
-	}[status.state] || "🔴 WhatsApp not connected";
+	const viewed = sessionStorage.getItem("santu_wa_intro_seen") === "1";
+	if (!viewed) {
+		santu_wa_connect.renderLanding(status);
+		return;
+	}
+	santu_wa_connect.renderIntro(status);
+};
 
+santu_wa_connect.renderLanding = function (status) {
 	santu_wa_connect.$root.html(`
-		<div class="santu-wa-connect-header">
-			<h1>WhatsApp Connect</h1>
-			<span class="santu-wa-state-badge">${stateLabel}</span>
-		</div>
-		<div class="santu-wa-connect-setup">
-			<div class="santu-wa-setup-left">
-				<div class="santu-wa-illustration">💬</div>
+		<div class="santu-psc">
+			<div class="santu-psc-left">
+				<img class="santu-psc-hero" src="/assets/santu_hardware/images/whatsapp/whatsapp.svg" alt="">
+				<div class="santu-psc-kicker">Party Smart Connect</div>
 				<h2>WhatsApp as Usual</h2>
-				<p>Keep using WhatsApp's core features while connecting it with Santu Hardware.</p>
-				<p class="santu-wa-muted">Santu Hardware uses the official <b>Meta WhatsApp Business Cloud API</b>. Configure your API credentials, then connect — no unofficial scraping.</p>
+				<p>Phone ka WhatsApp is desktop se <b>linked device</b> ki tarah judta hai — invoice, reminder aur party chat yahin se.</p>
 			</div>
-			<div class="santu-wa-setup-right">
-				<h3>Connect WhatsApp Business API</h3>
-				${status.last_error ? `<div class="santu-wa-error">${frappe.utils.escape_html(status.last_error)}</div>` : ""}
-				<ol class="santu-wa-steps">
-					<li>Open <b>Settings → Transaction Message → WhatsApp</b></li>
-					<li>Enter your Meta Cloud API <b>Access Token</b> and <b>Phone Number ID</b></li>
-					<li>Enable WhatsApp and save</li>
-					<li>Return here and click <b>Connect WhatsApp</b></li>
-				</ol>
-				<label class="santu-wa-terms"><input type="checkbox" class="wa-terms-cb"> Proceed with Standard Usage Terms</label>
-				<div class="santu-wa-setup-actions">
-					<button class="btn btn-primary wa-connect-btn" disabled>Connect WhatsApp</button>
-					<button class="btn btn-default wa-config-btn">Configure API</button>
-				</div>
-				${!status.configured ? `<p class="santu-wa-warn">⚠ WhatsApp API credentials are not configured yet.</p>` : ""}
+			<div class="santu-psc-right">
+				<div class="santu-psc-new">NEW</div>
+				<h3>Get Started</h3>
+				<p class="santu-psc-muted">Open WhatsApp on your phone → <b>Linked devices</b> → scan the QR that appears next.</p>
+				${status.last_error ? `<div class="santu-wa-error">${frappe.utils.escape_html(santu_wa_connect.sanitizeBridgeError(status.last_error))}</div>` : ""}
+				<label class="santu-wa-terms"><input type="checkbox" class="wa-terms-cb" ${status.terms_accepted ? "checked" : ""}> Proceed with Standard Usage Terms</label>
+				<button type="button" class="santu-psc-cta wa-start-btn" ${status.terms_accepted ? "" : "disabled"}>Get Started</button>
 			</div>
 		</div>
 	`);
-
 	santu_wa_connect.$root.find(".wa-terms-cb").on("change", async function () {
 		if ($(this).is(":checked")) await santu_wa_connect.api.acceptTerms();
-		santu_wa_connect.$root.find(".wa-connect-btn").prop("disabled", !$(this).is(":checked") || !status.configured);
+		santu_wa_connect.$root.find(".wa-start-btn").prop("disabled", !$(this).is(":checked"));
 	});
-	santu_wa_connect.$root.find(".wa-config-btn").on("click", () => frappe.set_route("santu-transaction-message"));
-	santu_wa_connect.$root.find(".wa-connect-btn").on("click", async () => {
-		const $btn = santu_wa_connect.$root.find(".wa-connect-btn");
-		$btn.prop("disabled", true).text("Connecting…");
-		const r = await santu_wa_connect.api.connect();
-		if (r.ok) {
-			frappe.show_alert({ message: "WhatsApp connected", indicator: "green" });
-			santu_wa_connect.render();
-		} else {
-			frappe.msgprint(r.error || "Connection failed");
-			$btn.prop("disabled", false).text("Connect WhatsApp");
-			santu_wa_connect.render();
-		}
+	santu_wa_connect.$root.find(".wa-start-btn").on("click", () => {
+		sessionStorage.setItem("santu_wa_intro_seen", "1");
+		santu_wa_connect.renderIntro(status);
 	});
+};
+
+santu_wa_connect.renderIntro = function (status) {
+	santu_wa_connect.$root.html(`
+		<div class="santu-psc santu-psc-intro">
+			<div class="santu-psc-intro-card">
+				<img src="/assets/santu_hardware/images/whatsapp/whatsappHeaderNav.svg" alt="" class="santu-psc-intro-icon">
+				<h2>Connect WhatsApp</h2>
+				<ol class="santu-psc-steps">
+					<li>Phone pe <b>WhatsApp</b> kholo</li>
+					<li><b>Linked devices</b> → <b>Link a device</b></li>
+					<li>Jo QR next screen pe aaye, use scan karo</li>
+				</ol>
+				<button type="button" class="santu-psc-cta wa-qr-btn">Continue</button>
+				<button type="button" class="santu-psc-link wa-back-landing">Back</button>
+			</div>
+		</div>
+	`);
+	santu_wa_connect.$root.find(".wa-back-landing").on("click", () => {
+		sessionStorage.removeItem("santu_wa_intro_seen");
+		santu_wa_connect.renderLanding(status);
+	});
+	santu_wa_connect.$root.find(".wa-qr-btn").on("click", () => santu_wa_connect.beginQrLogin());
+};
+
+santu_wa_connect.beginQrLogin = async function () {
+	santu_wa_connect.$root.html(`
+		<div class="santu-psc-qr-wrap">
+			<div class="santu-psc-qr-card">
+				<div class="santu-psc-qr-title">Scan QR code</div>
+				<div class="santu-psc-qr-box"><div class="santu-psc-qr-wait">QR aa raha hai…</div></div>
+				<p class="santu-psc-qr-help">QR aate hi <b>turant scan</b> karo (20 sec mein expire). Phone: WhatsApp → Linked devices → Link a device. “Couldn’t link” aaye to naya QR wait karo — purana mat scan karo.</p>
+			</div>
+		</div>
+	`);
+	try {
+		await santu_wa_connect.api.acceptTerms();
+		const st = await santu_wa_connect.api.startSmartConnect();
+		santu_wa_connect.applyQrStatus(st);
+		santu_wa_connect.startQrPoll();
+	} catch (e) {
+		frappe.msgprint((e && e.message) || "Could not start WhatsApp Connect");
+		santu_wa_connect.render();
+	}
+};
+
+santu_wa_connect.startQrPoll = function () {
+	clearInterval(santu_wa_connect._qrTimer);
+	santu_wa_connect._qrTimer = setInterval(async () => {
+		try {
+			const st = await santu_wa_connect.api.qrStatus();
+			santu_wa_connect.applyQrStatus(st);
+		} catch (e) {}
+	}, 1000);
+};
+
+santu_wa_connect.sanitizeBridgeError = function (msg) {
+	if (!msg) return "";
+	const s = String(msg);
+	if (/subtle|webcrypto/i.test(s)) return "WhatsApp engine needs a newer Node. Tap Continue again.";
+	if (/ERR_REQUIRE_ESM/i.test(s)) return "WhatsApp library failed to load. Tap Continue again.";
+	if (/eaddrinuse/i.test(s)) return "WhatsApp bridge is busy. Wait a moment and tap Continue again.";
+	const lines = s.split(/\r?\n/).map((ln) => ln.trim()).filter(Boolean);
+	if (lines.some((ln) => ln.startsWith("at ") || ln.startsWith("/") || ln.includes("node:internal"))) {
+		const friendly = lines.find((ln) => !ln.startsWith("at ") && !ln.startsWith("/") && !ln.includes("node:internal"));
+		return friendly ? friendly.slice(0, 200) : "WhatsApp connection failed. Tap Continue to retry.";
+	}
+	return s.slice(0, 200);
+};
+
+santu_wa_connect.applyQrStatus = function (st) {
+	st = st || {};
+	const state = (st.state || "").toUpperCase();
+	if (state === "CONNECTED") {
+		clearInterval(santu_wa_connect._qrTimer);
+		frappe.show_alert({ message: "WhatsApp Connected", indicator: "green" });
+		santu_wa_connect.render();
+		return;
+	}
+	const $box = santu_wa_connect.$root.find(".santu-psc-qr-box");
+	if (!$box.length) return;
+	if (st.qr) {
+		$box.html(`<img src="${st.qr}" alt="WhatsApp QR">`);
+	} else if (state === "ERROR") {
+		clearInterval(santu_wa_connect._qrTimer);
+		$box.html(`<div class="santu-psc-qr-wait">QR nahi khula</div>`);
+	} else if (state === "CONNECTING" || state === "RECONNECTING") {
+		$box.html(`<div class="santu-psc-qr-wait">Linking phone… QR scan ho chuka hai, thoda wait karo.</div>`);
+	}
+	const err = santu_wa_connect.sanitizeBridgeError(st.error);
+	const $err = santu_wa_connect.$root.find(".santu-psc-qr-error");
+	if (err) {
+		if ($err.length) $err.text(err).show();
+		else santu_wa_connect.$root.find(".santu-psc-qr-help").after(`<div class="santu-psc-qr-error santu-wa-error">${frappe.utils.escape_html(err)}</div>`);
+	} else if ($err.length) {
+		$err.hide().text("");
+	}
+};
+
+santu_wa_connect.renderQrScreen = function (status) {
+	santu_wa_connect.$root.html(`
+		<div class="santu-psc-qr-wrap">
+			<div class="santu-psc-qr-card">
+				<div class="santu-psc-qr-title">Scan QR code</div>
+				<div class="santu-psc-qr-box">${
+					status.qr
+						? `<img src="${status.qr}" alt="WhatsApp QR">`
+						: `<div class="santu-psc-qr-wait">QR aa raha hai…</div>`
+				}</div>
+				<p class="santu-psc-qr-help">QR aate hi <b>turant scan</b> karo (20 sec mein expire). Phone: WhatsApp → Linked devices → Link a device. “Couldn’t link” aaye to naya QR wait karo — purana mat scan karo.</p>
+			</div>
+		</div>
+	`);
+	santu_wa_connect.startQrPoll();
 };
 
 santu_wa_connect.renderWorkspace = function (status) {

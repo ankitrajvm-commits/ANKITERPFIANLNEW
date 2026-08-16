@@ -1,0 +1,132 @@
+{
+  "results": [
+    {
+      "id": 1,
+      "name": "Dashboard loads with summary + table",
+      "status": "PASS",
+      "notes": "Summary card visible; 25 transaction row(s)",
+      "screenshot": null
+    },
+    {
+      "id": 2,
+      "name": "View: Sale Invoices",
+      "status": "PASS",
+      "notes": "Title shows \"Sale Invoices\"",
+      "screenshot": null
+    },
+    {
+      "id": 2,
+      "name": "View: Estimate / Quotation",
+      "status": "PASS",
+      "notes": "Title shows \"Estimate / Quotation\"",
+      "screenshot": null
+    },
+    {
+      "id": 2,
+      "name": "View: Proforma Invoice",
+      "status": "PASS",
+      "notes": "Title shows \"Proforma Invoice\"",
+      "screenshot": null
+    },
+    {
+      "id": 2,
+      "name": "View: Payment In",
+      "status": "PASS",
+      "notes": "Title shows \"Payment In\"",
+      "screenshot": null
+    },
+    {
+      "id": 2,
+      "name": "View: Sales Order",
+      "status": "PASS",
+      "notes": "Title shows \"Sales Order\"",
+      "screenshot": null
+    },
+    {
+      "id": 2,
+      "name": "View: Delivery Challan",
+      "status": "PASS",
+      "notes": "Title shows \"Delivery Challan\"",
+      "screenshot": null
+    },
+    {
+      "id": 2,
+      "name": "View: Sales Return",
+      "status": "PASS",
+      "notes": "Title shows \"Sales Return\"",
+      "screenshot": null
+    },
+    {
+      "id": 3,
+      "name": "Period: Today",
+      "status": "PASS",
+      "notes": "Filter applied, summary reloaded",
+      "screenshot": null
+    },
+    {
+      "id": 3,
+      "name": "Period: This Month",
+      "status": "PASS",
+      "notes": "Filter applied, summary reloaded",
+      "screenshot": null
+    },
+    {
+      "id": 3,
+      "name": "Period: This Year",
+      "status": "PASS",
+      "notes": "Filter applied, summary reloaded",
+      "screenshot": null
+    },
+    {
+      "id": 4,
+      "name": "Row click → santu-view-invoice",
+      "status": "PASS",
+      "notes": "Route: santu-view-invoice",
+      "screenshot": null
+    },
+    {
+      "id": 5,
+      "name": "santu-sale-invoice loads, search customer, add item",
+      "status": "PARTIAL",
+      "notes": "Page loaded but search dropdowns: customer=false, item=false",
+      "screenshot": "/Users/santuhardware/erpnext/frappe-bench/apps/santu_hardware/santu_hardware/tests/tmp_santu_ui_screenshots/test5-sale-invoice.png"
+    },
+    {
+      "id": 6,
+      "name": "Send on WhatsApp on saved invoice",
+      "status": "PASS",
+      "notes": "Found 1 WhatsApp button(s)",
+      "screenshot": null
+    },
+    {
+      "id": 7,
+      "name": "santu-billing (POS) accessible",
+      "status": "PASS",
+      "notes": "Route: santu-billing",
+      "screenshot": null
+    },
+    {
+      "id": 8,
+      "name": "Sidebar Sale link → custom UI",
+      "status": "FAIL",
+      "notes": "locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator('.santu-fixed-sidebar a[href*=\"santu-sale\"], .santu-fixed-sidebar [data-route=\"santu-sale\"]').first()\n",
+      "screenshot": "/Users/santuhardware/erpnext/frappe-bench/apps/santu_hardware/santu_hardware/tests/tmp_santu_ui_screenshots/test8-sidebar-error.png"
+    },
+    {
+      "id": 9,
+      "name": "Share button on sale list row",
+      "status": "PASS",
+      "notes": "Found 2 share button(s)",
+      "screenshot": null
+    },
+    {
+      "id": 10,
+      "name": "Hard refresh — no santu_sale console errors",
+      "status": "PASS",
+      "notes": "No santu_sale-related console errors",
+      "screenshot": null
+    }
+  ],
+  "consoleErrors": [],
+  "screenshotDir": "/Users/santuhardware/erpnext/frappe-bench/apps/santu_hardware/santu_hardware/tests/tmp_santu_ui_screenshots"
+}
