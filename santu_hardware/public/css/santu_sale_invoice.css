@@ -267,9 +267,74 @@ body[data-route="santu-sale-invoice"] .page-content {
 }
 .santu-si2-customer-search:focus,
 .santu-si2-phone:focus,
-.santu-si2-address:focus {
+.santu-si2-address:focus,
+.santu-si2-village:focus,
+.santu-si2-pincode:focus {
 	outline: none;
 	border-color: #2563eb;
+}
+
+/* Village / Pincode — same row layout and input style as the Name/Phone
+   row above it, so this reads as one connected party-details block rather
+   than a bolted-on extra field. */
+.santu-si2-customer-row2 {
+	display: flex;
+	gap: 10px;
+}
+.santu-si2-village-wrap {
+	position: relative;
+	flex: 1;
+	min-width: 0;
+}
+.santu-si2-village,
+.santu-si2-pincode {
+	width: 100%;
+	border: 1px solid #d1d5db;
+	padding: 10px 12px;
+	font-size: 15px;
+	background: #fff;
+	box-sizing: border-box;
+	border-radius: 8px;
+	font-family: inherit;
+}
+.santu-si2-pincode {
+	max-width: 160px;
+	flex-shrink: 0;
+}
+.santu-si2-village-dropdown {
+	position: absolute;
+	top: calc(100% + 2px);
+	left: 0;
+	right: 0;
+	background: #fff;
+	border: 1px solid #d1d5db;
+	max-height: 240px;
+	overflow-y: auto;
+	z-index: 40;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+	border-radius: 10px;
+}
+.santu-si2-village-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 9px 12px;
+	font-size: 14px;
+	cursor: pointer;
+	border-bottom: 1px solid #f3f4f6;
+}
+.santu-si2-village-row:hover {
+	background: #f3f4f6;
+}
+.santu-si2-village-row span {
+	color: #9ca3af;
+	font-size: 12.5px;
+}
+.santu-si2-village-empty {
+	padding: 12px;
+	color: #9ca3af;
+	font-size: 13px;
 }
 
 .santu-si2-cust-card {

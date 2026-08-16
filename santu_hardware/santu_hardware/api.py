@@ -3455,6 +3455,8 @@ def get_customer_details_for_sale(customer: str):
 	cust = frappe.get_doc("Customer", customer)
 	address_line = None
 	address_line1 = None
+	city = None
+	pincode = None
 	if cust.customer_primary_address:
 		addr = frappe.db.get_value(
 			"Address",
@@ -3464,6 +3466,8 @@ def get_customer_details_for_sale(customer: str):
 		)
 		if addr:
 			address_line1 = addr.address_line1 or ""
+			city = addr.city or ""
+			pincode = addr.pincode or ""
 			address_line = ", ".join(filter(None, [addr.address_line1, addr.city, addr.state, addr.pincode]))
 
 	company = frappe.defaults.get_user_default("Company")
@@ -3497,6 +3501,11 @@ def get_customer_details_for_sale(customer: str):
 		"village": party_village("Customer", cust.name, cust.get("santu_village")),
 		"address": address_line,
 		"address_line1": address_line1,
+		# Raw fields off the Address record itself (not the santu_village
+		# fallback "village" above), so the inline quick-edit on the Sale
+		# screen can tell "nothing typed yet" from "this is what's on file".
+		"city": city,
+		"pincode": pincode,
 		"outstanding_amount": outstanding,
 		"credit_limit": credit_limit,
 	}
@@ -6520,6 +6529,8 @@ def update_party_details(
 	email: str = None,
 	gstin: str = None,
 	address: str = None,
+	city: str = None,
+	pincode: str = None,
 ):
 	"""Save every field the Parties Edit dialog shows.
 
@@ -6566,20 +6577,45 @@ def update_party_details(
 		if frappe.get_meta(party_type).has_field("gstin"):
 			frappe.db.set_value(party_type, party, "gstin", gstin or None)
 
-	if address is not None:
+	# address_line1, city and pincode can each arrive independently — the
+	# Sale screen's inline Village/Pincode fields are edited separately from
+	# the Address textarea, so a village-only edit must not be silently
+	# dropped just because `address` itself is None.
+	if address is not None or city is not None or pincode is not None:
 		address_field = "customer_primary_address" if party_type == "Customer" else "supplier_primary_address"
 		address_name = frappe.db.get_value(party_type, party, address_field)
 		if address_name and frappe.db.exists("Address", address_name):
-			frappe.db.set_value("Address", address_name, "address_line1", address or None)
-		elif address:
+			values = {}
+			if address is not None:
+				values["address_line1"] = address or None
+			if city is not None:
+				values["city"] = city or "Saran"
+			if pincode is not None:
+				values["pincode"] = pincode or None
+			if values:
+				frappe.db.set_value("Address", address_name, values)
+		elif address or city or pincode:
+			# No address on file yet: create one from whichever of the three
+			# fields the counter actually filled in. address_line1 and city
+			# are mandatory on Address, so a village/pincode-only edit still
+			# needs a line1 to insert — the party's own name, same fallback
+			# create_customer_full already uses when nothing else was typed.
 			doc = frappe.new_doc("Address")
 			doc.address_title = party
 			doc.address_type = "Billing"
-			doc.address_line1 = address
+			doc.address_line1 = address or party
+			doc.city = city or "Saran"
+			doc.pincode = pincode or None
 			doc.country = "India"
 			doc.append("links", {"link_doctype": party_type, "link_name": party})
 			doc.insert(ignore_permissions=True)
 			frappe.db.set_value(party_type, party, address_field, doc.name)
+
+		# Keep santu_village in step with whatever city just got saved, or
+		# party_village()'s "prefer the stored value" rule would keep
+		# showing a stale village even after the address was corrected.
+		if city and party_type == "Customer" and frappe.get_meta("Customer").has_field("santu_village"):
+			frappe.db.set_value("Customer", party, "santu_village", city)
 
 	frappe.db.commit()
 	return {"party": party}

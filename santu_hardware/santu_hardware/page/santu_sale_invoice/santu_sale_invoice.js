@@ -302,6 +302,13 @@ window.santu_sale_pos = {
 							<input type="text" class="santu-si2-phone" placeholder="Phone No.">
 						</div>
 						<textarea class="santu-si2-address" placeholder="Address" rows="2"></textarea>
+						<div class="santu-si2-customer-row2">
+							<div class="santu-si2-village-wrap">
+								<input type="text" class="santu-si2-village" placeholder="Village / City" autocomplete="off">
+								<div class="santu-si2-village-dropdown" style="display:none;"></div>
+							</div>
+							<input type="text" class="santu-si2-pincode" placeholder="Pincode" maxlength="6" inputmode="numeric">
+						</div>
 						<a href="#" class="santu-si2-party-advanced">${__("GST & more details…")}</a>
 					</div>
 				</div>
@@ -462,9 +469,13 @@ window.santu_sale_pos = {
 		const name = (this.$root.find(".santu-si2-customer-search").val() || "").trim();
 		const phone = (this.$root.find(".santu-si2-phone").val() || "").trim();
 		const address = (this.$root.find(".santu-si2-address").val() || "").trim();
+		const city = (this.$root.find(".santu-si2-village").val() || "").trim();
+		const pincode = (this.$root.find(".santu-si2-pincode").val() || "").trim();
 		tab.phone = phone;
 		tab.address = address;
-		return { name, phone, address };
+		tab.city = city;
+		tab.pincode = pincode;
+		return { name, phone, address, city, pincode };
 	},
 
 	_sync_inline_customer_fields() {
@@ -472,10 +483,14 @@ window.santu_sale_pos = {
 		const $search = this.$root.find(".santu-si2-customer-search");
 		const $phone = this.$root.find(".santu-si2-phone");
 		const $address = this.$root.find(".santu-si2-address");
+		const $village = this.$root.find(".santu-si2-village");
+		const $pincode = this.$root.find(".santu-si2-pincode");
 		const d = tab.customer_details || {};
 		$search.val(d.customer_name || tab.customer || "");
 		$phone.val(d.mobile_no || tab.phone || "");
 		$address.val(d.address_line1 || tab.address || "");
+		$village.val(d.city || tab.city || "");
+		$pincode.val(d.pincode || tab.pincode || "");
 	},
 
 	_render_customer_info() {
@@ -636,24 +651,30 @@ window.santu_sale_pos = {
 	},
 
 	_ensure_customer_before_save(tab) {
-		const { name, phone, address } = this._get_inline_customer_fields();
+		const { name, phone, address, city, pincode } = this._get_inline_customer_fields();
 
 		if (tab.customer) {
 			const d = tab.customer_details || {};
 			const currentName = (d.customer_name || "").trim();
 			const currentPhone = (d.mobile_no || "").trim();
 			const currentAddress = (d.address_line1 || "").trim();
+			const currentCity = (d.city || "").trim();
+			const currentPincode = (d.pincode || "").trim();
 			const nameChanged = name && name !== currentName;
 			const phoneChanged = phone !== currentPhone;
 			const addressChanged = address !== currentAddress;
+			const cityChanged = city !== currentCity;
+			const pincodeChanged = pincode !== currentPincode;
 
-			if (nameChanged || phoneChanged || addressChanged) {
+			if (nameChanged || phoneChanged || addressChanged || cityChanged || pincodeChanged) {
 				return santu_sale_invoice.api
 					.update_customer_inline(
 						tab.customer,
 						nameChanged ? name : null,
 						phoneChanged ? phone : null,
-						addressChanged ? address : null
+						addressChanged ? address : null,
+						cityChanged ? city : null,
+						pincodeChanged ? pincode : null
 					)
 					.then((r) => {
 						if (r.party && r.party !== tab.customer) tab.customer = r.party;
@@ -672,14 +693,16 @@ window.santu_sale_pos = {
 			return Promise.reject();
 		}
 
-		if (!phone && !address) {
+		if (!phone && !address && !city && !pincode) {
 			frappe.msgprint(__("Add a phone number or an address for {0} — one of the two is needed.", [name]));
 			return Promise.reject();
 		}
 
 		const payload = { customer_name: name, phone: phone || null };
-		if (address) {
-			payload.address_line1 = address;
+		if (address || city || pincode) {
+			if (address) payload.address_line1 = address;
+			if (city) payload.city = city;
+			if (pincode) payload.pincode = pincode;
 			payload.state = "Bihar";
 			payload.country = "India";
 		}
@@ -999,8 +1022,8 @@ window.santu_sale_pos = {
 		$(document)
 			.off("click.santu-si2-dd")
 			.on("click.santu-si2-dd", (e) => {
-				if (!$(e.target).closest(".santu-si2-customer-search-wrap, .santu-si2-item-search-wrap, .santu-si2-item-dropdown").length) {
-					$root.find(".santu-si2-customer-dropdown, .santu-si2-item-dropdown").hide();
+				if (!$(e.target).closest(".santu-si2-customer-search-wrap, .santu-si2-item-search-wrap, .santu-si2-item-dropdown, .santu-si2-village-wrap").length) {
+					$root.find(".santu-si2-customer-dropdown, .santu-si2-item-dropdown, .santu-si2-village-dropdown").hide();
 				}
 			});
 		$root.find(".santu-si2-phone").on("change input", (e) => {
@@ -1011,6 +1034,55 @@ window.santu_sale_pos = {
 			tab.address = e.target.value;
 			this._save_debounced();
 		});
+		$root.find(".santu-si2-pincode").on("change input", (e) => {
+			// Digits only, and stop at 6 — a stray letter here fails Address
+			// validation only after Save, when it's a lot more annoying to fix.
+			const digits = e.target.value.replace(/\D/g, "").slice(0, 6);
+			if (digits !== e.target.value) e.target.value = digits;
+			tab.pincode = digits;
+			this._save_debounced();
+		});
+
+		// Village/City — same real Bihar village + pincode dataset the full
+		// "Add Party" dialog uses, so the counter gets the same auto-filled
+		// pincode here without needing to open that dialog at all. No
+		// district selector in this compact row (that stays a dialog-only
+		// field for the rare out-of-district customer); "Saran" is this
+		// shop's own district and covers the everyday case.
+		const $village = $root.find(".santu-si2-village");
+		const $villageDD = $root.find(".santu-si2-village-dropdown");
+		const $pincode = $root.find(".santu-si2-pincode");
+		const search_village = santu_sale_invoice.utils.debounce((q) => {
+			santu_sale_invoice.api.search_bihar_villages("Saran", q).then((rows) => {
+				$villageDD.empty();
+				if (!rows.length) {
+					$villageDD.append(`<div class="santu-si2-village-empty">${__("No matches")}</div>`);
+				}
+				rows.forEach((r) => {
+					$(`<div class="santu-si2-village-row">${frappe.utils.escape_html(r.village)} <span>${frappe.utils.escape_html(r.pincode || "")}</span></div>`)
+						.on("click", () => {
+							$village.val(r.village);
+							tab.city = r.village;
+							if (!$pincode.val() && r.pincode) {
+								$pincode.val(r.pincode);
+								tab.pincode = r.pincode;
+							}
+							$villageDD.hide();
+							this._save_debounced();
+						})
+						.appendTo($villageDD);
+				});
+				$villageDD.show();
+			});
+		}, 250);
+		$village.on("input", (e) => {
+			tab.city = e.target.value;
+			this._save_debounced();
+			search_village(e.target.value.trim());
+		});
+		$village.on("focus", (e) => search_village(e.target.value.trim()));
+		$village.on("blur", () => setTimeout(() => $villageDD.hide(), 150));
+
 		$root.find(".santu-si2-party-advanced").on("click", (e) => {
 			e.preventDefault();
 			const name = (this.$root.find(".santu-si2-customer-search").val() || "").trim();
@@ -1369,7 +1441,7 @@ window.santu_sale_pos = {
 				return false;
 			}
 			const hasPhone = phone || d.mobile_no || tab.phone;
-			const hasAddress = address || d.address_line1 || d.address || tab.address;
+			const hasAddress = address || d.address_line1 || d.address || tab.address || d.city || tab.city;
 			const missing = [];
 			if (!hasPhone) missing.push(__("Phone Number"));
 			if (!hasAddress) missing.push(__("Address"));
