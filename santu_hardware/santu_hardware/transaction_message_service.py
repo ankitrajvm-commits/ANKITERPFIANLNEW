@@ -282,6 +282,57 @@ def get_payment_link(doc) -> str:
 	return ""
 
 
+def _public_document_link(doc) -> str:
+	"""A link the customer can actually open, or nothing at all.
+
+	This used to hand out get_url("/app/sales_invoice/SINV-...") — broken two
+	ways at once. "/app/..." is the internal desk form, so anyone tapping it
+	lands on a login screen, and get_url() on this machine returns
+	http://site1.local:8000, a development hostname that exists only on this
+	Mac. A customer on mobile data could never reach it.
+
+	The bill itself already travels with the message as a PDF attachment, so
+	when there is no genuinely reachable address, sending no link is better
+	than sending a dead one.
+	"""
+	from urllib.parse import urlparse
+
+	base = (get_url() or "").rstrip("/")
+	host = (urlparse(base).hostname or "").lower()
+
+	# Development / LAN-only hosts a customer's phone cannot resolve.
+	unreachable = (
+		not host
+		or host in ("localhost", "127.0.0.1", "0.0.0.0")
+		or host.endswith(".local")
+		or host.endswith(".localhost")
+		or host.startswith("192.168.")
+		or host.startswith("10.")
+		or host.startswith("172.16.")
+	)
+	if unreachable:
+		return ""
+
+	# The portal route, not the desk one: /app/* is staff-only by design.
+	# These are ERPNext's own registered website_route_rules — they are not
+	# derivable from the doctype name (Sales Invoice lives at /invoices, not
+	# /sales_invoices), so they are listed rather than guessed. A doctype
+	# with no portal page gets no link at all.
+	PORTAL_ROUTES = {
+		"Sales Invoice": "invoices",
+		"Purchase Invoice": "purchase-invoices",
+		"Sales Order": "orders",
+		"Purchase Order": "purchase-orders",
+		"Quotation": "quotations",
+		"Supplier Quotation": "supplier-quotations",
+	}
+	route = PORTAL_ROUTES.get(doc.doctype)
+	if not route:
+		return ""
+
+	return f"{base}/{route}/{doc.name}"
+
+
 def build_message_context(doc, transaction_type: str) -> dict:
 	company = frappe.defaults.get_user_default("Company") or frappe.db.get_single_value("Global Defaults", "default_company")
 	company_doc = frappe.get_doc("Company", company) if company else None
@@ -316,7 +367,7 @@ def build_message_context(doc, transaction_type: str) -> dict:
 	invoice_link = ""
 	msg_settings = frappe.get_single("Santu Transaction Message Settings")
 	if msg_settings.include_web_invoice_link:
-		invoice_link = get_url(f"/app/{frappe.scrub(doc.doctype)}/{doc.name}")
+		invoice_link = _public_document_link(doc)
 
 	payment_link = ""
 	if msg_settings.include_payment_link:
