@@ -97,7 +97,15 @@ function santu_redirect_cashier_to_billing() {
 	if (!is_dedicated_cashier) return;
 
 	if (santu_get_current_staff()) {
-		frappe.set_route("point-of-sale");
+		// santu-billing, NOT erpnext's native "point-of-sale" (2026-08-20:
+		// "sare billing me billing pos ka hi landing daal do"). The native
+		// route was the target here until now, and it has been broken this
+		// whole time — the shop's POS Profile was deleted, so /app/point-of-sale
+		// opens on "POS Profile Santu Hardware POS not found" (see the header
+		// of santu_billing.js). A Cashier logging in was landing on that error
+		// screen, while santu_topbar.js was already bouncing *non*-cashiers off
+		// it to santu-billing — exactly backwards.
+		frappe.set_route("santu-billing");
 	} else {
 		frappe.set_route("shift-start");
 	}

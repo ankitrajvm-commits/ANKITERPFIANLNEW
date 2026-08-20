@@ -645,12 +645,15 @@
 				setTimeout(() => frappe.set_route("santu-dashboard"), 0);
 				return;
 			}
+			// Everyone gets bounced off erpnext's native POS, cashiers included
+			// (2026-08-20). This used to spare Cashiers — but that route has
+			// been broken all along ("POS Profile Santu Hardware POS not
+			// found", see santu_billing.js's header), so the one role that
+			// lives on the billing screen was the only one still being sent to
+			// the broken copy of it.
 			if (route && route[0] === "point-of-sale") {
-				const cashier = frappe.user.has_role("Cashier") && !frappe.user.has_role("System Manager");
-				if (!cashier) {
-					setTimeout(() => frappe.set_route("santu-billing"), 0);
-					return;
-				}
+				setTimeout(() => frappe.set_route("santu-billing"), 0);
+				return;
 			}
 			if (route && (route[0] === "Tree" || (route[0] === "List" && route[2] === "Tree")) && SANTU_LIST_VIEW_REDIRECTS[route[1]]) {
 				setTimeout(SANTU_LIST_VIEW_REDIRECTS[route[1]], 0);
@@ -672,7 +675,11 @@
 			if (!has_path) {
 				const cashier = frappe.user.has_role("Cashier") && !frappe.user.has_role("System Manager");
 				if (cashier) {
-					return localStorage.getItem("santu_current_staff") ? "/app/point-of-sale" : "/app/shift-start";
+					// santu-billing, not the broken native point-of-sale route
+					// (2026-08-20) — this is the "home" URL a Cashier gets, so
+					// it has to match where santu_redirect_cashier_to_billing()
+					// in kiosk_mode.js now actually sends them.
+					return localStorage.getItem("santu_current_staff") ? "/app/santu-billing" : "/app/shift-start";
 				}
 				return "/app/santu-dashboard";
 			}
