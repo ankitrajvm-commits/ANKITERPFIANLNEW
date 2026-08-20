@@ -272,7 +272,7 @@
 				// carry Utilities' — a leaf living in a different group than
 				// the page it routes to needs that (see the comment further
 				// down on accountant_access etc.).
-				{ view: "new_invoice", label: "+ New Sale Invoice", redirect: "santu-sale-invoice" },
+				{ view: "new_invoice", label: "+ New Sale Invoice", redirect: "santu-billing" },
 				{ view: "proforma", label: "Proforma Invoice", route: "santu-sale", storageView: "santu_sale_view" },
 				{ view: "sales_order", label: "Sales Order", route: "santu-sale", storageView: "santu_sale_view" },
 				{ view: "delivery_challan", label: "Delivery Challan", route: "santu-sale", storageView: "santu_sale_view" },

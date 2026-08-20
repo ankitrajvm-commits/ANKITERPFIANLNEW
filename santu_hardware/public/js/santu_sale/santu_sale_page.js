@@ -152,9 +152,9 @@ santu_sale.create_page = function () {
 			if (view === "sales_order") return frappe.set_route("santu-sales-order");
 			if (view === "delivery_challan") return frappe.set_route("santu-delivery-challan");
 			if (view === "payment_in") return window.santu_open_collect_payment({ party_type: "Customer" });
-			if (view === "proforma") return frappe.set_route("santu-sale-invoice");
+			if (view === "proforma") return frappe.set_route("santu-billing");
 			if (view === "sales_return") return frappe.set_route("santu-sales-return");
-			return frappe.set_route("santu-sale-invoice");
+			return frappe.set_route("santu-billing");
 		},
 
 		_sync_date_inputs(from_date, to_date) {

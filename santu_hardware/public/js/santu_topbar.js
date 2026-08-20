@@ -213,7 +213,7 @@
 	// a Sales Invoice, so "new Sales Invoice" must land on the normal sale
 	// screen. The return screen is reached from its own view's button.
 	const SANTU_LIST_ADD_ACTIONS = {
-		"Sales Invoice": () => frappe.set_route("santu-sale-invoice"),
+		"Sales Invoice": () => frappe.set_route("santu-billing"),
 		"Purchase Invoice": () => frappe.set_route("santu-purchase-invoice"),
 		"Payment Entry": () => window.santu_open_collect_payment({ party_type: "Customer" }),
 		"Sales Order": () => frappe.set_route("santu-sales-order"),
@@ -278,12 +278,12 @@
 		{
 			heading: "SALE",
 			items: [
-				{ label: "Sale Invoice", shortcut: "⌥S", action: () => frappe.set_route("santu-sale-invoice") },
+				{ label: "Sale Invoice", shortcut: "⌥S", action: () => frappe.set_route("santu-billing") },
 				{ label: "Payment-In", shortcut: "⌥I", action: () => window.santu_open_collect_payment({ party_type: "Customer" }) },
 				{ label: "Sale Return", sub: "Cr Note", shortcut: "⌥R", action: () => frappe.set_route("santu-sales-return") },
 				{ label: "Sale Order", shortcut: "⌥F", action: () => frappe.set_route("santu-sales-order") },
 				{ label: "Estimate/Quotation", shortcut: "⌥M", action: () => frappe.set_route("santu-estimate") },
-				{ label: "Proforma Invoice", shortcut: "⌥K", action: () => frappe.set_route("santu-sale-invoice") },
+				{ label: "Proforma Invoice", shortcut: "⌥K", action: () => frappe.set_route("santu-billing") },
 				{ label: "Delivery Challan", shortcut: "⌥D", action: () => frappe.set_route("santu-delivery-challan") },
 			],
 		},

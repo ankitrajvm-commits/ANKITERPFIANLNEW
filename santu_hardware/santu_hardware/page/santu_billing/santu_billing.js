@@ -28,7 +28,20 @@ frappe.pages["santu-billing"].on_page_load = function (wrapper) {
 	});
 };
 
+// "Convert to Sales Invoice" (Estimate/Quotation and Sales Order,
+// santu_sale_transactions.js) hands the mapped-but-unsaved doc here via
+// frappe.route_options.prefill rather than trying to view it as a saved
+// document — mirrors santu_sale_invoice.js's identical mechanism, since
+// Billing is where a sale is actually finished now (2026-08-20: "sare sale
+// me pos billing hi khule" — every path that starts or resumes a sale
+// should land here, not on the secondary Sale Invoice screen).
 frappe.pages["santu-billing"].on_page_show = function () {
+	const prefill = frappe.route_options && frappe.route_options.prefill;
+	if (prefill && window.santu_billing_page && santu_billing_page.page && santu_billing_page.init_data) {
+		frappe.route_options = null;
+		santu_billing_page._apply_prefill(prefill);
+		return;
+	}
 	if (window.santu_billing_page && santu_billing_page.page) santu_billing_page.render();
 };
 
@@ -60,9 +73,54 @@ window.santu_billing_page = {
 		$(page.body).html(`<div class="santu-bill-loading">Loading…</div>`);
 		santu_sale_invoice.api.init().then((data) => {
 			this.init_data = data;
+			const prefill = frappe.route_options && frappe.route_options.prefill;
+			frappe.route_options = null;
+			if (prefill) {
+				this._apply_prefill(prefill);
+				return;
+			}
 			this._load();
 			if (!this.tabs.length) this._new_bill(false);
 			this.render();
+		});
+	},
+
+	// A converted Quotation/Sales Order arrives here unsaved (see
+	// on_page_show above) — opened as a fresh bill tab rather than merged
+	// into whatever the cashier already had open, since the two are
+	// unrelated sales.
+	_apply_prefill(doc) {
+		const b = this._new_bill(true);
+		// Not _pick_customer(): it reaches into this.$root, which render()
+		// below is what creates in the first place — setting the bill's own
+		// fields directly is what render()'s own template already reads
+		// (customer_label) to show the right name on first paint.
+		if (doc.customer) {
+			b.customer = doc.customer;
+			b.customer_label = doc.customer_name || doc.customer;
+		}
+		if (doc.discount_amount) b.bill_discount = doc.discount_amount;
+		this._persist_soon();
+		this.render();
+
+		(doc.items || []).forEach((r) => {
+			santu_sale_invoice.api.item_row(b.customer, r.item_code, this.init_data.warehouse, r.qty).then((row) => {
+				b.items.push({
+					id: santu_sale_invoice.utils.uid(),
+					item_code: row.item_code || r.item_code,
+					item_name: row.item_name || r.item_name || r.item_code,
+					qty: r.qty,
+					uom: r.uom || row.uom || row.stock_uom,
+					uom_options: [row.uom, row.stock_uom].filter((v, i, a) => v && a.indexOf(v) === i),
+					rate: r.rate || row.price_list_rate || row.rate || 0,
+					discount: r.discount_amount || 0,
+					batch_no: null,
+					available_qty: row.available_qty,
+				});
+				b.selected_row = b.items[b.items.length - 1].id;
+				this._persist_soon();
+				this._render_rows();
+			});
 		});
 	},
 

@@ -24,7 +24,11 @@ santu_sale.transactions = {
 			callback: (r) => {
 				if (!r.message) return;
 				frappe.route_options = { prefill: r.message };
-				frappe.set_route(target === "sales_order" ? "santu-sales-order" : "santu-sale-invoice");
+				// Sale Invoice was the target here until 2026-08-20 — Billing
+				// (POS) is where sales actually get finished (see the routing
+				// audit in the same commit), so a converted Quotation/Sales
+				// Order now lands there instead.
+				frappe.set_route(target === "sales_order" ? "santu-sales-order" : "santu-billing");
 			},
 		});
 	},
