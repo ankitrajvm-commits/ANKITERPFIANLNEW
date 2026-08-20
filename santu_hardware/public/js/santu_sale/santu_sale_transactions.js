@@ -234,7 +234,13 @@ santu_sale.transactions = {
 		});
 		$("body").append($menu);
 		const rect = $anchor[0].getBoundingClientRect();
-		$menu.css({ top: rect.bottom + 4 + "px", left: rect.left + "px" });
+		const menu_width = $menu.outerWidth();
+		let left = rect.left;
+		if (left + menu_width > window.innerWidth) {
+			left = rect.right - menu_width;
+		}
+		left = Math.max(8, left);
+		$menu.css({ top: rect.bottom + 4 + "px", left: left + "px" });
 		setTimeout(() => {
 			$(document).one("click.santu-sale-convert-menu", (e) => {
 				if (!$(e.target).closest(".santu-sale-row-menu-popup").length) $menu.remove();
