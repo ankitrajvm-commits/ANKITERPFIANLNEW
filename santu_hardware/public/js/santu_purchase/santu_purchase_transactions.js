@@ -131,6 +131,7 @@ santu_purchase.transactions = {
 				<tr class="santu-purchase-txn-row">
 					${$cells.join("")}
 					<td class="num santu-purchase-row-actions">
+						${view === "bills" && t.balance > 0 ? `<button type="button" class="santu-purchase-row-btn" title="Payment darj karein" data-action="pay">💰</button>` : ""}
 						<button type="button" class="santu-purchase-row-btn" title="Open" data-action="open">📄</button>
 						<button type="button" class="santu-purchase-row-btn" title="Print" data-action="print">🖨</button>
 						${view === "purchase_return" ? `<button type="button" class="santu-purchase-row-btn" title="Share" data-action="share">↗</button>` : ""}
@@ -189,6 +190,15 @@ santu_purchase.transactions = {
 			window.santu_open_invoice_view(t.doctype, t.invoice_no);
 			return;
 		}
+		// Payment-Out prefilled with this bill's supplier and outstanding
+		// amount — the same screen every other payment on this app already
+		// goes through (2026-08-17: "purchase bill ko mark as paid or amount
+		// paid ka v option aaye"). If the supplier has other bills due too,
+		// the payment settles the oldest first, same as a real ledger would.
+		if (action === "pay") {
+			window.santu_open_collect_payment({ party_type: "Supplier", party: t.party, amount: t.balance });
+			return;
+		}
 		if (action === "print") {
 			if (typeof santu_print_thermal_bill === "function") {
 				santu_print_thermal_bill(t.doctype, t.invoice_no);
@@ -211,6 +221,9 @@ santu_purchase.transactions = {
 				{ label: __("Open"), action: () => window.santu_open_invoice_view(t.doctype, t.invoice_no) },
 				{ label: __("Print"), action: () => this._row_action("print", t, view) },
 			];
+			if (view === "bills" && t.balance > 0) {
+				items.push({ label: __("Payment darj karein"), action: () => this._row_action("pay", t, view) });
+			}
 			if (view === "purchase_order" && t.doctype === "Purchase Order") {
 				items.push({
 					label: __("Create Purchase Invoice"),

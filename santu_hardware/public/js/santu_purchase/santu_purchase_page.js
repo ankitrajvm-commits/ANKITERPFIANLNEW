@@ -45,8 +45,11 @@ santu_purchase.create_page = function () {
 								<div class="santu-purchase-upload-wrap">
 									<button type="button" class="btn btn-default santu-purchase-upload-btn">Upload Purchase Bills ▾</button>
 									<div class="santu-purchase-upload-menu" style="display:none;">
-										<button type="button" data-route="santu-upload-bill">Upload PDF Bill</button>
+										<!-- Receive Stock first (2026-08-17 direct request: "receive stock
+										     ko sabse upar daal do") — it's the one used every day (stock
+										     just arrived, no bill in hand yet); Upload PDF Bill is occasional. -->
 										<button type="button" data-route="santu-receive-stock">Receive Stock (Quick)</button>
+										<button type="button" data-route="santu-upload-bill">Upload PDF Bill</button>
 									</div>
 								</div>
 							` : ""}

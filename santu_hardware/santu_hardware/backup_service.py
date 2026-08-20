@@ -40,6 +40,72 @@ def _validate_backup_path(path: str) -> str:
 	return abs_path
 
 
+# A real dump of this site is ~1.8 MB. Anything under this floor is a
+# truncated or empty file, which is worse than no backup because it looks
+# like one in the list.
+MIN_DB_BACKUP_BYTES = 50_000
+
+# Snapshots are kept on their own retention counter. Sharing one counter with
+# the nightly full backups would let a day of 2-hourly snapshots delete every
+# full backup the shop has.
+SNAPSHOT_RETENTION = 24
+
+
+def _resolve_backup_path(path: str | None) -> str | None:
+	"""Frappe stores backup paths relative to the sites directory.
+
+	That only resolves while the process happens to be running from there.
+	Anchor it explicitly so a check from anywhere reads the same file.
+	"""
+	if not path:
+		return None
+	if os.path.isabs(path):
+		return path
+	from frappe.utils import get_bench_path
+
+	return os.path.normpath(os.path.join(get_bench_path(), "sites", path))
+
+
+def _verify_backup_file(db_path: str | None) -> tuple[bool, str]:
+	"""Prove the dump is readable, not just that the command returned.
+
+	A backup nobody has opened is a promise, not a backup. This checks the
+	two ways a Frappe dump actually fails on this machine: the process dies
+	part-way and leaves a stub, or the gzip stream is truncated.
+	"""
+	db_path = _resolve_backup_path(db_path)
+	if not db_path or not os.path.isfile(db_path):
+		return False, "Database file missing"
+
+	size = _file_size(db_path)
+	if size < MIN_DB_BACKUP_BYTES:
+		return False, f"Database file is only {size} bytes — too small to be a real backup"
+
+	if db_path.endswith(".gz"):
+		import gzip
+
+		tail = b""
+		try:
+			with gzip.open(db_path, "rb") as fh:
+				read = 0
+				while True:
+					chunk = fh.read(1024 * 1024)
+					if not chunk:
+						break
+					read += len(chunk)
+					tail = (tail + chunk)[-4096:]
+		except Exception as e:
+			return False, f"Backup file is corrupt: {e}"
+		if read < MIN_DB_BACKUP_BYTES:
+			return False, f"Backup decompresses to only {read} bytes"
+		# A mysqldump that is killed part-way still produces a perfectly
+		# valid gzip stream. Only the trailing marker tells them apart.
+		if b"Dump completed" not in tail:
+			return False, "Backup has no 'Dump completed' marker — the dump was cut short"
+
+	return True, f"OK — {size} bytes, decompresses cleanly, dump completed"
+
+
 def create_site_backup(backup_type: str = "Manual", include_files: bool = True, location: str = "Local Server"):
 	"""Create a real Frappe site backup and log it."""
 	_require_system_manager()
@@ -64,32 +130,42 @@ def create_site_backup(backup_type: str = "Manual", include_files: bool = True, 
 		config_path = odb.backup_path_conf
 
 		total_size = _total_backup_size(db_path, files_path, private_path, config_path)
+		verified, verify_note = _verify_backup_file(db_path)
 		log.db_set(
 			{
-				"status": "Success",
+				"status": "Success" if verified else "Failed",
 				"database_file": db_path,
 				"files_path": files_path,
 				"private_files_path": private_path,
 				"config_path": config_path,
 				"file_size": total_size,
+				"verified": 1 if verified else 0,
+				"verify_note": verify_note[:500],
+				"error_message": None if verified else verify_note[:500],
 			}
 		)
+		if not verified:
+			raise Exception(f"Backup could not be verified: {verify_note}")
 
 		settings = frappe.get_single("Santu Backup Settings")
-		settings.last_backup_on = now_datetime()
-		settings.last_backup_status = "Success"
-		settings.next_backup_on = compute_next_backup_time(settings)
-		settings.save(ignore_permissions=True)
+		if backup_type != "Snapshot":
+			# Snapshots run on their own 2-hourly clock and must not move the
+			# nightly full backup's schedule or masquerade as it.
+			settings.last_backup_on = now_datetime()
+			settings.last_backup_status = "Success"
+			settings.next_backup_on = compute_next_backup_time(settings)
+			settings.save(ignore_permissions=True)
 
 		_cleanup_old_backups(cint(settings.retention_count) or 10)
 		frappe.db.commit()
 
 		return log.name
 	except Exception as e:
-		log.db_set({"status": "Failed", "error_message": str(e)[:500]})
-		settings = frappe.get_single("Santu Backup Settings")
-		settings.last_backup_status = "Failed"
-		settings.save(ignore_permissions=True)
+		log.db_set({"status": "Failed", "error_message": str(e)[:500], "verified": 0})
+		if backup_type != "Snapshot":
+			settings = frappe.get_single("Santu Backup Settings")
+			settings.last_backup_status = "Failed"
+			settings.save(ignore_permissions=True)
 		frappe.db.commit()
 		frappe.log_error(title="Santu Backup Failed", message=frappe.get_traceback())
 		raise
@@ -117,9 +193,22 @@ def compute_next_backup_time(settings=None):
 
 
 def _cleanup_old_backups(retention: int):
+	"""Trim old backups, counting snapshots separately from full backups.
+
+	The 2-hourly snapshots and the nightly full backups share this table. On
+	a single shared counter twelve snapshots would evict every full backup
+	within a day, which is the opposite of what retention is for.
+	"""
+	_trim_backup_group({"backup_type": "Snapshot"}, SNAPSHOT_RETENTION)
+	_trim_backup_group({"backup_type": ("!=", "Snapshot")}, retention)
+
+
+def _trim_backup_group(extra_filters: dict, retention: int):
+	filters = {"status": "Success", "location": "Local Server"}
+	filters.update(extra_filters)
 	logs = frappe.get_all(
 		"Santu Backup Log",
-		filters={"status": "Success", "location": "Local Server"},
+		filters=filters,
 		fields=["name", "database_file", "files_path", "private_files_path", "config_path"],
 		order_by="creation desc",
 	)
@@ -145,6 +234,8 @@ def get_backup_history(limit: int = 50):
 			"file_size",
 			"created_by_user",
 			"error_message",
+			"verified",
+			"verify_note",
 		],
 		order_by="creation desc",
 		limit_page_length=limit,

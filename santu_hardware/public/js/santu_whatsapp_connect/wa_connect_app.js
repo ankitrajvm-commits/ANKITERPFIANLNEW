@@ -327,6 +327,7 @@ santu_wa_connect.renderQuickActions = function (chat) {
 		<button class="santu-wa-chip transactions">📗 Send Transactions</button>
 		<button class="santu-wa-chip reminder">💳 Payment Reminder</button>
 	`);
+	$qa.find(".smart").on("click", () => santu_wa_connect.smartMessaging(chat));
 	$qa.find(".statement").on("click", () => santu_wa_connect.partyStatement(chat));
 	$qa.find(".transactions").on("click", () => santu_wa_connect.sendTransactions(chat));
 	$qa.find(".reminder").on("click", () => santu_wa_connect.paymentReminder(chat));
@@ -338,6 +339,35 @@ santu_wa_connect.loadSuggestions = async function (chat) {
 	$s.html(`<div class="santu-wa-sugg-row">${(data.suggestions || []).map((t) => `<button class="santu-wa-sugg">${frappe.utils.escape_html(t)}</button>`).join("")}<button class="santu-wa-regenerate">↻ Regenerate</button></div>`);
 	$s.find(".santu-wa-sugg").on("click", function () { santu_wa_connect.$root.find(".wa-message-input").val($(this).text()); });
 	$s.find(".santu-wa-regenerate").on("click", () => santu_wa_connect.loadSuggestions(chat));
+};
+
+santu_wa_connect.smartMessaging = async function (chat) {
+	const $btn = santu_wa_connect.$root.find(".santu-wa-chip.smart");
+	$btn.prop("disabled", true).text("✨ Soch raha hoon…");
+	try {
+		const data = await santu_wa_connect.api.suggestions(chat.display_name);
+		const suggestions = data.suggestions || [];
+		if (!suggestions.length) { frappe.msgprint("Koi suggestion nahi mila."); return; }
+		const d = new frappe.ui.Dialog({
+			title: "✨ Smart Message",
+			fields: [{ fieldtype: "HTML", fieldname: "sugg_html" }],
+		});
+		let html = `<div style="display:flex;flex-direction:column;gap:8px;padding:4px 0">`;
+		suggestions.forEach((s, i) => {
+			html += `<button class="btn btn-default btn-sm santu-smart-pick" data-idx="${i}" style="text-align:left;white-space:normal">${frappe.utils.escape_html(s)}</button>`;
+		});
+		html += `</div>`;
+		d.fields_dict.sugg_html.$wrapper.html(html);
+		d.fields_dict.sugg_html.$wrapper.find(".santu-smart-pick").on("click", function () {
+			santu_wa_connect.$root.find(".wa-message-input").val(suggestions[$(this).data("idx")]).focus();
+			d.hide();
+		});
+		d.show();
+	} catch (e) {
+		frappe.show_alert({ message: "Suggestion load nahi hua", indicator: "red" });
+	} finally {
+		$btn.prop("disabled", false).text("✨ Smart Messaging ▾");
+	}
 };
 
 santu_wa_connect.partyStatement = async function (chat) {
@@ -398,6 +428,7 @@ santu_wa_connect.openSettingsDrawer = async function () {
 				<hr>
 				<label><input type="checkbox" class="wa-sync-contacts" ${data.sync_personal_contacts ? "checked" : ""}> Sync Personal Contacts</label><br>
 				<label><input type="checkbox" class="wa-passcode" ${data.passcode_enabled ? "checked" : ""}> Set Passcode</label>
+				<button class="btn btn-default btn-block wa-sync-now" style="margin-top:8px">🔄 Sync Contacts Now</button>
 				<hr>
 				<button class="btn btn-default btn-block wa-refresh">↻ Refresh WhatsApp Connect</button>
 				<button class="btn btn-default btn-block wa-disable">⏻ Disable WhatsApp Smart Connect</button>
@@ -408,6 +439,17 @@ santu_wa_connect.openSettingsDrawer = async function () {
 	$drawer.find(".wa-drawer-close, .santu-wa-drawer-overlay").on("click", () => $drawer.hide());
 	$drawer.find(".wa-sync-contacts, .wa-passcode").on("change", async () => {
 		await santu_wa_connect.api.saveSettings({ sync_personal_contacts: $drawer.find(".wa-sync-contacts").is(":checked") ? 1 : 0, passcode_enabled: $drawer.find(".wa-passcode").is(":checked") ? 1 : 0 });
+	});
+	$drawer.find(".wa-sync-now").on("click", async function () {
+		$(this).prop("disabled", true).text("Syncing…");
+		try {
+			const r = await santu_wa_connect.api.syncContacts();
+			frappe.show_alert({ message: `Contacts synced: ${r.synced || 0} added/updated`, indicator: "green" });
+		} catch (e) {
+			frappe.show_alert({ message: "Sync failed: " + (e.message || e), indicator: "red" });
+		} finally {
+			$(this).prop("disabled", false).text("🔄 Sync Contacts Now");
+		}
 	});
 	$drawer.find(".wa-refresh").on("click", async () => { await santu_wa_connect.api.refresh(); frappe.show_alert({ message: "Refreshed", indicator: "green" }); santu_wa_connect.render(); });
 	$drawer.find(".wa-logout").on("click", async () => {

@@ -15,6 +15,10 @@ santu_sale.summary = {
 
 		const has_label1 = summary.label1 != null;
 		const has_label2 = summary.label2 != null;
+		// Third slot, used only when it has something to say — today that's
+		// "Returns", which explains why the headline total is lower than the
+		// invoice rows listed underneath add up to (2026-08-19).
+		const has_label3 = summary.label3 != null;
 		const sub = has_label1
 			? `
 				<div class="santu-sale-summary-sub santu-figures">
@@ -25,6 +29,12 @@ santu_sale.summary = {
 						has_label2
 							? `<span class="santu-sale-summary-sep">|</span>
 					<span>${frappe.utils.escape_html(summary.label2)}: <b class="${summary.value2_danger ? "santu-sale-balance-due" : ""}">${u.format_money(summary.value2)}</b></span>`
+							: ""
+					}
+					${
+						has_label3
+							? `<span class="santu-sale-summary-sep">|</span>
+					<span>${frappe.utils.escape_html(summary.label3)}: <b class="santu-sale-balance-due">− ${u.format_money(summary.value3)}</b></span>`
 							: ""
 					}
 				</div>

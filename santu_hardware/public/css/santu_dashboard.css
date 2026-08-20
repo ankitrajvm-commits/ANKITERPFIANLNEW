@@ -11,6 +11,13 @@ body[data-route="santu-dashboard"] .page-head,
 body[data-route="santu-dashboard"] .page-content {
 	margin-top: 0;
 }
+/* page-body carries a 16px top padding that the 100vh math below does not
+   know about, so the dashboard rendered 16px too tall and its last row got
+   clipped off the bottom of the window. Drop it here and the height is exact. */
+body[data-route="santu-dashboard"] .page-body,
+.santu-dash-page .page-body {
+	padding-top: 0;
+}
 
 .santu-dash {
 	height: calc(100vh - 56px);
@@ -77,6 +84,30 @@ body[data-route="santu-dashboard"] .page-content {
 	background: #fff;
 	cursor: pointer;
 }
+
+/* Total Payable moved off Home (2026-08-18) — Total Receivable is now the
+   only card in this row and takes the full width, sized up so it doesn't
+   look like a half-card stretched thin. */
+/* Sized to its own content rather than a slice of the window: with one card
+   left, a percentage height just padded the middle with dead space. The room
+   this gives back goes to the chart, which is what the screen is for. */
+.santu-dash-vy-row-single {
+	height: auto;
+	min-height: 0;
+	flex-shrink: 0;
+}
+.santu-dash-vy-row-single .santu-dash-vy-card {
+	width: 100%;
+	padding: 16px 22px;
+	justify-content: flex-start;
+}
+.santu-dash-vy-row-single .santu-dash-vy-card-amount {
+	font-size: 26px;
+	padding: 4px 0 0;
+}
+.santu-dash-vy-row-single .santu-dash-vy-card-sub {
+	margin-top: 6px;
+}
 .santu-dash-vy-card:hover { box-shadow: none; }
 
 .santu-dash-vy-card-top {
@@ -136,8 +167,8 @@ body[data-route="santu-dashboard"] .page-content {
 	border-radius: 4px;
 	padding: 24px 20px 16px;
 	margin-bottom: 0;
-	height: calc(62% - 9px);
-	min-height: 240px;
+	flex: 1;
+	min-height: 0;
 	display: flex;
 	flex-direction: column;
 	box-sizing: border-box;

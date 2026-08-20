@@ -32,6 +32,12 @@
 	flex-shrink: 0;
 	display: flex;
 	flex-direction: column;
+	/* Collapse/expand reads as one continuous slide instead of a jump cut —
+	   the main screen widening alongside it (below) is what actually sells
+	   the "sidebar moving out of the way" feel (2026-08-18: "acche se
+	   animation ki tarah feel dila ki ye jaa raha hai, and main screen bada
+	   ho raha hai"). */
+	transition: width 0.4s ease-in-out;
 }
 
 .santu-app-sidebar-list {
@@ -81,6 +87,24 @@
 	line-height: 1;
 }
 
+/* Icon files painted as a mask filled with currentColor, rather than an <img>.
+   An <img> would keep whatever colour the file ships with, so it could not
+   follow a row from its normal state into its active/hover colour, and would
+   be invisible against one of the two sidebar palettes the stylesheets carry.
+   The mask makes the icon behave exactly like the label text beside it. */
+.santu-app-sidebar-icon-img {
+	height: 18px;
+	background-color: currentColor;
+	-webkit-mask-image: var(--santu-nav-ico);
+	mask-image: var(--santu-nav-ico);
+	-webkit-mask-repeat: no-repeat;
+	mask-repeat: no-repeat;
+	-webkit-mask-position: center;
+	mask-position: center;
+	-webkit-mask-size: contain;
+	mask-size: contain;
+}
+
 .santu-app-sidebar-text {
 	flex: 1 1 auto;
 	min-width: 0;
@@ -117,8 +141,23 @@
 	display: none;
 	background: rgba(0, 0, 0, 0.15);
 }
-.santu-app-sidebar-group.is-expanded .santu-app-sidebar-children {
+/* Direct child combinator, not descendant — a nested group (Purchase &
+   Expense, inside More) has its own .santu-app-sidebar-children too, and a
+   descendant selector here would show it merely because an ANCESTOR group
+   (More) is expanded, regardless of whether Purchase itself was toggled open. */
+.santu-app-sidebar-group.is-expanded > .santu-app-sidebar-children {
 	display: block;
+}
+
+/* A group nested inside another group's children (Purchase & Expense,
+   inside More) — its own parent row and grandchild rows both need the same
+   indent a plain leaf child already gets, so the nesting reads as nesting. */
+.santu-app-sidebar-children > .santu-app-sidebar-group > .santu-app-sidebar-parent {
+	padding-left: 40px;
+	font-size: 14.5px;
+}
+.santu-app-sidebar-children > .santu-app-sidebar-group .santu-app-sidebar-child {
+	padding-left: 56px !important;
 }
 
 .santu-app-sidebar-child {
@@ -211,12 +250,72 @@ body.santu-sidebar-collapsed .santu-app-sidebar-company {
 	justify-content: center;
 	padding: 14px 0;
 }
+/* Icons carry the whole row's meaning once the label text is hidden — sized
+   up so they read at a glance instead of looking like leftover crumbs
+   (2026-08-18: "isko thoda bada kro jab iska name hide kiya jata hai"). */
+body.santu-sidebar-collapsed .santu-app-sidebar-icon {
+	width: 26px;
+	font-size: 22px;
+}
+body.santu-sidebar-collapsed .santu-app-sidebar-icon-img {
+	height: 26px;
+}
+/* Each top-level icon gets its own colour once the labels are hidden — an
+   all-grey icon rail is hard to tell apart at a glance; colour does the job
+   the text was doing (2026-08-18: "ise colourful bana", collapsed-sidebar
+   screenshot). Matched by icon filename since that's the only per-row hook
+   available on the rendered mask span. Scoped to collapsed + top-level only
+   — expanded rows keep the existing text-led Vyapar palette untouched. */
+body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="home.svg"],
+body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-group > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="home.svg"] {
+	background-color: #4f8ef7;
+}
+body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="Parties.svg"],
+body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-group > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="Parties.svg"] {
+	background-color: #a663e3;
+}
+body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="Items.svg"],
+body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-group > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="Items.svg"] {
+	background-color: #f5a623;
+}
+body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-group > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="Sale.svg"] {
+	background-color: #2ecc71;
+}
+body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-group > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="whatsappLeftNav.svg"] {
+	background-color: #25d366;
+}
+body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-group > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="backup.svg"] {
+	background-color: #17a2b8;
+}
+body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-group > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="Utilities.svg"] {
+	background-color: #5c9df1;
+}
+body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="Settings.svg"] {
+	background-color: #8a94a6;
+}
+body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-group > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="plus.svg"] {
+	background-color: #e0393e;
+}
+/* The two "Return" and "Sale" groups both ship the same Sale.svg icon —
+   Return keeps the plain grey/active colour instead of also going green so
+   the two rows are still visually distinguishable from one another. */
+body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-group[data-group="return"] > .santu-app-sidebar-item .santu-app-sidebar-icon-img {
+	background-color: currentColor;
+}
+body.santu-sidebar-collapsed .santu-app-sidebar-item.is-active .santu-app-sidebar-icon-img,
+body.santu-sidebar-collapsed .santu-app-sidebar-group.is-active > .santu-app-sidebar-item .santu-app-sidebar-icon-img {
+	background-color: var(--santu-sidebar-text-active) !important;
+}
 
 /* Push all main content to the right of fixed sidebar */
 body.santu-fixed-sidebar:not(.santu-kiosk-mode) .main-section {
 	margin-left: var(--santu-sidebar-width) !important;
 	width: calc(100% - var(--santu-sidebar-width)) !important;
 	max-width: none !important;
+	/* Slides in step with the sidebar itself, same duration/easing, so the
+	   screen visibly widens as the sidebar narrows rather than jumping to
+	   its new size a frame later. */
+	transition: margin-left 0.4s ease-in-out, width 0.4s ease-in-out;
 }
 
 body.santu-fixed-sidebar:not(.santu-kiosk-mode) #body,
@@ -282,6 +381,7 @@ body.santu-fixed-sidebar:not(.santu-kiosk-mode) .navbar {
 	   the real right edge by exactly the sidebar's width. */
 	width: calc(100% + var(--santu-sidebar-width)) !important;
 	margin-left: calc(-1 * var(--santu-sidebar-width)) !important;
+	transition: margin-left 0.4s ease-in-out, width 0.4s ease-in-out;
 }
 
 /* ---------- Mobile toggle button + backdrop (hidden on desktop) ---------- */

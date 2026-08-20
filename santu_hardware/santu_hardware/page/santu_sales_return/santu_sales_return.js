@@ -1,75 +1,63 @@
-/* global frappe, santu_sale_invoice, santu_sales_return, santu_party_inline */
-// Santu Hardware — Sales Return / Credit Note screen (2026-08-15 direct
-// request: "sale return ka v same vyapaar ui kro and abhi wala delete kr
-// dena" — "+ Add Sales Return" opened the native Sales Invoice form with
-// Is Return ticked). Reuses the same santu-si2-* classes as the other quick
-// screens (no separate stylesheet), backed onto a real Sales Invoice with
-// is_return=1 via santu_hardware.santu_hardware.api.save_sales_return.
-// Customer search, item search/pricing and the Add Party dialog are the
-// exact same calls the Sale Invoice screen uses (santu_sale_invoice.api).
+/* global frappe, santu_sale_invoice, santu_sales_return, santu_is_privacy_mode_active, santu_toggle_privacy_mode */
+// Santu Hardware — Sales Return / Credit Note, rebuilt to match Billing
+// (POS)'s own UI (2026-08-19 direct request: "return ka dono ui v pos
+// billing ki tarah kr"). Reuses Billing's CSS classes (santu-bill-*)
+// verbatim. Backed onto a real Sales Invoice with is_return=1 via
+// save_sales_return — same shape as Billing's save_sale_invoice, plus one
+// return-specific field: an optional "Return Against" bill, which prefills
+// its lines with how much of each is still returnable and caps qty there.
 //
-// Two things are specific to a return:
-//   * "Return Against" replaces the Sales Order screen's date slot — pick
-//     the original bill and its items prefill with how much of each is
-//     still returnable. It's optional: goods do come back without a bill.
-//   * Quantities stay POSITIVE on screen ("2 pieces came back"). The
-//     negation ERPNext requires happens once, server-side, in
-//     save_sales_return — never in this file.
+// Quantities stay POSITIVE on screen ("2 pieces came back"); the negation
+// ERPNext needs happens once, server-side, in save_sales_return.
 frappe.pages["santu-sales-return"].on_page_load = function (wrapper) {
 	frappe.require(
 		[
 			"/assets/santu_hardware/js/santu_sale_invoice/santu_sale_invoice_api.js",
-			"/assets/santu_hardware/js/santu_party_inline/santu_party_inline.js",
 			"/assets/santu_hardware/js/santu_sales_return/santu_sales_return_api.js",
 		],
 		() => {
 			const page = frappe.ui.make_app_page({ parent: wrapper, title: "Sales Return", single_column: true });
 			$(page.wrapper).find(".page-head").hide();
-			$(page.main).addClass("santu-si2-page-main");
+			$(page.main).addClass("santu-bill-page-main");
 			santu_sales_return_page.init(page);
 		}
 	);
 };
 
-// Nothing maps a document into a return today, so unlike the Sales Order
-// screen this has no route_options.prefill path — just a re-render fallback
-// for revisits, since on_page_load only ever fires once per session.
 frappe.pages["santu-sales-return"].on_page_show = function () {
 	if (window.santu_sales_return_page && santu_sales_return_page.page) santu_sales_return_page.render();
 };
 
-const SANTU_SR_STORAGE_KEY = "santu_sales_return_tabs_v1";
+const SANTU_SR_KEY = "santu_sales_return_tabs_v2";
+const SANTU_SR_ICON_DIR = "/assets/santu_hardware/images/items";
+const santu_sr_icon = (file, cls = "") => `<img class="santu-si2-ico ${cls}" src="${SANTU_SR_ICON_DIR}/${file}" alt="" draggable="false">`;
 
-// On `window` rather than a top-level const: a classic script's top-level
-// const isn't a window property, and on_page_show reaches for it by that name.
 window.santu_sales_return_page = {
 	init(page) {
 		this.page = page;
 		this.init_data = null;
 		this.tabs = [];
 		this.active_id = null;
-		this._save_debounced = santu_sale_invoice.utils.debounce(() => this._persist(), 400);
+		this._persist_soon = santu_sale_invoice.utils.debounce(() => this._persist(), 400);
 
-		$(page.body).html(`<div class="santu-si2-loading">Loading…</div>`);
-
-		santu_sales_return.api.init().then((data) => {
+		$(page.body).html(`<div class="santu-bill-loading">Loading…</div>`);
+		santu_sale_invoice.api.init().then((data) => {
 			this.init_data = data;
-			this._load_from_storage();
-			if (!this.tabs.length) this._new_tab();
+			this._load();
+			if (!this.tabs.length) this._new_ret(false);
 			this.render();
 		});
 	},
 
-	_load_from_storage() {
+	// ---------- state ----------
+	_load() {
 		try {
-			const raw = localStorage.getItem(SANTU_SR_STORAGE_KEY);
-			if (!raw) return;
-			const parsed = JSON.parse(raw);
+			const raw = localStorage.getItem(SANTU_SR_KEY);
+			const parsed = raw ? JSON.parse(raw) : null;
 			if (parsed && Array.isArray(parsed.tabs) && parsed.tabs.length) {
 				this.tabs = parsed.tabs;
-				this.active_id = parsed.active_id && this.tabs.some((t) => t.id === parsed.active_id)
-					? parsed.active_id
-					: this.tabs[0].id;
+				this.active_id =
+					parsed.active_id && this.tabs.some((t) => t.id === parsed.active_id) ? parsed.active_id : this.tabs[0].id;
 			}
 		} catch (e) {
 			this.tabs = [];
@@ -77,696 +65,198 @@ window.santu_sales_return_page = {
 	},
 	_persist() {
 		try {
-			localStorage.setItem(SANTU_SR_STORAGE_KEY, JSON.stringify({ tabs: this.tabs, active_id: this.active_id }));
+			localStorage.setItem(SANTU_SR_KEY, JSON.stringify({ tabs: this.tabs, active_id: this.active_id }));
 		} catch (e) {
-			/* storage full/unavailable — screen still works */
+			/* storage unavailable — screen still works */
 		}
 	},
 
-	_default_place_of_supply() {
-		// Shop-specific default (direct request) — Bihar.
-		const options = this.init_data.place_of_supply_options || [];
-		return options.find((o) => o.toLowerCase().includes("bihar")) || null;
-	},
-
-	_blank_tab() {
+	_blank_ret() {
 		return {
 			id: santu_sale_invoice.utils.uid(),
-			label: null,
-			customer: null,
-			customer_details: null,
-			phone: "",
-			address: "",
-			items: [],
-			additional_discount_amount: 0,
-			round_off: true,
-			place_of_supply: this._default_place_of_supply(),
 			posting_date: this.init_data.posting_date,
+			customer: null,
+			customer_label: "",
 			return_against: null,
 			return_invoices: [],
 			reason: "",
-			terms: "",
-			description: "",
-			saved_return: null,
+			// "credit" (default) leaves the refund as account credit — same
+			// as before this field existed. "refund" means cash/UPI/etc was
+			// actually handed back at the counter, which needs a real
+			// Payment Entry or the customer's balance keeps showing money
+			// still owed that was already paid (2026-08-19 bug report: did
+			// a real refund, Parties still showed the old owed amount).
+			settlement: "credit",
+			refund_mode: "Cash",
+			items: [],
+			selected_row: null,
+			bill_discount: 0,
+			additional_charges: 0,
+			saved: null,
 		};
 	},
-
-	_new_tab(focus) {
-		const t = this._blank_tab();
-		this.tabs.push(t);
-		if (focus !== false) this.active_id = t.id;
-		this._save_debounced();
-		return t;
+	_new_ret(focus = true) {
+		const b = this._blank_ret();
+		this.tabs.push(b);
+		if (focus) this.active_id = b.id;
+		else if (!this.active_id) this.active_id = b.id;
+		this._persist_soon();
+		return b;
 	},
-
-	_active_tab() {
+	_bill() {
 		return this.tabs.find((t) => t.id === this.active_id) || this.tabs[0];
 	},
 
-	_tab_label(tab, idx) {
-		return tab.label || `Return #${idx + 1}`;
+	// ---------- totals ----------
+	_row_total(r) {
+		const gross = (Number(r.qty) || 0) * (Number(r.rate) || 0);
+		return Math.max(gross - (Number(r.discount) || 0), 0);
+	},
+	_totals() {
+		const b = this._bill();
+		const sub = b.items.reduce((a, r) => a + this._row_total(r), 0);
+		const total = Math.max(sub + (Number(b.additional_charges) || 0) - (Number(b.bill_discount) || 0), 0);
+		return { sub, total, qty: b.items.reduce((a, r) => a + (Number(r.qty) || 0), 0) };
 	},
 
-	_tab_is_empty(tab) {
-		return !tab.customer && !tab.items.length && !tab.saved_return;
-	},
-
+	// ---------- render ----------
 	render() {
-		if (!this.tabs.length) this._new_tab();
-		const $body = $(this.page.body);
-		$body.html(`
-			<div class="santu-si2">
-				<div class="santu-si2-tabbar">
-					<div class="santu-si2-tabs"></div>
+		if (!this.tabs.length) this._new_ret(false);
+		const b = this._bill();
+		$(this.page.body).html(`
+			<div class="santu-bill">
+				<div class="santu-bill-tabbar">
+					<div class="santu-bill-tabs"></div>
 					<div class="santu-si2-toolbar">
-						<button type="button" class="santu-si2-icon-btn" data-action="calculator" title="Calculator">🧮</button>
+						<button type="button" class="santu-si2-icon-btn santu-si2-cost-toggle" data-toolbar="privacy" title="${__("Show cost price")}">${santu_sr_icon("lock-icon.svg", "is-on-dark")}</button>
+						<button type="button" class="santu-si2-icon-btn" data-action="calculator" title="Calculator">${santu_sr_icon("calculator.svg", "is-on-dark")}</button>
 					</div>
+					<button type="button" class="santu-bill-newtab">+ New Return <span class="santu-bill-kbd">Ctrl+T</span></button>
 				</div>
-				<div class="santu-si2-body"></div>
-			</div>
-		`);
-		this.$root = $body.find(".santu-si2");
-		this._render_tabbar();
-		this._render_body();
-		this._bind_toolbar();
-		this._bind_shortcuts();
-	},
 
-	_render_tabbar() {
-		const $tabs = this.$root.find(".santu-si2-tabs");
-		$tabs.empty();
-		this.tabs.forEach((tab, idx) => {
-			const active = tab.id === this.active_id;
-			const $tab = $(`
-				<button type="button" class="santu-si2-tab${active ? " is-active" : ""}" data-tab="${tab.id}">
-					<span class="santu-si2-tab-label">${frappe.utils.escape_html(this._tab_label(tab, idx))}</span>
-					<span class="santu-si2-tab-close" data-close="${tab.id}">×</span>
-				</button>
-			`);
-			$tab.on("click", (e) => {
-				if ($(e.target).is(".santu-si2-tab-close")) return;
-				this.active_id = tab.id;
-				this._save_debounced();
-				this.render();
-			});
-			$tab.find(".santu-si2-tab-close").on("click", (e) => {
-				e.stopPropagation();
-				this._close_tab(tab.id);
-			});
-			$tabs.append($tab);
-		});
-		$(`<button type="button" class="santu-si2-tab-add" title="New Sales Return (Ctrl+N)">+</button>`)
-			.on("click", () => {
-				this._new_tab();
-				this.render();
-			})
-			.appendTo($tabs);
-	},
-
-	_close_tab(id) {
-		const tab = this.tabs.find((t) => t.id === id);
-		if (!tab) return;
-		const finish = () => {
-			this.tabs = this.tabs.filter((t) => t.id !== id);
-			if (!this.tabs.length) this._new_tab(false);
-			if (this.active_id === id) this.active_id = this.tabs[0].id;
-			this._save_debounced();
-			this.render();
-		};
-		if (this._tab_is_empty(tab)) {
-			finish();
-			return;
-		}
-		frappe.confirm(__("This return has unsaved items. Close anyway?"), finish);
-	},
-
-	_render_body() {
-		const tab = this._active_tab();
-		const $wrap = this.$root.find(".santu-si2-body");
-		$wrap.html(`
-			<div class="santu-si2-header">
-				<div class="santu-si2-header-title">Sales Return</div>
-			</div>
-
-			<div class="santu-si2-toprow">
-				<div class="santu-si2-customer-col">
-					${santu_party_inline.fields_html()}
-				</div>
-				<div class="santu-si2-customer-info"></div>
-				<div class="santu-si2-invoice-info">
-					<div class="santu-si2-inv-row">
-						<span class="santu-si2-inv-label">Return No.</span>
-						<span class="santu-si2-inv-value">${
-							tab.saved_return ? frappe.utils.escape_html(tab.saved_return.name) : "(auto)"
-						}</span>
-					</div>
-					<div class="santu-si2-inv-row">
-						<span class="santu-si2-inv-label">Return Date</span>
-						<input type="date" class="santu-si2-posting-date" value="${tab.posting_date}">
-					</div>
-					<div class="santu-si2-inv-row">
-						<span class="santu-si2-inv-label">Return Against</span>
-						<select class="santu-si2-return-against">
-							<option value="">No bill (direct return)</option>
-							${(tab.return_invoices || [])
-								.map(
-									(inv) =>
-										`<option value="${frappe.utils.escape_html(inv.name)}" ${inv.name === tab.return_against ? "selected" : ""}>${frappe.utils.escape_html(inv.name)} · ₹${format_number(inv.grand_total, null, 2)}</option>`
-								)
-								.join("")}
-						</select>
-					</div>
-					<div class="santu-si2-inv-row">
-						<span class="santu-si2-inv-label">State of supply</span>
-						<select class="santu-si2-place-of-supply">
-							<option value="">Select</option>
-							${(this.init_data.place_of_supply_options || [])
-								.map((o) => `<option value="${frappe.utils.escape_html(o)}" ${o === tab.place_of_supply ? "selected" : ""}>${frappe.utils.escape_html(o)}</option>`)
-								.join("")}
-						</select>
-					</div>
-				</div>
-			</div>
-
-			<div class="santu-si2-table-wrap">
-				<table class="santu-si2-table">
-					<thead>
-						<tr>
-							<th class="santu-si2-col-idx">#</th>
-							<th class="santu-si2-col-item">ITEM</th>
-							<th class="santu-si2-col-qty">QTY</th>
-							<th class="santu-si2-col-uom">UNIT</th>
-							<th class="santu-si2-col-rate">PRICE/UNIT</th>
-							<th class="santu-si2-col-disc">DISCOUNT</th>
-							<th class="santu-si2-col-tax">TAX</th>
-							<th class="santu-si2-col-amount">AMOUNT</th>
-							<th class="santu-si2-col-remove"></th>
-						</tr>
-					</thead>
-					<tbody></tbody>
-					<tfoot>
-						<tr>
-							<td colspan="2"><button type="button" class="santu-si2-add-row">+ ADD ROW</button> <button type="button" class="santu-si2-scan-row" title="Scan a barcode">📷 SCAN BARCODE</button></td>
-							<td class="santu-si2-total-qty">0</td>
-							<td></td>
-							<td></td>
-							<td></td>
-							<td></td>
-							<td class="santu-si2-total-amount santu-si2-figures">₹ 0</td>
-							<td></td>
-						</tr>
-					</tfoot>
-				</table>
-			</div>
-
-			<div class="santu-si2-lowerrow">
-				<div class="santu-si2-extras">
-					<button type="button" class="santu-si2-extra-btn" data-extra="terms">☰ ADD TERMS &amp; CONDITIONS</button>
-					<button type="button" class="santu-si2-extra-btn" data-extra="description">＋ ADD DESCRIPTION</button>
-					<button type="button" class="santu-si2-extra-btn" data-extra="image">📷 ADD IMAGE</button>
-					<button type="button" class="santu-si2-extra-btn" data-extra="document">📄 ADD DOCUMENT</button>
-				</div>
-				<div class="santu-si2-summary">
-					<div class="santu-si2-summary-row">
-						<span>Subtotal</span>
-						<span class="santu-si2-figures santu-si2-sum-subtotal">₹ 0</span>
-					</div>
-					<div class="santu-si2-summary-row">
-						<span>Discount (whole bill)</span>
-						<input type="number" min="0" step="0.01" class="santu-si2-add-discount" value="${tab.additional_discount_amount || ""}" placeholder="0">
-					</div>
-					<div class="santu-si2-summary-row">
-						<span>Tax</span>
-						<span class="santu-si2-figures santu-si2-sum-tax">₹ 0</span>
-					</div>
-					<div class="santu-si2-summary-row">
-						<span><label><input type="checkbox" class="santu-si2-round-off" ${tab.round_off ? "checked" : ""}> Round Off</label></span>
-						<span class="santu-si2-figures santu-si2-sum-roundoff">₹ 0</span>
-					</div>
-					<div class="santu-si2-summary-row santu-si2-summary-total">
-						<span>Total</span>
-						<span class="santu-si2-figures santu-si2-sum-total">₹ 0</span>
-					</div>
-				</div>
-			</div>
-
-			<div class="santu-si2-actionbar">
-				<div class="santu-si2-actionbar-left"></div>
-				<div class="santu-si2-actionbar-right">
-					<button type="button" class="santu-si2-btn" data-action="share">Share ▾</button>
-					<button type="button" class="santu-si2-btn santu-si2-btn-primary" data-action="save">Save <span class="santu-si2-kbd">Ctrl+S</span></button>
-				</div>
-			</div>
-		`);
-
-		this._render_items();
-		this._render_customer_info();
-		this._bind_body_events();
-	},
-
-	// ---------- customer (inline party fields via santu_party_inline) ----------
-	_party_ctx() {
-		return santu_party_inline.make_ctx(this, santu_party_inline.CUSTOMER, { ddNamespace: "santu-sr-dd" });
-	},
-
-	_render_customer_info() {
-		santu_party_inline.render_info(this._party_ctx());
-	},
-
-	_customer_search(q) {
-		santu_party_inline.run_search(this._party_ctx(), q);
-	},
-
-	_select_customer(name) {
-		const tab = this._active_tab();
-		santu_party_inline.select_party(this._party_ctx(), name, {
-			onSelected: () => {
-				tab.return_against = null;
-				santu_sales_return.api.returnable_invoices(name).then((rows) => {
-					tab.return_invoices = rows || [];
-					this._save_debounced();
-					this._render_body();
-				});
-			},
-		});
-	},
-
-	// Picking the original bill prefills its lines with how much of each is
-	// still returnable (partial returns already booked are subtracted
-	// server-side). Clearing it leaves whatever was typed alone — the items
-	// are the point of the screen, not a side effect of the dropdown.
-	_select_return_against(invoice) {
-		const tab = this._active_tab();
-		tab.return_against = invoice;
-		this._save_debounced();
-		if (!invoice) {
-			this._render_body();
-			return;
-		}
-		santu_sales_return.api.invoice_items(invoice).then((r) => {
-			const rows = (r.items || []).filter((row) => row.returnable_qty > 0);
-			if (!rows.length) {
-				frappe.show_alert({
-					message: __("Everything on {0} has already been returned.", [invoice]),
-					indicator: "orange",
-				});
-				this._render_body();
-				return;
-			}
-			tab.items = rows.map((row) => ({
-				id: santu_sale_invoice.utils.uid(),
-				item_code: row.item_code,
-				item_name: row.item_name || row.item_code,
-				// Carried through to save_sales_return so the credit note
-				// points at the exact original line it reverses.
-				sales_invoice_item: row.row_name,
-				qty: row.returnable_qty,
-				max_qty: row.returnable_qty,
-				uom: row.uom || row.stock_uom,
-				uom_options: [row.uom, row.stock_uom].filter((v, i, a) => v && a.indexOf(v) === i),
-				rate: row.rate,
-				discount_percentage: row.discount_percentage || 0,
-				discount_amount: row.discount_amount || 0,
-				tax_rate: 0,
-				amount: row.returnable_qty * row.rate,
-			}));
-			this._save_debounced();
-			this._render_body();
-		});
-	},
-
-	_open_add_party_dialog(name) {
-		santu_party_inline.open_advanced_dialog(this._party_ctx(), name);
-	},
-
-	_ensure_party_before_save(tab) {
-		const ctx = this._party_ctx();
-		ctx.tab = tab;
-		return santu_party_inline.ensure_before_save(ctx);
-	},
-
-	// ---------- items (identical UX to Sale Invoice, no stock warnings) ----------
-	_render_items() {
-		const tab = this._active_tab();
-		const $tbody = this.$root.find(".santu-si2-table tbody");
-		$tbody.empty();
-
-		if (!tab.items.length) {
-			$(`<tr class="santu-si2-empty-row"><td colspan="9">No items yet — search above.</td></tr>`).appendTo($tbody);
-		}
-
-		tab.items.forEach((row, idx) => {
-			const $tr = $(`
-				<tr data-row="${row.id}">
-					<td class="santu-si2-col-idx">${idx + 1}</td>
-					<td class="santu-si2-col-item">
-						<div class="santu-si2-item-name">${frappe.utils.escape_html(row.item_name || row.item_code)}</div>
-					</td>
-					<td class="santu-si2-col-qty">
-						<div class="santu-si2-qty-stepper">
-							<button type="button" class="santu-si2-qty-dec">−</button>
-							<input type="number" class="santu-si2-qty-input" value="${row.qty}" min="0" step="any">
-							<button type="button" class="santu-si2-qty-inc">+</button>
+				<div class="santu-bill-main">
+					<div class="santu-bill-left">
+						<div class="santu-bill-searchwrap">
+							<input type="text" class="santu-bill-search" placeholder="Scan or search by item code, model no or item name" autocomplete="off">
+							<span class="santu-bill-search-icon">🔍</span>
+							<div class="santu-bill-dropdown" style="display:none;"></div>
 						</div>
-					</td>
-					<td class="santu-si2-col-uom">
-						<select class="santu-si2-uom-select">
-							${(row.uom_options || [row.uom]).filter(Boolean).map((u) => `<option value="${frappe.utils.escape_html(u)}" ${u === row.uom ? "selected" : ""}>${frappe.utils.escape_html(u)}</option>`).join("")}
-						</select>
-					</td>
-					<td class="santu-si2-col-rate">
-						<input type="number" class="santu-si2-rate-input" value="${row.rate}" min="0" step="any">
-					</td>
-					<td class="santu-si2-col-disc">
-						<input type="number" class="santu-si2-disc-pct-input" value="${row.discount_percentage || ""}" min="0" max="100" step="any" placeholder="%">
-						<input type="number" class="santu-si2-disc-amt-input" value="${row.discount_amount || ""}" min="0" step="any" placeholder="₹">
-					</td>
-					<td class="santu-si2-col-tax santu-si2-tax-display" title="From this item's own GST/tax template — not editable here">
-						${row.tax_rate ? row.tax_rate + "%" : "NONE"}
-					</td>
-					<td class="santu-si2-col-amount santu-si2-figures santu-si2-row-amount">₹ ${santu_sale_invoice.utils.format_money(row.amount || 0).replace("₹ ", "")}</td>
-					<td class="santu-si2-col-remove"><button type="button" class="santu-si2-row-remove" title="Remove">🗑</button></td>
-				</tr>
-			`);
-			$tbody.append($tr);
-		});
 
-		this._bind_item_row_events();
-		this._recalc_totals();
-	},
-
-	_item_search(q) {
-		let $dd = this.$root.find(".santu-si2-item-dropdown");
-		if (!$dd.length) {
-			$dd = $(`<div class="santu-si2-item-dropdown" style="display:none;"></div>`).appendTo(this.$root.find(".santu-si2-table-wrap"));
-		}
-		if (!q) {
-			santu_sale_invoice.api.recent_items().then((rows) => this._render_item_dropdown($dd, rows, "Recent Items"));
-			return;
-		}
-		santu_sale_invoice.api.search_items(q).then((r) => this._render_item_dropdown($dd, r.results || [], null, q));
-	},
-
-	_render_item_dropdown($dd, rows, heading, query) {
-		$dd.empty();
-		if (heading) $dd.append(`<div class="santu-si2-dd-heading">${heading}</div>`);
-		if (!rows.length) {
-			$dd.append(`<div class="santu-si2-dd-empty">No items found.</div>`);
-		}
-		rows.forEach((item) => {
-			$(`
-				<div class="santu-si2-dd-row santu-si2-item-dd-row">
-					<div>
-						<b>${frappe.utils.escape_html(item.item_name)}</b>
-						<span class="santu-si2-dd-sub">${frappe.utils.escape_html(item.item_code)}${item.brand ? " · " + frappe.utils.escape_html(item.brand) : ""}</span>
+						<div class="santu-bill-gridwrap">
+							<table class="santu-bill-grid">
+								<thead>
+									<tr>
+										<th class="c-idx">#</th>
+										<th class="c-code">ITEM CODE</th>
+										<th class="c-name">ITEM NAME</th>
+										<th class="c-qty">QTY</th>
+										<th class="c-unit">UNIT</th>
+										<th class="c-rate">PRICE/UNIT(₹)</th>
+										<th class="c-disc">DISCOUNT (₹)</th>
+										<th class="c-total">TOTAL(₹)</th>
+									</tr>
+								</thead>
+								<tbody></tbody>
+							</table>
+							<div class="santu-bill-gridfoot"><span class="santu-bill-grandrow">₹ 0.00</span></div>
+						</div>
 					</div>
-					<div class="santu-si2-dd-right">
-						<span class="santu-si2-figures">₹ ${santu_sale_invoice.utils.format_money(item.price || 0).replace("₹ ", "")}</span>
+
+					<div class="santu-bill-right">
+						<div class="santu-bill-datewrap">
+							<input type="date" class="santu-bill-date" value="${b.posting_date}">
+						</div>
+						<div class="santu-bill-custwrap">
+							<input type="text" class="santu-bill-customer" placeholder="Search for a customer by name, phone number [F11]" value="${frappe.utils.escape_html(b.customer_label || "")}" autocomplete="off">
+							<div class="santu-bill-cust-dropdown" style="display:none;"></div>
+						</div>
+						<div class="santu-bill-field">
+							<label>Return Against</label>
+							<select class="santu-bill-return-against">
+								<option value="">No bill (direct return)</option>
+								${(b.return_invoices || [])
+									.map(
+										(inv) =>
+											`<option value="${frappe.utils.escape_html(inv.name)}" ${inv.name === b.return_against ? "selected" : ""}>${frappe.utils.escape_html(inv.bill_no || inv.name)} · ₹${format_number(inv.grand_total, null, 2)}</option>`
+									)
+									.join("")}
+							</select>
+						</div>
+
+						<div class="santu-bill-field">
+							<label>Paisa Kaise Settle Hoga?</label>
+							<select class="santu-bill-settlement">
+								<option value="credit" ${b.settlement !== "refund" ? "selected" : ""}>Khata me credit rahega</option>
+								<option value="refund" ${b.settlement === "refund" ? "selected" : ""}>Abhi cash/UPI refund diya</option>
+							</select>
+						</div>
+						<div class="santu-bill-field santu-bill-refund-mode-wrap" style="${b.settlement === "refund" ? "" : "display:none;"}">
+							<label>Refund Mode</label>
+							<select class="santu-bill-refund-mode">
+								${["Cash", "UPI", "Card", "Bank Transfer", "Cheque"]
+									.map((m) => `<option value="${m}" ${m === (b.refund_mode || "Cash") ? "selected" : ""}>${m}</option>`)
+									.join("")}
+							</select>
+						</div>
+
+						<div class="santu-bill-totalcard">
+							<div class="santu-bill-totalcard-left">
+								<span class="santu-bill-receipt">↩️</span>
+								<div>
+									<div class="santu-bill-total-big">Refund ₹ 0.00</div>
+									<div class="santu-bill-total-sub">Items: 0 , Quantity: 0</div>
+								</div>
+							</div>
+							<button type="button" class="santu-bill-breakup">Full Breakup<br><span class="santu-bill-kbd-inline">[Ctrl+F]</span> ›</button>
+						</div>
+
+						${b.saved ? `<div class="santu-bill-inv-row"><span>Return No.</span><span>${frappe.utils.escape_html(b.saved.name)}</span></div>` : ""}
 					</div>
 				</div>
-			`)
-				.on("click", () => this._add_item(item.item_code))
-				.appendTo($dd);
-		});
-		if (query) {
-			$(`<div class="santu-si2-dd-row santu-si2-dd-add" data-quick-add="1">+ Quick-create "${frappe.utils.escape_html(query)}"</div>`)
-				.on("click", () => this._quick_create_item(query))
-				.appendTo($dd);
-		}
-		$dd.show();
-	},
 
-	_quick_create_item(item_name) {
-		const d = new frappe.ui.Dialog({
-			title: __("Quick Create Item"),
-			fields: [
-				{ fieldtype: "Data", fieldname: "item_name", label: "Item Name", default: item_name, reqd: 1 },
-				{ fieldtype: "Currency", fieldname: "selling_price", label: "Selling Price", reqd: 1 },
-			],
-			primary_action_label: __("Create & Add"),
-			primary_action: (v) => {
-				santu_sale_invoice.api.quick_create_item(v.item_name, v.selling_price).then((r) => {
-					d.hide();
-					this._add_item(r.item_code);
-				});
-			},
-		});
-		d.show();
-	},
-
-	_add_item(item_code) {
-		const tab = this._active_tab();
-		this.$root.find(".santu-si2-item-dropdown").hide();
-		this.$root.find(".santu-si2-item-search").val("");
-
-		const existing = tab.items.find((r) => r.item_code === item_code);
-		if (existing) {
-			existing.qty = (Number(existing.qty) || 0) + 1;
-			this._render_items();
-			this._save_debounced();
-			return;
-		}
-
-		santu_sale_invoice.api.item_row(tab.customer, item_code, this.init_data.warehouse, 1).then((row) => {
-			const new_row = {
-				id: santu_sale_invoice.utils.uid(),
-				item_code,
-				item_name: row.item_name || item_code,
-				qty: 1,
-				uom: row.uom || row.stock_uom,
-				uom_options: row.uom ? [row.uom, row.stock_uom].filter((v, i, a) => v && a.indexOf(v) === i) : [row.stock_uom],
-				rate: row.price_list_rate || row.rate || 0,
-				discount_percentage: 0,
-				discount_amount: 0,
-				tax_rate: row.tax_rate || 0,
-				amount: row.price_list_rate || row.rate || 0,
-			};
-			tab.items.push(new_row);
-			this._save_debounced();
-			this._render_items();
-		});
-	},
-
-	_row_local_recalc(row) {
-		const base = (Number(row.qty) || 0) * (Number(row.rate) || 0);
-		const pct_disc = base * ((Number(row.discount_percentage) || 0) / 100);
-		const amt_disc = Number(row.discount_amount) || 0;
-		const after_disc = Math.max(base - pct_disc - amt_disc, 0);
-		const tax = after_disc * ((Number(row.tax_rate) || 0) / 100);
-		row.amount = after_disc + tax;
-		row._tax_amount = tax;
-		row._net_amount = after_disc;
-	},
-
-	_recalc_totals() {
-		const tab = this._active_tab();
-		let qty_total = 0;
-		let net_total = 0;
-		let tax_total = 0;
-		tab.items.forEach((row) => {
-			this._row_local_recalc(row);
-			qty_total += Number(row.qty) || 0;
-			net_total += row._net_amount || 0;
-			tax_total += row._tax_amount || 0;
-		});
-		const additional_discount = Number(tab.additional_discount_amount) || 0;
-		const pre_round = Math.max(net_total + tax_total - additional_discount, 0);
-		const rounded = tab.round_off ? Math.round(pre_round) : pre_round;
-		const round_off_amount = rounded - pre_round;
-		tab._computed_total = rounded;
-
-		this.$root.find(".santu-si2-total-qty").text(qty_total);
-		this.$root.find(".santu-si2-total-amount").text("₹ " + santu_sale_invoice.utils.format_money(net_total + tax_total).replace("₹ ", ""));
-		this.$root.find(".santu-si2-sum-subtotal").text("₹ " + santu_sale_invoice.utils.format_money(net_total).replace("₹ ", ""));
-		this.$root.find(".santu-si2-sum-tax").text("₹ " + santu_sale_invoice.utils.format_money(tax_total).replace("₹ ", ""));
-		this.$root.find(".santu-si2-sum-roundoff").text("₹ " + santu_sale_invoice.utils.format_money(round_off_amount).replace("₹ ", ""));
-		this.$root.find(".santu-si2-sum-total").text("₹ " + santu_sale_invoice.utils.format_money(rounded).replace("₹ ", ""));
-		tab.items.forEach((row) => {
-			this.$root
-				.find(`tr[data-row="${row.id}"] .santu-si2-row-amount`)
-				.text("₹ " + santu_sale_invoice.utils.format_money(row.amount).replace("₹ ", ""));
-		});
-	},
-
-	// ---------- events ----------
-	_bind_body_events() {
-		const tab = this._active_tab();
-		const $root = this.$root;
-
-		santu_party_inline.bind_search_events(this._party_ctx());
-		santu_party_inline.bind_field_events(this._party_ctx());
-
-		$root.find(".santu-si2-posting-date").on("change", (e) => {
-			tab.posting_date = e.target.value;
-			this._save_debounced();
-		});
-		$root.find(".santu-si2-return-against").on("change", (e) => {
-			this._select_return_against(e.target.value || null);
-		});
-		$root.find(".santu-si2-place-of-supply").on("change", (e) => {
-			tab.place_of_supply = e.target.value;
-			this._save_debounced();
-		});
-
-		$root.find(".santu-si2-add-row, .santu-si2-scan-row").on("click", () => this._open_item_search_inline());
-
-		$root.find(".santu-si2-add-discount").on(
-			"input",
-			santu_sale_invoice.utils.debounce((e) => {
-				tab.additional_discount_amount = Number(e.target.value) || 0;
-				this._save_debounced();
-				this._recalc_totals();
-			})
-		);
-		$root.find(".santu-si2-round-off").on("change", (e) => {
-			tab.round_off = e.target.checked;
-			this._save_debounced();
-			this._recalc_totals();
-		});
-
-		$root.find("[data-extra]").on("click", (e) => this._open_extra($(e.currentTarget).data("extra")));
-		$root.find("[data-action]").on("click", (e) => this._handle_action($(e.currentTarget).data("action")));
-	},
-
-	_open_item_search_inline() {
-		const $existing = this.$root.find(".santu-si2-item-search");
-		if ($existing.length) {
-			$existing.trigger("focus");
-			return;
-		}
-		const $wrap = $(`
-			<div class="santu-si2-item-search-wrap">
-				<input type="text" class="santu-si2-item-search" placeholder="Search item name, code, brand…" autocomplete="off">
+				<div class="santu-bill-actions">
+					<div class="santu-bill-fkeys">
+						<button type="button" data-act="qty">Change Quantity <b>[F2]</b></button>
+						<button type="button" data-act="idisc">Item Discount <b>[F3]</b></button>
+						<button type="button" data-act="remove">Remove Item <b>[F4]</b></button>
+						<button type="button" data-act="rate">Sale Value <b>[F5]</b></button>
+						<button type="button" data-act="unit">Change Unit <b>[F6]</b></button>
+						<button type="button" data-act="rename">Item Name <b>[F7]</b></button>
+						<button type="button" data-act="charges">Additional Charges <b>[F8]</b></button>
+						<button type="button" data-act="bdisc">Bill Discount <b>[F9]</b></button>
+						<button type="button" data-act="reason">Reason <b>[F12]</b></button>
+					</div>
+					<div class="santu-bill-savecol">
+						<button type="button" class="santu-bill-save">Save Return <span class="santu-bill-kbd">Ctrl+S</span></button>
+					</div>
+				</div>
 			</div>
 		`);
-		this.$root.find(".santu-si2-table-wrap").prepend($wrap);
-		const $input = $wrap.find(".santu-si2-item-search");
-		$input.trigger("focus");
-		$input.on(
-			"input",
-			santu_sale_invoice.utils.debounce((e) => this._item_search(e.target.value.trim()))
-		);
-		$input.on("focus", () => this._item_search($input.val().trim()));
-		$input.on("keydown", (e) => {
-			if (e.key === "Enter") {
-				const q = $input.val().trim();
-				if (!q) return;
-				santu_sale_invoice.api.search_items(q).then((r) => {
-					if (r.exact_match) this._add_item(r.exact_match);
-					else if (r.results && r.results.length) this._add_item(r.results[0].item_code);
-				});
-			}
-			if (e.key === "Escape") {
-				this.$root.find(".santu-si2-item-dropdown, .santu-si2-item-search-wrap").remove();
-			}
-		});
-	},
-
-	_bind_item_row_events() {
-		const tab = this._active_tab();
-		this.$root.find(".santu-si2-table tbody tr[data-row]").each((_, el) => {
-			const $tr = $(el);
-			const row = tab.items.find((r) => r.id === $tr.data("row"));
-			if (!row) return;
-
-			const on_change = () => {
-				this._save_debounced();
-				this._recalc_totals();
-			};
-
-			// Rows prefilled from a bill carry max_qty — you can't hand back
-			// more than was bought. Clamping here turns what would otherwise
-			// be an ERPNext validation failure at save time into a limit the
-			// cashier can see while typing. Rows added by hand (no bill
-			// linked) have no max_qty and stay unclamped.
-			const clamp_qty = (v) => {
-				const n = Math.max(Number(v) || 0, 0);
-				return row.max_qty ? Math.min(n, row.max_qty) : n;
-			};
-
-			$tr.find(".santu-si2-qty-input").on("input", (e) => {
-				const wanted = Math.max(Number(e.target.value) || 0, 0);
-				row.qty = clamp_qty(wanted);
-				if (row.max_qty && wanted > row.max_qty) {
-					$tr.find(".santu-si2-qty-input").val(row.qty);
-					frappe.show_alert({
-						message: __("Only {0} of {1} can be returned.", [row.max_qty, row.item_name]),
-						indicator: "orange",
-					});
-				}
-				on_change();
-			});
-			$tr.find(".santu-si2-qty-dec").on("click", () => {
-				row.qty = clamp_qty((Number(row.qty) || 0) - 1);
-				$tr.find(".santu-si2-qty-input").val(row.qty);
-				on_change();
-			});
-			$tr.find(".santu-si2-qty-inc").on("click", () => {
-				row.qty = clamp_qty((Number(row.qty) || 0) + 1);
-				$tr.find(".santu-si2-qty-input").val(row.qty);
-				on_change();
-			});
-			$tr.find(".santu-si2-uom-select").on("change", (e) => {
-				row.uom = e.target.value;
-				on_change();
-			});
-			$tr.find(".santu-si2-rate-input").on("input", (e) => {
-				row.rate = Number(e.target.value) || 0;
-				on_change();
-			});
-			$tr.find(".santu-si2-disc-pct-input").on("input", (e) => {
-				row.discount_percentage = Number(e.target.value) || 0;
-				row.discount_amount = 0;
-				$tr.find(".santu-si2-disc-amt-input").val("");
-				on_change();
-			});
-			$tr.find(".santu-si2-disc-amt-input").on("input", (e) => {
-				row.discount_amount = Number(e.target.value) || 0;
-				row.discount_percentage = 0;
-				$tr.find(".santu-si2-disc-pct-input").val("");
-				on_change();
-			});
-			$tr.find(".santu-si2-row-remove").on("click", () => {
-				tab.items = tab.items.filter((r) => r.id !== row.id);
-				this._save_debounced();
-				this._render_items();
-			});
-		});
-	},
-
-	_open_extra(kind) {
-		const tab = this._active_tab();
-		if (kind === "terms") {
-			const d = new frappe.ui.Dialog({
-				title: __("Terms & Conditions"),
-				fields: [{ fieldtype: "Small Text", fieldname: "terms", default: tab.terms }],
-				primary_action_label: __("Save"),
-				primary_action: (v) => {
-					tab.terms = v.terms;
-					this._save_debounced();
-					d.hide();
-				},
-			});
-			d.show();
-		} else if (kind === "description") {
-			const d = new frappe.ui.Dialog({
-				title: __("Description"),
-				fields: [{ fieldtype: "Small Text", fieldname: "description", default: tab.description }],
-				primary_action_label: __("Save"),
-				primary_action: (v) => {
-					tab.description = v.description;
-					this._save_debounced();
-					d.hide();
-				},
-			});
-			d.show();
-		} else {
-			frappe.show_alert({ message: __("Available after the first save, from the return's own attachment panel."), indicator: "blue" });
-		}
+		this.$root = $(this.page.body).find(".santu-bill");
+		this._render_tabs();
+		this._render_rows();
+		this._bind();
+		this._bind_toolbar();
+		this.$root.find(".santu-bill-search").focus();
 	},
 
 	_bind_toolbar() {
+		this.$root.find('[data-toolbar="privacy"]').on("click", () => this._action("privacy"));
 		this.$root.find('[data-action="calculator"]').on("click", () => this._open_calculator());
+		this._render_cost_toggle();
+		if (this._on_privacy_change) document.removeEventListener("santu-privacy-mode-change", this._on_privacy_change);
+		this._on_privacy_change = () => {
+			this._render_rows();
+			this._render_cost_toggle();
+		};
+		document.addEventListener("santu-privacy-mode-change", this._on_privacy_change);
+	},
+
+	_render_cost_toggle() {
+		const on = !!(window.santu_is_privacy_mode_active && santu_is_privacy_mode_active());
+		const $btn = this.$root.find(".santu-si2-cost-toggle");
+		$btn.toggleClass("is-on", on).attr("title", on ? __("Cost price showing — click to hide") : __("Show cost price"));
+		$btn.find(".santu-si2-ico").attr("src", `${SANTU_SR_ICON_DIR}/${on ? "unlock_icon.svg" : "lock-icon.svg"}`);
 	},
 
 	_open_calculator() {
@@ -803,96 +293,734 @@ window.santu_sales_return_page = {
 		d.show();
 	},
 
-	_bind_shortcuts() {
-		$(document).off("keydown.santu-so").on("keydown.santu-so", (e) => {
-			if (!$(".santu-si2:visible").length) return;
-			const mod = e.ctrlKey || e.metaKey;
-			if (mod && e.key.toLowerCase() === "n") {
-				e.preventDefault();
-				this._new_tab();
-				this.render();
-			} else if (mod && e.key.toLowerCase() === "s") {
-				e.preventDefault();
-				this._handle_action("save");
-			} else if (e.key === "Escape") {
-				this.$root.find(".santu-si2-customer-dropdown, .santu-si2-item-dropdown").hide();
-			}
+	_render_tabs() {
+		const $t = this.$root.find(".santu-bill-tabs").empty();
+		this.tabs.forEach((b, i) => {
+			const label = b.saved ? b.saved.name : `Return #${i + 1}`;
+			$(`
+				<button type="button" class="santu-bill-tab ${b.id === this.active_id ? "is-active" : ""}">
+					<span>${frappe.utils.escape_html(label)}</span>
+					<span class="santu-bill-tab-x">×</span>
+				</button>
+			`)
+				.on("click", (e) => {
+					if ($(e.target).hasClass("santu-bill-tab-x")) {
+						this._close_tab(b.id);
+						return;
+					}
+					this.active_id = b.id;
+					this._persist_soon();
+					this.render();
+				})
+				.appendTo($t);
 		});
 	},
 
-	_handle_action(action) {
-		const tab = this._active_tab();
-		if (action === "share") {
-			if (!tab.saved_return) {
-				frappe.msgprint(__("Save the return first."));
+	_close_tab(id) {
+		const b = this.tabs.find((t) => t.id === id);
+		if (!b) return;
+		const drop = () => {
+			this.tabs = this.tabs.filter((t) => t.id !== id);
+			if (!this.tabs.length) this._new_ret(false);
+			if (this.active_id === id) this.active_id = this.tabs[0].id;
+			this._persist_soon();
+			this.render();
+		};
+		if (!b.items.length) return drop();
+		frappe.confirm(__("This return has items. Close anyway?"), drop);
+	},
+
+	_render_rows() {
+		const b = this._bill();
+		const privacy_on = typeof santu_is_privacy_mode_active === "function" && santu_is_privacy_mode_active();
+		if (privacy_on) this._fetch_costs(b);
+		const $tb = this.$root.find(".santu-bill-grid tbody").empty();
+		b.items.forEach((r, i) => {
+			const $tr = $(`
+				<tr class="${r.id === b.selected_row ? "is-selected" : ""}" data-row="${r.id}">
+					<td class="c-idx">${i + 1}</td>
+					<td class="c-code">${frappe.utils.escape_html(r.item_code || "-")}</td>
+					<td class="c-name santu-bill-editable" title="${__("Badalne ke liye dabaiye")}">${frappe.utils.escape_html(r.item_name)}${
+						r.max_qty ? `<span class="santu-bill-batch-tag">${__("max")} ${format_number(r.max_qty, null, 2)}</span>` : ""
+					}</td>
+					<td class="c-qty">
+						<span class="santu-bill-qty-stepper">
+							<button type="button" class="santu-bill-qty-btn" data-step="-1">−</button>
+							<span class="santu-bill-editable santu-bill-qty-val" title="${__("Badalne ke liye dabaiye")}">${format_number(r.qty, null, 2)}</span>
+							<button type="button" class="santu-bill-qty-btn" data-step="1">+</button>
+						</span>
+					</td>
+					<td class="c-unit">${frappe.utils.escape_html(r.uom || "-")}</td>
+					<td class="c-rate santu-bill-editable" title="${__("Badalne ke liye dabaiye")}">${format_number(r.rate, null, 2)}${
+						privacy_on && r.cost_price != null
+							? `<span class="santu-bill-cost">${__("cost")} ₹${format_number(r.cost_price, null, 2)}</span>`
+							: ""
+					}</td>
+					<td class="c-disc santu-bill-editable" title="${__("Badalne ke liye dabaiye")}">${format_number(r.discount || 0, null, 2)}</td>
+					<td class="c-total">${format_number(this._row_total(r), null, 2)}</td>
+				</tr>
+			`);
+			$tr.on("click", () => {
+				b.selected_row = r.id;
+				this._render_rows();
+			});
+			$tr.find(".c-name").on("click", (e) => {
+				e.stopPropagation();
+				b.selected_row = r.id;
+				this._inline_edit($(e.currentTarget), "text", r.item_name, (v) => {
+					r.item_name = (v || "").trim() || r.item_name;
+				});
+			});
+			$tr.find(".santu-bill-qty-val").on("click", (e) => {
+				e.stopPropagation();
+				b.selected_row = r.id;
+				this._inline_edit($(e.currentTarget), "number", r.qty, (v) => {
+					r.qty = this._clamp_qty(r, v);
+				});
+			});
+			$tr.find(".santu-bill-qty-btn").on("click", (e) => {
+				e.stopPropagation();
+				b.selected_row = r.id;
+				const step = Number($(e.currentTarget).attr("data-step")) || 0;
+				r.qty = this._clamp_qty(r, (Number(r.qty) || 0) + step);
+				this._persist_soon();
+				this._render_rows();
+			});
+			$tr.find(".c-rate").on("click", (e) => {
+				e.stopPropagation();
+				b.selected_row = r.id;
+				this._inline_edit($(e.currentTarget), "number", r.rate, (v) => {
+					r.rate = Math.max(Number(v) || 0, 0);
+				});
+			});
+			$tr.find(".c-disc").on("click", (e) => {
+				e.stopPropagation();
+				b.selected_row = r.id;
+				this._inline_edit($(e.currentTarget), "number", r.discount || 0, (v) => {
+					r.discount = Math.max(Number(v) || 0, 0);
+				});
+			});
+			$tb.append($tr);
+		});
+		this._render_totals();
+	},
+
+	// Rows prefilled from a return-against bill carry max_qty — you can't
+	// hand back more than was bought (partial returns already booked are
+	// already subtracted server-side into that number).
+	_clamp_qty(r, v) {
+		const n = Math.max(Number(v) || 0, 0);
+		if (r.max_qty && n > r.max_qty) {
+			frappe.show_alert({ message: __("Only {0} of {1} can be returned.", [r.max_qty, r.item_name]), indicator: "orange" });
+			return r.max_qty;
+		}
+		return n;
+	},
+
+	_inline_edit($cell, type, current, apply) {
+		if ($cell.find("input").length) return;
+		const $input = $(
+			`<input type="${type === "number" ? "number" : "text"}" class="santu-bill-inline-input" ${
+				type === "number" ? 'step="any" min="0"' : ""
+			}>`
+		).val(current);
+		$cell.empty().append($input);
+		$input.trigger("focus").trigger("select");
+		let done = false;
+		const commit = () => {
+			if (done) return;
+			done = true;
+			apply($input.val());
+			this._persist_soon();
+			this._render_rows();
+		};
+		const cancel = () => {
+			if (done) return;
+			done = true;
+			this._render_rows();
+		};
+		$input.on("blur", commit);
+		$input.on("keydown", (e) => {
+			e.stopPropagation();
+			const enter = e.key === "Enter" || e.keyCode === 13 || e.which === 13;
+			const escape = e.key === "Escape" || e.keyCode === 27 || e.which === 27;
+			if (enter) {
+				e.preventDefault();
+				commit();
+			} else if (escape) {
+				e.preventDefault();
+				cancel();
+			}
+		});
+		$input.on("click", (e) => e.stopPropagation());
+	},
+
+	_fetch_costs(b) {
+		b.items.forEach((r) => {
+			if (r.cost_price != null || r._cost_pending || !r.item_code) return;
+			r._cost_pending = true;
+			frappe
+				.xcall("santu_hardware.santu_hardware.api.get_item_cost_price", {
+					item_code: r.item_code,
+					warehouse: this.init_data.warehouse,
+				})
+				.then((c) => {
+					r.cost_price = (c && c.cost_price != null ? c.cost_price : c) || 0;
+					r._cost_pending = false;
+					if (typeof santu_is_privacy_mode_active === "function" && santu_is_privacy_mode_active()) {
+						this._render_rows();
+					}
+				})
+				.catch(() => {
+					r._cost_pending = false;
+				});
+		});
+	},
+
+	_render_totals() {
+		const b = this._bill();
+		const t = this._totals();
+		this.$root.find(".santu-bill-total-big").text(`Refund ₹ ${format_number(t.total, null, 2)}`);
+		this.$root.find(".santu-bill-total-sub").text(`Items: ${b.items.length} , Quantity: ${format_number(t.qty, null, 0)}`);
+		this.$root.find(".santu-bill-grandrow").text(`₹ ${format_number(t.total, null, 2)}`);
+	},
+
+	// ---------- items ----------
+	_search(q) {
+		const $dd = this.$root.find(".santu-bill-dropdown");
+		if (!q || q.length < 2) return $dd.hide().empty();
+		santu_sale_invoice.api.search_items(q).then((res) => {
+			const rows = res.results || res || [];
+			$dd.empty();
+			rows.slice(0, 8).forEach((it) => {
+				$(`
+					<div class="santu-bill-dd-row">
+						<div><b>${frappe.utils.escape_html(it.item_name)}</b><span>${frappe.utils.escape_html(it.item_code)}</span></div>
+						<div class="santu-bill-dd-right">₹ ${format_number(it.price || 0, null, 2)}</div>
+					</div>
+				`)
+					.on("click", () => this._add_item(it.item_code))
+					.appendTo($dd);
+			});
+			if (res.exact_match) {
+				this._add_item(res.exact_match);
 				return;
 			}
-			window.santu_open_invoice_view("Sales Invoice", tab.saved_return.name);
-			return;
-		}
-		if (action === "save") {
-			this._save_return(tab);
-			return;
-		}
+			$dd.show();
+		});
 	},
 
-	_validate_before_save(tab) {
-		if (!santu_party_inline.has_party_or_name(this.$root, tab, santu_party_inline.CUSTOMER)) {
-			frappe.msgprint(__("Please enter a party name or select a customer."));
-			return false;
+	_add_item(item_code) {
+		const b = this._bill();
+		this.$root.find(".santu-bill-dropdown").hide().empty();
+		this.$root.find(".santu-bill-search").val("").focus();
+		const existing = b.items.find((r) => r.item_code === item_code);
+		if (existing) {
+			existing.qty = this._clamp_qty(existing, (Number(existing.qty) || 0) + 1);
+			this._persist_soon();
+			this._render_rows();
+			return;
 		}
-		if (!tab.items.length) {
-			frappe.msgprint(__("Please add at least one item."));
-			return false;
-		}
-		for (const row of tab.items) {
-			if (!row.qty || row.qty <= 0) {
-				frappe.msgprint(__("Enter a valid quantity for {0}.", [row.item_name]));
-				return false;
+		santu_sale_invoice.api.item_row(b.customer, item_code, this.init_data.warehouse, 1).then((row) => {
+			b.items.push({
+				id: santu_sale_invoice.utils.uid(),
+				item_code: row.item_code || item_code,
+				item_name: row.item_name || item_code,
+				qty: 1,
+				uom: row.uom || row.stock_uom,
+				uom_options: [row.uom, row.stock_uom].filter((v, i, a) => v && a.indexOf(v) === i),
+				rate: row.price_list_rate || row.rate || 0,
+				discount: 0,
+			});
+			b.selected_row = b.items[b.items.length - 1].id;
+			this._persist_soon();
+			this._render_rows();
+		});
+	},
+
+	_selected() {
+		const b = this._bill();
+		const r = b.items.find((x) => x.id === b.selected_row);
+		if (!r) frappe.show_alert({ message: __("Pick a row first."), indicator: "orange" });
+		return r;
+	},
+
+	_prompt(title, label, fieldtype, current, apply) {
+		const d = new frappe.ui.Dialog({
+			title,
+			fields: [{ fieldtype, fieldname: "v", label, default: current, reqd: 1 }],
+			primary_action_label: __("OK"),
+			primary_action: (v) => {
+				apply(v.v);
+				d.hide();
+				this._persist_soon();
+				this._render_rows();
+			},
+		});
+		d.show();
+		setTimeout(() => d.fields_dict.v.$input && d.fields_dict.v.$input.select(), 250);
+	},
+
+	_action(act) {
+		const b = this._bill();
+		if (act === "qty") {
+			const r = this._selected();
+			if (r) this._prompt(__("Change Quantity"), __("Quantity"), "Float", r.qty, (v) => (r.qty = this._clamp_qty(r, v)));
+		} else if (act === "idisc") {
+			const r = this._selected();
+			if (r) this._prompt(__("Item Discount"), __("Discount (₹)"), "Currency", r.discount, (v) => (r.discount = Math.max(Number(v) || 0, 0)));
+		} else if (act === "rate") {
+			const r = this._selected();
+			if (r) this._prompt(__("Sale Value"), __("Price per unit (₹)"), "Currency", r.rate, (v) => (r.rate = Math.max(Number(v) || 0, 0)));
+		} else if (act === "rename") {
+			const r = this._selected();
+			if (r) this._prompt(__("Item Name"), __("Name on this return"), "Data", r.item_name, (v) => (r.item_name = (v || "").trim() || r.item_name));
+		} else if (act === "remove") {
+			const r = this._selected();
+			if (r) {
+				b.items = b.items.filter((x) => x.id !== r.id);
+				b.selected_row = b.items.length ? b.items[b.items.length - 1].id : null;
+				this._persist_soon();
+				this._render_rows();
 			}
+		} else if (act === "unit") {
+			const r = this._selected();
+			if (!r) return;
+			const d = new frappe.ui.Dialog({
+				title: __("Change Unit"),
+				fields: [{ fieldtype: "Select", fieldname: "uom", label: __("Unit"), options: (r.uom_options || [r.uom]).join("\n"), default: r.uom }],
+				primary_action_label: __("OK"),
+				primary_action: (v) => {
+					r.uom = v.uom;
+					d.hide();
+					this._persist_soon();
+					this._render_rows();
+				},
+			});
+			d.show();
+		} else if (act === "charges") {
+			this._prompt(__("Additional Charges"), __("Amount (₹)"), "Currency", b.additional_charges, (v) => (b.additional_charges = Math.max(Number(v) || 0, 0)));
+		} else if (act === "bdisc") {
+			this._prompt(__("Bill Discount"), __("Discount (₹)"), "Currency", b.bill_discount, (v) => (b.bill_discount = Math.max(Number(v) || 0, 0)));
+		} else if (act === "reason") {
+			this._prompt(__("Reason"), __("Why is this coming back?"), "Small Text", b.reason, (v) => (b.reason = v || ""));
+		} else if (act === "privacy") {
+			Promise.resolve(window.santu_toggle_privacy_mode()).then(() => this._render_rows());
 		}
-		return true;
 	},
 
-	_save_return(tab) {
-		if (!this._validate_before_save(tab)) return;
+	_breakup() {
+		const t = this._totals();
+		const b = this._bill();
+		const line = (l, v, cls) =>
+			`<div class="santu-bill-bk-row ${cls || ""}"><span>${l}</span><span>:</span><span>₹ ${format_number(v, null, 2)}</span></div>`;
+		const d = new frappe.ui.Dialog({ title: __("Full Return Breakup"), fields: [{ fieldtype: "HTML", fieldname: "bk" }] });
+		d.fields_dict.bk.$wrapper.html(`
+			<div class="santu-bill-bk">
+				${line("Sub Total", t.sub)}
+				${b.additional_charges ? line("Additional Charges", b.additional_charges) : ""}
+				${b.bill_discount ? line("Bill Discount", -b.bill_discount) : ""}
+				${line("Refund Total", t.total, "is-total")}
+			</div>
+		`);
+		d.show();
+	},
+
+	// ---------- customer ----------
+	_pick_customer(name, label) {
+		const b = this._bill();
+		b.customer = name;
+		b.customer_label = label;
+		b.return_against = null;
+		b.return_invoices = [];
+		this.$root.find(".santu-bill-customer").val(label);
+		this.$root.find(".santu-bill-cust-dropdown").hide().empty();
+		this._persist_soon();
+		santu_sales_return.api.returnable_invoices(name).then((rows) => {
+			b.return_invoices = rows || [];
+			this._persist_soon();
+			this._render_return_against();
+		});
+	},
+
+	_render_return_against() {
+		const b = this._bill();
+		const $sel = this.$root.find(".santu-bill-return-against");
+		$sel.html(`
+			<option value="">No bill (direct return)</option>
+			${(b.return_invoices || [])
+				.map(
+					(inv) =>
+						`<option value="${frappe.utils.escape_html(inv.name)}" ${inv.name === b.return_against ? "selected" : ""}>${frappe.utils.escape_html(inv.bill_no || inv.name)} · ₹${format_number(inv.grand_total, null, 2)}</option>`
+				)
+				.join("")}
+		`);
+	},
+
+	// Picking the original bill prefills its lines with how much of each is
+	// still returnable. Clearing it leaves whatever's on screen alone.
+	_select_return_against(invoice) {
+		const b = this._bill();
+		b.return_against = invoice;
+		this._persist_soon();
+		if (!invoice) return;
+		santu_sales_return.api.invoice_items(invoice).then((r) => {
+			const rows = (r.items || []).filter((row) => row.returnable_qty > 0);
+			if (!rows.length) {
+				frappe.show_alert({ message: __("Everything on {0} has already been returned.", [invoice]), indicator: "orange" });
+				return;
+			}
+			b.items = rows.map((row) => ({
+				id: santu_sale_invoice.utils.uid(),
+				item_code: row.item_code,
+				item_name: row.item_name || row.item_code,
+				sales_invoice_item: row.row_name,
+				qty: row.returnable_qty,
+				max_qty: row.returnable_qty,
+				uom: row.uom || row.stock_uom,
+				uom_options: [row.uom, row.stock_uom].filter((v, i, a) => v && a.indexOf(v) === i),
+				rate: row.rate,
+				discount: 0,
+			}));
+			this._persist_soon();
+			this._render_rows();
+		});
+	},
+
+	_cust_search(q) {
+		const $dd = this.$root.find(".santu-bill-cust-dropdown");
+		const draw = (rows) => {
+			$dd.empty();
+			if (rows.length) {
+				$dd.append(`<div class="santu-bill-cust-head"><span>Name</span><span>Phone Number</span></div>`);
+			}
+			rows.forEach((c) => {
+				$(`
+					<div class="santu-bill-cust-row">
+						<span>${frappe.utils.escape_html(c.customer_name)}</span>
+						<span class="santu-bill-cust-phone">${frappe.utils.escape_html(c.mobile_no || "—")}</span>
+					</div>
+				`)
+					.on("click", () => this._pick_customer(c.name, c.customer_name))
+					.appendTo($dd);
+			});
+			$(`<button type="button" class="santu-bill-addcust">Add Customer <span class="santu-bill-kbd">Ctrl+D</span></button>`)
+				.on("click", () => this._add_customer(this.$root.find(".santu-bill-customer").val()))
+				.appendTo($dd);
+			$dd.show();
+		};
+		if (!q || q.length < 2) {
+			draw([]);
+			return;
+		}
+		Promise.all([santu_sale_invoice.api.search_customers(q), santu_sale_invoice.api.search_customers_by_phone(q)]).then(
+			([by_name, by_phone]) => {
+				const rows = by_name || [];
+				const seen = new Set(rows.map((r) => r.name));
+				(by_phone || []).forEach((r) => {
+					if (!seen.has(r.name)) {
+						seen.add(r.name);
+						rows.push(r);
+					}
+				});
+				draw(rows);
+			}
+		);
+	},
+
+	_add_customer(prefill) {
+		const self = this;
+		$("#santu-bill-addcust-modal").remove();
+		const districts = (typeof santu_sale_invoice !== "undefined" && santu_sale_invoice.BIHAR_DISTRICTS) || [];
+		const $m = $(`
+			<div id="santu-bill-addcust-modal" class="santu-bill-modal-backdrop">
+				<div class="santu-bill-modal">
+					<div class="santu-bill-modal-head">
+						<span>Add Customer</span>
+						<button type="button" class="santu-bill-modal-x">✕ <small>[Esc]</small></button>
+					</div>
+					<div class="santu-bill-modal-body">
+						<div class="santu-bill-modal-grid">
+							<div class="santu-bill-modal-field">
+								<label>Customer Name<em>*</em></label>
+								<input type="text" class="ac-name" value="${frappe.utils.escape_html(prefill || "")}">
+							</div>
+							<div class="santu-bill-modal-field">
+								<label>Phone Number</label>
+								<input type="text" class="ac-phone" placeholder="Phone Number">
+							</div>
+						</div>
+						<div class="santu-bill-modal-field santu-bill-modal-village-wrap">
+							<label>City / Village</label>
+							<input type="text" class="ac-village" autocomplete="off" placeholder="Type to search">
+							<div class="santu-bill-modal-village-dd" style="display:none;"></div>
+						</div>
+						<div class="santu-bill-modal-grid">
+							<div class="santu-bill-modal-field">
+								<label>District</label>
+								<select class="ac-district">
+									<option value="">Auto (from pincode)</option>
+									${districts.map((dd) => `<option value="${frappe.utils.escape_html(dd)}">${frappe.utils.escape_html(dd)}</option>`).join("")}
+								</select>
+							</div>
+							<div class="santu-bill-modal-field">
+								<label>Pincode</label>
+								<input type="text" class="ac-pincode" placeholder="Pincode">
+							</div>
+						</div>
+						<div class="santu-bill-modal-field">
+							<label>Address Line</label>
+							<textarea class="ac-address" rows="3" placeholder="House no, street, landmark"></textarea>
+						</div>
+					</div>
+					<div class="santu-bill-modal-foot">
+						<button type="button" class="santu-bill-modal-save">Save</button>
+						<button type="button" class="santu-bill-modal-cancel">Cancel</button>
+					</div>
+				</div>
+			</div>
+		`).appendTo("body");
+
+		const close = () => {
+			$m.remove();
+			$(document).off("keydown.santu-sr-ac");
+			$(document).off("click.santu-sr-ac-village");
+		};
+		$m.find(".santu-bill-modal-x, .santu-bill-modal-cancel").on("click", close);
+		$m.on("click", (e) => {
+			if (e.target === $m[0]) close();
+		});
+		$(document).on("keydown.santu-sr-ac", (e) => {
+			if (e.key === "Escape") close();
+		});
+
+		const $village = $m.find(".ac-village");
+		const $villageDD = $m.find(".santu-bill-modal-village-dd");
+		const $district = $m.find(".ac-district");
+		const $pincode = $m.find(".ac-pincode");
+		let village_seq = 0;
+		const search_village = (q) => {
+			if (!santu_sale_invoice || !santu_sale_invoice.api || !santu_sale_invoice.api.search_bihar_villages) return;
+			if ((q || "").length < 2) {
+				$villageDD.hide().empty();
+				return;
+			}
+			const ticket = ++village_seq;
+			santu_sale_invoice.api.search_bihar_villages($district.val(), q).then((rows) => {
+				if (ticket !== village_seq) return;
+				$villageDD.empty();
+				if (!rows.length) {
+					$villageDD.append(`<div class="santu-bill-modal-village-empty">${__("No matches")}</div>`);
+				}
+				rows.forEach((r) => {
+					$(`<div class="santu-bill-modal-village-row">${frappe.utils.escape_html(r.village)} <span>${r.pincode}</span></div>`)
+						.on("click", () => {
+							$village.val(r.village);
+							if (!$pincode.val()) $pincode.val(r.pincode);
+							if (r.district) $district.val(r.district);
+							$villageDD.hide();
+						})
+						.appendTo($villageDD);
+				});
+				$villageDD.show();
+			});
+		};
+		let village_timer = null;
+		$village.on("input focus", (e) => {
+			clearTimeout(village_timer);
+			village_timer = setTimeout(() => search_village((e.target.value || "").trim()), 200);
+		});
+		$district.on("change", () => $village.val(""));
+		$pincode.on(
+			"input",
+			santu_sale_invoice.utils.debounce((e) => {
+				const digits = (e.target.value || "").replace(/\D/g, "");
+				if (digits.length !== 6 || $district.val()) return;
+				santu_sale_invoice.api.district_for_pincode(digits).then((d) => {
+					if (d && !$district.val() && $pincode.val().replace(/\D/g, "") === digits) $district.val(d);
+				});
+			})
+		);
+		$(document).on("click.santu-sr-ac-village", (e) => {
+			if (!$(e.target).closest(".santu-bill-modal-village-wrap").length) $villageDD.hide();
+		});
+
+		$m.find(".santu-bill-modal-save").on("click", () => {
+			const name = ($m.find(".ac-name").val() || "").trim();
+			const phone = ($m.find(".ac-phone").val() || "").trim();
+			const district = $district.val();
+			const village = ($village.val() || "").trim();
+			const pincode = ($pincode.val() || "").trim();
+			const address = ($m.find(".ac-address").val() || "").trim();
+			if (!name) {
+				frappe.show_alert({ message: __("Enter a customer name."), indicator: "orange" });
+				return;
+			}
+			if (!phone && !address && !village && !pincode) {
+				frappe.show_alert({ message: __("Add a phone number or an address — one of the two."), indicator: "orange" });
+				return;
+			}
+			const payload = { customer_name: name, phone };
+			if (district) payload.district = district;
+			if (village) payload.city = village;
+			if (pincode) payload.pincode = pincode;
+			if (address) payload.address_line1 = address;
+			if (address || village || pincode || district) {
+				payload.state = "Bihar";
+				payload.country = "India";
+			}
+			frappe.dom.freeze(__("Saving…"));
+			santu_sale_invoice.api
+				.create_customer_full(payload)
+				.then((created) => {
+					frappe.dom.unfreeze();
+					close();
+					self._pick_customer(created, name);
+					frappe.show_alert({ message: __("Customer added"), indicator: "green" });
+				})
+				.catch(() => frappe.dom.unfreeze());
+		});
+
+		setTimeout(() => $m.find(".ac-name").focus().select(), 60);
+	},
+
+	// ---------- save ----------
+	_save() {
+		const b = this._bill();
+		if (!b.items.length) {
+			frappe.msgprint(__("Add at least one item."));
+			return;
+		}
+		if (!b.customer) {
+			frappe.msgprint(__("Please select or add a customer."));
+			return;
+		}
 
 		frappe.dom.freeze(__("Saving…"));
-		this._ensure_party_before_save(tab)
-			.then((customer) => {
-				const payload = {
-					customer,
+		santu_sales_return.api
+			.save(
+				{
+					customer: b.customer,
 					company: this.init_data.company,
 					warehouse: this.init_data.warehouse,
-					posting_date: tab.posting_date,
-					return_against: tab.return_against || null,
-					reason: tab.reason || null,
+					posting_date: b.posting_date,
+					return_against: b.return_against || null,
+					reason: b.reason || null,
 					selling_price_list: this.init_data.selling_price_list,
-					place_of_supply: tab.place_of_supply || null,
-					additional_discount_amount: tab.additional_discount_amount || 0,
-					terms: tab.terms || null,
-					description: tab.description || null,
-					items: tab.items.map((r) => ({
+					additional_discount_amount: b.bill_discount || 0,
+					items: b.items.map((r) => ({
 						item_code: r.item_code,
 						qty: r.qty,
 						rate: r.rate,
 						uom: r.uom,
 						sales_invoice_item: r.sales_invoice_item || null,
-						discount_percentage: r.discount_percentage || 0,
-						discount_amount: r.discount_amount || 0,
+						discount_amount: r.discount || 0,
 					})),
-				};
-
-				return santu_sales_return.api.save(payload, 1);
-			})
+				},
+				1
+			)
 			.then((r) => {
-				if (!r) return;
 				frappe.dom.unfreeze();
-				tab.saved_return = r;
-				this._save_debounced();
 				frappe.show_alert({ message: __("Saved {0}", [r.name]), indicator: "green" });
-				window.santu_open_invoice_view("Sales Invoice", r.name);
+				// "Abhi cash/UPI refund diya" — settle it with a real Payment
+				// Entry right away, same as save() itself, so the customer's
+				// balance is correct the moment this tab closes rather than
+				// sitting as unresolved credit until someone reconciles it
+				// by hand later (2026-08-19 direct request).
+				if (b.settlement === "refund") {
+					santu_sales_return.api
+						.create_refund_payment("Sales Invoice", r.name, b.refund_mode || "Cash")
+						.then(() => frappe.show_alert({ message: __("Refund recorded"), indicator: "green" }))
+						.catch(() =>
+							frappe.msgprint({
+								title: __("Refund note nahi ban paya"),
+								message: __("Return {0} ban gaya, par refund entry banane me dikkat aayi — Payment Entry banake manually is return se link kar dein.", [r.name]),
+								indicator: "orange",
+							})
+						);
+				}
+				this.tabs = this.tabs.filter((x) => x.id !== b.id);
+				if (!this.tabs.length) this._new_ret(false);
+				this.active_id = this.tabs[0].id;
+				this._persist_soon();
+				this.render();
+				if (window.santu_open_invoice_view) window.santu_open_invoice_view("Sales Invoice", r.name);
 			})
 			.catch(() => frappe.dom.unfreeze());
+	},
+
+	// ---------- events ----------
+	_bind() {
+		const b = this._bill();
+		const $r = this.$root;
+
+		$r.find(".santu-bill-newtab").on("click", () => {
+			this._new_ret();
+			this.render();
+		});
+		$r.find(".santu-bill-search").on("input", santu_sale_invoice.utils.debounce((e) => this._search($(e.target).val())));
+		$r.find(".santu-bill-customer").on("input", santu_sale_invoice.utils.debounce((e) => this._cust_search($(e.target).val())));
+		$r.find(".santu-bill-customer").on("focus", () => this._cust_search($r.find(".santu-bill-customer").val()));
+		$r.find(".santu-bill-date").on("change", (e) => {
+			b.posting_date = e.target.value;
+			this._persist_soon();
+		});
+		$r.find(".santu-bill-return-against").on("change", (e) => this._select_return_against(e.target.value || null));
+		$r.find(".santu-bill-settlement").on("change", (e) => {
+			b.settlement = e.target.value;
+			this._persist_soon();
+			$r.find(".santu-bill-refund-mode-wrap").toggle(b.settlement === "refund");
+		});
+		$r.find(".santu-bill-refund-mode").on("change", (e) => {
+			b.refund_mode = e.target.value;
+			this._persist_soon();
+		});
+		$r.find(".santu-bill-breakup").on("click", () => this._breakup());
+		$r.find(".santu-bill-fkeys button").on("click", (e) => this._action($(e.currentTarget).data("act")));
+		$r.find(".santu-bill-save").on("click", () => this._save());
+
+		$(document).off("click.santu-sr").on("click.santu-sr", (e) => {
+			if (!$(e.target).closest(".santu-bill-searchwrap").length) $r.find(".santu-bill-dropdown").hide();
+			if (!$(e.target).closest(".santu-bill-custwrap").length) $r.find(".santu-bill-cust-dropdown").hide();
+		});
+
+		$(document).off("keydown.santu-sr").on("keydown.santu-sr", (ev) => {
+			if (frappe.get_route()[0] !== "santu-sales-return") return;
+			const map = { F2: "qty", F3: "idisc", F4: "remove", F5: "rate", F6: "unit", F7: "rename", F8: "charges", F9: "bdisc", F12: "reason" };
+			if (map[ev.key]) {
+				ev.preventDefault();
+				this._action(map[ev.key]);
+				return;
+			}
+			if (ev.key === "F1") {
+				ev.preventDefault();
+				$r.find(".santu-bill-search").focus().select();
+				return;
+			}
+			if (ev.key === "F11") {
+				ev.preventDefault();
+				$r.find(".santu-bill-customer").focus().select();
+				return;
+			}
+			if (ev.ctrlKey || ev.metaKey) {
+				if (ev.key === "t") {
+					ev.preventDefault();
+					this._new_ret();
+					this.render();
+				} else if (ev.key === "s") {
+					ev.preventDefault();
+					this._save();
+				} else if (ev.key === "f") {
+					ev.preventDefault();
+					this._breakup();
+				} else if (ev.key === "d") {
+					ev.preventDefault();
+					this._add_customer($r.find(".santu-bill-customer").val());
+				} else if (ev.key === "w") {
+					ev.preventDefault();
+					this._close_tab(this.active_id);
+				}
+			}
+		});
 	},
 };

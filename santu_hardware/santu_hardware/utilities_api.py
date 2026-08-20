@@ -11,6 +11,8 @@ from datetime import datetime
 import frappe
 from frappe.utils import cint, flt, getdate, now_datetime, today
 
+from santu_hardware.santu_hardware.api import default_selling_warehouse
+
 ITEM_IMPORT_FIELDS = {
 	"item_name": "Item Name",
 	"item_code": "Item Code",
@@ -202,7 +204,7 @@ def import_items_valid(rows: str):
 	_require_manager()
 	rows = frappe.parse_json(rows) if isinstance(rows, str) else rows
 	company = frappe.defaults.get_user_default("Company")
-	warehouse = frappe.db.get_value("Warehouse", {"company": company, "is_group": 0, "disabled": 0}, "name")
+	warehouse = default_selling_warehouse(company)
 	created, failed = [], []
 
 	for entry in rows:
@@ -286,13 +288,89 @@ def get_bulk_items(mode: str = "pricing", search: str = None, page: int = 1, pag
 		limit_page_length=page_size,
 	)
 
+	# Fetch all Item Price rows for these items in two queries (faster than per-item)
+	item_names = [it.name for it in items]
+	if item_names:
+		sell_prices = {
+			r.item_code: r.price_list_rate
+			for r in frappe.get_all(
+				"Item Price",
+				filters={"item_code": ["in", item_names], "price_list": "Standard Selling", "selling": 1},
+				fields=["item_code", "price_list_rate"],
+			)
+		}
+		buy_prices = {
+			r.item_code: r.price_list_rate
+			for r in frappe.get_all(
+				"Item Price",
+				filters={"item_code": ["in", item_names], "price_list": "Standard Buying", "buying": 1},
+				fields=["item_code", "price_list_rate"],
+			)
+		}
+	else:
+		sell_prices, buy_prices = {}, {}
+
 	for it in items:
 		it["barcode"] = frappe.db.get_value("Item Barcode", {"parent": it.name}, "barcode") or ""
-		bin = frappe.db.get_value("Bin", {"item_code": it.name}, ["actual_qty", "warehouse"], as_dict=True) or {}
-		it["actual_qty"] = flt(bin.get("actual_qty"))
-		it["warehouse"] = bin.get("warehouse") or ""
+		bin_row = frappe.db.get_value("Bin", {"item_code": it.name}, ["actual_qty", "warehouse"], as_dict=True) or {}
+		it["actual_qty"] = flt(bin_row.get("actual_qty"))
+		it["warehouse"] = bin_row.get("warehouse") or ""
+		it["standard_rate"] = flt(sell_prices.get(it.name, it.get("standard_rate") or 0))
+		it["valuation_rate"] = flt(buy_prices.get(it.name, it.get("valuation_rate") or 0))
 
 	return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+
+def _parse_price_list_rows(text: str) -> list:
+	"""Parse a simple supplier price list — lines with just item name and price.
+
+	Handles formats like:
+	  Asian Putty 25kg      480
+	  Birla Putty 25 Kg     ₹704.00
+	  1. Washer              2.00 per piece
+
+	Returns list of {"description": str, "rate": float}.
+	"""
+	import re
+
+	_PRICE_LIST_NON_ITEM = (
+		"total", "subtotal", "grand", "gst", "tax", "discount", "hsn", "sac",
+		"invoice", "bill no", "date", "thank", "phone", "address", "gstin",
+		"page", "rate", "price", "amount", "description", "serial",
+	)
+
+	rows = []
+	for raw in text.splitlines():
+		line = raw.strip()
+		if len(line) < 5:
+			continue
+		low = line.lower()
+		if any(kw in low for kw in _PRICE_LIST_NON_ITEM):
+			continue
+
+		# Line must end with a price: optional ₹/Rs, digits, optional decimals
+		m = re.match(
+			r"^(?:\d{1,3}[\.\)]\s*)?(?P<desc>.+?)\s+"
+			r"(?:rs\.?|inr|₹)?\s*(?P<price>[\d,]{1,9}(?:\.\d{1,2})?)\s*(?:per\s+\S+)?\s*$",
+			line, re.IGNORECASE,
+		)
+		if not m:
+			continue
+
+		desc = re.sub(r"\s+", " ", m.group("desc")).strip()
+		if len(desc) < 3 or not re.search(r"[A-Za-z]{3,}", desc):
+			continue
+
+		try:
+			price = flt(m.group("price").replace(",", ""))
+		except ValueError:
+			continue
+		if price <= 0 or price > 1_000_000:
+			continue
+
+		rows.append({"description": desc, "rate": price})
+
+	return rows
 
 
 @frappe.whitelist()
@@ -305,15 +383,41 @@ def match_pdf_items_for_bulk_update(file_url: str):
 	same underlying PDF reader. Rate is treated as this shop's own
 	Purchase Price, matching what a supplier's price list actually lists."""
 	_require_manager()
-	from santu_hardware.santu_hardware.api import _extract_pdf_pages, _guess_item_rows
+	from santu_hardware.santu_hardware.api import (
+		_extract_pdf_pages, _guess_item_rows, _fuzzy_ratio,
+	)
 
 	text = "\n".join(_extract_pdf_pages(file_url))
+
+	# Try full GST/bill parser first (returns description, qty, rate, hsn).
+	# Fall back to the simpler price-list parser (description + price only)
+	# for plain supplier rate cards that don't have qty/amount columns.
 	parsed_rows = _guess_item_rows(text)
+	using_price_list_parser = False
 	if not parsed_rows:
-		frappe.throw(
-			"Couldn't read any item rows from this PDF — it may be a scanned image "
-			"rather than a real PDF, or not in a recognisable price-list layout."
-		)
+		price_rows = _parse_price_list_rows(text)
+		if not price_rows:
+			frappe.throw(
+				"Couldn't read any item rows from this PDF — it may be a scanned image "
+				"rather than a real PDF, or not in a recognisable price-list layout."
+			)
+		# Convert to the same shape _guess_item_rows produces, then fuzzy-match
+		items = frappe.get_all("Item", filters={"disabled": 0}, fields=["name", "item_code", "item_name"])
+		_THRESHOLD = 0.55
+		for pr in price_rows:
+			best_code, best_score = None, 0.0
+			for it in items:
+				score = _fuzzy_ratio(pr["description"].lower(), it.item_name.lower())
+				if score > best_score:
+					best_code, best_score = it.item_code, score
+			parsed_rows.append({
+				"description": pr["description"],
+				"item_code": best_code if best_score >= _THRESHOLD else None,
+				"rate": pr["rate"],
+				"qty": None,
+				"hsn": None,
+			})
+		using_price_list_parser = True
 
 	matched, unmatched_count, seen = [], 0, set()
 	for r in parsed_rows:
@@ -327,7 +431,26 @@ def match_pdf_items_for_bulk_update(file_url: str):
 		item_name = frappe.db.get_value("Item", item_code, "item_name") or r["description"]
 		matched.append({"item_code": item_code, "item_name": item_name, "rate": r.get("rate"), "hsn": r.get("hsn")})
 
-	return {"matched": matched, "matched_count": len(matched), "unmatched_count": unmatched_count}
+	return {
+		"matched": matched,
+		"matched_count": len(matched),
+		"unmatched_count": unmatched_count,
+		"parser": "price_list" if using_price_list_parser else "bill",
+	}
+
+
+def _upsert_item_price(item_code: str, price_list: str, rate: float, selling: int = 0, buying: int = 0):
+	existing = frappe.db.get_value("Item Price", {"item_code": item_code, "price_list": price_list}, "name")
+	if existing:
+		frappe.db.set_value("Item Price", existing, "price_list_rate", rate)
+	else:
+		ip = frappe.new_doc("Item Price")
+		ip.item_code = item_code
+		ip.price_list = price_list
+		ip.price_list_rate = rate
+		ip.selling = selling
+		ip.buying = buying
+		ip.insert(ignore_permissions=True)
 
 
 @frappe.whitelist()
@@ -349,6 +472,12 @@ def bulk_update_items(updates: str):
 						doc.append("barcodes", {"barcode": v})
 					else:
 						doc.barcodes[0].barcode = v
+				elif k == "standard_rate":
+					_upsert_item_price(name, "Standard Selling", selling=1, rate=flt(v))
+					doc.standard_rate = flt(v)
+				elif k == "valuation_rate":
+					_upsert_item_price(name, "Standard Buying", buying=1, rate=flt(v))
+					doc.valuation_rate = flt(v)
 				elif hasattr(doc, k):
 					doc.set(k, v)
 			doc.save(ignore_permissions=True)
@@ -650,11 +779,10 @@ def get_business_setup():
 		# Must exclude disabled warehouses, or this reports one bills can never
 		# use: it was showing "Goods In Transit" (disabled) while every bill
 		# was actually going to Stores.
-		"warehouse": frappe.db.get_value(
-			"Warehouse", {"company": company_name, "is_group": 0, "disabled": 0}, "name"
-		)
-		if company_name
-		else "",
+		# company_name, not company: `company` here is a Document, and passing
+		# a doc where a name is expected produced a MariaDB error about a
+		# stored function called "Company".
+		"warehouse": default_selling_warehouse(company_name) if company_name else "",
 		"price_list": frappe.db.get_single_value("Selling Settings", "selling_price_list"),
 		"payment_modes": frappe.get_all("Mode of Payment", filters={"enabled": 1}, pluck="name"),
 	}

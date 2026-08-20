@@ -37,6 +37,10 @@ class WhatsAppProvider(ABC):
 	def send_document(self, to: str, file_bytes: bytes, filename: str, caption: str = "") -> dict:
 		pass
 
+	@abstractmethod
+	def send_image(self, to: str, file_bytes: bytes, caption: str = "", mimetype: str = "image/png") -> dict:
+		pass
+
 
 class MetaCloudAPIProvider(WhatsAppProvider):
 	def __init__(self, settings):
@@ -79,11 +83,11 @@ class MetaCloudAPIProvider(WhatsAppProvider):
 		msg_id = (data.get("messages") or [{}])[0].get("id")
 		return {"provider_message_id": msg_id, "raw": data}
 
-	def _upload_media(self, file_bytes: bytes, filename: str) -> str:
+	def _upload_media(self, file_bytes: bytes, filename: str, mimetype: str = "application/pdf") -> str:
 		url = f"{self.api_url}/{self.phone_number_id}/media"
 		headers = {"Authorization": f"Bearer {self.token}"}
-		files = {"file": (filename, file_bytes, "application/pdf")}
-		data = {"messaging_product": "whatsapp", "type": "application/pdf"}
+		files = {"file": (filename, file_bytes, mimetype)}
+		data = {"messaging_product": "whatsapp", "type": mimetype}
 		resp = requests.post(url, headers=headers, data=data, files=files, timeout=120)
 		result = resp.json() if resp.content else {}
 		if resp.status_code not in (200, 201):
@@ -109,6 +113,27 @@ class MetaCloudAPIProvider(WhatsAppProvider):
 		if resp.status_code not in (200, 201):
 			err = data.get("error", {})
 			raise WhatsAppProviderError(err.get("message") or resp.text or "Document send failed")
+		msg_id = (data.get("messages") or [{}])[0].get("id")
+		return {"provider_message_id": msg_id, "raw": data}
+
+	def send_image(self, to: str, file_bytes: bytes, caption: str = "", mimetype: str = "image/png") -> dict:
+		to = _guard_recipient(to)
+		media_id = self._upload_media(file_bytes, f"bill.{mimetype.split('/')[-1]}", mimetype)
+		url = f"{self.api_url}/{self.phone_number_id}/messages"
+		img_payload = {"id": media_id}
+		if caption:
+			img_payload["caption"] = caption[:1024]
+		payload = {
+			"messaging_product": "whatsapp",
+			"to": to,
+			"type": "image",
+			"image": img_payload,
+		}
+		resp = requests.post(url, headers=self._headers(), json=payload, timeout=60)
+		data = resp.json() if resp.content else {}
+		if resp.status_code not in (200, 201):
+			err = data.get("error", {})
+			raise WhatsAppProviderError(err.get("message") or resp.text or "Image send failed")
 		msg_id = (data.get("messages") or [{}])[0].get("id")
 		return {"provider_message_id": msg_id, "raw": data}
 
@@ -155,6 +180,11 @@ class SmartConnectProvider(WhatsAppProvider):
 		from santu_hardware.santu_hardware.smart_connect_bridge import send_document_via_bridge
 
 		return send_document_via_bridge(to, file_bytes, filename, caption=caption)
+
+	def send_image(self, to: str, file_bytes: bytes, caption: str = "", mimetype: str = "image/png") -> dict:
+		from santu_hardware.santu_hardware.smart_connect_bridge import send_image_via_bridge
+
+		return send_image_via_bridge(to, file_bytes, caption=caption, mimetype=mimetype)
 
 
 def get_whatsapp_provider():

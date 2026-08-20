@@ -17,7 +17,7 @@ santu_party_inline.SUPPLIER = {
 	label: "supplier",
 };
 
-santu_party_inline.fields_html(opts = {}) {
+santu_party_inline.fields_html = function (opts = {}) {
 	const placeholder = opts.placeholder || __("Party Name *");
 	return `
 		<div class="santu-si2-customer-fields">
@@ -31,9 +31,9 @@ santu_party_inline.fields_html(opts = {}) {
 			<textarea class="santu-si2-address" placeholder="${__("Address")}" rows="2"></textarea>
 			<a href="#" class="santu-si2-party-advanced">${__("GST & more details…")}</a>
 		</div>`;
-},
+};
 
-santu_party_inline.get_api(cfg) {
+santu_party_inline.get_api = function (cfg) {
 	if (cfg.partyType === "Customer") {
 		return {
 			search: (q) => santu_sale_invoice.api.search_customers(q),
@@ -56,29 +56,29 @@ santu_party_inline.get_api(cfg) {
 		open_dialog: (opts) => santu_purchase_invoice.utils.open_add_party_dialog(opts),
 		debounce: santu_purchase_invoice.utils.debounce,
 	};
-},
+};
 
-santu_party_inline.get_fields($root) {
+santu_party_inline.get_fields = function ($root) {
 	const name = ($root.find(".santu-si2-customer-search").val() || "").trim();
 	const phone = ($root.find(".santu-si2-phone").val() || "").trim();
 	const address = ($root.find(".santu-si2-address").val() || "").trim();
 	return { name, phone, address };
-},
+};
 
-santu_party_inline.persist_fields_to_tab($root, tab) {
+santu_party_inline.persist_fields_to_tab = function ($root, tab) {
 	const { phone, address } = santu_party_inline.get_fields($root);
 	tab.phone = phone;
 	tab.address = address;
-},
+};
 
-santu_party_inline.sync_fields($root, tab, cfg) {
+santu_party_inline.sync_fields = function ($root, tab, cfg) {
 	const d = tab[cfg.detailsKey] || {};
 	$root.find(".santu-si2-customer-search").val(d[cfg.nameField] || tab[cfg.partyKey] || "");
 	$root.find(".santu-si2-phone").val(d.mobile_no || tab.phone || "");
 	$root.find(".santu-si2-address").val(d.address_line1 || tab.address || "");
-},
+};
 
-santu_party_inline.render_info(ctx) {
+santu_party_inline.render_info = function (ctx) {
 	const { $root, tab, cfg, saveDebounced, renderBody } = ctx;
 	const $info = $root.find(".santu-si2-customer-info");
 	santu_party_inline.sync_fields($root, tab, cfg);
@@ -114,9 +114,9 @@ santu_party_inline.render_info(ctx) {
 		saveDebounced();
 		renderBody();
 	});
-},
+};
 
-santu_party_inline.use_new_name(ctx, name) {
+santu_party_inline.use_new_name = function (ctx, name) {
 	const { $root, tab, cfg, saveDebounced } = ctx;
 	tab[cfg.partyKey] = null;
 	tab[cfg.detailsKey] = null;
@@ -124,9 +124,9 @@ santu_party_inline.use_new_name(ctx, name) {
 	$root.find(".santu-si2-customer-dropdown").hide().empty();
 	saveDebounced();
 	$root.find(".santu-si2-phone").focus();
-},
+};
 
-santu_party_inline.select_party(ctx, name, opts = {}) {
+santu_party_inline.select_party = function (ctx, name, opts = {}) {
 	const { $root, tab, cfg, api, saveDebounced, renderInfo, renderBody, onSelected } = ctx;
 	tab[cfg.partyKey] = name;
 	$root.find(".santu-si2-customer-dropdown").hide().empty();
@@ -149,9 +149,9 @@ santu_party_inline.select_party(ctx, name, opts = {}) {
 		else if (onSelected) onSelected(d);
 		else if (renderInfo) renderInfo();
 	});
-},
+};
 
-santu_party_inline.use_walkin(ctx) {
+santu_party_inline.use_walkin = function (ctx) {
 	const { api, cfg } = ctx;
 	if (cfg.partyType !== "Customer") return;
 	api.search("Walk-in").then((rows) => {
@@ -164,9 +164,9 @@ santu_party_inline.use_walkin(ctx) {
 			});
 		}
 	});
-},
+};
 
-santu_party_inline.open_advanced_dialog(ctx, name) {
+santu_party_inline.open_advanced_dialog = function (ctx, name) {
 	const { $root, api } = ctx;
 	const { phone } = santu_party_inline.get_fields($root);
 	api.open_dialog({
@@ -174,9 +174,9 @@ santu_party_inline.open_advanced_dialog(ctx, name) {
 		phone,
 		on_created: (party_name) => santu_party_inline.select_party(ctx, party_name),
 	});
-},
+};
 
-santu_party_inline.run_search(ctx, q) {
+santu_party_inline.run_search = function (ctx, q) {
 	const { $root, cfg, api } = ctx;
 	const $dd = $root.find(".santu-si2-customer-dropdown");
 	if (!q || q.length < 2) {
@@ -262,9 +262,9 @@ santu_party_inline.run_search(ctx, q) {
 
 		$dd.show();
 	});
-},
+};
 
-santu_party_inline.bind_field_events(ctx) {
+santu_party_inline.bind_field_events = function (ctx) {
 	const { $root, tab, saveDebounced } = ctx;
 	$root.find(".santu-si2-phone").on("change input", (e) => {
 		tab.phone = e.target.value;
@@ -278,9 +278,9 @@ santu_party_inline.bind_field_events(ctx) {
 		e.preventDefault();
 		santu_party_inline.open_advanced_dialog(ctx, santu_party_inline.get_fields($root).name);
 	});
-},
+};
 
-santu_party_inline.bind_search_events(ctx) {
+santu_party_inline.bind_search_events = function (ctx) {
 	const { $root, api, ddNamespace } = ctx;
 	const $custSearch = $root.find(".santu-si2-customer-search");
 	$custSearch.on("input", api.debounce((e) => santu_party_inline.run_search(ctx, e.target.value)));
@@ -294,9 +294,9 @@ santu_party_inline.bind_search_events(ctx) {
 				$root.find(".santu-si2-customer-dropdown, .santu-si2-item-dropdown").hide();
 			}
 		});
-},
+};
 
-santu_party_inline.ensure_before_save(ctx) {
+santu_party_inline.ensure_before_save = function (ctx) {
 	const { $root, tab, cfg, api, saveDebounced } = ctx;
 	const { name, phone, address } = santu_party_inline.get_fields($root);
 	santu_party_inline.persist_fields_to_tab($root, tab);
@@ -306,7 +306,11 @@ santu_party_inline.ensure_before_save(ctx) {
 		const currentName = (d[cfg.nameField] || "").trim();
 		const currentPhone = (d.mobile_no || "").trim();
 		const currentAddress = (d.address_line1 || "").trim();
-		const nameChanged = name && name !== currentName;
+		// Case-only differences are not a rename. ERPNext title-cases the stored
+		// party name, so a typed "ZZTraders" against a stored "Zztraders" used to
+		// look like a rename and then collide with the very party being renamed
+		// ("A supplier named … already exists").
+		const nameChanged = name && name.toLowerCase() !== currentName.toLowerCase();
 		const phoneChanged = phone !== currentPhone;
 		const addressChanged = address !== currentAddress;
 
@@ -335,33 +339,49 @@ santu_party_inline.ensure_before_save(ctx) {
 		return Promise.reject();
 	}
 
-	if (!phone && !address) {
-		frappe.msgprint(__("Add a phone number or an address for {0} — one of the two is needed.", [name]));
-		return Promise.reject();
-	}
-
-	const payload = { customer_name: name, phone: phone || null };
-	if (address) {
-		payload.address_line1 = address;
-		payload.state = "Bihar";
-		payload.country = "India";
-	}
-
-	return api.create_full(payload).then((party_name) => {
+	const adopt = (party_name) => {
 		tab[cfg.partyKey] = party_name;
 		return api.details(party_name).then((d) => {
 			tab[cfg.detailsKey] = d;
 			saveDebounced();
 			return party_name;
 		});
+	};
+
+	// Typing the name of someone already on file — without picking them off
+	// the dropdown — used to fail with "Duplicate Name" instead of just using
+	// them. Match an existing party by name first; only create when there is
+	// genuinely no such party yet.
+	const lower = name.toLowerCase();
+	return Promise.resolve(api.search(name)).then((matches) => {
+		const exact = (matches || []).find(
+			(m) =>
+				(m.name || "").toLowerCase() === lower ||
+				(m[cfg.nameField] || "").toLowerCase() === lower
+		);
+		if (exact) return adopt(exact.name);
+
+		if (!phone && !address) {
+			frappe.msgprint(__("Add a phone number or an address for {0} — one of the two is needed.", [name]));
+			return Promise.reject();
+		}
+
+		const payload = { customer_name: name, phone: phone || null };
+		if (address) {
+			payload.address_line1 = address;
+			payload.state = "Bihar";
+			payload.country = "India";
+		}
+
+		return api.create_full(payload).then(adopt);
 	});
-},
+};
 
-santu_party_inline.has_party_or_name($root, tab, cfg) {
+santu_party_inline.has_party_or_name = function ($root, tab, cfg) {
 	return tab[cfg.partyKey] || santu_party_inline.get_fields($root).name;
-},
+};
 
-santu_party_inline.make_ctx(page, cfg, opts = {}) {
+santu_party_inline.make_ctx = function (page, cfg, opts = {}) {
 	const api = santu_party_inline.get_api(cfg);
 	return {
 		$root: page.$root,
@@ -374,4 +394,4 @@ santu_party_inline.make_ctx(page, cfg, opts = {}) {
 		walkin: opts.walkin,
 		ddNamespace: opts.ddNamespace || "santu-party-dd",
 	};
-},
+};

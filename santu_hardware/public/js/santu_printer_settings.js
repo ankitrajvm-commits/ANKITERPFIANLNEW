@@ -145,7 +145,14 @@
 				const $btn = $body.find(".santu-prn-save").prop("disabled", true).text(__("Writing to printer…"));
 				try {
 					await frappe.db.set_value("Santu POS Settings", "Santu POS Settings", "printer_name", selected);
-					const res = await santu_qz_apply_print_density(selected, lvl);
+					// Server-side over raw USB, not QZ Tray. `apply_printer_density`
+					// writes the value and reads it back off the printer to prove
+					// it took — QZ could neither prove that nor, as it turned out,
+					// be trusted to report what it had actually done.
+					const res = await frappe.xcall(
+						"santu_hardware.santu_hardware.api.apply_printer_density",
+						{ printer_name: selected, level: lvl }
+					);
 					frappe.show_alert({
 						message: __("Density set to {0} — {1}", [res.level, res.label]),
 						indicator: "green",

@@ -1,6 +1,16 @@
 /* global santu_sync, frappe */
 frappe.provide("santu_sync");
 
+/* A backup nobody has opened is a promise, not a backup. Every dump is
+   re-read and decompressed after it is written, and this column shows the
+   answer — so "Success" can never quietly mean "the command exited 0". */
+function santu_sync_verified_cell(r) {
+	if (r.status !== "Success") return "";
+	const note = frappe.utils.escape_html(r.verify_note || "");
+	if (r.verified) return `<span class="santu-sync-text-green" title="${note}">✔ Checked</span>`;
+	return `<span class="santu-sync-status-failed" title="${note}">Not checked</span>`;
+}
+
 santu_sync.views = {
 	async render($wrap, view, { reload } = {}) {
 		$wrap.html(`<div class="santu-sync-loading">Loading…</div>`);
@@ -23,7 +33,7 @@ santu_sync.views = {
 		const $t = $(`
 			<table class="santu-sync-table">
 				<thead><tr>
-					<th>Date</th><th>Type</th><th>Location</th><th>Size</th><th>Status</th><th>Created By</th><th>Actions</th>
+					<th>Date</th><th>Type</th><th>Location</th><th>Size</th><th>Status</th><th>Checked</th><th>Created By</th><th>Actions</th>
 				</tr></thead><tbody></tbody>
 			</table>
 		`);
@@ -36,6 +46,7 @@ santu_sync.views = {
 					<td>${frappe.utils.escape_html(r.location)}</td>
 					<td>${frappe.utils.escape_html(r.size_label || "")}</td>
 					<td><span class="santu-sync-status santu-sync-status-${(r.status || "").toLowerCase().replace(" ", "-")}">${frappe.utils.escape_html(r.status)}</span></td>
+					<td>${santu_sync_verified_cell(r)}</td>
 					<td>${frappe.utils.escape_html(r.created_by_user || "")}</td>
 					<td class="santu-sync-actions"></td>
 				</tr>

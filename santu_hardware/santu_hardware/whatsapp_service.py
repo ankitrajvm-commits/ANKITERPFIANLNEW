@@ -159,7 +159,18 @@ def send_chat_message(
 
 		send_phone = _resolve_send_phone(phone)
 		if attachment_bytes and attachment_filename:
-			result = provider.send_document(send_phone, attachment_bytes, attachment_filename, caption=body[:1024])
+			# .png/.jpg attachments (the thermal bill, 2026-08-19) go through
+			# send_image so WhatsApp shows an inline picture in the chat —
+			# send_document always renders as a document bubble no matter
+			# what mimetype is passed, because it's the message TYPE that
+			# controls this, not the file's content type.
+			is_image = attachment_filename.lower().endswith((".png", ".jpg", ".jpeg"))
+			if is_image:
+				ext = attachment_filename.rsplit(".", 1)[-1].lower()
+				mimetype = "image/jpeg" if ext in ("jpg", "jpeg") else "image/png"
+				result = provider.send_image(send_phone, attachment_bytes, caption=body[:1024], mimetype=mimetype)
+			else:
+				result = provider.send_document(send_phone, attachment_bytes, attachment_filename, caption=body[:1024])
 		else:
 			result = provider.send_text(send_phone, body)
 

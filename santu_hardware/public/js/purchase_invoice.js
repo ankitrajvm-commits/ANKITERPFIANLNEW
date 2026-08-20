@@ -16,12 +16,14 @@ frappe.ui.form.on("Purchase Invoice", {
 		}
 
 		if (!frm.doc.set_warehouse) {
-			frappe.db
-				.get_list("Warehouse", { filters: { is_group: 0, disabled: 0 }, limit: 2 })
-				.then((warehouses) => {
-					if (warehouses.length === 1) {
-						frm.set_value("set_warehouse", warehouses[0].name);
-					}
+			// Ask the server which warehouse this shop sells out of rather
+			// than taking whichever row comes back first. Once a second
+			// warehouse exists (the old shop), "first row" is a coin toss
+			// and stock would land in the wrong place.
+			frappe
+				.xcall("santu_hardware.santu_hardware.api.get_default_selling_warehouse")
+				.then((warehouse) => {
+					if (warehouse) frm.set_value("set_warehouse", warehouse);
 				});
 		}
 	},

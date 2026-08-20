@@ -362,3 +362,32 @@ def send_document_via_bridge(
 	if r.status_code != 200 or not data.get("ok"):
 		raise RuntimeError(data.get("error") or "Smart Connect document send failed")
 	return {"provider_message_id": data.get("id"), "raw": data}
+
+
+def send_image_via_bridge(phone: str, file_bytes: bytes, caption: str = "", mimetype: str = "image/png") -> dict:
+	"""Same shape as send_document_via_bridge, but hits /send-image so the
+	bridge sends Baileys an `image` message key — the one that actually
+	shows as an inline picture in the chat instead of a document bubble."""
+	import base64
+
+	def _post():
+		send_phone = _resolve_send_phone(phone)
+		payload = {
+			"phone": send_phone,
+			"caption": caption or "",
+			"mimetype": mimetype or "image/png",
+			"image_base64": base64.b64encode(file_bytes).decode("ascii"),
+		}
+		return requests.post(f"{BRIDGE_URL}/send-image", json=payload, timeout=120)
+
+	if not _alive():
+		start_bridge()
+	r = _post()
+	if r.status_code == 404:
+		stop_bridge(logout=False)
+		start_bridge()
+		r = _post()
+	data = r.json() if r.content else {}
+	if r.status_code != 200 or not data.get("ok"):
+		raise RuntimeError(data.get("error") or "Smart Connect image send failed")
+	return {"provider_message_id": data.get("id"), "raw": data}

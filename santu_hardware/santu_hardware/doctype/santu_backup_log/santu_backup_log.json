@@ -13,6 +13,8 @@
   "files_path",
   "private_files_path",
   "config_path",
+  "verified",
+  "verify_note",
   "error_message",
   "created_by_user"
  ],
@@ -22,7 +24,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Type",
-   "options": "Manual\nAutomatic\nGoogle Drive",
+   "options": "Manual\nAutomatic\nSnapshot\nGoogle Drive",
    "reqd": 1
   },
   {
@@ -67,6 +69,18 @@
    "fieldname": "config_path",
    "fieldtype": "Small Text",
    "label": "Site Config"
+  },
+  {
+   "default": "0",
+   "fieldname": "verified",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Verified"
+  },
+  {
+   "fieldname": "verify_note",
+   "fieldtype": "Small Text",
+   "label": "Verification Note"
   },
   {
    "fieldname": "error_message",

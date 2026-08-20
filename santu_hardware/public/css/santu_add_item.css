@@ -280,3 +280,143 @@ select.santu-ai-input { padding-right: 28px; }
 	.santu-ai-input, .santu-ai-field-name { width: 100%; flex-basis: 100%; }
 	.santu-ai-row { gap: 20px; }
 }
+
+/* ---------- sectioned layout (2026-08-18 rebuild) ----------
+   The form grew from ~12 fields to everything billing/purchase/stock/GST/
+   batch/reporting needs later, and a single flat form at that size is
+   unusable. Each concern gets its own titled card, and the sections that
+   don't apply (GST fields when GST is off, batch fields when tracking is
+   off, stock/batch entirely for a Service) are not rendered at all rather
+   than shown disabled. */
+.santu-ai-sections { padding: 4px 24px 12px; }
+
+/* GST and Batch Tracking are real settings but not needed for most items
+   (2026-08-19: "kaafi cheezein unnecessary hai, ease it") — collapsed
+   behind this toggle rather than shown by default. */
+.santu-ai-advanced-toggle {
+	display: block;
+	border: none;
+	background: transparent;
+	color: #2563eb;
+	font-size: 13px;
+	font-weight: 600;
+	cursor: pointer;
+	padding: 8px 4px 14px;
+}
+.santu-ai-advanced-toggle:hover { text-decoration: underline; }
+
+.santu-ai-sec {
+	border: 1px solid #e5e8ef;
+	border-radius: 8px;
+	margin-bottom: 14px;
+	background: #fff;
+}
+.santu-ai-sec-head {
+	display: flex;
+	align-items: baseline;
+	gap: 12px;
+	padding: 12px 16px;
+	border-bottom: 1px solid #f0f2f6;
+	background: #fafbfc;
+	border-radius: 8px 8px 0 0;
+}
+.santu-ai-sec-title {
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: #3730a3;
+}
+.santu-ai-sec-hint { font-size: 11.5px; color: #9aa0ac; }
+.santu-ai-sec-body { padding: 16px; }
+
+.santu-ai-grid2,
+.santu-ai-grid3 {
+	display: grid;
+	gap: 16px;
+	margin-bottom: 14px;
+}
+.santu-ai-grid3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.santu-ai-grid2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.santu-ai-grid2:last-child,
+.santu-ai-grid3:last-child { margin-bottom: 0; }
+.santu-ai-cell-wide { grid-column: 1 / -1; }
+
+/* Full-width inputs inside the grid — the old fixed 210px/268px widths
+   left ragged gaps once fields sat in real columns. */
+.santu-ai-sec .santu-ai-cell .santu-ai-input,
+.santu-ai-sec .santu-ai-input { width: 100%; }
+.santu-ai-sec textarea.santu-ai-input { height: auto; padding: 10px 12px; }
+.santu-ai-sec .santu-ai-code-wrap .santu-ai-input { padding-right: 92px; }
+
+.santu-ai-check {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 13px;
+	color: #3f4155;
+	margin: 0;
+	cursor: pointer;
+}
+.santu-ai-check input { margin: 0; }
+
+.santu-ai-note {
+	font-size: 12px;
+	color: #71748e;
+	background: #f7f8fa;
+	border-radius: 6px;
+	padding: 8px 10px;
+}
+.santu-ai-warn { font-size: 12px; color: #b45309; }
+.santu-ai-dupname:not(:empty) { margin-top: 2px; }
+
+.santu-ai-margin-cell .santu-ai-margin {
+	height: 44px;
+	display: flex;
+	align-items: center;
+	font-size: 14px;
+	font-weight: 600;
+	color: #15803d;
+}
+.santu-ai-margin.is-loss { color: #b91c1c; }
+
+.santu-ai-altbar-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 8px;
+}
+.santu-ai-altbar-row:last-child { margin-bottom: 0; }
+.santu-ai-altbar-remove {
+	border: 1px solid #d0d5dd;
+	background: #fff;
+	border-radius: 6px;
+	width: 34px;
+	height: 34px;
+	cursor: pointer;
+	color: #71748e;
+	flex: 0 0 auto;
+}
+.santu-ai-altbar-remove:hover { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+
+.santu-ai-image-row { display: flex; align-items: center; gap: 10px; }
+.santu-ai-image-preview {
+	width: 44px;
+	height: 44px;
+	object-fit: cover;
+	border-radius: 6px;
+	border: 1px solid #e5e8ef;
+}
+.santu-ai-image-clear {
+	border: none;
+	background: transparent;
+	color: #71748e;
+	cursor: pointer;
+	font-size: 14px;
+}
+.santu-ai-head-right { display: flex; align-items: center; gap: 14px; }
+
+@media (max-width: 900px) {
+	.santu-ai-grid2,
+	.santu-ai-grid3 { grid-template-columns: 1fr; }
+}

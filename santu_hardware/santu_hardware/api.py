@@ -2,10 +2,51 @@ import base64
 import difflib
 import io
 import re
+import time
+from contextlib import contextmanager
 
 import frappe
 from frappe import _
 from frappe.utils import cint, flt, getdate
+
+
+def default_selling_warehouse(company=None):
+	"""The one warehouse this shop sells out of.
+
+	Twenty-odd places used to ask for "the first warehouse that is not a group
+	and not disabled". With exactly one warehouse that was harmless. The
+	moment a second one exists it stops being harmless and starts being
+	dangerous: `frappe.db.get_value` returns whichever row comes first, and
+	"Old Shop - SH" sorts before "Stores - SH" — so simply *creating* the old
+	shop's warehouse would silently move every sale, every stock check and
+	every price lookup onto the wrong stock, with nothing on screen to say so.
+
+	So the answer is pinned in Santu POS Settings instead of guessed. The old
+	guess is kept only as a fallback for a fresh site that has not been set up
+	yet; Doctor Uncle reports it as a problem to fix rather than leaving it to
+	chance.
+	"""
+	pinned = frappe.db.get_single_value("Santu POS Settings", "selling_warehouse")
+	if pinned:
+		row = frappe.db.get_value(
+			"Warehouse", pinned, ["name", "is_group", "disabled", "company"], as_dict=True
+		)
+		# A pinned warehouse that has since been disabled, turned into a group
+		# or moved to another company is worse than none — fall through rather
+		# than sell out of something that no longer exists.
+		if row and not row.is_group and not row.disabled and (not company or row.company == company):
+			return row.name
+
+	filters = {"is_group": 0, "disabled": 0}
+	if company:
+		filters["company"] = company
+	return frappe.db.get_value("Warehouse", filters, "name", order_by="creation asc")
+
+
+@frappe.whitelist()
+def get_default_selling_warehouse(company=None):
+	"""Browser-side callers need the same answer the server uses."""
+	return default_selling_warehouse(company)
 
 
 @frappe.whitelist()
@@ -21,7 +62,7 @@ def fix_stock(item_code: str, new_qty: float, reason: str):
 	if not item_code or new_qty in (None, "") or not reason:
 		frappe.throw(_("Item, new quantity, and reason are all required."))
 
-	warehouse = frappe.db.get_value("Warehouse", {"is_group": 0, "disabled": 0}, "name")
+	warehouse = default_selling_warehouse()
 	if not warehouse:
 		frappe.throw(_("No active warehouse found. Set one up in Admin Mode first."))
 
@@ -51,7 +92,7 @@ def fix_stock(item_code: str, new_qty: float, reason: str):
 		"Bin", {"item_code": item_code, "warehouse": warehouse}, "valuation_rate"
 	) or 0
 
-	doc.append("items", {
+	row = {
 		"item_code": item_code,
 		"warehouse": warehouse,
 		"qty": float(new_qty),
@@ -61,7 +102,8 @@ def fix_stock(item_code: str, new_qty: float, reason: str):
 		# it, a 0 valuation_rate is rejected outright rather than accepted
 		# as a deliberate zero.
 		"allow_zero_valuation_rate": 1 if not valuation_rate else 0,
-	})
+	}
+	doc.append("items", row)
 	doc.insert()
 	doc.submit()
 
@@ -82,6 +124,12 @@ def receive_stock_simple(item_code: str, qty: float, rate: float = None):
 	and "we actually have 50 total" are different real-world actions and
 	stay two different tools/buttons on purpose.
 
+	No batch concept (removed 2026-08-17: "bath ka concept hata do pura") —
+	one purchase rate per item. A rate typed here that differs from what is
+	already on file replaces it outright ("jo new rate hai wahi purane ka
+	update ho jayega price"), same as walking up to the item and correcting
+	its price; it does not try to remember what the old one used to be.
+
 	The formal supplier-bill path (with GST, payment terms, ledger impact)
 	is the existing "Upload Bill" flow — this endpoint is only for getting
 	physical stock onto the shelf/into the count right away.
@@ -89,13 +137,14 @@ def receive_stock_simple(item_code: str, qty: float, rate: float = None):
 	if not item_code or not qty or flt(qty) <= 0:
 		frappe.throw(_("Item and a quantity greater than zero are required."))
 
-	warehouse = frappe.db.get_value("Warehouse", {"is_group": 0, "disabled": 0}, "name")
+	warehouse = default_selling_warehouse()
 	if not warehouse:
 		frappe.throw(_("No active warehouse found. Set one up in Admin Mode first."))
 
 	company = frappe.db.get_value("Warehouse", warehouse, "company")
 
-	basic_rate = flt(rate) if rate not in (None, "") else flt(
+	rate_given = rate not in (None, "")
+	basic_rate = flt(rate) if rate_given else flt(
 		frappe.db.get_value("Bin", {"item_code": item_code, "warehouse": warehouse}, "valuation_rate")
 	)
 
@@ -116,8 +165,30 @@ def receive_stock_simple(item_code: str, qty: float, rate: float = None):
 	doc.insert()
 	doc.submit()
 
+	if rate_given:
+		_set_buying_price(item_code, basic_rate)
+
 	new_qty = flt(frappe.db.get_value("Bin", {"item_code": item_code, "warehouse": warehouse}, "actual_qty"))
 	return {"name": doc.name, "new_qty": new_qty}
+
+
+def _set_buying_price(item_code: str, rate: float):
+	"""Update-in-place, not a new row: this item's one purchase price is
+	whatever it last cost, not a history of what it used to cost."""
+	existing = frappe.db.get_value(
+		"Item Price", {"item_code": item_code, "buying": 1, "price_list": "Standard Buying"}, "name"
+	)
+	if existing:
+		frappe.db.set_value("Item Price", existing, "price_list_rate", rate)
+	else:
+		frappe.get_doc({
+			"doctype": "Item Price",
+			"item_code": item_code,
+			"price_list": "Standard Buying",
+			"buying": 1,
+			"selling": 0,
+			"price_list_rate": rate,
+		}).insert(ignore_permissions=True)
 
 
 # Score tiers for search_products — ranking priority is a direct product
@@ -257,7 +328,7 @@ def search_products(query: str, limit: int = 20):
 
 	query_words = query.split()
 
-	warehouse = frappe.db.get_value("Warehouse", {"is_group": 0, "disabled": 0}, "name")
+	warehouse = default_selling_warehouse()
 
 	# Barcode fast path: an exact scanned barcode should win over everything
 	# regardless of what else it might loosely text-match.
@@ -284,6 +355,21 @@ def search_products(query: str, limit: int = 20):
 
 	scored.sort(key=lambda pair: pair[0], reverse=True)
 	top = scored[: int(limit)]
+
+	# Which names exist more than once in the whole catalog. Counted over
+	# every item, not just the ones on screen, so the warning appears even
+	# when only one of the twins made it into the top results — that is the
+	# case where picking the wrong one is most likely, because nothing on
+	# screen hints that a second one exists.
+	#
+	# Warn, never block: a hardware shop genuinely stocks "Fevicol SR 200ML"
+	# in more than one pack, and refusing to sell would be far worse than
+	# saying "there are two of these".
+	name_counts = {}
+	for item in items:
+		key = (item.item_name or "").strip().lower()
+		if key:
+			name_counts[key] = name_counts.get(key, 0) + 1
 
 	results = []
 	for score, item in top:
@@ -314,6 +400,7 @@ def search_products(query: str, limit: int = 20):
 			"price": price,
 			"available_qty": available_qty,
 			"score": score,
+			"same_name_count": name_counts.get((item.item_name or "").strip().lower(), 1),
 		})
 
 	# "No additional click" for an unambiguous exact match (item code,
@@ -323,11 +410,50 @@ def search_products(query: str, limit: int = 20):
 	if results and results[0]["score"] >= _SCORE_NAME_EXACT:
 		if len(results) == 1 or results[1]["score"] < _SCORE_NAME_PREFIX:
 			exact_match = results[0]["item_code"]
+	# Never skip the tap when two items share this name. Auto-opening the
+	# top one is a convenience everywhere else; here it would quietly choose
+	# between two things the cashier cannot tell apart, which is the whole
+	# problem with duplicates in the first place.
+	if exact_match and results[0].get("same_name_count", 1) > 1:
+		exact_match = None
 
 	return {"results": results, "exact_match": exact_match}
 
 
 DEFAULT_LOW_STOCK_THRESHOLD = 5
+
+
+def _pending_supplier_payments():
+	"""Total outstanding across all suppliers, and how many owe something.
+
+	Factored out of get_dashboard_data() so the Purchase Bills page can show
+	the same overall figure (2026-08-18 direct request: Total Payable moved
+	off Home onto this page) without a second, possibly-diverging query.
+	"""
+	company = frappe.defaults.get_user_default("Company")
+	company_sql = " and company = %(company)s" if company else ""
+	company_args = {"company": company}
+
+	if not frappe.has_permission("Purchase Invoice", "read"):
+		return 0.0, 0
+
+	pending = flt(
+		frappe.db.sql(
+			f"""
+			select sum(outstanding_amount) from `tabPurchase Invoice`
+			where docstatus = 1 and outstanding_amount > 0 {company_sql}
+			""",
+			company_args,
+		)[0][0]
+	)
+	party_count = frappe.db.sql(
+		f"""
+		select count(distinct supplier) from `tabPurchase Invoice`
+		where docstatus = 1 and outstanding_amount > 0 {company_sql}
+		""",
+		company_args,
+	)[0][0]
+	return pending, party_count
 
 
 @frappe.whitelist()
@@ -349,7 +475,7 @@ def get_dashboard_data():
 	from erpnext.accounts.doctype.pos_invoice.pos_invoice import get_pos_reserved_qty
 	from frappe.utils import flt, today
 
-	warehouse = frappe.db.get_value("Warehouse", {"is_group": 0, "disabled": 0}, "name")
+	warehouse = default_selling_warehouse()
 
 	today_sales = flt(
 		frappe.db.sql(
@@ -374,25 +500,7 @@ def get_dashboard_data():
 	company_sql = " and company = %(company)s" if company else ""
 	company_args = {"company": company}
 
-	pending_supplier_payments = 0.0
-	payable_party_count = 0
-	if frappe.has_permission("Purchase Invoice", "read"):
-		pending_supplier_payments = flt(
-			frappe.db.sql(
-				f"""
-				select sum(outstanding_amount) from `tabPurchase Invoice`
-				where docstatus = 1 and outstanding_amount > 0 {company_sql}
-				""",
-				company_args,
-			)[0][0]
-		)
-		payable_party_count = frappe.db.sql(
-			f"""
-			select count(distinct supplier) from `tabPurchase Invoice`
-			where docstatus = 1 and outstanding_amount > 0 {company_sql}
-			""",
-			company_args,
-		)[0][0]
+	pending_supplier_payments, payable_party_count = _pending_supplier_payments()
 
 	# Total Receivable — same combined Sales Invoice + un-consolidated POS
 	# Invoice outstanding sum get_customer_dues() uses per-customer, just
@@ -401,16 +509,31 @@ def get_dashboard_data():
 	total_receivable = 0.0
 	receivable_party_count = 0
 	if frappe.has_permission("Sales Invoice", "read") or frappe.has_permission("POS Invoice", "read"):
+		# Netted PER CUSTOMER, not per invoice row. The old version filtered
+		# `outstanding_amount > 0` on each row, which silently dropped every
+		# credit note (a return carries a NEGATIVE outstanding) — so a
+		# customer holding a ₹600 return credit against a ₹600 bill still
+		# counted as ₹600 receivable, and this card disagreed with the
+		# Customer Dues page it drills into (2026-08-19 bug report: home
+		# showed 1220 / 900 while the drill-down showed 922 / 0).
+		#
+		# `having net > 0` keeps one customer's leftover credit from
+		# cancelling out a different customer's real due — money owed by A
+		# is not reduced by money owed TO B.
 		receivable_row = frappe.db.sql(
 			f"""
-			select sum(outstanding_amount), count(distinct customer) from (
-				select customer, outstanding_amount from `tabSales Invoice`
-				where docstatus = 1 and outstanding_amount > 0 {company_sql}
-				union all
-				select customer, outstanding_amount from `tabPOS Invoice`
-				where docstatus = 1 and outstanding_amount > 0
-					and (consolidated_invoice is null or consolidated_invoice = '')
-					{company_sql}
+			select sum(net), count(*) from (
+				select customer, sum(outstanding_amount) as net from (
+					select customer, outstanding_amount from `tabSales Invoice`
+					where docstatus = 1 {company_sql}
+					union all
+					select customer, outstanding_amount from `tabPOS Invoice`
+					where docstatus = 1
+						and (consolidated_invoice is null or consolidated_invoice = '')
+						{company_sql}
+				) rows_
+				group by customer
+				having net > 0
 			) t
 			""",
 			company_args,
@@ -689,7 +812,7 @@ def get_low_stock_items():
 	from erpnext.accounts.doctype.pos_invoice.pos_invoice import get_pos_reserved_qty
 	from frappe.utils import add_days, flt, today
 
-	warehouse = frappe.db.get_value("Warehouse", {"is_group": 0, "disabled": 0}, "name")
+	warehouse = default_selling_warehouse()
 	if not warehouse:
 		return []
 
@@ -896,6 +1019,15 @@ def _thermal_pdf_bytes(doctype: str, name: str, print_format: str) -> bytes:
 
 	settings = frappe.get_single("Santu POS Settings")
 	paper_width = flt((settings.paper_width or "80mm").replace("mm", "")) or 80
+
+	# A thermal printer cannot print edge to edge: on an 80mm roll the head
+	# only covers about 72mm (576 dots at 203dpi), 58mm rolls about 48mm.
+	# Rendering the page at the full paper width pushed the right-hand column
+	# past the head, so amounts, the phone number and the bill number came out
+	# sliced down the right edge (2026-08-17 bug report). Render to the width
+	# that can actually be printed instead.
+	printable_width = {80: 72.0, 58: 48.0}.get(int(paper_width), max(paper_width - 8, 40))
+
 	item_count = len(frappe.get_cached_doc(doctype, name).get("items") or [])
 	page_height = 170 + item_count * 10
 
@@ -915,12 +1047,17 @@ def _thermal_pdf_bytes(doctype: str, name: str, print_format: str) -> bytes:
 			"disable-javascript": "",
 			"disable-local-file-access": "",
 			"disable-smart-shrinking": "",
-			"page-width": f"{paper_width}mm",
+			"page-width": f"{printable_width}mm",
 			"page-height": f"{page_height}mm",
+			# No side margins at all. The page IS the printable width and the
+			# format's own body is exactly that wide, so even a 1mm margin
+			# squeezes the content narrower than the page and wkhtmltopdf
+			# clips the right-hand column — which is how amounts and the phone
+			# number lost their last character.
 			"margin-top": "2mm",
 			"margin-bottom": "2mm",
-			"margin-left": "2mm",
-			"margin-right": "2mm",
+			"margin-left": "0mm",
+			"margin-right": "0mm",
 		}
 	)
 	options.update(get_cookie_options())
@@ -934,6 +1071,92 @@ def _thermal_pdf_bytes(doctype: str, name: str, print_format: str) -> bytes:
 		)
 	finally:
 		cleanup(options)
+
+
+def _thermal_image_bytes(doctype: str, name: str, print_format: str) -> bytes:
+	"""Same thermal HTML _thermal_pdf_bytes renders, but straight to a PNG
+	instead of a PDF (2026-08-19 direct request: bills sent on WhatsApp
+	should show as a picture in the chat, not a PDF someone has to tap open).
+
+	wkhtmltoimage auto-sizes the image height to the content, unlike the PDF
+	path above which has to guess a page-height from the item count — one
+	less thing that can be wrong. Width is still pinned to the printer's
+	actual printable width so the picture reads like the paper bill, not a
+	stretched or cropped one.
+	"""
+	import os
+	import shutil
+	import subprocess
+	import tempfile
+
+	from frappe.utils.pdf import inline_private_images, scrub_urls
+
+	settings = frappe.get_single("Santu POS Settings")
+	paper_width = flt((settings.paper_width or "80mm").replace("mm", "")) or 80
+	printable_width_mm = {80: 72.0, 58: 48.0}.get(int(paper_width), max(paper_width - 8, 40))
+	# 180dpi: legible when WhatsApp shows/zooms the picture, without the
+	# file ballooning the way a print-resolution (300dpi+) render would.
+	width_px = int(printable_width_mm * 180 / 25.4)
+
+	html = frappe.get_print(doctype, name, print_format, as_pdf=False)
+	html = scrub_urls(html)
+	html = inline_private_images(html)
+
+	# frappe.get_print's HTML carries an on-screen "print preview" wrapper —
+	# the gray gutter, A4-shaped padding/min-height, and a Print/Get PDF
+	# banner — meant to be hidden by @media print once a browser (or
+	# wkhtmltopdf, via its --print-media-type flag) actually prints the
+	# page. wkhtmltoimage has no such flag in this build (checked:
+	# `wkhtmltoimage --help` lists nothing print/media-related), so it was
+	# rendering the screen preview verbatim: gray background, a near-A4-tall
+	# blank canvas, and the Print/Get PDF links baked into the picture. This
+	# neutralizes that wrapper directly rather than depending on a flag that
+	# doesn't exist.
+	html = html.replace(
+		"</head>",
+		"<style>"
+		".action-banner,.print-hide{display:none !important;}"
+		".print-format-gutter{background:#fff !important;padding:0 !important;}"
+		".print-format{max-width:none !important;min-height:0 !important;padding:0 !important;margin:0 !important;}"
+		"</style></head>",
+	)
+
+	wkhtmltoimage = shutil.which("wkhtmltoimage") or "/usr/local/bin/wkhtmltoimage"
+	if not (wkhtmltoimage and os.path.isfile(wkhtmltoimage)):
+		frappe.throw(_("wkhtmltoimage nahi mila is computer par."))
+
+	src_path = out_path = None
+	try:
+		with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w", encoding="utf-8") as fh:
+			fh.write(html)
+			src_path = fh.name
+		out_path = src_path[:-5] + ".png"
+
+		result = subprocess.run(
+			[
+				wkhtmltoimage,
+				"--width", str(width_px),
+				"--quality", "90",
+				"--disable-smart-width",
+				"--quiet",
+				src_path,
+				out_path,
+			],
+			capture_output=True,
+			text=True,
+			timeout=30,
+		)
+		if result.returncode != 0 or not os.path.isfile(out_path):
+			frappe.throw(_("Bill ki image nahi ban payi: {0}").format((result.stderr or "").strip()[:200]))
+		with open(out_path, "rb") as f:
+			return f.read()
+	finally:
+		for p in (src_path, out_path):
+			if p and os.path.isfile(p):
+				try:
+					os.unlink(p)
+				except OSError:
+					pass
 
 
 @frappe.whitelist()
@@ -1024,6 +1247,38 @@ def _get_or_create_folder(file_name, parent_folder):
 	return folder.name
 
 
+@frappe.whitelist()
+def format_bill_no(bill_no) -> str:
+	"""The bill number as it should be printed and searched for.
+
+	The counter counts 1, 2, 3 — not "SINV-26-00055". `santu_bill_no` already
+	stores that plain running count, so this only decides how it reads once
+	the shop gets past a thousand bills: rather than growing to 1000, 1001,
+	the count rolls into a lettered block — A01, A02 … then B01 … (2026-08-19
+	request: "thousand bill hone ke baad A01 dal, 2k ke baad B01"). Four
+	characters, always, which is what fits on a thermal slip and what someone
+	can read back over the phone.
+	"""
+	n = cint(bill_no)
+	if n <= 0:
+		return ""
+
+	BLOCK = 999
+	block_index, within = divmod(n - 1, BLOCK)
+	within += 1
+	if not block_index:
+		return str(within)
+
+	# A..Z, then AA.. — the shop will never reach it, but a number that
+	# silently collides after 26 blocks is not worth the saved lines.
+	letters = ""
+	i = block_index
+	while i > 0:
+		i, rem = divmod(i - 1, 26)
+		letters = chr(65 + rem) + letters
+	return f"{letters}{within:02d}"
+
+
 def apply_billing_defaults(doc, method=None):
 	"""`doc_events` hook (POS Invoice / Sales Invoice `before_submit`) —
 	2026-07-30 direct request: a clean numeric bill number (not the full
@@ -1040,7 +1295,12 @@ def apply_billing_defaults(doc, method=None):
 
 	posting = frappe.utils.getdate(doc.posting_date)
 	max_due = frappe.utils.add_days(posting, 2)
-	if not doc.get("due_date") or frappe.utils.getdate(doc.due_date) > max_due:
+	due = frappe.utils.getdate(doc.due_date) if doc.get("due_date") else None
+	# Capped 2 days out, and never allowed to fall BEFORE the posting date.
+	# ERPNext rejects an earlier due date outright, which is reachable any
+	# time the two dates get derived from different reference points — the
+	# exact failure a backdated bill hit mid-sale (2026-08-19 bug report).
+	if due is None or due > max_due or due < posting:
 		doc.due_date = max_due
 
 
@@ -1055,18 +1315,41 @@ def title_case_a_name(name: str) -> str:
 	if not name:
 		return name
 
-	def cased(word):
+	# A name printed entirely in capitals — as bills and GST portals do — says
+	# nothing about which words are acronyms, so every word gets normal title
+	# casing. Only in a mixed-case name does an all-caps word stand out as a
+	# deliberate acronym ("MRF tyres").
+	letters_in_name = [c for c in name if c.isalpha()]
+	shouting = bool(letters_in_name) and all(c.isupper() for c in letters_in_name)
+
+	def cased(word, keep_acronym=True):
 		if not word:
 			return word
 		# Leave short all-capital runs alone: they are acronyms, not shouting.
 		# A supplier really is "Janta Cement Store (JCS)" and a brand really is
 		# "MRF" — lowercasing those produced "(jcs)" on a real supplier record.
 		letters = [c for c in word if c.isalpha()]
-		if letters and len(letters) <= 4 and all(c.isupper() for c in letters):
+		if keep_acronym and letters and len(letters) <= 4 and all(c.isupper() for c in letters):
 			return word
 		return word[:1].upper() + word[1:].lower()
 
-	return " ".join(cased(w) for w in name.split(" "))
+	def cased_word(word):
+		# A bracketed acronym rides along on the same space-separated word as
+		# an ordinary one ("STORE(JCS)"), so the acronym guard above never saw
+		# it on its own and produced "Store(jcs)" on a real supplier read off a
+		# bill. Case each bracketed group separately. Deliberately only
+		# brackets, not every non-letter: splitting on apostrophes too would
+		# turn "D'souza's" into "D'Souza'S", which is what the note above is
+		# about.
+		# Brackets are always trusted as an acronym marker, even inside an
+		# all-caps name — "SHREE RAM TRADERS (SRT)" has a real acronym in the
+		# brackets and an ordinary short word ("RAM") outside them.
+		return "".join(
+			cased(part, keep_acronym=part.startswith("(") or not shouting)
+			for part in re.split(r"(\([^)]*\))", word)
+		)
+
+	return " ".join(cased_word(w) for w in name.split(" "))
 
 
 def title_case_party_name(doc, method=None):
@@ -1166,25 +1449,157 @@ def save_invoice_pdf_to_dated_folder(doc, method=None):
 	checkout screen.
 	"""
 	try:
-		print_format = frappe.db.get_value("DocType", doc.doctype, "default_print_format")
-		if not print_format:
-			return
-
-		pdf_bytes = frappe.get_print(doc.doctype, doc.name, print_format, as_pdf=True)
-		folder = _get_dated_invoice_folder(doc.posting_date)
-
-		from frappe.utils.file_manager import save_file
-
-		save_file(
-			fname=f"{doc.name}.pdf",
-			content=pdf_bytes,
-			dt=doc.doctype,
-			dn=doc.name,
-			folder=folder,
-			is_private=1,
-		)
+		_archive_invoice_pdf(doc.doctype, doc.name, doc.posting_date)
 	except Exception:
 		frappe.log_error(title="Auto-save invoice PDF failed", message=frappe.get_traceback())
+		# One retry, after this sale's transaction has committed. Most of the
+		# 21 recorded failures were transient (a PDF renderer that could not
+		# resolve an image URL), and a second attempt a moment later costs
+		# nothing. If it fails again the Doctor check below is what catches
+		# it — silence was the actual bug here, not the failure.
+		try:
+			frappe.enqueue(
+				"santu_hardware.santu_hardware.api.retry_invoice_pdf_archive",
+				queue="short",
+				enqueue_after_commit=True,
+				doctype=doc.doctype,
+				name=doc.name,
+				posting_date=str(doc.posting_date),
+			)
+		except Exception:
+			frappe.log_error(
+				title="Auto-save invoice PDF retry could not be queued",
+				message=frappe.get_traceback(),
+			)
+
+
+def invoice_pdf_is_archived(doctype: str, name: str) -> bool:
+	"""Has this bill's PDF already been filed?
+
+	Matched with a prefix, not equality: `save_file` appends a random hash
+	to every private file's name, so the archived copy of SINV-26-00043 is
+	stored as `SINV-26-000435cf498.pdf`. An exact-name check never matches,
+	which would report every invoice as missing and re-file a duplicate on
+	every run — caught doing exactly that on 2026-08-17.
+	"""
+	return bool(
+		frappe.db.exists(
+			"File",
+			{
+				"attached_to_doctype": doctype,
+				"attached_to_name": name,
+				"file_name": ("like", f"{name}%.pdf"),
+			},
+		)
+	)
+
+
+@contextmanager
+def _print_request_context():
+	"""Give the print format the HTTP request it assumes it has.
+
+	The shop's bill template calls `frappe.call(...)` from Jinja to pull the
+	customer's balance and loyalty points. `frappe.call` needs
+	`frappe.local.request`, which exists during a web request and nowhere
+	else — so the same template that renders perfectly when a cashier hits
+	Print fails with "Error in print format on line 23: request" from a
+	background worker, the scheduler, or `bench execute`.
+
+	That is not a theoretical gap: it is why the on_submit retry and the
+	Doctor's regeneration both need this. A stub request makes every caller
+	behave like the one that works.
+	"""
+	from frappe.utils import set_request
+
+	had_request = getattr(frappe.local, "request", None)
+	if had_request is None:
+		set_request(method="GET", path="/api/method/frappe.utils.print_format.download_pdf")
+	try:
+		yield
+	finally:
+		if had_request is None:
+			frappe.local.request = None
+
+
+def _archive_invoice_pdf(doctype, name, posting_date):
+	"""Render the bill and file it under Invoices / YYYY / Month / date.
+
+	Raises on failure — every caller decides for itself whether that is
+	allowed to matter. The on_submit hook swallows it (a sale must never
+	fail over a filing job); the retry and the Doctor fix want to know.
+	"""
+	if invoice_pdf_is_archived(doctype, name):
+		return False
+
+	print_format = frappe.db.get_value("DocType", doctype, "default_print_format")
+	if not print_format:
+		return False
+
+	with _print_request_context():
+		pdf_bytes = frappe.get_print(doctype, name, print_format, as_pdf=True)
+	folder = _get_dated_invoice_folder(posting_date)
+
+	from frappe.utils.file_manager import save_file
+
+	save_file(
+		fname=f"{name}.pdf",
+		content=pdf_bytes,
+		dt=doctype,
+		dn=name,
+		folder=folder,
+		is_private=1,
+	)
+	return True
+
+
+def retry_invoice_pdf_archive(doctype, name, posting_date):
+	"""Background retry queued by the on_submit hook after it failed once."""
+	try:
+		if _archive_invoice_pdf(doctype, name, posting_date):
+			frappe.db.commit()
+	except Exception:
+		frappe.log_error(
+			title="Auto-save invoice PDF retry failed",
+			message=f"{doctype} {name}\n\n{frappe.get_traceback()}",
+		)
+
+
+def invoices_missing_pdf(days: int = 7):
+	"""Submitted bills from the last `days` with no archived PDF."""
+	from frappe.utils import add_days, nowdate
+
+	since = add_days(nowdate(), -int(days))
+	missing = []
+	for doctype in ("Sales Invoice", "POS Invoice"):
+		if not frappe.db.exists("DocType", doctype):
+			continue
+		rows = frappe.get_all(
+			doctype,
+			filters={"docstatus": 1, "posting_date": (">=", since)},
+			fields=["name", "posting_date"],
+			limit_page_length=0,
+		)
+		for row in rows:
+			if not invoice_pdf_is_archived(doctype, row.name):
+				missing.append({"doctype": doctype, "name": row.name, "posting_date": row.posting_date})
+	return missing
+
+
+def regenerate_missing_invoice_pdfs(days: int = 7):
+	"""Doctor fix — file the bills whose PDF never got written."""
+	done, failed = [], []
+	for row in invoices_missing_pdf(days):
+		try:
+			if _archive_invoice_pdf(row["doctype"], row["name"], row["posting_date"]):
+				done.append(row["name"])
+		except Exception as e:
+			failed.append({"name": row["name"], "error": str(e)[:300]})
+			frappe.log_error(
+				title="Invoice PDF regeneration failed",
+				message=f"{row['doctype']} {row['name']}\n\n{frappe.get_traceback()}",
+			)
+	frappe.db.commit()
+	return {"regenerated": done, "failed": failed}
 
 
 @frappe.whitelist()
@@ -1240,13 +1655,130 @@ def _load_bihar_villages():
 @frappe.whitelist()
 def search_bihar_villages(district: str, search: str = None):
 	"""Villages (with pincode) for one Bihar district, for the Add Party
-	dialog's City/Village autocomplete."""
+	dialog's City/Village autocomplete.
+
+	No district picked yet (the normal case — village is usually typed
+	before district) means every district is searched, not zero of them.
+	`district` used to be looked up on its own and returned nothing at all
+	when blank (2026-08-18 bug report: "village name list me nh aa rha").
+	"""
 	data = _load_bihar_villages()
-	rows = data.get(district, [])
+	if district:
+		rows = [{**row, "district": district} for row in data.get(district, [])]
+	else:
+		# Each row carries its own district so picking one can also set the
+		# District dropdown — a village implies its district, no need to make
+		# the counter pick it separately (2026-08-18: "district nh liya").
+		rows = [{**row, "district": d} for d, drows in data.items() for row in drows]
 	if search:
 		q = search.strip().lower()
 		rows = [r for r in rows if q in r["village"].lower()]
 	return rows[:300]
+
+
+_SANTU_PINCODE_DISTRICT_CACHE = None
+
+
+def _pincode_district_index() -> dict:
+	"""pincode -> district, built once from the same village dataset.
+
+	Lets the district be derived instead of asked for: the counter types a
+	village, that fills the pincode, and the pincode names the district. No
+	district picker, and no hardcoded home district (2026-08-16 direct
+	request: "ye saran ko mt likh yaar, yaha pe pin code se auto district
+	fetch ho jayega").
+	"""
+	global _SANTU_PINCODE_DISTRICT_CACHE
+	if _SANTU_PINCODE_DISTRICT_CACHE is None:
+		index = {}
+		for district, rows in _load_bihar_villages().items():
+			for row in rows:
+				pin = (row.get("pincode") or "").strip()
+				# First district wins: a pincode can span a district border in
+				# this dataset, and flip-flopping per lookup would be worse
+				# than consistently naming one of them.
+				if pin and pin not in index:
+					index[pin] = district
+		_SANTU_PINCODE_DISTRICT_CACHE = index
+	return _SANTU_PINCODE_DISTRICT_CACHE
+
+
+def _district_for_pincode(pincode=None) -> str:
+	"""District that a pincode belongs to, or "" when it isn't in the data.
+
+	Deliberately un-whitelisted and un-annotated. Frappe type-checks the
+	arguments of whitelisted functions, so the annotated version below blew up
+	with FrappeTypeError the moment internal code passed a pincode of None —
+	which is every brand new party. That failed the save AFTER the customer
+	had already been created, so the counter got a party and no bill.
+	"""
+	return _pincode_district_index().get((pincode or "").strip(), "")
+
+
+@frappe.whitelist()
+def district_for_pincode(pincode: str = None) -> str:
+	"""HTTP wrapper — internal callers should use _district_for_pincode."""
+	return _district_for_pincode(pincode)
+
+
+def _district_names() -> set:
+	"""Every Bihar district name, lowercased."""
+	return {d.strip().lower() for d in _load_bihar_villages().keys() if d}
+
+
+def is_district_name(value: str) -> bool:
+	"""True when this value is a district, not a village.
+
+	Older party creation wrote the district into Address.city, so parties on
+	file literally have "Saran" sitting in the field the Village box reads.
+	That is not a village and must not be shown as one — blank is honest and
+	prompts someone to type the real one, where "Saran" silently looked
+	answered and stopped anyone ever filling it in (2026-08-16 bug report).
+	"""
+	return (value or "").strip().lower() in _district_names()
+
+
+def _village_lookup(village: str) -> dict:
+	"""First {village, pincode, district} matching this village name."""
+	name = (village or "").strip().lower()
+	if not name:
+		return {}
+	for district, rows in _load_bihar_villages().items():
+		for row in rows:
+			if (row.get("village") or "").strip().lower() == name:
+				return {"village": row.get("village"), "pincode": row.get("pincode"), "district": district}
+	return {}
+
+
+@frappe.whitelist()
+def search_villages(search: str, limit: int = 20):
+	"""Village autocomplete across the whole state, each row carrying its own
+	pincode and district.
+
+	The sale screen used to search one hardcoded district, so a customer from
+	the next district over simply never appeared. Nothing here is scoped to a
+	home district; exact-prefix matches lead so the common case is the first
+	row.
+	"""
+	q = (search or "").strip().lower()
+	if len(q) < 2:
+		return []
+	limit = cint(limit) or 20
+	starts, contains = [], []
+	for district, rows in _load_bihar_villages().items():
+		for row in rows:
+			name = row.get("village") or ""
+			low = name.lower()
+			if low.startswith(q):
+				bucket = starts
+			elif q in low:
+				bucket = contains
+			else:
+				continue
+			bucket.append({"village": name, "pincode": row.get("pincode"), "district": district})
+		if len(starts) >= limit:
+			break
+	return (starts + contains)[:limit]
 
 
 @frappe.whitelist()
@@ -1328,18 +1860,23 @@ def _create_customer_addresses(customer, customer_name, data):
 			city = city_match.group(1)
 			pincode = pincode or city_match.group(2)
 
+		# Village fills in the pincode, pincode names the district — neither is
+		# asked for twice and neither is assumed.
+		if city and not pincode:
+			pincode = (_village_lookup(city) or {}).get("pincode")
+		district = (data.get("district") or "").strip() or _district_for_pincode(pincode)
+
 		address = frappe.new_doc("Address")
 		address.address_title = customer_name
 		address.address_type = "Billing"
 		address.address_line1 = data.get("address_line1") or customer_name
-		address.address_line2 = data.get("address_line2") or (
-			f"{data.get('district')} District" if data.get("district") else None
-		)
-		# City is mandatory on Address, but the counter's Add Customer form
-		# only asks for name / phone / address — same three fields Vyapar
-		# asks for. Fall back to the district, then to this shop's own, so a
-		# quick counter entry doesn't fail on a field nobody was shown.
-		address.city = city or data.get("district") or "Saran"
+		address.address_line2 = data.get("address_line2") or (f"{district} District" if district else None)
+		# City is mandatory on Address. It holds the village here; when no
+		# village was typed the district derived from the pincode is the next
+		# most accurate thing. Nothing is defaulted to this shop's own district
+		# any more — that silently stamped every out-of-district customer as
+		# local (2026-08-16 direct request).
+		address.city = city or district or (data.get("address_line1") or customer_name)
 		address.state = data.get("state") or "Bihar"
 		address.pincode = pincode
 		address.country = data.get("country") or "India"
@@ -1360,7 +1897,12 @@ def _create_customer_addresses(customer, customer_name, data):
 		ship.address_title = customer_name
 		ship.address_type = "Shipping"
 		ship.address_line1 = data.get("shipping_address").strip()
-		ship.city = data.get("city") or (data.get("district") or "Saran")
+		ship.city = (
+			(data.get("city") or "").strip()
+			or (data.get("district") or "").strip()
+			or _district_for_pincode(data.get("pincode"))
+			or data.get("shipping_address").strip()
+		)
 		ship.state = data.get("state")
 		ship.country = data.get("country") or "India"
 		ship.append("links", {"link_doctype": "Customer", "link_name": customer.name})
@@ -1425,6 +1967,27 @@ def search_customers_by_name(query: str):
 
 
 @frappe.whitelist()
+def search_customers_by_phone(query: str):
+	"""Live suggestions for the Phone field, mirroring search_customers_by_name
+	(2026-08-16 direct request: "phone no enter krne se party name nh aa raha
+	... sab ek dusre se connect ho and wo aa jaye") — typing a phone number
+	should surface the matching customer just as typing a name does, so the
+	cashier isn't stuck re-typing details for someone already on file."""
+	if not query or len(query) < 4:
+		return []
+	rows = frappe.get_all(
+		"Customer",
+		filters={"mobile_no": ["like", f"%{query}%"]},
+		fields=["name", "customer_name", "mobile_no", "santu_village", "customer_details"],
+		order_by="modified desc",
+		limit_page_length=8,
+	)
+	for row in rows:
+		row["santu_village"] = party_village("Customer", row["name"], row.get("santu_village"))
+	return rows
+
+
+@frappe.whitelist()
 def update_customer_note(customer: str, note: str):
 	"""Set the identification note (Customer Details) used to tell apart
 	same-name customers in the Sale screen's search dropdown."""
@@ -1432,6 +1995,414 @@ def update_customer_note(customer: str, note: str):
 		frappe.throw(_("Customer {0} not found").format(customer or ""))
 	frappe.db.set_value("Customer", customer, "customer_details", note or "")
 	return note or ""
+
+
+def _default_hsn_code() -> str:
+	"""The HSN this shop's catalogue uses most often, or None if it has none."""
+	row = frappe.db.sql(
+		"""select gst_hsn_code from `tabItem`
+		where ifnull(gst_hsn_code, '') != ''
+		group by gst_hsn_code order by count(*) desc limit 1"""
+	)
+	return row[0][0] if row else None
+
+
+# Units a hardware shop reaches for, in the order it reaches for them.
+# ERPNext ships 264 UOMs — Ampere, Hectare, Becquerel — and an alphabetical
+# Link field buried "Nos" and "Box" somewhere past the middle, so adding an
+# item meant scrolling a list of things this shop will never sell
+# (2026-08-17: "yaha pe mujhe more and more me sabse niche khojna pada").
+SANTU_HARDWARE_COMMON_UOMS = [
+	"Nos",
+	"Box",
+	"Packet",
+	"Kg",
+	"Litre",
+	"Bundle",
+	"Can",
+	"Pair",
+	"Set",
+	"Dozen",
+	"Meter",
+	"Feet",
+	"Roll",
+	"Bag",
+	"Gram",
+	"Ml",
+]
+
+
+# --- Barcode scanning ------------------------------------------------------
+#
+# The scanner is a plain USB HID device: it "types" the barcode and presses
+# Enter. Nothing has to be installed or configured for it — the whole job is
+# recognising that burst of keystrokes and turning it into the right item.
+# These two endpoints are the entire server side of it.
+
+
+@frappe.whitelist()
+def find_item_by_barcode(barcode: str):
+	"""Which item carries this barcode, with what a counter needs to know.
+
+	Returns `found: False` rather than throwing when nothing matches: an
+	unrecognised barcode is an ordinary, expected event (new stock arrives
+	with codes the shop has never seen), and the screens turn it into an
+	offer to attach it, not an error.
+	"""
+	barcode = (barcode or "").strip()
+	if not barcode:
+		return {"found": False, "barcode": barcode}
+
+	item_code = frappe.db.get_value("Item Barcode", {"barcode": barcode}, "parent")
+
+	# Some suppliers' codes were typed in as the item code or even the item
+	# name before scanning existed — this shop has items literally named
+	# "8904144800026". Fall back to those so a scan still lands.
+	if not item_code and frappe.db.exists("Item", barcode):
+		item_code = barcode
+	if not item_code:
+		item_code = frappe.db.get_value("Item", {"item_name": barcode, "disabled": 0}, "name")
+
+	if not item_code:
+		return {"found": False, "barcode": barcode}
+
+	item = frappe.db.get_value(
+		"Item", item_code, ["item_code", "item_name", "stock_uom", "is_stock_item", "disabled"], as_dict=True
+	)
+	if not item or item.disabled:
+		return {"found": False, "barcode": barcode}
+
+	warehouse = default_selling_warehouse()
+	item["available_qty"] = (
+		flt(frappe.db.get_value("Bin", {"item_code": item_code, "warehouse": warehouse}, "actual_qty"))
+		if warehouse
+		else None
+	)
+	item["price"] = frappe.db.get_value(
+		"Item Price", {"item_code": item_code, "selling": 1}, "price_list_rate"
+	)
+	item["barcode"] = barcode
+	item["found"] = True
+	return item
+
+
+@frappe.whitelist()
+def attach_barcode_to_item(item_code: str, barcode: str):
+	"""Teach the shop that this code means this item.
+
+	The whole value of a scanner is that it removes typing, and that only
+	works once every item carries its code. Attaching happens where the gap
+	is noticed — at the counter, mid-scan — rather than in a separate
+	data-entry exercise nobody will do.
+	"""
+	barcode = (barcode or "").strip()
+	if not barcode:
+		frappe.throw(_("Barcode khaali hai."))
+	if not frappe.db.exists("Item", item_code):
+		frappe.throw(_("Item {0} nahi mila.").format(item_code))
+
+	owner = frappe.db.get_value("Item Barcode", {"barcode": barcode}, "parent")
+	if owner and owner != item_code:
+		frappe.throw(
+			_("Ye barcode pehle se '{0}' par laga hai. Ek barcode ek hi saman ka ho sakta hai.").format(owner)
+		)
+	if owner == item_code:
+		return {"ok": True, "already": True, "item_code": item_code}
+
+	item = frappe.get_doc("Item", item_code)
+	item.append("barcodes", {"barcode": barcode})
+	item.save(ignore_permissions=True)
+	frappe.db.commit()
+	return {"ok": True, "already": False, "item_code": item_code, "item_name": item.item_name}
+
+
+@frappe.whitelist()
+def set_item_stock(item_code: str, new_qty: float, reason: str = "Count Correction"):
+	"""Correct one item's stock, from wherever the shopkeeper noticed it.
+
+	Wraps `fix_stock` with the one thing it could not do: an item that was
+	never stock-tracked. Items quick-created before 2026-08-17 were made
+	non-stock (there was no way to ask "how many do you have?"), so they sit
+	on the bill saying "Available: 0" forever and no amount of stock
+	correction can change that — the number is not merely wrong, the item
+	has no stock at all. Flipping it to stock-tracked first turns a dead end
+	into a normal correction.
+	"""
+	if not item_code:
+		frappe.throw(_("Item chahiye."))
+
+	item = frappe.db.get_value("Item", item_code, ["is_stock_item", "stock_uom"], as_dict=True)
+	if not item:
+		frappe.throw(_("Item {0} nahi mila.").format(item_code))
+
+	converted = False
+	if not cint(item.is_stock_item):
+		frappe.db.set_value("Item", item_code, "is_stock_item", 1)
+		frappe.db.commit()
+		converted = True
+
+	result = fix_stock(item_code, new_qty, reason)
+
+	warehouse = default_selling_warehouse()
+	actual = flt(
+		frappe.db.get_value("Bin", {"item_code": item_code, "warehouse": warehouse}, "actual_qty")
+	)
+	return {
+		"name": result.get("name"),
+		"item_code": item_code,
+		"available_qty": actual,
+		"uom": item.stock_uom,
+		"converted_to_stock_item": converted,
+	}
+
+
+# --- Editable item master fields --------------------------------------------
+#
+# Stock Summary shows master data (name, category, brand, HSN, rack) next to
+# live numbers (rate, stock, batches) — a shopkeeper corrects both from the
+# same screen, without a raw Frappe Item form in between (2026-08-17 direct
+# request: "sab dynamic rakho... mai edit kr saku").
+#
+# Only these five fields are reachable, and only through this list — the
+# fieldname arrives from the browser, so accepting it unchecked would let a
+# request name any field on Item at all (is_stock_item, disabled,
+# valuation_rate...). Each entry says what kind of value is allowed and,
+# for Link fields, which doctype it must actually exist in.
+#
+# All three Link fields are auto_create (2026-08-17 direct request: "add new
+# category ka v option ho, add new brand, etc etc. all should be dynamic") —
+# including HSN, after flagging that an invented HSN code can misstate GST on
+# an invoice/return; Ankit chose free-create anyway. create_field is that
+# doctype's own autoname field, since it differs per doctype (Brand names
+# itself off "brand", Item Group off "item_group_name", GST HSN Code off
+# "hsn_code" — using the Link fieldname itself would be wrong for the latter
+# two).
+EDITABLE_ITEM_FIELDS = {
+	"item_name": {"kind": "data", "label": "Naam"},
+	"item_group": {
+		"kind": "link",
+		"doctype": "Item Group",
+		"label": "Category",
+		"auto_create": True,
+		"create_field": "item_group_name",
+	},
+	"brand": {
+		"kind": "link",
+		"doctype": "Brand",
+		"label": "Brand",
+		"auto_create": True,
+		"create_field": "brand",
+	},
+	"gst_hsn_code": {
+		"kind": "link",
+		"doctype": "GST HSN Code",
+		"label": "HSN",
+		"auto_create": True,
+		"create_field": "hsn_code",
+	},
+	"custom_rack_number": {"kind": "data", "label": "Rack/Location"},
+}
+
+
+@frappe.whitelist()
+def update_item_field(item_code: str, fieldname: str, value=None):
+	"""Edit one master-data field on an item, from wherever it is shown.
+
+	Every Link field here may invent a new value on the spot — this shop's
+	Category/Brand/HSN lists start out incomplete, and asking someone to go
+	create a master record before they can type it on an item is exactly the
+	kind of extra step this app exists to remove. A typo becomes a new row
+	instead of an error; that is a deliberate trade the owner made.
+	"""
+	spec = EDITABLE_ITEM_FIELDS.get(fieldname)
+	if not spec:
+		frappe.throw(_("Ye field yahan se edit nahi ho sakta."))
+	if not item_code or not frappe.db.exists("Item", item_code):
+		frappe.throw(_("Item {0} nahi mila.").format(item_code or ""))
+
+	value = (value or "").strip()
+
+	if fieldname == "item_name" and not value:
+		frappe.throw(_("Naam khaali nahi ho sakta."))
+
+	if spec["kind"] == "link" and value and not frappe.db.exists(spec["doctype"], value):
+		if spec.get("auto_create"):
+			frappe.get_doc({"doctype": spec["doctype"], spec["create_field"]: value}).insert(
+				ignore_permissions=True
+			)
+		else:
+			frappe.throw(_("'{0}' ek asli {1} nahi hai.").format(value, spec["label"]))
+
+	frappe.db.set_value("Item", item_code, fieldname, value or None)
+	frappe.db.commit()
+	return {"ok": True, "fieldname": fieldname, "value": value or None}
+
+
+@frappe.whitelist()
+def update_item_rate(item_code: str, kind: str, rate):
+	"""Change Purchase Rate or Selling Price straight from Stock Summary.
+
+	"Selling Price" is a plain Item Price edit (Standard Selling) — the same
+	record Billing already reads as the default rate, so a change here is
+	visible on the very next sale.
+
+	"Purchase Rate" is not that simple: the column shown is a weighted-
+	average cost pulled from the stock ledger (Bin.stock_value / qty), not a
+	list price, so editing the Item Price alone would not move the number on
+	screen for any item that already has stock (which is most of them). The
+	correct way to correct a valuation without a new purchase is a real
+	Stock Reconciliation at the current quantity — same real-ledger-entry
+	principle this app uses everywhere else, not a fudge (2026-08-18 direct
+	request: "purchase rate and selling rate change krne ka option do").
+	"""
+	if kind not in ("purchase", "selling"):
+		frappe.throw(_("Ye rate yahan se badli nahi ja sakti."))
+	if not item_code or not frappe.db.exists("Item", item_code):
+		frappe.throw(_("Item {0} nahi mila.").format(item_code or ""))
+	rate = flt(rate)
+	if rate < 0:
+		frappe.throw(_("Rate negative nahi ho sakti."))
+
+	price_list = "Standard Buying" if kind == "purchase" else "Standard Selling"
+	buying = 1 if kind == "purchase" else 0
+	# `batch_no: ["in", ["", None]]` never matches a NULL batch_no — SQL's
+	# IN never matches NULL regardless of what is in the list, so this has
+	# to be a real IFNULL check. The wrong filter always missed the
+	# existing row and fell into the create branch below, leaving two Item
+	# Price rows for the same list/item every time a rate was edited an
+	# even number of times (found 2026-08-18 while testing this feature).
+	existing = frappe.db.sql(
+		"""select name from `tabItem Price`
+		   where item_code=%s and price_list=%s and ifnull(batch_no,'')=''
+		   order by modified desc limit 1""",
+		(item_code, price_list),
+	)
+	existing = existing[0][0] if existing else None
+	if existing:
+		frappe.db.set_value("Item Price", existing, "price_list_rate", rate)
+	elif rate > 0:
+		price = frappe.new_doc("Item Price")
+		price.item_code = item_code
+		price.price_list = price_list
+		price.buying = buying
+		price.selling = 0 if buying else 1
+		price.price_list_rate = rate
+		price.insert(ignore_permissions=True)
+
+	cost_rate = None
+	if kind == "purchase":
+		company = frappe.defaults.get_user_default("Company")
+		warehouse = default_selling_warehouse(company)
+		qty = flt(frappe.db.get_value("Bin", {"item_code": item_code, "warehouse": warehouse}, "actual_qty"))
+		if qty > 0 and warehouse:
+			recon = frappe.new_doc("Stock Reconciliation")
+			recon.company = company
+			recon.purpose = "Stock Reconciliation"
+			recon.append(
+				"items",
+				{
+					"item_code": item_code,
+					"warehouse": warehouse,
+					"qty": qty,
+					"valuation_rate": rate,
+					"current_qty": qty,
+				},
+			)
+			recon.insert(ignore_permissions=True)
+			recon.submit()
+			cost_rate = rate
+		else:
+			# No stock to revalue yet — the Item Price above still sets what
+			# the NEXT receipt will suggest as its rate.
+			cost_rate = flt(frappe.db.get_value("Item", item_code, "last_purchase_rate")) or rate
+			frappe.db.set_value("Item", item_code, "last_purchase_rate", rate)
+	frappe.db.commit()
+	return {"ok": True, "kind": kind, "rate": rate, "cost_rate": cost_rate}
+
+
+@frappe.whitelist()
+def search_link_values(doctype: str, query: str = "", limit: int = 10):
+	"""Autocomplete for the item-master Link fields above.
+
+	Restricted to the same three doctypes editable via update_item_field —
+	this is a search endpoint, and letting the browser search an arbitrary
+	doctype by name would leak far more than a category list.
+	"""
+	if doctype not in ("Item Group", "Brand", "GST HSN Code"):
+		frappe.throw(_("Ye list yahan se dhoondhi nahi ja sakti."))
+	return frappe.get_list(
+		doctype,
+		filters={"name": ["like", f"%{query}%"]} if query else {},
+		pluck="name",
+		limit_page_length=cint(limit),
+		order_by="name asc",
+	)
+
+
+@frappe.whitelist()
+def sale_uom_options():
+	"""Units for the new-item dialog, most likely first.
+
+	Ordered by what this shop actually stocks (counted from its own items),
+	then the hardware list above, then everything else alphabetically. The
+	shop's real usage leads because that is the only ranking that stays
+	right as the catalogue changes — today it puts Nos first because 38 of
+	39 items are in Nos, and it will keep doing the right thing without
+	anyone maintaining a list.
+	"""
+	existing = {u.lower() for u in frappe.get_all("UOM", pluck="name")}
+
+	used = frappe.db.sql(
+		"""select stock_uom, count(*) c from `tabItem`
+		    where disabled = 0 and ifnull(stock_uom, '') != ''
+		    group by stock_uom order by c desc""",
+		as_dict=True,
+	)
+
+	ordered, seen = [], set()
+
+	def add(name, group):
+		if not name or name.lower() in seen or name.lower() not in existing:
+			return
+		seen.add(name.lower())
+		ordered.append({"name": name, "group": group})
+
+	for row in used:
+		add(row.stock_uom, "dukaan")
+	for name in SANTU_HARDWARE_COMMON_UOMS:
+		add(name, "aam")
+	for name in frappe.get_all("UOM", filters={"enabled": 1}, pluck="name", order_by="name asc"):
+		add(name, "baaki")
+
+	return ordered
+
+
+@frappe.whitelist()
+def items_with_same_name(item_name):
+	"""Existing items that already carry this name.
+
+	Asked before creating a new one. Duplicates in this catalog were not
+	created maliciously — someone typed a name that already existed and
+	nothing said so. This is the sentence that was missing.
+	"""
+	key = (item_name or "").strip().lower()
+	if not key:
+		return []
+	rows = frappe.get_all(
+		"Item",
+		filters={"disabled": 0},
+		fields=["item_code", "item_name", "stock_uom"],
+		limit_page_length=0,
+	)
+	matches = [r for r in rows if (r.item_name or "").strip().lower() == key]
+	warehouse = default_selling_warehouse()
+	for row in matches:
+		row["available_qty"] = (
+			flt(frappe.db.get_value("Bin", {"item_code": row.item_code, "warehouse": warehouse}, "actual_qty"))
+			if warehouse
+			else None
+		)
+	return matches
 
 
 @frappe.whitelist()
@@ -1444,6 +2415,9 @@ def quick_create_item(
 	gst_hsn_code: str = None,
 	price_list: str = None,
 	buying: int = 0,
+	opening_qty=None,
+	cost_price=None,
+	require_opening_qty: int = 1,
 ):
 	"""Inline item creation from the POS billing screen (2026-07-31 direct
 	request) — "the cashier should never have to leave the billing screen
@@ -1451,15 +2425,24 @@ def quick_create_item(
 	a minimal, purpose-built create path rather than the full Item quick
 	entry dialog (which asks for far more than a counter sale needs).
 
-	Deliberately created as a NON-stock item (`is_stock_item = 0`): this
-	shop's `Stock Settings.allow_negative_stock` is off, and a
-	freshly-created item has zero stock on hand — if it were stock-tracked,
-	adding it straight to the cart and completing the sale (which is the
-	whole point of this flow: "should be automatically added to the
-	current bill") would fail the same negative-stock check that already
-	protects real inventory. The shop owner can upgrade it to stock-tracked
-	and enter an opening quantity later via the normal Item master if they
-	want it counted in inventory going forward.
+	Opening quantity is mandatory (2026-08-20: leaving it optional let
+	cashiers skip it without noticing, and the item silently came out as a
+	non-stock Service — invisible to stock counts, low-stock and valuation,
+	with nobody going back to fix it later). Every item created here is a
+	real stock item; the cashier has to say how many are actually on hand
+	before the item can exist at all.
+
+	This does mean a genuinely stock-less one-off (a service, something
+	borrowed) can no longer be quick-created from this dialog — the shop
+	decided that trade-off is worth it (2026-08-17 request: "total items
+	available ka option, and units v" plus the 2026-08-20 follow-up making
+	it required) since untracked items were the more common accident.
+
+	`require_opening_qty=0` lifts only that count requirement, for Estimate /
+	Quotation, where the shop quotes a price for goods it may not have bought
+	yet. The item is STILL created stock-tracked (`is_stock_item = 1`) with
+	zero on hand — it simply shows as 0 in Stock Summary instead of vanishing
+	into a non-stock Service, which was the original bug.
 
 	`item_code` isn't asked for on the dialog — Item is named `field:
 	item_code` in this system, so one is slugged from the name here,
@@ -1485,15 +2468,35 @@ def quick_create_item(
 		suffix += 1
 		item_code = f"{slug}-{suffix}"
 
+	opening_qty = flt(opening_qty)
+	# Selling side (billing screen): opening qty is mandatory — this is where
+	# items used to silently come out as non-stock Services when a cashier
+	# left it blank. Buying side (purchase screen): the purchase line itself
+	# is about to receive the stock, so there is no opening qty to ask for
+	# here — the item is still always created stock-tracked below.
+	#
+	# `require_opening_qty=0` is the one deliberate exemption: Estimate /
+	# Quotation quotes goods the shop may not stock yet ("bhav bata do"), so
+	# demanding a count there would block a legitimate quote. It stays strict
+	# by default so a screen that forgets to think about it gets the safe
+	# behaviour rather than the loose one (2026-08-20).
+	if not buying and cint(require_opening_qty) and opening_qty <= 0:
+		frappe.throw(_("Abhi kitna hai? — stock batana zaroori hai naya saman banane ke liye."))
+
 	item = frappe.new_doc("Item")
 	item.item_code = item_code
 	item.item_name = item_name
 	item.item_group = item_group or "Products"
 	item.stock_uom = uom or "Nos"
-	item.is_stock_item = 0
+	item.is_stock_item = 1
 	item.include_item_in_manufacturing = 0
-	if gst_hsn_code:
-		item.gst_hsn_code = gst_hsn_code
+	# HSN is genuinely optional for this shop (2026-08-18 direct request:
+	# "hsn code is not required, remember that" — GST Settings.validate_hsn_code
+	# switched off site-wide for exactly this reason). Still filled in from the
+	# quick-create form or the catalogue's own most-used code when given, since
+	# it's free to have and useful on a formal GST bill, but creating a new
+	# item is never blocked on it being present.
+	item.gst_hsn_code = gst_hsn_code or _default_hsn_code()
 	if barcode:
 		item.append("barcodes", {"barcode": barcode})
 	item.insert(ignore_permissions=True)
@@ -1507,11 +2510,33 @@ def quick_create_item(
 	item_price.price_list_rate = flt(selling_price)
 	item_price.insert(ignore_permissions=True)
 
+	# Buying price is optional. Without it the opening stock still posts (at
+	# zero valuation, via allow_zero_valuation_rate) rather than refusing —
+	# a cashier mid-sale may genuinely not know the cost, and blocking the
+	# sale over it would be the wrong trade. With it, the shop's cost-price
+	# and margin views work on this item from the first day.
+	cost_price = flt(cost_price)
+	if cost_price > 0:
+		buying_price = frappe.new_doc("Item Price")
+		buying_price.item_code = item.item_code
+		buying_price.price_list = "Standard Buying"
+		buying_price.buying = 1
+		buying_price.selling = 0
+		buying_price.price_list_rate = cost_price
+		buying_price.insert(ignore_permissions=True)
+
+	opening_entry = None
+	if opening_qty > 0:
+		opening_entry = receive_stock_simple(item.item_code, opening_qty, cost_price or None)
+
 	return {
 		"item_code": item.item_code,
 		"item_name": item.item_name,
 		"rate": flt(selling_price),
 		"uom": item.stock_uom,
+		"is_stock_item": item.is_stock_item,
+		"opening_qty": opening_qty if opening_qty > 0 else 0,
+		"stock_entry": opening_entry.get("name") if opening_entry else None,
 	}
 
 
@@ -1557,28 +2582,32 @@ def get_customer_balance_summary(customer: str, exclude_doctype: str = None, exc
 	return {"previous_balance": previous_balance}
 
 
-@frappe.whitelist()
-def get_customer_loyalty_summary(customer: str, invoice: str = None):
-	"""Points earned on this specific bill (from its own Loyalty Point
-	Entry, if the sale posted one) and the customer's running total —
-	for the "Earned reward points / Total reward points" lines on the
-	printed bill (2026-07-30 direct request)."""
-	if not customer:
-		return {"earned_this_bill": 0, "total_points": 0}
-
-	earned_this_bill = 0
-	if invoice:
-		earned_this_bill = flt(
-			frappe.db.get_value("Loyalty Point Entry", {"invoice": invoice}, "loyalty_points")
-		)
-
-	total_points = flt(
-		frappe.db.sql(
-			"select sum(loyalty_points) from `tabLoyalty Point Entry` where customer = %s and expiry_date >= %s",
-			(customer, frappe.utils.today()),
-		)[0][0]
-	)
-	return {"earned_this_bill": earned_this_bill, "total_points": total_points}
+# Switched off (2026-08-18): nothing calls this any more — the printed
+# bill/PDF that reaches customers never showed loyalty points to begin
+# with, so there was nothing to also strip from print. Kept commented
+# rather than deleted for whenever loyalty comes back.
+# @frappe.whitelist()
+# def get_customer_loyalty_summary(customer: str, invoice: str = None):
+# 	"""Points earned on this specific bill (from its own Loyalty Point
+# 	Entry, if the sale posted one) and the customer's running total —
+# 	for the "Earned reward points / Total reward points" lines on the
+# 	printed bill (2026-07-30 direct request)."""
+# 	if not customer:
+# 		return {"earned_this_bill": 0, "total_points": 0}
+#
+# 	earned_this_bill = 0
+# 	if invoice:
+# 		earned_this_bill = flt(
+# 			frappe.db.get_value("Loyalty Point Entry", {"invoice": invoice}, "loyalty_points")
+# 		)
+#
+# 	total_points = flt(
+# 		frappe.db.sql(
+# 			"select sum(loyalty_points) from `tabLoyalty Point Entry` where customer = %s and expiry_date >= %s",
+# 			(customer, frappe.utils.today()),
+# 		)[0][0]
+# 	)
+# 	return {"earned_this_bill": earned_this_bill, "total_points": total_points}
 
 
 @frappe.whitelist()
@@ -1795,7 +2824,7 @@ def get_vyapar_items_list(
 	"""
 	from erpnext.accounts.doctype.pos_invoice.pos_invoice import get_pos_reserved_qty
 
-	warehouse = frappe.db.get_value("Warehouse", {"is_group": 0, "disabled": 0}, "name")
+	warehouse = default_selling_warehouse()
 
 	filters = {"disabled": 0}
 	if item_group:
@@ -1901,7 +2930,7 @@ def get_item_detail(item_code: str):
 	if not item_code or not frappe.db.exists("Item", item_code):
 		frappe.throw(_("Item {0} not found").format(item_code or ""))
 
-	warehouse = frappe.db.get_value("Warehouse", {"is_group": 0, "disabled": 0}, "name")
+	warehouse = default_selling_warehouse()
 
 	item = frappe.get_doc("Item", item_code)
 	selling_rate = frappe.db.get_value(
@@ -1990,9 +3019,12 @@ def get_item_transactions(item_code: str, limit: int = 100):
 			pii.rate AS rate,
 			pi.outstanding_amount,
 			pi.grand_total,
-			pi.docstatus
+			pi.docstatus,
+			pii.batch_no AS batch_no,
+			bt.custom_mrp AS batch_mrp
 		FROM `tabPurchase Invoice Item` pii
 		INNER JOIN `tabPurchase Invoice` pi ON pi.name = pii.parent
+		LEFT JOIN `tabBatch` bt ON bt.name = pii.batch_no
 		WHERE pii.item_code = %s AND pi.docstatus = 1
 		""",
 		item_code,
@@ -2132,7 +3164,7 @@ def get_category_items(item_group: str, search: str = None):
 		order_by="item_name asc",
 		limit_page_length=0,
 	)
-	warehouse = frappe.db.get_value("Warehouse", {"is_group": 0, "disabled": 0}, "name")
+	warehouse = default_selling_warehouse()
 	for it in items:
 		qty = 0
 		value = 0
@@ -2604,11 +3636,33 @@ def get_sale_dashboard_data(
 	else:
 		# invoices / sales_return / default: real sales, so
 		# Received/Balance from POS + non-POS Sales Invoice (no double-count).
-		sale_rows = _sale_fetch_pos_rows(start, end, company, is_return=(1 if view == "sales_return" else 0))
-		sale_rows += _sale_fetch_si_rows(start, end, company, is_return=(1 if view == "sales_return" else 0))
-		total_sales = sum(flt(r["amount"]) for r in sale_rows)
+		is_return_view = 1 if view == "sales_return" else 0
+		sale_rows = _sale_fetch_pos_rows(start, end, company, is_return=is_return_view)
+		sale_rows += _sale_fetch_si_rows(start, end, company, is_return=is_return_view)
+		gross_sales = sum(flt(r["amount"]) for r in sale_rows)
 		received = sum(flt(r["amount"]) - flt(r["balance"]) for r in sale_rows)
 		balance = sum(flt(r["balance"]) for r in sale_rows)
+
+		# Returns net out of the headline figure. Without this, Reports showed
+		# GROSS sales while the Home screen's Total Sale showed NET — the same
+		# period reading 8112 here and 6232 there, with nothing on either
+		# screen explaining the gap (2026-08-19 bug report: "home pe total sale
+		# 2996 ... report me sale 4876, aisa q"). Goods that came back are not
+		# money the shop kept, so net is the honest headline.
+		#
+		# The returned amount gets its own summary line rather than being
+		# silently subtracted: the invoice rows listed under this card are
+		# still the non-return ones, so without it the headline would look
+		# like it simply didn't add up.
+		returns_total = 0.0
+		if not is_return_view:
+			return_rows = _sale_fetch_pos_rows(start, end, company, is_return=1)
+			return_rows += _sale_fetch_si_rows(start, end, company, is_return=1)
+			returns_total = sum(flt(r["amount"]) for r in return_rows)
+
+		# Kept as its own name (not inlined into the dict): the "vs last
+		# month" comparison further down reads total_sales too.
+		total_sales = gross_sales + returns_total
 		summary = {
 			"title": SUMMARY_TITLE.get(view, "Total Sales Amount"),
 			"total_sales": total_sales,
@@ -2617,6 +3671,8 @@ def get_sale_dashboard_data(
 			"label2": "Balance",
 			"value2": balance,
 			"value2_danger": balance > 0,
+			"label3": "Returns" if returns_total else None,
+			"value3": abs(returns_total),
 		}
 
 	# vs last month (generic: same view logic, previous calendar month)
@@ -2720,6 +3776,7 @@ def _purchase_fetch_pi_rows(start, end, company, is_return=None, search=None):
 				"invoice_no": r.name,
 				"ref_no": r.bill_no or r.name,
 				"posting_date": r.posting_date,
+				"party": r.supplier,
 				"party_name": r.supplier_name or r.supplier,
 				"transaction": "Debit Note" if r.is_return else "Purchase",
 				"payment_type": modes.get(r.name) or ("Credit" if bal > 0 else "Paid"),
@@ -3011,7 +4068,20 @@ def get_purchase_dashboard_data(
 		total = sum(flt(r["amount"]) for r in bill_rows)
 		unpaid = sum(flt(r["balance"]) for r in bill_rows)
 		paid = sum(flt(r.get("paid", flt(r["amount"]) - flt(r["balance"]))) for r in bill_rows)
-		summary = {"paid": paid, "unpaid": unpaid, "total": total, "summary_type": "bills"}
+		# Overall pending across every supplier, not scoped to this date
+		# filter — this is the same figure Home used to show as "Total
+		# Payable" before it moved here (2026-08-18 direct request), so a
+		# selected date range narrowing the bills list below must not narrow
+		# this number too.
+		total_payable, payable_party_count = _pending_supplier_payments()
+		summary = {
+			"paid": paid,
+			"unpaid": unpaid,
+			"total": total,
+			"total_payable": total_payable,
+			"payable_party_count": payable_party_count,
+			"summary_type": "bills",
+		}
 	elif view == "payment_out":
 		pay_rows = _purchase_fetch_payment_out_rows(start, end, company)
 		total = sum(flt(r["amount"]) for r in pay_rows)
@@ -3374,13 +4444,34 @@ def export_santu_report(report_id, filters=None):
 	return file_doc.file_url
 
 
+# The order money actually comes in over this counter, not the alphabet
+# (2026-08-16 direct request: "payment mode ye hoga- upi, cash, card, bank
+# transfer, cheque, bank draft ... jo jyada use me aaye"). The first entry is
+# what every screen pre-selects, so this list decides the default too.
+SANTU_PAYMENT_MODE_ORDER = ["UPI", "Cash", "Card", "Bank Transfer", "Cheque", "Bank Draft"]
+
+
+def sort_payment_modes(modes, configured=None):
+	"""Order modes by real-world use, then by whether they are actually wired
+	up to an account for this company (an enabled-but-unconfigured mode fails
+	at submit), then alphabetically for anything not on the list."""
+	configured = configured or set()
+	rank = {name.lower(): i for i, name in enumerate(SANTU_PAYMENT_MODE_ORDER)}
+	modes.sort(
+		key=lambda m: (
+			rank.get((m.get("name") or "").strip().lower(), len(rank)),
+			(m.get("name") or "") not in configured,
+			m.get("name") or "",
+		)
+	)
+	return modes
+
+
 @frappe.whitelist()
 def get_sale_invoice_init():
 	"""Defaults for the quick Sale Invoice screen."""
 	company = frappe.defaults.get_user_default("Company")
-	warehouse = frappe.db.get_value(
-		"Warehouse", {"is_group": 0, "disabled": 0, "company": company}, "name"
-	)
+	warehouse = default_selling_warehouse(company)
 	price_list = (
 		frappe.db.get_single_value("Selling Settings", "selling_price_list") or "Standard Selling"
 	)
@@ -3397,11 +4488,7 @@ def get_sale_invoice_init():
 	configured = set(
 		frappe.get_all("Mode of Payment Account", filters={"company": company}, pluck="parent")
 	)
-	# Cash leads. Sorting only by "is it configured" left Bank Draft first
-	# alphabetically, which is what the billing and Sale Invoice screens then
-	# defaulted to — the same silent mis-recording of counter cash that
-	# get_payment_entry_init was already fixed for (2026-08-15).
-	payment_modes.sort(key=lambda m: (m.name != "Cash", m.name not in configured, m.name))
+	sort_payment_modes(payment_modes, configured)
 	naming_series = frappe.get_meta("Sales Invoice").get_field("naming_series")
 	series_options = (naming_series.options or "").split("\n") if naming_series else []
 	place_of_supply_field = frappe.db.get_value(
@@ -3431,7 +4518,7 @@ def party_village(party_type: str, party_name: str, stored_village: str = None) 
 	linked address's city.
 	"""
 	stored = (stored_village or "").strip()
-	if stored:
+	if stored and not is_district_name(stored):
 		return stored
 	if not party_type or not party_name:
 		return ""
@@ -3445,7 +4532,8 @@ def party_village(party_type: str, party_name: str, stored_village: str = None) 
 		LIMIT 1""",
 		(party_type, party_name),
 	)
-	return (city[0][0] if city else "") or ""
+	found = (city[0][0] if city else "") or ""
+	return "" if is_district_name(found) else found
 
 
 @frappe.whitelist()
@@ -3494,11 +4582,42 @@ def get_customer_details_for_sale(customer: str):
 		if row:
 			credit_limit = flt(row.credit_limit)
 
+	village = party_village("Customer", cust.name, cust.get("santu_village"))
+
+	# Parties created before this chain existed have the DISTRICT sitting in
+	# Address.city ("Saran" on everyone). Report that as the district and hand
+	# back a blank village, so the Village box asks to be filled in instead of
+	# showing a district that was never anybody's village.
+	district = _district_for_pincode(pincode)
+	if is_district_name(city):
+		district = district or city
+		city = ""
+
+	# Most parties are created with a village and no Address record at all, so
+	# the pincode read off the Address above is blank for them and the sale
+	# screen's Pincode box stayed empty even though the village was known
+	# (2026-08-16 bug report: "phone no dalne pe pin code nh aa raha"). The
+	# village dataset already pairs the two — look it up rather than making
+	# someone type a pincode the system can work out. Same for the district.
+	# Older records typed the village into the address line instead of the
+	# village field. Recover it only on an exact match against the village
+	# list — close-but-not-equal text ("Ishuapur gaw" vs "Ishuwapur") is left
+	# alone deliberately, since guessing would write a village nobody chose.
+	if not village and not city and address_line1 and _village_lookup(address_line1):
+		village = _village_lookup(address_line1)["village"]
+
+	if village and not pincode:
+		found = _village_lookup(village)
+		if found:
+			pincode = found.get("pincode") or pincode
+			district = district or found.get("district") or ""
+
 	return {
 		"name": cust.name,
 		"customer_name": cust.customer_name,
 		"mobile_no": cust.mobile_no,
-		"village": party_village("Customer", cust.name, cust.get("santu_village")),
+		"village": village,
+		"district": district,
 		"address": address_line,
 		"address_line1": address_line1,
 		# Raw fields off the Address record itself (not the santu_village
@@ -3506,6 +4625,7 @@ def get_customer_details_for_sale(customer: str):
 		# screen can tell "nothing typed yet" from "this is what's on file".
 		"city": city,
 		"pincode": pincode,
+		"note": cust.get("customer_details") or "",
 		"outstanding_amount": outstanding,
 		"credit_limit": credit_limit,
 	}
@@ -3518,9 +4638,7 @@ def get_sale_item_row(customer: str, item_code: str, warehouse: str = None, qty:
 
 	company = frappe.defaults.get_user_default("Company")
 	if not warehouse:
-		warehouse = frappe.db.get_value(
-			"Warehouse", {"is_group": 0, "disabled": 0, "company": company}, "name"
-		)
+		warehouse = default_selling_warehouse(company)
 	price_list = frappe.db.get_single_value("Selling Settings", "selling_price_list") or "Standard Selling"
 	args = frappe._dict(
 		{
@@ -3556,7 +4674,114 @@ def get_sale_item_row(customer: str, item_code: str, warehouse: str = None, qty:
 	if not flt(row.get("rate")) and flt(row.get("price_list_rate")):
 		row["rate"] = row["price_list_rate"]
 		row["amount"] = flt(row.get("qty") or qty) * flt(row["rate"])
+
+	# Every unit this item can be sold in, with what one of them is worth in
+	# stock units. The counter sells the same glue by the piece and by the box;
+	# without this the Sale screen's UNIT dropdown had exactly one entry and
+	# could not be changed at all (2026-08-17 request). Rate and stock are
+	# scaled by the factor on the client, so a Box never goes out at piece
+	# price.
+	row["uoms"] = item_uoms(item_code)
+
+	# Batch-tracked items cannot be sold without naming a batch — ERPNext
+	# rejects the invoice outright. Telling the screen up front is what lets
+	# Billing ask for one instead of failing at save (2026-08-18). Items that
+	# aren't batch-tracked are completely unaffected: has_batch_no is 0 and
+	# `batches` stays empty, so the existing flow is untouched.
+	row["has_batch_no"] = cint(frappe.db.get_value("Item", item_code, "has_batch_no"))
+	row["batches"] = item_batches(item_code, warehouse) if row["has_batch_no"] else []
 	return row
+
+
+@frappe.whitelist()
+def item_batches(item_code: str, warehouse: str = None):
+	"""Batches of this item that still have stock, newest first.
+
+	Each carries what the counter needs to choose between them — how many
+	are left, what this batch's MRP is, and what it should sell for. The
+	selling rate is the batch's own Item Price row when it has one, else
+	the item's normal price; the batch's price is never silently ignored
+	(2026-08-18 spec: "Do not silently use the wrong batch price").
+	"""
+	company = frappe.defaults.get_user_default("Company")
+	if not warehouse:
+		warehouse = default_selling_warehouse(company)
+
+	# ERPNext v15 keeps batch quantities in Serial and Batch Bundle, NOT in
+	# Stock Ledger Entry.batch_no (which stays NULL) — reading the ledger
+	# directly returned nothing at all even with stock clearly in the batch
+	# (found 2026-08-18 in testing). get_batch_qty is ERPNext's own helper
+	# and handles both storage models, so it stays correct across versions.
+	from erpnext.stock.doctype.batch.batch import get_batch_qty
+
+	batch_names = frappe.get_all("Batch", filters={"item": item_code, "disabled": 0}, pluck="name")
+	rows = []
+	for name in batch_names:
+		qty = flt(get_batch_qty(batch_no=name, warehouse=warehouse, item_code=item_code))
+		if qty > 0:
+			rows.append(frappe._dict({"batch_no": name, "qty": qty}))
+	if not rows:
+		return []
+
+	default_rate = flt(
+		frappe.db.get_value(
+			"Item Price",
+			{"item_code": item_code, "selling": 1, "batch_no": ["in", ["", None]]},
+			"price_list_rate",
+		)
+	)
+
+	out = []
+	for r in rows:
+		batch = frappe.db.get_value(
+			"Batch",
+			r.batch_no,
+			["name", "expiry_date", "custom_mrp", "custom_purchase_rate", "creation"],
+			as_dict=True,
+		)
+		if not batch:
+			continue
+		batch_rate = flt(
+			frappe.db.get_value(
+				"Item Price", {"item_code": item_code, "selling": 1, "batch_no": r.batch_no}, "price_list_rate"
+			)
+		)
+		out.append(
+			{
+				"batch_no": r.batch_no,
+				"qty": flt(r.qty),
+				"mrp": flt(batch.custom_mrp),
+				"purchase_rate": flt(batch.custom_purchase_rate),
+				"rate": batch_rate or default_rate,
+				"has_own_rate": bool(batch_rate),
+				"expiry_date": str(batch.expiry_date) if batch.expiry_date else None,
+				"creation": str(batch.creation),
+			}
+		)
+	out.sort(key=lambda b: b["creation"], reverse=True)
+	return out
+
+
+@frappe.whitelist()
+def item_uoms(item_code: str):
+	"""[{uom, conversion_factor}] for an item — its stock UOM always first."""
+	stock_uom = frappe.db.get_value("Item", item_code, "stock_uom")
+	rows = frappe.get_all(
+		"UOM Conversion Detail",
+		filters={"parent": item_code, "parenttype": "Item"},
+		fields=["uom", "conversion_factor"],
+	)
+	out, seen = [], set()
+	if stock_uom:
+		out.append({"uom": stock_uom, "conversion_factor": 1})
+		seen.add(stock_uom)
+	for r in rows:
+		factor = flt(r.conversion_factor) or 1
+		if r.uom in seen:
+			continue
+		seen.add(r.uom)
+		out.append({"uom": r.uom, "conversion_factor": factor})
+	return out
 
 
 def _applicable_purchase_tax_template(supplier, company):
@@ -3577,6 +4802,21 @@ def _applicable_purchase_tax_template(supplier, company):
 	# the sale happened inside one state, which is what splits GST into
 	# CGST+SGST rather than a single IGST line.
 	in_state = bool(supplier_gstin and company_gstin and supplier_gstin[:2] == company_gstin[:2])
+	name = f"Input GST {'In' if in_state else 'Out'}-state - {abbr}"
+	return name if frappe.db.exists("Purchase Taxes and Charges Template", name) else None
+
+
+def _purchase_tax_template_for_state(company, place_of_supply):
+	"""In-state vs out-of-state template decided by place of supply alone.
+
+	Used when the operator explicitly chose a GST slab on the screen but the
+	supplier has no GSTIN to compare states with. `place_of_supply` looks like
+	"10-Bihar", whose leading digits are the same state code a GSTIN starts with.
+	"""
+	abbr = frappe.db.get_value("Company", company, "abbr")
+	company_gstin = frappe.db.get_value("Company", company, "gstin") or ""
+	pos_code = (place_of_supply or "").split("-")[0].strip()
+	in_state = bool(company_gstin and pos_code and company_gstin[:2] == pos_code)
 	name = f"Input GST {'In' if in_state else 'Out'}-state - {abbr}"
 	return name if frappe.db.exists("Purchase Taxes and Charges Template", name) else None
 
@@ -3662,7 +4902,55 @@ def get_recent_sale_items(limit: int = 12):
 
 @frappe.whitelist()
 def save_sale_invoice(invoice_json: str, submit: int = 0):
-	"""Create (and optionally submit) a real Sales Invoice from the quick-sale UI."""
+	"""Create (and optionally submit) a real Sales Invoice from the quick-sale UI.
+
+	Retried on deadlock. Submitting an invoice writes the naming series counter,
+	the customer's ledger and the Bin row for each item; two sales going through
+	at the same moment grab those in different orders and MariaDB kills one of
+	them. Frappe turns that into "Server failed to process this request because
+	of a concurrent conflicting request" and gives up — but a deadlock is
+	transient by definition: the other transaction has already gone through, so
+	simply doing it again works. Without this the counter sees a scary error and
+	has to re-key the whole bill, which is exactly when someone bills twice.
+	This is the multi-device case (the shop uses a phone and this Mac); the
+	client-side guard stops the double-click case on its own.
+	"""
+	last_error = None
+	for attempt in range(3):
+		try:
+			return _save_sale_invoice(invoice_json, submit)
+		except frappe.QueryDeadlockError as exc:
+			last_error = exc
+			frappe.db.rollback()
+			if attempt < 2:
+				time.sleep(0.25 * (attempt + 1))
+	raise last_error
+
+
+WALKIN_CUSTOMER_NAME = "Walk-in Customer"
+
+
+def _ensure_walkin_customer() -> str:
+	"""The counter's anonymous-sale party, recreated if it has gone missing.
+
+	Returns the real docname, which is not always the customer_name: with
+	Selling Settings.cust_master_name on a naming series the party is named
+	CUST-0001, and checking existence by the literal label would then insert
+	a fresh duplicate on every single bill.
+	"""
+	existing = frappe.db.get_value("Customer", {"customer_name": WALKIN_CUSTOMER_NAME}, "name")
+	if existing:
+		return existing
+	doc = frappe.new_doc("Customer")
+	doc.customer_name = WALKIN_CUSTOMER_NAME
+	doc.customer_type = "Individual"
+	doc.customer_group = frappe.db.get_value("Customer Group", {}, "name") or "All Customer Groups"
+	doc.territory = frappe.db.get_value("Territory", {}, "name") or "All Territories"
+	doc.insert(ignore_permissions=True)
+	return doc.name
+
+
+def _save_sale_invoice(invoice_json: str, submit: int = 0):
 	import json
 
 	data = json.loads(invoice_json) if isinstance(invoice_json, str) else invoice_json
@@ -3675,10 +4963,22 @@ def save_sale_invoice(invoice_json: str, submit: int = 0):
 	if not items:
 		frappe.throw(_("Please add at least one item."))
 
+	# The default party every screen falls back to for an anonymous cash
+	# sale must actually exist. A wipe, a restore, or a fresh install can
+	# leave that name with no Customer behind it, and ERPNext's own
+	# set_missing_values() then dies on `customer.payment_terms` with
+	# AttributeError: 'NoneType' — a raw 500 on the single most common
+	# action in the shop (found 2026-08-18 in testing, after the data reset
+	# wiped every Customer). Handled here rather than in one screen so
+	# Billing, Sale Invoice and anything added later are all covered.
+	if not frappe.db.exists("Customer", customer):
+		if customer == WALKIN_CUSTOMER_NAME:
+			customer = _ensure_walkin_customer()
+		else:
+			frappe.throw(_("Customer {0} not found.").format(customer))
+
 	company = data.get("company") or frappe.defaults.get_user_default("Company")
-	warehouse = data.get("warehouse") or frappe.db.get_value(
-		"Warehouse", {"is_group": 0, "disabled": 0, "company": company}, "name"
-	)
+	warehouse = data.get("warehouse") or default_selling_warehouse(company)
 
 	payment_mode = (data.get("payment_mode") or "credit").lower()
 
@@ -3696,6 +4996,13 @@ def save_sale_invoice(invoice_json: str, submit: int = 0):
 	doc.customer = customer
 	doc.company = company
 	doc.posting_date = data.get("posting_date") or frappe.utils.today()
+	# Without this flag ERPNext's validate_posting_time() silently rewrites
+	# posting_date back to TODAY (transaction_base.py) — so a backdated bill
+	# quietly re-dated itself, and worse, due_date stayed derived from the
+	# date the operator actually picked, landing BEFORE the reset posting
+	# date and throwing "Due Date cannot be before Posting Date" mid-sale
+	# (2026-08-19 bug report).
+	doc.set_posting_time = 1
 	doc.due_date = data.get("due_date") or frappe.utils.add_days(doc.posting_date, 2)
 	doc.selling_price_list = data.get("selling_price_list") or (
 		frappe.db.get_single_value("Selling Settings", "selling_price_list") or "Standard Selling"
@@ -3720,15 +5027,47 @@ def save_sale_invoice(invoice_json: str, submit: int = 0):
 		if rate < 0:
 			frappe.throw(_("Please enter a valid rate for {0}.").format(row.get("item_code")))
 
+		# Per-line discount, folded into the rate rather than passed through.
+		# Both screens show a line discount and send `rate` alongside
+		# `discount_percentage`/`discount_amount`, but ERPNext rebuilds the
+		# line from `rate` alone and throws the sent discounts away — it even
+		# overwrites discount_amount with (price_list_rate - rate). Verified
+		# live 2026-08-18: a 5 x Rs.70 line with Rs.50 off billed the full
+		# Rs.350, so the customer was charged the discount back. Folding it in
+		# here keeps the one number the operator actually saw on the screen,
+		# and fixes Billing and Sale Invoice in one place.
+		gross = qty * rate
+		line_discount = gross * (flt(row.get("discount_percentage")) / 100.0) + flt(
+			row.get("discount_amount")
+		)
+		net_line = max(gross - line_discount, 0.0)
+		effective_rate = (net_line / qty) if qty else 0.0
+
 		item_row = {
 			"item_code": row.get("item_code"),
 			"qty": qty,
-			"rate": rate,
+			"rate": effective_rate,
 			"warehouse": row.get("warehouse") or warehouse,
 			"uom": row.get("uom"),
-			"discount_percentage": flt(row.get("discount_percentage")),
-			"discount_amount": flt(row.get("discount_amount")),
+			# Without this a Box sells as one stock unit: ERPNext would take a
+			# single piece off the shelf and price it as a piece.
+			"conversion_factor": flt(row.get("conversion_factor")) or 1,
 		}
+		# Only set when the screen actually picked a batch — an empty value
+		# on a non-batch item would be a change in behaviour for every
+		# existing sale (2026-08-18).
+		if row.get("batch_no"):
+			item_row["batch_no"] = row.get("batch_no")
+
+		# A line discounted all the way to zero can't be sent as rate 0:
+		# ERPNext treats an empty rate as "not priced yet" and refetches the
+		# catalogue rate on every recalculation, so giving something away
+		# billed it at full MRP instead (verified live 2026-08-18). It does
+		# honour discount_percentage == 100 on every recalculation, so that
+		# is the one way to say "free" and have it stick.
+		if net_line <= 0 and gross > 0:
+			item_row["price_list_rate"] = rate
+			item_row["discount_percentage"] = 100
 		doc.append("items", item_row)
 
 	# Invoice-level ("whole bill") discount, on top of any per-item discount
@@ -3739,30 +5078,32 @@ def save_sale_invoice(invoice_json: str, submit: int = 0):
 		doc.apply_discount_on = "Grand Total"
 		doc.discount_amount = invoice_discount
 
-	# Reward points, if the counter chose to spend some. The screen sends a
-	# rupee value; ERPNext wants a point count plus the programme's own
-	# redemption accounts, and works out the rupee figure itself.
-	redeem_value = flt(data.get("redeem_points"))
+	# Reward points redemption switched off for now (2026-08-18 direct
+	# request: "loyalty points ko abhi ke liye commentout kr do harek jagah
+	# se" — how it should work isn't decided yet). Both screens already send
+	# redeem_points: 0, so this is belt-and-suspenders; left commented
+	# rather than deleted so turning it back on is one block, not a rebuild.
+	# redeem_value = flt(data.get("redeem_points"))
 	applied_redeem = 0.0
-	if redeem_value > 0:
-		program = frappe.db.get_value("Customer", customer, "loyalty_program")
-		if program:
-			lp = frappe.db.get_value(
-				"Loyalty Program",
-				program,
-				["conversion_factor", "expense_account", "cost_center"],
-				as_dict=True,
-			)
-			if not lp.expense_account:
-				frappe.throw(
-					_("The rewards scheme has no expense account set, so points cannot be used yet.")
-				)
-			doc.loyalty_program = program
-			doc.redeem_loyalty_points = 1
-			doc.loyalty_points = cint(redeem_value / (flt(lp.conversion_factor) or 1))
-			doc.loyalty_redemption_account = lp.expense_account
-			doc.loyalty_redemption_cost_center = lp.cost_center
-			applied_redeem = flt(doc.loyalty_points) * (flt(lp.conversion_factor) or 1)
+	# if redeem_value > 0:
+	# 	program = frappe.db.get_value("Customer", customer, "loyalty_program")
+	# 	if program:
+	# 		lp = frappe.db.get_value(
+	# 			"Loyalty Program",
+	# 			program,
+	# 			["conversion_factor", "expense_account", "cost_center"],
+	# 			as_dict=True,
+	# 		)
+	# 		if not lp.expense_account:
+	# 			frappe.throw(
+	# 				_("The rewards scheme has no expense account set, so points cannot be used yet.")
+	# 			)
+	# 		doc.loyalty_program = program
+	# 		doc.redeem_loyalty_points = 1
+	# 		doc.loyalty_points = cint(redeem_value / (flt(lp.conversion_factor) or 1))
+	# 		doc.loyalty_redemption_account = lp.expense_account
+	# 		doc.loyalty_redemption_cost_center = lp.cost_center
+	# 		applied_redeem = flt(doc.loyalty_points) * (flt(lp.conversion_factor) or 1)
 
 	doc.run_method("set_missing_values")
 	doc.run_method("calculate_taxes_and_totals")
@@ -3857,9 +5198,7 @@ def save_sale_invoice(invoice_json: str, submit: int = 0):
 def get_purchase_invoice_init():
 	"""Defaults for the quick Purchase Invoice screen."""
 	company = frappe.defaults.get_user_default("Company")
-	warehouse = frappe.db.get_value(
-		"Warehouse", {"is_group": 0, "disabled": 0, "company": company}, "name"
-	)
+	warehouse = default_selling_warehouse(company)
 	price_list = frappe.db.get_single_value("Buying Settings", "buying_price_list") or "Standard Buying"
 	payment_modes = frappe.get_all(
 		"Mode of Payment",
@@ -3876,8 +5215,8 @@ def get_purchase_invoice_init():
 			"Mode of Payment Account", filters={"company": company}, pluck="parent"
 		)
 	)
-	# Cash first here too — same reason as the selling side.
-	payment_modes.sort(key=lambda m: (m.name != "Cash", m.name not in configured, m.name))
+	# Same real-world ordering as the selling side.
+	sort_payment_modes(payment_modes, configured)
 	naming_series = frappe.get_meta("Purchase Invoice").get_field("naming_series")
 	series_options = (naming_series.options or "").split("\n") if naming_series else []
 	place_of_supply_field = frappe.db.get_value(
@@ -4002,18 +5341,19 @@ def create_supplier_full(party: str):
 			city = city_match.group(1)
 			pincode = pincode or city_match.group(2)
 
+		# Same village -> pincode -> district chain the customer side uses.
+		if city and not pincode:
+			pincode = (_village_lookup(city) or {}).get("pincode")
+		district = (data.get("district") or "").strip() or _district_for_pincode(pincode)
+
 		address = frappe.new_doc("Address")
 		address.address_title = supplier_name
 		address.address_type = "Billing"
 		address.address_line1 = data.get("address_line1") or supplier_name
-		address.address_line2 = data.get("address_line2") or (
-			f"{data.get('district')} District" if data.get("district") else None
-		)
-		# City is mandatory on Address, but the counter's Add Customer form
-		# only asks for name / phone / address — same three fields Vyapar
-		# asks for. Fall back to the district, then to this shop's own, so a
-		# quick counter entry doesn't fail on a field nobody was shown.
-		address.city = city or data.get("district") or "Saran"
+		address.address_line2 = data.get("address_line2") or (f"{district} District" if district else None)
+		# City is mandatory on Address and holds the village here; the district
+		# derived from the pincode is the fallback. No hardcoded home district.
+		address.city = city or district or (data.get("address_line1") or supplier_name)
 		address.state = data.get("state") or "Bihar"
 		address.pincode = pincode
 		address.country = data.get("country") or "India"
@@ -4027,7 +5367,12 @@ def create_supplier_full(party: str):
 		ship.address_title = supplier_name
 		ship.address_type = "Shipping"
 		ship.address_line1 = data.get("shipping_address").strip()
-		ship.city = data.get("city") or (data.get("district") or "Saran")
+		ship.city = (
+			(data.get("city") or "").strip()
+			or (data.get("district") or "").strip()
+			or _district_for_pincode(data.get("pincode"))
+			or data.get("shipping_address").strip()
+		)
 		ship.state = data.get("state")
 		ship.country = data.get("country") or "India"
 		ship.append("links", {"link_doctype": "Supplier", "link_name": supplier.name})
@@ -4037,16 +5382,16 @@ def create_supplier_full(party: str):
 
 
 @frappe.whitelist()
-def get_purchase_item_row(supplier: str, item_code: str, warehouse: str = None, qty: float = 1):
+def get_purchase_item_row(
+	supplier: str = None, item_code: str = None, warehouse: str = None, qty: float = 1, uom: str = None
+):
 	"""Fetch ERPNext item row details for Purchase Invoice — mirrors
 	get_sale_item_row."""
 	from erpnext.stock.get_item_details import get_item_details
 
 	company = frappe.defaults.get_user_default("Company")
 	if not warehouse:
-		warehouse = frappe.db.get_value(
-			"Warehouse", {"is_group": 0, "disabled": 0, "company": company}, "name"
-		)
+		warehouse = default_selling_warehouse(company)
 	price_list = frappe.db.get_single_value("Buying Settings", "buying_price_list") or "Standard Buying"
 	args = frappe._dict(
 		{
@@ -4064,6 +5409,13 @@ def get_purchase_item_row(supplier: str, item_code: str, warehouse: str = None, 
 			"is_subcontracted": 0,
 		}
 	)
+	# Asking for a specific UOM (e.g. "Box") makes get_item_details compute
+	# its real conversion_factor — without this it silently defaults to the
+	# item's plain stock_uom, and a bill line read as "3 Box" would land as
+	# 3 loose pieces instead of the 3 cartons' worth it actually was
+	# (2026-08-17: "200ml ka 24 pcs, same for all").
+	if uom:
+		args.uom = uom
 	row = get_item_details(args)
 	available_qty = None
 	if warehouse:
@@ -4073,7 +5425,91 @@ def get_purchase_item_row(supplier: str, item_code: str, warehouse: str = None, 
 	row["available_qty"] = available_qty
 
 	row["tax_rate"] = _purchase_item_tax_rate(row.get("item_tax_rate"), supplier, company)
+	# The item's own current GST slab, if it has one — the row's tax
+	# dropdown starts here rather than blank (2026-08-18: "harek item me tax
+	# daalne ka option de de").
+	row["item_tax_template"] = frappe.db.get_value("Item Tax", {"parent": item_code}, "item_tax_template")
+	# Whether this item can be scanned at all — the thing worth surfacing
+	# right on the row, since an item read off a PDF bill (or picked from
+	# search) very often has no barcode yet (2026-08-17 direct request:
+	# "harek item pe barcode scanner hoga, jaha pehle se added na ho... to
+	# barcode se v add kr le").
+	row["barcode"] = frappe.db.get_value("Item Barcode", {"parent": item_code}, "barcode")
+	# Every unit this item can legally be bought in — usually just its
+	# stock_uom, plus "Box" (or whatever else) when a pack conversion has
+	# been set up for it. Lets the row's UOM dropdown actually offer Box
+	# instead of only ever showing the piece unit.
+	other_uoms = frappe.get_all("UOM Conversion Detail", filters={"parent": item_code}, pluck="uom")
+	row["uom_options"] = [row.get("stock_uom")] + [u for u in other_uoms if u != row.get("stock_uom")]
 	return row
+
+
+@frappe.whitelist()
+def get_purchase_tax_options():
+	"""Every GST slab this shop's Item Tax Templates already cover — the
+	dropdown both the per-row tax picker and the invoice-wide default use
+	(2026-08-18: "top pe default tax ka v option de do jitna v tax bracket
+	h"). Reuses india_compliance's own templates rather than inventing a
+	parallel rate list, so choosing one here computes CGST/SGST/IGST the
+	same correct way any other GST-aware screen in this app already does.
+	"""
+	company = frappe.defaults.get_user_default("Company")
+	abbr = frappe.get_cached_value("Company", company, "abbr") if company else None
+	templates = frappe.get_all(
+		"Item Tax Template", filters={"company": company} if company else {}, pluck="name"
+	)
+	# 0% has three real GST meanings (genuinely outside GST, taxed at 0%,
+	# or exempted) — kept as separate, correctly-labelled choices rather
+	# than collapsed into one "0%" that would pick the wrong one for a GST
+	# return.
+	order = {
+		"Non-GST": 0,
+		"Nil-Rated": 1,
+		"Exempted": 2,
+		"GST 5%": 5,
+		"GST 12%": 12,
+		"GST 18%": 18,
+		"GST 28%": 28,
+	}
+	options = []
+	for name in templates:
+		label = name[: -len(f" - {abbr}")] if abbr and name.endswith(f" - {abbr}") else name
+		options.append({"value": name, "label": label, "_order": order.get(label, 99)})
+	options.sort(key=lambda o: o["_order"])
+	for o in options:
+		o.pop("_order")
+	return options
+
+
+@frappe.whitelist()
+def add_item_uom_conversion(item_code: str, uom: str, conversion_factor: float):
+	"""Give an item one more purchasable unit beyond stock_uom (and any
+	pack Box) — the Purchase screen's '+ Naya Unit' (2026-08-18 direct
+	request: "unit ka v multiple options do"). A shopkeeper buying this
+	item in Dozens or Sacks or whatever their supplier calls it shouldn't
+	be stuck choosing between only two options that don't match the bill.
+	"""
+	uom = (uom or "").strip()
+	if not uom:
+		frappe.throw(_("Unit ka naam chahiye."))
+	conversion_factor = flt(conversion_factor)
+	if conversion_factor <= 0:
+		frappe.throw(_("Conversion sahi number honi chahiye (0 se zyada)."))
+	if not item_code or not frappe.db.exists("Item", item_code):
+		frappe.throw(_("Item {0} nahi mila.").format(item_code or ""))
+
+	if not frappe.db.exists("UOM", uom):
+		frappe.get_doc({"doctype": "UOM", "uom_name": uom}).insert(ignore_permissions=True)
+
+	existing = frappe.db.exists("UOM Conversion Detail", {"parent": item_code, "uom": uom})
+	if existing:
+		frappe.db.set_value("UOM Conversion Detail", existing, "conversion_factor", conversion_factor)
+	else:
+		item = frappe.get_doc("Item", item_code)
+		item.append("uoms", {"uom": uom, "conversion_factor": conversion_factor})
+		item.save(ignore_permissions=True)
+
+	return {"ok": True, "uom": uom}
 
 
 @frappe.whitelist()
@@ -4137,9 +5573,7 @@ def save_purchase_invoice(invoice_json: str, submit: int = 0):
 		frappe.throw(_("Please add at least one item."))
 
 	company = data.get("company") or frappe.defaults.get_user_default("Company")
-	warehouse = data.get("warehouse") or frappe.db.get_value(
-		"Warehouse", {"is_group": 0, "disabled": 0, "company": company}, "name"
-	)
+	warehouse = data.get("warehouse") or default_selling_warehouse(company)
 
 	payment_mode = (data.get("payment_mode") or "credit").lower()
 
@@ -4147,6 +5581,13 @@ def save_purchase_invoice(invoice_json: str, submit: int = 0):
 	doc.supplier = supplier
 	doc.company = company
 	doc.posting_date = data.get("posting_date") or frappe.utils.today()
+	# Without this flag ERPNext's validate_posting_time() silently rewrites
+	# posting_date back to TODAY (transaction_base.py) — so a backdated bill
+	# quietly re-dated itself, and worse, due_date stayed derived from the
+	# date the operator actually picked, landing BEFORE the reset posting
+	# date and throwing "Due Date cannot be before Posting Date" mid-sale
+	# (2026-08-19 bug report).
+	doc.set_posting_time = 1
 	doc.due_date = data.get("due_date") or frappe.utils.add_days(doc.posting_date, 2)
 	doc.buying_price_list = data.get("buying_price_list") or (
 		frappe.db.get_single_value("Buying Settings", "buying_price_list") or "Standard Buying"
@@ -4187,12 +5628,37 @@ def save_purchase_invoice(invoice_json: str, submit: int = 0):
 			"discount_percentage": flt(row.get("discount_percentage")),
 			"discount_amount": flt(row.get("discount_amount")),
 		}
+		# Whichever GST slab the row picked (2026-08-18 direct request:
+		# "harek item me tax daalne ka option de de") — without this the row
+		# could show "18%" on screen and still save with zero tax on the real
+		# invoice, since nothing here ever told the document which item tax
+		# template each line actually uses.
+		if row.get("item_tax_template"):
+			item_row["item_tax_template"] = row.get("item_tax_template")
 		doc.append("items", item_row)
 
 	invoice_discount = flt(data.get("additional_discount_amount"))
 	if invoice_discount:
 		doc.apply_discount_on = "Grand Total"
 		doc.discount_amount = invoice_discount
+
+	# The CGST+SGST/IGST template this supplier's state actually calls for.
+	# Without this being set before set_missing_values(), the invoice's own
+	# `taxes` table stays empty and every item's tax_rate — chosen or not —
+	# has nothing to post through to, so the saved bill's tax comes out
+	# ₹0 regardless of what the screen showed.
+	tax_template = _applicable_purchase_tax_template(supplier, company)
+	# The supplier-based lookup returns nothing for an unregistered supplier
+	# (one with no GSTIN yet), which is right on its own — but the operator can
+	# now pick a GST slab per row on screen. Silently dropping that choice made
+	# the screen say ₹1,180 while the saved bill said ₹1,000. If a slab was
+	# explicitly chosen, honour it and decide CGST+SGST vs IGST from the place
+	# of supply instead of from a GSTIN the supplier doesn't have.
+	if not tax_template and any(row.get("item_tax_template") for row in items):
+		tax_template = _purchase_tax_template_for_state(company, data.get("place_of_supply"))
+	if tax_template:
+		doc.taxes_and_charges = tax_template
+		doc.set_taxes()
 
 	doc.run_method("set_missing_values")
 	doc.run_method("calculate_taxes_and_totals")
@@ -4293,7 +5759,13 @@ def get_party_outstanding(party_type: str, party: str):
 	party_field = "customer" if party_type == "Customer" else "supplier"
 	company = frappe.defaults.get_user_default("Company")
 
-	filters = {party_field: party, "docstatus": 1, "outstanding_amount": (">", 0)}
+	# `!= 0`, not `> 0`: a return/credit note carries a NEGATIVE outstanding,
+	# and filtering those out made the settlement table show only the bills
+	# while hiding the credit that offsets them — the cashier saw "₹602 due",
+	# collected, and the payment settled ₹2, with no explanation on screen
+	# (2026-08-19 bug report). Showing the credit row makes the net obvious
+	# before any money changes hands.
+	filters = {party_field: party, "docstatus": 1, "outstanding_amount": ("!=", 0)}
 	if company:
 		filters["company"] = company
 
@@ -5086,15 +6558,20 @@ def save_purchase_return(return_json: str, submit: int = 1):
 		frappe.throw(_("Please add at least one item."))
 
 	company = data.get("company") or frappe.defaults.get_user_default("Company")
-	warehouse = data.get("warehouse") or frappe.db.get_value(
-		"Warehouse", {"is_group": 0, "disabled": 0, "company": company}, "name"
-	)
+	warehouse = data.get("warehouse") or default_selling_warehouse(company)
 
 	doc = frappe.new_doc("Purchase Invoice")
 	doc.supplier = supplier
 	doc.company = company
 	doc.is_return = 1
 	doc.posting_date = data.get("posting_date") or frappe.utils.today()
+	# Without this flag ERPNext's validate_posting_time() silently rewrites
+	# posting_date back to TODAY (transaction_base.py) — so a backdated bill
+	# quietly re-dated itself, and worse, due_date stayed derived from the
+	# date the operator actually picked, landing BEFORE the reset posting
+	# date and throwing "Due Date cannot be before Posting Date" mid-sale
+	# (2026-08-19 bug report).
+	doc.set_posting_time = 1
 	doc.due_date = doc.posting_date
 	doc.buying_price_list = data.get("buying_price_list") or (
 		frappe.db.get_single_value("Buying Settings", "buying_price_list") or "Standard Buying"
@@ -5104,6 +6581,12 @@ def save_purchase_return(return_json: str, submit: int = 1):
 	doc.set_warehouse = warehouse
 	if data.get("return_against"):
 		doc.return_against = data.get("return_against")
+		# See the matching comment in save_sales_return — ERPNext's default
+		# (1) tracks the debit note's own outstanding separately instead of
+		# reducing the original purchase bill's, which is what actually
+		# applies the credit (2026-08-19 fix, same request/bug applied to
+		# the buying side for consistency).
+		doc.update_outstanding_for_self = 0
 	if data.get("place_of_supply"):
 		doc.place_of_supply = data.get("place_of_supply")
 	if data.get("reason"):
@@ -5165,13 +6648,70 @@ def get_returnable_invoices(customer: str):
 	rows = frappe.get_all(
 		"Sales Invoice",
 		filters=filters,
-		fields=["name", "posting_date", "grand_total"],
+		fields=["name", "posting_date", "grand_total", "santu_bill_no"],
 		order_by="posting_date desc, name desc",
 		limit_page_length=50,
+	)
+	# `bill_no` is what the customer is holding — the Return Against picker
+	# used to list docnames, so the number on screen never matched the number
+	# printed on the slip (2026-08-19 bug report).
+	return [
+		{
+			"name": r.name,
+			"bill_no": format_bill_no(r.santu_bill_no),
+			"posting_date": str(r.posting_date) if r.posting_date else None,
+			"grand_total": flt(r.grand_total),
+		}
+		for r in rows
+	]
+
+
+@frappe.whitelist()
+def search_returnable_invoices(query: str = None):
+	"""Bills a return can be booked against, found by bill number OR party.
+
+	One box for both (2026-08-18 direct request: "both 1 and 2"). A walk-in
+	cash sale has no useful party name to search by, so the bill number is
+	the only way back to it; a regular customer is usually remembered by
+	name, not by number. Searching both off one box means the counter never
+	has to know which kind of sale it was.
+	"""
+	company = frappe.defaults.get_user_default("Company")
+	conditions = ["si.docstatus = 1", "si.is_return = 0"]
+	values = {}
+	if company:
+		conditions.append("si.company = %(company)s")
+		values["company"] = company
+
+	q = (query or "").strip()
+	if q:
+		# santu_bill_no is the number actually PRINTED on the customer's copy,
+		# so it is the one they read back at the counter — searching only the
+		# docname meant typing "0128" off a real bill found nothing at all
+		# (2026-08-19 bug report). Leading zeros are stripped before matching
+		# because the slip prints them and the column does not.
+		conditions.append(
+			"(si.name like %(q)s or si.customer like %(q)s or cast(si.santu_bill_no as char) like %(qnum)s)"
+		)
+		values["q"] = "%" + q + "%"
+		values["qnum"] = "%" + q.lstrip("0") + "%" if q.strip("0") else "%" + q + "%"
+
+	rows = frappe.db.sql(
+		"""
+		select si.name, si.customer, si.posting_date, si.grand_total, si.santu_bill_no
+		from `tabSales Invoice` si
+		where {where}
+		order by si.posting_date desc, si.name desc
+		limit 30
+		""".format(where=" and ".join(conditions)),
+		values,
+		as_dict=True,
 	)
 	return [
 		{
 			"name": r.name,
+			"bill_no": format_bill_no(r.santu_bill_no),
+			"customer": r.customer,
 			"posting_date": str(r.posting_date) if r.posting_date else None,
 			"grand_total": flt(r.grand_total),
 		}
@@ -5264,9 +6804,7 @@ def save_sales_return(return_json: str, submit: int = 1):
 		frappe.throw(_("Please add at least one item."))
 
 	company = data.get("company") or frappe.defaults.get_user_default("Company")
-	warehouse = data.get("warehouse") or frappe.db.get_value(
-		"Warehouse", {"is_group": 0, "disabled": 0, "company": company}, "name"
-	)
+	warehouse = data.get("warehouse") or default_selling_warehouse(company)
 
 	doc = frappe.new_doc("Sales Invoice")
 	# Same reason as save_sale_invoice: a default POS Profile would replace
@@ -5276,6 +6814,13 @@ def save_sales_return(return_json: str, submit: int = 1):
 	doc.company = company
 	doc.is_return = 1
 	doc.posting_date = data.get("posting_date") or frappe.utils.today()
+	# Without this flag ERPNext's validate_posting_time() silently rewrites
+	# posting_date back to TODAY (transaction_base.py) — so a backdated bill
+	# quietly re-dated itself, and worse, due_date stayed derived from the
+	# date the operator actually picked, landing BEFORE the reset posting
+	# date and throwing "Due Date cannot be before Posting Date" mid-sale
+	# (2026-08-19 bug report).
+	doc.set_posting_time = 1
 	doc.due_date = doc.posting_date
 	doc.selling_price_list = data.get("selling_price_list") or (
 		frappe.db.get_single_value("Selling Settings", "selling_price_list") or "Standard Selling"
@@ -5286,6 +6831,16 @@ def save_sales_return(return_json: str, submit: int = 1):
 	doc.set_warehouse = warehouse
 	if data.get("return_against"):
 		doc.return_against = data.get("return_against")
+		# ERPNext's default here is 1 — the credit note tracks its OWN
+		# outstanding separately instead of reducing the original bill's,
+		# which is why every return used to pop up "Credit Note is made
+		# against SINV-... uncheck 'Update Outstanding for Self'... use
+		# Payment Reconciliation to reconcile... later" and then just sit
+		# there until someone did that by hand (2026-08-19 bug report:
+		# "return me ye msg aa raha hai, bhai refund kr do naa" — the
+		# credit should apply itself, not wait for a manual reconciliation
+		# step nobody at the counter is going to go looking for).
+		doc.update_outstanding_for_self = 0
 	if data.get("place_of_supply"):
 		doc.place_of_supply = data.get("place_of_supply")
 	if data.get("reason"):
@@ -5333,6 +6888,47 @@ def save_sales_return(return_json: str, submit: int = 1):
 
 
 @frappe.whitelist()
+def create_return_refund_payment(doctype: str, return_name: str, mode_of_payment: str = "Cash"):
+	"""Settle a return/credit note that was actually paid back in cash on
+	the spot, instead of left as account credit.
+
+	A submitted return with `update_outstanding_for_self=0` nets against
+	the original bill automatically (see save_sales_return above), but if
+	that original bill was already fully paid there's nothing left to net
+	against — the whole credit sits on the return itself as a negative
+	outstanding ("shop owes the customer ₹X") until it's actually settled.
+	If the counter handed cash back right away, that's real money that
+	already moved and needs a real Payment Entry, or Parties keeps showing
+	an amount owed that isn't true anymore (2026-08-19 bug report: did a
+	real return for a real customer, handed the refund over immediately,
+	and Parties still showed the old owed amount — because nothing had
+	told the system the refund happened).
+
+	erpnext's own get_payment_entry() figures out the correct direction —
+	Pay for a Sales Invoice return (money leaving the shop), Receive for a
+	Purchase Invoice return (a supplier owing money back) — so this is a
+	thin wrapper around that, not a reimplementation.
+	"""
+	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
+
+	if doctype not in ("Sales Invoice", "Purchase Invoice"):
+		frappe.throw(_("Refund settlement is only supported for Sales/Purchase returns."))
+	if not frappe.db.exists(doctype, return_name):
+		frappe.throw(_("{0} not found").format(return_name))
+	if not frappe.db.get_value(doctype, return_name, "is_return"):
+		frappe.throw(_("{0} is not a return.").format(return_name))
+
+	pe = get_payment_entry(doctype, return_name)
+	pe.mode_of_payment = mode_of_payment or "Cash"
+	pe.reference_no = f"Refund-{return_name}"
+	pe.reference_date = frappe.utils.today()
+	pe.insert(ignore_permissions=True)
+	pe.submit()
+	frappe.db.commit()
+	return {"name": pe.name, "paid_amount": pe.paid_amount}
+
+
+@frappe.whitelist()
 def save_delivery_note(challan_json: str, submit: int = 1):
 	"""Create (and by default submit) a real Delivery Note from the quick
 	Delivery Challan screen (2026-08-15 direct request: "make the ui of
@@ -5367,9 +6963,7 @@ def save_delivery_note(challan_json: str, submit: int = 1):
 
 	company = data.get("company") or frappe.defaults.get_user_default("Company")
 	posting_date = data.get("posting_date") or frappe.utils.today()
-	warehouse = data.get("warehouse") or frappe.db.get_value(
-		"Warehouse", {"is_group": 0, "disabled": 0, "company": company}, "name"
-	)
+	warehouse = data.get("warehouse") or default_selling_warehouse(company)
 	if not warehouse:
 		frappe.throw(_("No active warehouse found. Set one up in Admin Mode first."))
 
@@ -5547,6 +7141,18 @@ def _validate_credit_customer(customer_name: str, outstanding: float):
 				"Walk-in Customer cannot have an outstanding balance of {0}. "
 				"Select or add a proper customer for a credit/baaki sale."
 			).format(frappe.utils.fmt_money(outstanding, currency="INR"))
+		)
+
+	# A party auto-created from nothing but a phone number ("Customer 6780")
+	# is a placeholder — no real name, no village, nobody you could actually
+	# go and collect from. Cash sales to them are fine; baaki is not, until
+	# someone fills the details in (2026-08-16 direct request).
+	if re.match(r"^customer\s+\d+$", (cust.customer_name or "").strip(), re.IGNORECASE):
+		frappe.throw(
+			_(
+				"{0} was created from a phone number alone, so {1} cannot be left as baaki. "
+				"Open the party and fill in their name and village first."
+			).format(cust.customer_name, frappe.utils.fmt_money(outstanding, currency="INR"))
 		)
 
 	if not cust.mobile_no and not cust.customer_primary_address:
@@ -5885,6 +7491,118 @@ def _guess_supplier(text: str):
 	return best_name if best_score >= _SUPPLIER_MATCH_THRESHOLD else None
 
 
+_GSTIN_RE = re.compile(r"\b\d{2}[A-Z]{5}\d{4}[A-Z]\d[Z][A-Z\d]\b")
+
+
+def _extract_supplier_from_bill(text: str):
+	"""Seller's own name + GSTIN, read off the bill itself.
+
+	A GST invoice always prints both parties' GSTINs; the shop's own is
+	known, so whatever is left is the supplier's. This matters beyond
+	filling in a name: india_compliance refuses to put GST on a purchase
+	from a supplier with no GSTIN on file, so a bill that plainly shows
+	the seller is registered would still save with zero tax — and the
+	counter would be asked to type a GSTIN that was printed on the paper
+	all along (2026-08-18: "SUPPLIER DETAIL NH JAYEGA PURCHASE ME").
+	"""
+	company_gstin = (
+		frappe.db.get_value("Company", frappe.defaults.get_user_default("Company"), "gstin") or ""
+	).upper()
+
+	lines = text.splitlines()
+	gstin = None
+	gstin_line = None
+	for idx, line in enumerate(lines):
+		for found in _GSTIN_RE.findall(line.upper()):
+			if found != company_gstin:
+				gstin, gstin_line = found, idx
+				break
+		if gstin:
+			break
+
+	if not gstin:
+		return None
+
+	# The seller's block runs from their name down to their GSTIN line, so
+	# walk up to the top of that unbroken run. Layout-mode extraction merges
+	# the invoice-details column onto the same physical lines, hence the
+	# split on runs of 2+ spaces to keep only the left-hand column.
+	start = gstin_line
+	while start > 0 and lines[start - 1].strip():
+		start -= 1
+
+	# Boilerplate that can head the same block on continuation pages, where
+	# the seller's name is not reprinted — better to return no name (and let
+	# the GSTIN alone identify an existing supplier) than to name a supplier
+	# "Tax Invoice".
+	skip_prefixes = (
+		"gstin",
+		"state name",
+		"place of supply",
+		"tax invoice",
+		"consignee",
+		"buyer",
+		"irn",
+		"ack no",
+		"ack date",
+		"e-way bill",
+	)
+
+	name = ""
+	for line in lines[start:gstin_line]:
+		candidate = re.split(r"\s{2,}", line.strip())[0].strip()
+		if not candidate or candidate.lower().startswith(skip_prefixes):
+			continue
+		# A digit-led line is an address or a number, never the shop's name.
+		if candidate[0].isdigit():
+			continue
+		name = candidate
+		break
+
+	return {"supplier_name": name, "gstin": gstin}
+
+
+def _resolve_bill_supplier(text: str):
+	"""The Supplier this bill is from, created or corrected as needed.
+
+	Matching by GSTIN first is what makes this reliable — the same shop can
+	be written "JANTA CEMENT STORE(JCS)" on one bill and "Janta Cement" on
+	the next, but the GSTIN is the same on both.
+	"""
+	details = _extract_supplier_from_bill(text)
+	if not details:
+		return _guess_supplier(text)
+
+	gstin = details["gstin"]
+	supplier = frappe.db.get_value("Supplier", {"gstin": gstin}, "name")
+	if not supplier:
+		supplier = _guess_supplier(text)
+
+	if supplier:
+		# Known supplier, but possibly missing the GSTIN that would let GST
+		# actually post — fill it in from the bill rather than leaving the
+		# purchase to silently save untaxed.
+		if not frappe.db.get_value("Supplier", supplier, "gstin"):
+			frappe.db.set_value("Supplier", supplier, "gstin", gstin)
+			frappe.db.set_value("Supplier", supplier, "gst_category", "Registered Regular")
+		return supplier
+
+	# GSTIN present but the name wasn't reprinted on this page (continuation
+	# pages do this). Nothing safe to create from — leave it for the operator
+	# rather than inventing a supplier called after a page header.
+	if not details["supplier_name"]:
+		return None
+
+	doc = frappe.new_doc("Supplier")
+	doc.supplier_name = title_case_a_name(details["supplier_name"])
+	doc.supplier_group = frappe.db.get_value("Supplier Group", {}, "name") or "All Supplier Groups"
+	doc.supplier_type = "Company"
+	doc.gstin = gstin
+	doc.gst_category = "Registered Regular"
+	doc.insert(ignore_permissions=True)
+	return doc.name
+
+
 def _guess_bill_no(text: str):
 	"""Two-column invoice layouts (confirmed live on a real GST invoice)
 	put the label ("Invoice No.") and its value on the SAME line only
@@ -6044,29 +7762,49 @@ def _parse_gst_layout_row(line: str):
 			fixed_cols.append(col)
 	cols = fixed_cols
 
-	if len(cols) < 7:
+	if len(cols) < 6:
 		return None
 
-	hsn = cols[-6]
-	if not re.fullmatch(r"\d{4,8}", hsn):
+	# Find the HSN column by its pattern (4-8 digits) scanning from the
+	# right — some bills insert an extra "18 %" GST Rate column between
+	# HSN and Quantity, shifting the fixed-index assumption by one.
+	hsn_idx = None
+	for i in range(len(cols) - 1, 0, -1):
+		if re.fullmatch(r"\d{4,8}", cols[i]):
+			hsn_idx = i
+			break
+	if hsn_idx is None:
 		return None
 
-	qty_match = re.match(r"([\d.]+)", cols[-5])
+	# Columns to the right of HSN: qty, [rate_incl,] rate, per, amount.
+	right = cols[hsn_idx + 1:]
+	if len(right) < 3:
+		return None
+
+	# Skip any "N %" GST-rate token that may appear right after HSN.
+	if right and re.fullmatch(r"\d{1,3}\s*%", right[0]):
+		right = right[1:]
+	if len(right) < 3:
+		return None
+
+	qty_match = re.match(r"([\d.]+)", right[0])
 	if not qty_match:
 		return None
 
 	try:
 		qty = flt(qty_match.group(1))
-		rate = flt(cols[-3].replace(",", ""))
-		amount = flt(cols[-1].replace(",", ""))
-	except ValueError:
+		# right[-1]=amount, right[-2]=per-unit, right[-3]=net-rate
+		amount = flt(right[-1].replace(",", ""))
+		rate = flt(right[-3].replace(",", ""))
+	except (ValueError, IndexError):
 		return None
 	if qty <= 0 or rate <= 0:
 		return None
 	if amount > 0 and not (0.5 <= amount / (qty * rate) <= 2.0):
 		return None
 
-	desc = re.sub(r"^\d+\s*", "", " ".join(cols[:-6])).strip()
+	hsn = cols[hsn_idx]
+	desc = re.sub(r"^\d+\s*", "", " ".join(cols[:hsn_idx])).strip()
 	if len(desc) < 3 or not re.search(r"[A-Za-z]{3,}", desc):
 		return None
 
@@ -6141,6 +7879,48 @@ def _guess_item_group(description: str) -> str:
 	)
 
 
+# A name like "FEVICOL HEATX NF 24X200ML" packs two facts together: the
+# shop counts stock by the individual 200ml bottle, but buys it 24 at a
+# time in one carton (2026-08-17 direct request: "iska ye aise add ki
+# 200ml ka 24 pcs, aise hi same for all"). Without this, a bill line
+# quantity of "3" (three cartons) posted straight to stock as 3 pieces —
+# short by a factor of 24 the moment anyone actually counted the shelf.
+_PACK_SIZE_RE = re.compile(
+	r"\b(\d{1,3})\s*[xX×]\s*\d+(?:\.\d+)?\s*(ML|ml|KG|kg|GM|gm|G|g|L|l|LTR|ltr|GRAM|GRAMS|gram|grams)\b"
+)
+
+
+def _detect_pack_size(text: str):
+	"""Pack count from a description like '24X200ML' (24), or None if the
+	name doesn't carry one — most items don't, and are left exactly as
+	they already work (plain Nos, no Box at all)."""
+	if not text:
+		return None
+	m = _PACK_SIZE_RE.search(text)
+	if not m:
+		return None
+	n = int(m.group(1))
+	# 1xSIZE isn't a pack, and anything past ~200 is almost certainly the
+	# regex catching a different number in the text, not a real carton size.
+	return n if 1 < n <= 200 else None
+
+
+def _ensure_pack_uom(item_code: str, pack_qty: int):
+	"""Give an already-saved Item a 'Box' = pack_qty conversion, if it
+	doesn't have one yet. Idempotent — safe to call on every bill line
+	that mentions this item, not just the first.
+	"""
+	if not frappe.db.exists("UOM", "Box"):
+		frappe.get_doc({"doctype": "UOM", "uom_name": "Box"}).insert(ignore_permissions=True)
+
+	if frappe.db.exists("UOM Conversion Detail", {"parent": item_code, "uom": "Box"}):
+		return
+
+	item = frappe.get_doc("Item", item_code)
+	item.append("uoms", {"uom": "Box", "conversion_factor": pack_qty})
+	item.save(ignore_permissions=True)
+
+
 def _auto_create_stock_item(description: str, hsn: str, rate: float):
 	"""Create a real, stock-tracked Item for a bill line that didn't match
 	anything already in the catalog — 2026-08-02 direct request: "agar new
@@ -6171,21 +7951,35 @@ def _auto_create_stock_item(description: str, hsn: str, rate: float):
 		suffix += 1
 		item_code = f"{slug[:115]}-{suffix}"
 
+	pack_qty = _detect_pack_size(description)
+
 	try:
 		item = frappe.new_doc("Item")
 		item.item_code = item_code
 		item.item_name = description[:140]
 		item.item_group = _guess_item_group(description)
+		# The shop counts and sells this by the individual piece — stock_uom
+		# stays Nos regardless of whether it was bought one at a time or in
+		# a labelled carton (2026-08-17: "200ml ka 24 pcs, same for all").
 		item.stock_uom = "Nos"
 		item.is_stock_item = 1
 		item.gst_hsn_code = hsn
+		if pack_qty:
+			if not frappe.db.exists("UOM", "Box"):
+				frappe.get_doc({"doctype": "UOM", "uom_name": "Box"}).insert(ignore_permissions=True)
+			item.append("uoms", {"uom": "Box", "conversion_factor": pack_qty})
 		item.insert(ignore_permissions=True)
 
 		item_price = frappe.new_doc("Item Price")
 		item_price.item_code = item.item_code
 		item_price.price_list = "Standard Buying"
 		item_price.buying = 1
-		item_price.price_list_rate = flt(rate)
+		# `rate` is what the bill actually charged for the line — a carton's
+		# price when this item is bought by the carton, not one piece's.
+		# The Item's own reference price has to stay per-piece to match
+		# stock_uom, or it would silently claim a 200ml bottle costs what a
+		# 24-bottle case does.
+		item_price.price_list_rate = flt(rate) / pack_qty if pack_qty else flt(rate)
 		item_price.insert(ignore_permissions=True)
 
 		return item.item_code
@@ -6206,7 +8000,10 @@ def _parse_one_bill(text: str) -> dict:
 	"""
 	label_text = _normalize_whitespace(text)
 
-	supplier = _guess_supplier(label_text)
+	# Raw (not whitespace-normalised) text: the seller's name is separated
+	# from the invoice-details column by a run of spaces, which normalising
+	# would collapse — taking "JANTA CEMENT STORE(JCS)" down with it.
+	supplier = _resolve_bill_supplier(text)
 	bill_no = _guess_bill_no(label_text)
 	bill_date = _guess_bill_date(label_text)
 	item_rows = _guess_item_rows(text)
@@ -6245,6 +8042,27 @@ def _parse_one_bill(text: str) -> dict:
 
 	matched_count = sum(1 for row in item_rows if row["item_code"]) - len(auto_created)
 
+	# A description like "24X200ML" on a row means the printed qty/rate are
+	# per-carton, not per-piece (2026-08-17: "200ml ka 24 pcs, same for
+	# all") — the Purchase screen needs to show this row in "Box" so
+	# ERPNext's own qty × conversion_factor lands the right piece count in
+	# stock. Runs for every row, not just freshly auto-created ones: an
+	# item this shop already stocks (matched, not auto-created) gets the
+	# same Box conversion backfilled onto it here if it's missing one.
+	for row in item_rows:
+		if not row["item_code"]:
+			continue
+		pack_qty = _detect_pack_size(row["description"])
+		if not pack_qty:
+			row["uom"] = None
+			continue
+		try:
+			_ensure_pack_uom(row["item_code"], pack_qty)
+			row["uom"] = "Box"
+		except Exception:
+			frappe.log_error(title="Upload Supplier Bill: pack UOM backfill failed", message=frappe.get_traceback())
+			row["uom"] = None
+
 	return {
 		"supplier": supplier,
 		"bill_no": bill_no,
@@ -6262,6 +8080,7 @@ def _parse_one_bill(text: str) -> dict:
 				"qty": row["qty"],
 				"rate": row["rate"],
 				"hsn": row.get("hsn"),
+				"uom": row.get("uom"),
 			}
 			for row in item_rows
 		],
@@ -6343,7 +8162,7 @@ def create_purchase_invoices_from_bills(bills):
 	if isinstance(bills, str):
 		bills = json.loads(bills)
 
-	warehouse = frappe.db.get_value("Warehouse", {"is_group": 0, "disabled": 0}, "name")
+	warehouse = default_selling_warehouse()
 
 	results = []
 	for bill in bills:
@@ -6576,6 +8395,15 @@ def update_party_details(
 		# without it doesn't blow up the whole save.
 		if frappe.get_meta(party_type).has_field("gstin"):
 			frappe.db.set_value(party_type, party, "gstin", gstin or None)
+			# A GSTIN being entered at all is what makes this party
+			# GST-registered — without also flipping gst_category, GST tax
+			# templates keep resolving to None for a party still marked
+			# "Unregistered" and every purchase from them silently posts
+			# with zero tax regardless of the GSTIN now on file.
+			if gstin and frappe.get_meta(party_type).has_field("gst_category"):
+				current_category = frappe.db.get_value(party_type, party, "gst_category")
+				if current_category in (None, "", "Unregistered"):
+					frappe.db.set_value(party_type, party, "gst_category", "Registered Regular")
 
 	# address_line1, city and pincode can each arrive independently — the
 	# Sale screen's inline Village/Pincode fields are edited separately from
@@ -6584,14 +8412,24 @@ def update_party_details(
 	if address is not None or city is not None or pincode is not None:
 		address_field = "customer_primary_address" if party_type == "Customer" else "supplier_primary_address"
 		address_name = frappe.db.get_value(party_type, party, address_field)
+
+		# A village on its own is enough to know the pincode, and the pincode
+		# is enough to know the district — so the counter never types either of
+		# those twice, and nothing falls back to this shop's own district.
+		if city and not pincode:
+			pincode = (_village_lookup(city) or {}).get("pincode") or pincode
+		district = _district_for_pincode(pincode)
+
 		if address_name and frappe.db.exists("Address", address_name):
 			values = {}
 			if address is not None:
 				values["address_line1"] = address or None
 			if city is not None:
-				values["city"] = city or "Saran"
+				values["city"] = city or district or party
 			if pincode is not None:
 				values["pincode"] = pincode or None
+			if district:
+				values["address_line2"] = f"{district} District"
 			if values:
 				frappe.db.set_value("Address", address_name, values)
 		elif address or city or pincode:
@@ -6604,7 +8442,8 @@ def update_party_details(
 			doc.address_title = party
 			doc.address_type = "Billing"
 			doc.address_line1 = address or party
-			doc.city = city or "Saran"
+			doc.city = city or district or party
+			doc.address_line2 = f"{district} District" if district else None
 			doc.pincode = pincode or None
 			doc.country = "India"
 			doc.append("links", {"link_doctype": party_type, "link_name": party})
@@ -6625,12 +8464,12 @@ def update_party_details(
 def get_add_item_init():
 	"""Defaults for the Add Item screen.
 
-	UOMs are narrowed to the ones this shop actually sells in. ERPNext ships
-	264 of them (CUBIC METER, DAY, DOZEN…), and making someone scroll that
-	list to find "Nos" is friction for no gain — setup.install.create_hardware_uoms
-	seeds the six real ones, so those lead and anything already used by an
-	existing item follows. Nothing is deleted; the full list is still there
-	for whoever needs it.
+	The full UOM list is offered (2026-08-19 direct request: "yaha units ke
+	sare units do") — ERPNext ships 264 of them, so scrolling past all of
+	them to find something uncommon is real friction. The fix is ordering,
+	not hiding: setup.install.create_hardware_uoms's six real units plus
+	anything already used by an existing item lead the list, and everything
+	else this shop has never touched follows underneath, alphabetically.
 	"""
 	company = frappe.defaults.get_user_default("Company")
 	preferred = ["Nos", "Litre", "Box", "Bundle", "Packet", "Can"]
@@ -6638,10 +8477,14 @@ def get_add_item_init():
 	in_use = frappe.get_all("Item", filters={"disabled": 0}, pluck="stock_uom", distinct=True)
 
 	uoms = [u for u in preferred if u in existing]
-	uoms += sorted({u for u in in_use if u and u not in uoms})
+	uoms += sorted({u for u in in_use if u and u not in uoms and u in existing})
+	uoms += sorted(u for u in existing if u not in uoms)
 
 	groups = frappe.get_all(
 		"Item Group", filters={"is_group": 0}, fields=["name"], order_by="name asc", pluck="name"
+	)
+	warehouses = frappe.get_all(
+		"Warehouse", filters={"is_group": 0, "company": company}, pluck="name", order_by="name asc"
 	)
 	return {
 		"company": company,
@@ -6649,6 +8492,17 @@ def get_add_item_init():
 		"default_uom": "Nos" if "Nos" in uoms else (uoms[0] if uoms else None),
 		"item_groups": groups,
 		"default_group": "Products" if "Products" in groups else (groups[0] if groups else None),
+		# Everything the rebuilt Add Item screen needs to fill its dropdowns
+		# in one round trip (2026-08-18) — brands, warehouses and suppliers
+		# all already exist as real doctypes, so these are read, never
+		# invented, and nothing here creates a duplicate master.
+		"brands": frappe.get_all("Brand", pluck="name", order_by="name asc"),
+		"warehouses": warehouses,
+		"default_warehouse": default_selling_warehouse(company),
+		"suppliers": frappe.get_all(
+			"Supplier", filters={"disabled": 0}, pluck="name", order_by="name asc", limit_page_length=500
+		),
+		"gst_rates": ["0", "5", "12", "18", "28"],
 	}
 
 @frappe.whitelist()
@@ -6678,22 +8532,46 @@ def save_item(item_json: str):
 
 	# Item is named by item_code here. The screen can supply one via "Assign
 	# Code"; otherwise it is slugged from the name, de-duplicated on collision.
-	item_code = (data.get("item_code") or "").strip()
+	# A code typed by hand is NOT silently de-duplicated — that would quietly
+	# create "ABC-2" when someone believed they were reusing "ABC" (2026-08-18
+	# spec: "Validate duplicate SKU").
+	typed_code = (data.get("item_code") or "").strip()
+	if typed_code and frappe.db.exists("Item", typed_code):
+		frappe.throw(_("Item code {0} is already used. Pick a different one.").format(typed_code))
+	item_code = typed_code
 	if not item_code:
 		item_code = re.sub(r"[^A-Za-z0-9]+", "-", item_name).strip("-").upper() or "ITEM"
-	base = item_code
-	suffix = 1
-	while frappe.db.exists("Item", item_code):
-		suffix += 1
-		item_code = f"{base}-{suffix}"
+		base = item_code
+		suffix = 1
+		while frappe.db.exists("Item", item_code):
+			suffix += 1
+			item_code = f"{base}-{suffix}"
 
 	company = data.get("company") or frappe.defaults.get_user_default("Company")
 	opening_qty = flt(data.get("opening_qty"))
 	sale_price = flt(data.get("sale_price"))
 	purchase_price = flt(data.get("purchase_price"))
+	mrp = flt(data.get("mrp"))
+	wholesale_price = flt(data.get("wholesale_price"))
+	min_selling_price = flt(data.get("min_selling_price"))
+	gst_applicable = cint(data.get("gst_applicable"))
+	track_batches = cint(data.get("track_batches")) and not is_service
 	# "At Price" values the opening stock; falls back to the purchase price,
 	# which is what that stock actually cost.
 	at_price = flt(data.get("at_price")) or purchase_price
+
+	for label, value in (
+		(_("Sale Price"), sale_price),
+		(_("Purchase Price"), purchase_price),
+		(_("MRP"), mrp),
+		(_("Wholesale Price"), wholesale_price),
+		(_("Minimum Selling Price"), min_selling_price),
+		(_("Opening Quantity"), opening_qty),
+	):
+		if value < 0:
+			frappe.throw(_("{0} cannot be negative.").format(label))
+	if min_selling_price and sale_price and min_selling_price > sale_price:
+		frappe.throw(_("Minimum Selling Price cannot be more than the Sale Price."))
 
 	item = frappe.new_doc("Item")
 	item.item_code = item_code
@@ -6702,31 +8580,96 @@ def save_item(item_json: str):
 	item.stock_uom = data.get("uom") or "Nos"
 	item.is_stock_item = 0 if is_service else 1
 	item.include_item_in_manufacturing = 0
-	if data.get("gst_hsn_code"):
+	item.disabled = 0 if cint(data.get("is_active", 1)) else 1
+	if data.get("brand"):
+		item.brand = data.get("brand")
+	if data.get("description"):
+		item.description = data.get("description")
+	if data.get("sub_category"):
+		item.custom_sub_category = data.get("sub_category")
+	if data.get("image"):
+		item.image = data.get("image")
+	item.custom_mrp = mrp
+	item.custom_min_selling_price = min_selling_price
+	item.custom_gst_applicable = gst_applicable
+	if track_batches:
+		item.has_batch_no = 1
+		item.create_new_batch = 1
+	# HSN belongs to GST classification and nothing else. It is only forced
+	# when this item is actually sold under GST — a non-GST item is saved
+	# with no HSN at all rather than borrowing the catalogue's most-used one
+	# (2026-08-18 spec: "Do not force an HSN", "Barcode and HSN are
+	# completely different things"). The catalogue fallback is kept for the
+	# GST case, where india_compliance does require the field.
+	if gst_applicable:
+		item.gst_hsn_code = data.get("gst_hsn_code") or _default_hsn_code()
+	elif data.get("gst_hsn_code"):
 		item.gst_hsn_code = data.get("gst_hsn_code")
-	if data.get("barcode"):
-		item.append("barcodes", {"barcode": data.get("barcode")})
+
+	# Barcodes: one primary plus any alternates, each its own row on Item's
+	# native child table. Never derived from HSN or the item code.
+	seen_barcodes = set()
+	for entry in [{"barcode": data.get("barcode"), "barcode_type": data.get("barcode_type")}] + (
+		data.get("alternate_barcodes") or []
+	):
+		code = (entry.get("barcode") or "").strip() if isinstance(entry, dict) else str(entry or "").strip()
+		if not code or code in seen_barcodes:
+			continue
+		existing = frappe.db.get_value("Item Barcode", {"barcode": code}, "parent")
+		if existing:
+			frappe.throw(_("Barcode {0} already belongs to item {1}.").format(code, existing))
+		seen_barcodes.add(code)
+		row = {"barcode": code}
+		btype = entry.get("barcode_type") if isinstance(entry, dict) else None
+		if btype:
+			row["barcode_type"] = btype
+		item.append("barcodes", row)
 	if data.get("location"):
 		item.custom_rack_number = data.get("location")
+
+	# A name like "FEVICOL HEATX NF 24X200ML" says this comes 24 to a
+	# carton — same pack detection Upload Bill uses (2026-08-17: "200ml ka
+	# 24 pcs, same for all"), so typing that name here also sets up "Box"
+	# as a real purchasable unit worth 24 of whatever stock_uom already is.
+	pack_qty = _detect_pack_size(item_name) if not is_service else None
+	if pack_qty:
+		if not frappe.db.exists("UOM", "Box"):
+			frappe.get_doc({"doctype": "UOM", "uom_name": "Box"}).insert(ignore_permissions=True)
+		item.append("uoms", {"uom": "Box", "conversion_factor": pack_qty})
+
+	# Default supplier and this supplier's own code for the item — both
+	# ERPNext natives, so an existing Supplier is linked, never duplicated
+	# (2026-08-18 spec: "Do not create duplicate suppliers").
+	default_supplier = data.get("default_supplier")
+	if default_supplier and frappe.db.exists("Supplier", default_supplier):
+		item.append("item_defaults", {"company": company, "default_supplier": default_supplier})
+		if data.get("supplier_item_code"):
+			item.append(
+				"supplier_items",
+				{"supplier": default_supplier, "supplier_part_no": data.get("supplier_item_code")},
+			)
+
 	item.insert(ignore_permissions=True)
 
-	def _add_price(rate, buying):
+	def _add_price(rate, price_list, buying):
 		if rate <= 0:
 			return
 		price = frappe.new_doc("Item Price")
 		price.item_code = item.item_code
-		price.price_list = "Standard Buying" if buying else "Standard Selling"
+		price.price_list = price_list
 		price.buying = 1 if buying else 0
 		price.selling = 0 if buying else 1
 		price.price_list_rate = rate
 		price.insert(ignore_permissions=True)
 
-	_add_price(sale_price, buying=False)
-	_add_price(purchase_price, buying=True)
+	_add_price(sale_price, "Standard Selling", buying=False)
+	_add_price(purchase_price, "Standard Buying", buying=True)
+	# Wholesale used to be collected by the screen and then dropped on the
+	# floor — it had no Price List to live in (fixed 2026-08-18).
+	if wholesale_price > 0 and frappe.db.exists("Price List", "Wholesale"):
+		_add_price(wholesale_price, "Wholesale", buying=False)
 
-	warehouse = frappe.db.get_value(
-		"Warehouse", {"is_group": 0, "disabled": 0, "company": company}, "name"
-	)
+	warehouse = data.get("warehouse") or default_selling_warehouse(company)
 
 	# "Min Stock To Maintain" is ERPNext's reorder level — the same number
 	# get_low_stock_items() already reads when deciding what to warn about.
@@ -6743,6 +8686,41 @@ def save_item(item_json: str):
 		)
 		item.save(ignore_permissions=True)
 
+	# A batch-tracked item's opening stock has to land IN a batch, otherwise
+	# ERPNext rejects the receipt outright. The batch carries its own MRP and
+	# purchase rate so a later delivery at a different cost becomes a second
+	# batch rather than overwriting this one (2026-08-18 spec: "Do not
+	# overwrite old batch pricing when a new purchase comes in").
+	batch_no = None
+	if track_batches and opening_qty > 0:
+		typed_batch = (data.get("batch_no") or "").strip()
+		if typed_batch and frappe.db.exists("Batch", typed_batch):
+			frappe.throw(_("Batch {0} already exists.").format(typed_batch))
+		batch = frappe.new_doc("Batch")
+		batch.item = item.item_code
+		if typed_batch:
+			batch.batch_id = typed_batch
+		if data.get("batch_expiry"):
+			batch.expiry_date = data.get("batch_expiry")
+		if data.get("supplier_for_batch") and frappe.db.exists("Supplier", data.get("supplier_for_batch")):
+			batch.supplier = data.get("supplier_for_batch")
+		batch.custom_mrp = flt(data.get("batch_mrp")) or mrp
+		batch.custom_purchase_rate = flt(data.get("batch_purchase_rate")) or at_price
+		batch.insert(ignore_permissions=True)
+		batch_no = batch.name
+		# A batch can price itself differently from the item master — that is
+		# the whole point of tracking batches. Item Price carries batch_no
+		# natively, so this needs no parallel structure.
+		batch_selling = flt(data.get("batch_selling_rate"))
+		if batch_selling > 0:
+			bp = frappe.new_doc("Item Price")
+			bp.item_code = item.item_code
+			bp.price_list = "Standard Selling"
+			bp.selling = 1
+			bp.batch_no = batch_no
+			bp.price_list_rate = batch_selling
+			bp.insert(ignore_permissions=True)
+
 	opening_posted = False
 	if opening_qty > 0 and warehouse and not is_service:
 		# Same Material Receipt path receive_stock_simple uses — a real stock
@@ -6754,24 +8732,37 @@ def save_item(item_json: str):
 		if data.get("as_of_date"):
 			entry.set_posting_time = 1
 			entry.posting_date = data.get("as_of_date")
-		entry.append(
-			"items",
-			{
-				"item_code": item.item_code,
-				"t_warehouse": warehouse,
-				"qty": opening_qty,
-				"basic_rate": at_price,
-				"allow_zero_valuation_rate": 1 if at_price <= 0 else 0,
-			},
-		)
+		row = {
+			"item_code": item.item_code,
+			"t_warehouse": warehouse,
+			"qty": opening_qty,
+			"basic_rate": at_price,
+			"allow_zero_valuation_rate": 1 if at_price <= 0 else 0,
+		}
+		if batch_no:
+			row["batch_no"] = batch_no
+		entry.append("items", row)
 		entry.insert(ignore_permissions=True)
 		entry.submit()
 		opening_posted = True
+
+	# Current stock read back from the ledger rather than assumed, so the
+	# confirmation the screen shows is the real figure.
+	current_stock = 0
+	if warehouse and not is_service:
+		current_stock = flt(
+			frappe.db.get_value("Bin", {"item_code": item.item_code, "warehouse": warehouse}, "actual_qty")
+		)
 
 	return {
 		"item_code": item.item_code,
 		"item_name": item.item_name,
 		"opening_qty": opening_qty if opening_posted else 0,
+		"current_stock": current_stock,
+		"uom": item.stock_uom,
+		"min_stock": min_stock,
+		"batch_no": batch_no,
+		"warehouse": warehouse,
 	}
 
 
@@ -7063,33 +9054,34 @@ def create_payment_mode(mode_name: str, mode_type: str = "Cash"):
 	return {"name": doc.name}
 
 
-def _redeemable_loyalty_points(customer, program, company):
-	"""Points that a Sales Invoice can actually spend — not just points held.
-
-	ERPNext will only redeem a point entry against the same doctype that
-	earned it, and it does NOT fail when it comes up short: it writes off
-	the full rupee discount while debiting only the points it could find.
-	So a balance shown from the raw ledger can hand out money that never
-	gets deducted. This counts what redemption will really consume, which
-	is the only number safe to offer at the counter.
-	"""
-	from erpnext.accounts.doctype.loyalty_point_entry.loyalty_point_entry import (
-		get_loyalty_point_entries,
-		get_redemption_details,
-	)
-
-	entries = get_loyalty_point_entries(customer, program, company) or []
-	spent = get_redemption_details(customer, program, company) or {}
-	total = 0
-	for entry in entries:
-		if entry.get("invoice_type") != "Sales Invoice":
-			continue
-		# get_redemption_details sums the negative side of the ledger, so the
-		# amount already spent against this entry arrives as a negative
-		# number — take its magnitude rather than subtracting it directly.
-		used = abs(flt(spent.get(entry.get("name"))))
-		total += flt(entry.get("loyalty_points")) - used
-	return cint(max(total, 0))
+# Only caller (get_loyalty_status) is switched off (2026-08-18), see there.
+# def _redeemable_loyalty_points(customer, program, company):
+# 	"""Points that a Sales Invoice can actually spend — not just points held.
+#
+# 	ERPNext will only redeem a point entry against the same doctype that
+# 	earned it, and it does NOT fail when it comes up short: it writes off
+# 	the full rupee discount while debiting only the points it could find.
+# 	So a balance shown from the raw ledger can hand out money that never
+# 	gets deducted. This counts what redemption will really consume, which
+# 	is the only number safe to offer at the counter.
+# 	"""
+# 	from erpnext.accounts.doctype.loyalty_point_entry.loyalty_point_entry import (
+# 		get_loyalty_point_entries,
+# 		get_redemption_details,
+# 	)
+#
+# 	entries = get_loyalty_point_entries(customer, program, company) or []
+# 	spent = get_redemption_details(customer, program, company) or {}
+# 	total = 0
+# 	for entry in entries:
+# 		if entry.get("invoice_type") != "Sales Invoice":
+# 			continue
+# 		# get_redemption_details sums the negative side of the ledger, so the
+# 		# amount already spent against this entry arrives as a negative
+# 		# number — take its magnitude rather than subtracting it directly.
+# 		used = abs(flt(spent.get(entry.get("name"))))
+# 		total += flt(entry.get("loyalty_points")) - used
+# 	return cint(max(total, 0))
 
 
 @frappe.whitelist()
@@ -7102,23 +9094,31 @@ def get_loyalty_status(customer: str):
 	expense account on the programme, which was never set; ensure_loyalty_setup
 	fills that in so redeeming doesn't fail at submit time.
 	"""
-	if not customer or not frappe.db.exists("Customer", customer):
-		return {"enrolled": False, "points": 0, "value": 0}
-
-	program = frappe.db.get_value("Customer", customer, "loyalty_program")
-	if not program:
-		return {"enrolled": False, "points": 0, "value": 0}
-
-	company = frappe.defaults.get_user_default("Company")
-	points = _redeemable_loyalty_points(customer, program, company)
-	factor = flt(frappe.db.get_value("Loyalty Program", program, "conversion_factor")) or 1
-	return {
-		"enrolled": True,
-		"program": program,
-		"points": points,
-		"value": points * factor,
-		"conversion_factor": factor,
-	}
+	# Switched off for now (2026-08-18 direct request: "loyalty points ko
+	# abhi ke liye commentout kr do harek jagah se" — how it should work
+	# isn't decided yet). Real body kept commented below rather than
+	# deleted, so turning it back on is one line, not a rebuild. No caller
+	# reaches this today (Billing's own loyalty button is commented out
+	# too), but this whitelisted endpoint returning "not enrolled" instead
+	# of real balances is a safe default even if something still calls it.
+	return {"enrolled": False, "points": 0, "value": 0}
+	# if not customer or not frappe.db.exists("Customer", customer):
+	# 	return {"enrolled": False, "points": 0, "value": 0}
+	#
+	# program = frappe.db.get_value("Customer", customer, "loyalty_program")
+	# if not program:
+	# 	return {"enrolled": False, "points": 0, "value": 0}
+	#
+	# company = frappe.defaults.get_user_default("Company")
+	# points = _redeemable_loyalty_points(customer, program, company)
+	# factor = flt(frappe.db.get_value("Loyalty Program", program, "conversion_factor")) or 1
+	# return {
+	# 	"enrolled": True,
+	# 	"program": program,
+	# 	"points": points,
+	# 	"value": points * factor,
+	# 	"conversion_factor": factor,
+	# }
 
 
 LOYALTY_EXPIRY_MONTHS = 24
@@ -7202,7 +9202,7 @@ def backfill_loyalty_expiry():
 
 
 @frappe.whitelist()
-def get_stock_summary(search: str = None, item_group: str = None, only_low: int = 0):
+def get_stock_summary(search: str = None, item_group: str = None, only_low: int = 0, item_type: str = "product"):
 	"""One row per product: how much is in stock, what it cost, what it sells for.
 
 	The three numbers a shopkeeper actually wants together lived in three
@@ -7215,13 +9215,30 @@ def get_stock_summary(search: str = None, item_group: str = None, only_low: int 
 	stock movement, falling back to the last price actually paid and then
 	the item master's own rate, so an item that has been bought but not yet
 	moved still shows a real number instead of zero.
+
+	item_type ("product" | "service" | "all") absorbs the Items screen's old
+	Products/Services tabs (2026-08-17 merge: "items and stock and rates ko
+	merge kro") — a service has no stock to count, but still has a name,
+	category, brand and a sale rate worth seeing in the same list rather
+	than a second screen.
 	"""
 	company = frappe.defaults.get_user_default("Company")
 
-	conditions = ["i.disabled = 0", "i.is_stock_item = 1"]
+	conditions = ["i.disabled = 0"]
+	if item_type == "service":
+		conditions.append("i.is_stock_item = 0")
+	elif item_type != "all":
+		conditions.append("i.is_stock_item = 1")
 	params = {}
 	if search:
-		conditions.append("(i.name like %(q)s or i.item_name like %(q)s or i.custom_rack_number like %(q)s)")
+		# Barcode included on purpose: with a scanner on the counter, the
+		# fastest way to answer "how many of these do we have?" is to scan
+		# the thing itself rather than remember its name.
+		conditions.append(
+			"(i.name like %(q)s or i.item_name like %(q)s or i.custom_rack_number like %(q)s"
+			" or exists (select 1 from `tabItem Barcode` ib"
+			"            where ib.parent = i.name and ib.barcode like %(q)s))"
+		)
 		params["q"] = f"%{search}%"
 	if item_group:
 		conditions.append("i.item_group = %(g)s")
@@ -7233,8 +9250,11 @@ def get_stock_summary(search: str = None, item_group: str = None, only_low: int 
 			i.name                as item_code,
 			i.item_name           as item_name,
 			i.item_group          as item_group,
+			i.brand               as brand,
+			i.gst_hsn_code        as hsn_code,
 			i.stock_uom           as uom,
 			i.custom_rack_number  as rack,
+			i.is_stock_item       as is_stock_item,
 			i.last_purchase_rate  as last_purchase_rate,
 			i.valuation_rate      as master_valuation_rate,
 			(select sum(b.actual_qty) from `tabBin` b where b.item_code = i.name)     as qty,
@@ -7242,7 +9262,26 @@ def get_stock_summary(search: str = None, item_group: str = None, only_low: int 
 			(select max(r.warehouse_reorder_level) from `tabItem Reorder` r
 			  where r.parent = i.name)                                               as reorder_level,
 			(select ip.price_list_rate from `tabItem Price` ip
-			  where ip.item_code = i.name and ip.selling = 1 order by ip.modified desc limit 1) as sale_rate
+			  where ip.item_code = i.name and ip.selling = 1 order by ip.modified desc limit 1) as sale_rate,
+			(select group_concat(ib.barcode separator ', ') from `tabItem Barcode` ib
+			  where ib.parent = i.name)                                              as barcodes,
+			-- This shop's stock almost never arrives via a real Purchase
+			-- Invoice — items are stocked through Add Item's opening
+			-- quantity or Receive Stock, both plain Material Receipt Stock
+			-- Entries. Reading Purchase Invoice alone left "Last Purchase"
+			-- blank for every item that actually has one (found 2026-08-18:
+			-- "last purchase me koi data q naa aa raha"). Both sources are
+			-- read and the newer date wins, so a shop that later starts
+			-- using real Purchase Invoices is covered too.
+			(select greatest(
+			  ifnull((select max(pi.posting_date) from `tabPurchase Invoice Item` pii
+			    inner join `tabPurchase Invoice` pi on pi.name = pii.parent
+			    where pii.item_code = i.name and pi.docstatus = 1), '1900-01-01'),
+			  ifnull((select max(se.posting_date) from `tabStock Entry Detail` sed
+			    inner join `tabStock Entry` se on se.name = sed.parent
+			    where sed.item_code = i.name and se.docstatus = 1
+			      and se.stock_entry_type = 'Material Receipt'), '1900-01-01')
+			)) as last_purchase_date_raw
 		from `tabItem` i
 		where {" and ".join(conditions)}
 		order by i.item_name asc
@@ -7253,6 +9292,7 @@ def get_stock_summary(search: str = None, item_group: str = None, only_low: int 
 
 	out = []
 	for r in rows:
+		is_stock_item = cint(r.is_stock_item)
 		qty = flt(r.qty)
 		# Weighted-average cost per unit, derived from what the stock is
 		# actually valued at rather than any list price.
@@ -7262,23 +9302,31 @@ def get_stock_summary(search: str = None, item_group: str = None, only_low: int 
 			cost = flt(r.last_purchase_rate) or flt(r.master_valuation_rate)
 		sale = flt(r.sale_rate)
 		reorder = flt(r.reorder_level)
-		low = bool(reorder and qty <= reorder) or qty <= 0
+		# A service has nothing to run low on — "qty <= 0" would otherwise
+		# flag every service as low stock, which is meaningless for it.
+		low = is_stock_item and (bool(reorder and qty <= reorder) or qty <= 0)
 		if cint(only_low) and not low:
 			continue
 		out.append({
 			"item_code": r.item_code,
 			"item_name": r.item_name or r.item_code,
 			"item_group": r.item_group,
+			"brand": r.brand,
+			"hsn_code": r.hsn_code,
 			"uom": r.uom,
 			"rack": r.rack,
+			"barcodes": r.barcodes,
+			"is_stock_item": is_stock_item,
 			"qty": qty,
 			"cost_rate": flt(cost, 2),
 			"sale_rate": flt(sale, 2),
-			# What the shop would make if the whole lot sold at today's price.
+			# Profit on one piece at today's prices. Also drives the
+			# whole-shelf PROFIT IF ALL SOLD summary card further down.
 			"margin": flt(sale - cost, 2) if sale and cost else None,
 			"margin_pct": flt((sale - cost) / cost * 100, 1) if sale and cost else None,
 			"stock_value": flt(qty * cost, 2),
 			"sale_value": flt(qty * sale, 2) if sale else 0,
+			"last_purchase_date": r.last_purchase_date_raw if r.last_purchase_date_raw != "1900-01-01" else None,
 			"reorder_level": reorder,
 			"low": low,
 		})
@@ -7866,9 +9914,10 @@ def get_printer_diagnostics(printer_name: str = None):
 		"cups_queue": (matched or {}).get("queue"),
 		"device_uri": uri or None,
 		"connection": connection,
-		# The bill itself is a rendered PDF sent as a pixel job; density rides
-		# a separate raw ESC/POS job on the same QZ Tray connection.
-		"printing_method": "QZ Tray → CUPS driver (PDF pixel job)",
+		# The bill is a rendered PDF handed to macOS's own print queue by the
+		# server (`lp`), with raw USB ESC/POS as the fallback. QZ Tray is not
+		# involved in printing a bill any more (2026-08-17).
+		"printing_method": "macOS print queue (lp) → Epson driver; fallback: direct USB ESC/POS",
 		"density_method": "Direct USB, ESC/POS (GS ( E, Function 5)",
 		"driver_options": driver_options,
 		"density_in_driver": density_in_driver,
@@ -7968,7 +10017,12 @@ def _usb_printer(retries: int = 10):
 	import usb.core
 	import usb.util
 
-	for _ in range(retries):
+	# Not `for _ in range(...)` — `_` is Frappe's translation function, and
+	# assigning to it (even as a throwaway loop variable) shadows it for the
+	# rest of this function. That turned the friendly message below into a
+	# raw "TypeError: 'int' object is not callable" the one time it actually
+	# needed to fire (printer genuinely not connected) — confirmed live.
+	for _attempt in range(retries):
 		dev = usb.core.find(idVendor=SANTU_EPSON_USB_VENDOR)
 		if dev is not None:
 			try:
@@ -8120,6 +10174,34 @@ def list_printers():
 	return names
 
 
+def clear_district_villages():
+	"""Blank out santu_village wherever it actually holds a district.
+
+	Party creation used to put the district ("Saran") into the city/village
+	field, and the backfill above then copied that onto the Customer, so every
+	party on file claims a village nobody lives in. Reads already ignore a
+	district in this field, but leaving the value stored means any screen
+	querying the column directly still sees it — and it looks answered, so the
+	real village never gets asked for. The Address row itself is left alone:
+	city is mandatory there, and the district is at least true.
+	"""
+	cleared = 0
+	for party_type in ("Customer", "Supplier"):
+		if not frappe.db.has_column(party_type, "santu_village"):
+			continue
+		for name, village in frappe.get_all(
+			party_type,
+			filters={"santu_village": ["not in", [None, ""]]},
+			fields=["name", "santu_village"],
+			as_list=True,
+		):
+			if is_district_name(village):
+				frappe.db.set_value(party_type, name, "santu_village", "", update_modified=False)
+				cleared += 1
+	frappe.db.commit()
+	return cleared
+
+
 def backfill_party_villages():
 	"""Copy each party's address city into santu_village where it's blank.
 
@@ -8144,3 +10226,5 @@ def backfill_party_villages():
 				filled += 1
 	frappe.db.commit()
 	return filled
+
+

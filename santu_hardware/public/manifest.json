@@ -1,0 +1,48 @@
+{
+  "name": "Santu Hardware",
+  "short_name": "Santu HW",
+  "description": "Santu Hardware — Billing, Stock & Parties",
+  "start_url": "/app/santu-home",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#1e1b4b",
+  "theme_color": "#3730a3",
+  "lang": "hi",
+  "icons": [
+    {
+      "src": "/assets/santu_hardware/images/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/santu_hardware/images/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New Sale",
+      "short_name": "Sale",
+      "url": "/app/santu-billing",
+      "description": "Open billing screen"
+    },
+    {
+      "name": "Parties",
+      "short_name": "Parties",
+      "url": "/app/santu-parties",
+      "description": "Open parties screen"
+    },
+    {
+      "name": "Stock",
+      "short_name": "Stock",
+      "url": "/app/santu-stock",
+      "description": "Open stock screen"
+    }
+  ],
+  "categories": ["business", "finance"],
+  "display_override": ["standalone", "minimal-ui", "browser"]
+}

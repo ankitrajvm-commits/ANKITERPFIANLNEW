@@ -1,23 +1,15 @@
-// One-click silent thermal printing via QZ Tray (https://qz.io), a free
-// local desktop service that bridges a browser tab to real printers/USB
-// devices — something a browser sandbox can never do on its own. The
-// connector library itself is vendored in `vendor_qz_tray.js` (loaded
-// right before this file) rather than pulled from QZ's CDN, since this
-// shop runs offline-first and can't depend on internet access to print
-// a bill (ROADMAP.md's whole premise for this app).
+// Thermal bill printing.
 //
-// SETUP NEEDED ON THE SHOP PC (one-time, outside this app):
-//   1. Install QZ Tray: https://qz.io/download/ (free, LGPL-2.1)
-//   2. Launch it — it sits in the system tray/menu bar, listening on
-//      ws://localhost:8182 (unsecured) / wss://localhost:8181 (secured).
-//   3. Plug in / configure the thermal printer as a normal OS printer.
-// Without a paid QZ signing certificate, QZ Tray runs in "unsigned"
-// mode: the FIRST print each browser session shows a one-time "Allow
-// this website to print?" dialog from QZ Tray itself (not this app) —
-// that's QZ protecting the user, not a bug here, and it remembers the
-// choice for the rest of the session.
-
-const SANTU_ESC_POS_CASH_DRAWER_KICK = "\x1B\x70\x00\x19\xFA";
+// Bills are printed by the server — macOS's own print queue first, then raw
+// USB to the printer — never by QZ Tray. See the ladder further down for why.
+//
+// SETUP NEEDED ON THE SHOP PC (one-time):
+//   Add the thermal printer as a normal macOS printer. That is all; nothing
+//   else has to be installed or running for a bill to print.
+//
+// QZ Tray remains installed and is still loaded here, but only as a
+// last-resort way to enumerate printers if macOS returns none. It prints
+// nothing. If it is stopped, bills still print.
 
 function santu_qz_available() {
 	return typeof qz !== "undefined";
@@ -50,162 +42,171 @@ async function santu_qz_list_printers() {
 	return await qz.printers.find();
 }
 
-async function santu_qz_get_default_printer() {
-	await santu_qz_connect();
-	return await qz.printers.getDefault();
-}
+// ---------------------------------------------------------------------------
+// Printing a bill — the ONE path every screen uses.
+//
+// QZ Tray used to print the bill and no longer does. On 2026-08-17 it
+// reported success while nothing came out of the printer: the operator
+// pressed reprint ten times, saw no paper, and then all ten slips appeared
+// at once when the printer woke up. A route that cannot tell the truth about
+// whether it printed is worse than one that plainly fails, because every
+// safety net built on top of it is built on a lie.
+//
+// The ladder lives here, in the shared function, on purpose. Seven different
+// screens print bills — the sale screen, Billing (POS), the post-sale popup,
+// the sale and purchase transaction lists, the review dialog, and the print
+// button on every doctype form. When the ladder lived in the sale screen
+// only, the other six silently kept using QZ. One implementation means one
+// behaviour.
+//
+//   1. Printer   — macOS prints the real 3-inch bill and CUPS is asked
+//                  whether the job actually left the queue.
+//   2. Direct USB — raw ESC/POS straight to the printer's USB endpoint,
+//                  bypassing the browser and the print system entirely.
+//   3. PDF        — open it on screen so there is always something to hand over.
+// ---------------------------------------------------------------------------
 
-// Prints a POS Invoice / Sales Invoice using the shop's configured
-// thermal print format + paper width (Settings -> Printer Settings).
-// Renders the bill server-side to a real PDF (same pipeline as "Get
-// PDF" — reuses the print format entirely, no separate raw ESC/POS
-// template to keep in sync) and hands the bytes to QZ Tray as a pixel
-// job, which prints it through the printer's normal OS driver.
-async function santu_qz_print_invoice(doctype, docname) {
-	await santu_qz_connect();
+const SANTU_PRINT_API = "santu_hardware.santu_hardware.print_service";
 
-	const settings = await frappe.db.get_doc("Santu POS Settings");
-	const printer_name = settings.printer_name;
-	if (!printer_name) {
-		frappe.throw(
-			__("No printer selected yet. Set one in Settings → Printer Settings first.")
-		);
-	}
-	const copies = cint(settings.print_copies) || 1;
-	const paper_width = settings.paper_width || "80mm";
+async function santu_print_open_pdf(doctype, docname) {
 	const print_format =
 		doctype === "POS Invoice" ? "Santu Hardware Thermal Bill" : "Santu Hardware Thermal Bill (Sales Invoice)";
-
-	const pdf_base64 = await frappe.xcall(
-		"santu_hardware.santu_hardware.api.get_invoice_pdf_base64",
-		{ doctype, name: docname, print_format }
-	);
-
-	// The invoice PDF is now generated at its own correct, content-driven
-	// page size (see get_invoice_pdf_base64 in api.py) instead of the old
-	// A4 default, so this job size only needs to be a generous upper
-	// bound — never smaller than the tallest real bill — not an exact
-	// match. Matches the printer queue's own max roll length (see
-	// `lpadmin ... -o PageSize=RP80x2000` in the CUPS setup) so neither
-	// layer clips a long itemized bill.
-	const config = qz.configs.create(printer_name, {
-		copies: copies,
-		size: { width: parseFloat(paper_width), height: 2000, units: "mm" },
-		units: "mm",
+	const b64 = await frappe.xcall("santu_hardware.santu_hardware.api.get_invoice_pdf_base64", {
+		doctype,
+		name: docname,
+		print_format,
 	});
-
-	await qz.print(config, [
-		{ type: "pixel", format: "pdf", flavor: "base64", data: pdf_base64 },
-	]);
-
-	if (cint(settings.open_cash_drawer)) {
-		await santu_qz_open_cash_drawer(printer_name);
-	}
+	const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+	const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+	window.open(url, "_blank");
+	setTimeout(() => URL.revokeObjectURL(url), 60000);
+	return "PDF";
 }
 
-// KNOWN BROKEN, and harmless only because this shop has no cash drawer yet
-// (2026-08-16). This sends the kick as a raw job through the CUPS queue, and
-// macOS no longer supports raw queues at all -- lpadmin answers "Raw queues
-// are no longer supported on macOS" -- so Epson's raster filter swallows it
-// and the drawer never opens. Nothing reports an error; the job completes.
-//
-// The fix is the route print density already uses: talk to the printer's USB
-// endpoint directly from the server (see _usb_send in api.py, proven end to
-// end against this printer). Whoever buys a drawer should start there rather
-// than debugging this function.
-async function santu_qz_open_cash_drawer(printer_name) {
-	await santu_qz_connect();
-	if (!printer_name) {
-		const settings = await frappe.db.get_doc("Santu POS Settings");
-		printer_name = settings.printer_name;
-	}
-	if (!printer_name) return;
-
-	const config = qz.configs.create(printer_name);
-	await qz.print(config, [
-		{ type: "raw", format: "command", data: SANTU_ESC_POS_CASH_DRAWER_KICK },
-	]);
-}
-
-// Small helper so callers get one consistent, shop-owner-readable error
-// message instead of a raw JS exception, whichever of the steps above
-// (QZ not installed / not running / no printer selected / print job
-// itself failing) is the one that went wrong.
-async function santu_print_thermal_bill(doctype, docname) {
+// Runs the ladder and records every attempt on a Santu Print Job. Resolves
+// with the method that worked; rejects only when all three rungs fail.
+async function santu_print_bill_ladder(doctype, docname, opts = {}) {
+	const is_duplicate = opts.is_duplicate ? 1 : 0;
+	let job = null;
 	try {
-		await santu_qz_print_invoice(doctype, docname);
+		job = await frappe.xcall(`${SANTU_PRINT_API}.create_print_job`, {
+			invoice_doctype: doctype,
+			invoice_name: docname,
+			is_duplicate,
+		});
+	} catch (e) {
+		// Not being able to log the attempt must never stop the printing.
+		job = null;
+	}
+
+	const record = (method, ok, err) => {
+		if (!job) return;
+		frappe
+			.xcall(`${SANTU_PRINT_API}.record_print_attempt`, {
+				job_name: job,
+				method,
+				ok: ok ? 1 : 0,
+				error: err || undefined,
+			})
+			.catch(() => {});
+	};
+
+	const rungs = [
+		["Printer", () => frappe.xcall(`${SANTU_PRINT_API}.print_via_cups`, {
+			invoice_doctype: doctype, invoice_name: docname, is_duplicate,
+		})],
+		["Direct USB", () => frappe.xcall(`${SANTU_PRINT_API}.print_via_usb`, {
+			invoice_doctype: doctype, invoice_name: docname, is_duplicate,
+		})],
+		["PDF", () => santu_print_open_pdf(doctype, docname)],
+	];
+
+	// Frappe rejects an xcall with its own server-error shape, which has no
+	// `.message` — so the attempt log recorded a useless "undefined" for the
+	// one thing it exists to capture. Dig out whatever the server actually
+	// said.
+	const from_server_messages = (raw) => {
+		try {
+			const first = JSON.parse(raw)[0];
+			return JSON.parse(first).message || String(first);
+		} catch (x) {
+			return String(raw);
+		}
+	};
+
+	const describe = (e) => {
+		if (typeof e === "string" && e) return e;
+		if (e && e.message) return String(e.message);
+		if (e && e._server_messages) return from_server_messages(e._server_messages);
+		if (e && e.exc_type) return String(e.exc_type);
+		// frappe.xcall frequently rejects with undefined and puts the real
+		// reason on the last response instead. Without this the attempt log
+		// recorded "unknown error" for the one thing it exists to capture.
+		const last = frappe.last_response;
+		if (last && last._server_messages) return from_server_messages(last._server_messages);
+		if (last && last.exc_type) return String(last.exc_type);
+		return e ? String(e) : "unknown error";
+	};
+
+	let last_error = null;
+	for (const [method, run] of rungs) {
+		try {
+			await run();
+			record(method, true);
+			return { method, job };
+		} catch (e) {
+			last_error = describe(e);
+			record(method, false, last_error);
+		}
+	}
+	const failure = new Error(last_error || "Print failed");
+	failure.job = job;
+	throw failure;
+}
+
+// Only these two have a thermal bill designed for them. Kept in step with
+// SANTU_THERMAL_DOCTYPES in print_service.py.
+const SANTU_THERMAL_DOCTYPES = ["Sales Invoice", "POS Invoice"];
+
+// What every screen calls. Runs the ladder above and gives the shop owner
+// one readable answer instead of a raw JS exception.
+async function santu_print_thermal_bill(doctype, docname, opts = {}) {
+	// The sale and purchase transaction lists hand this whatever doctype the
+	// row happens to be — Purchase Invoice, Sales Order, Quotation. Those have
+	// no thermal bill, and forcing one produced a supplier bill shaped like a
+	// customer's, with a blank party name and "Thank you!" on it. Send them to
+	// the ordinary print view, which is what they had before the thermal
+	// button existed.
+	if (!SANTU_THERMAL_DOCTYPES.includes(doctype)) {
+		frappe.set_route("print", doctype, docname);
+		return true;
+	}
+	try {
+		await santu_print_bill_ladder(doctype, docname, opts);
 		frappe.show_alert({ message: __("Printed"), indicator: "green" });
 		return true;
 	} catch (err) {
 		frappe.msgprint({
-			title: __("Couldn't Print"),
-			message: err.message || String(err),
+			title: __("Print nahi ho paya"),
+			message:
+				(err && err.message) ||
+				__("Printer tak nahi pahunch paye. Utilities → Doctor Uncle kholkar jaanchein."),
 			indicator: "red",
 		});
 		return false;
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Print density (Epson TM-T82X-II)
+// Print density and the cash drawer used to live here, driven through QZ
+// Tray. Both moved out on 2026-08-17 when QZ was removed from printing:
 //
-// The bill itself goes out as a PDF pixel job through the Epson CUPS driver,
-// which exposes no darkness setting at all. Density instead rides the same
-// raw ESC/POS channel QZ Tray already uses for the cash-drawer kick, writing
-// straight to the printer's own stored settings.
+//   * Density is written server-side over raw USB by
+//     `api.py::apply_printer_density`, which reads the value back off the
+//     printer afterwards to prove it took. QZ could not prove that.
+//   * The cash drawer kick was already known broken — macOS dropped raw CUPS
+//     queues, so Epson's raster filter swallowed it. Whoever buys a drawer
+//     should send the kick through `api.py::_usb_send`, the same channel
+//     density uses, rather than reviving the QZ version.
 //
-// The byte sequences come from the server (get_density_escpos) rather than
-// being assembled here: the 1-7 clamp and the command format belong in one
-// place, and a browser is not where a printer's stored configuration should
-// be composed.
-// ---------------------------------------------------------------------------
-
-async function santu_qz_apply_print_density(printer_name, level) {
-	await santu_qz_connect();
-	if (!printer_name) {
-		frappe.throw(__("No printer selected yet."));
-	}
-
-	const cmds = await frappe.xcall("santu_hardware.santu_hardware.api.get_density_escpos", { level });
-	const config = qz.configs.create(printer_name);
-
-	// Sent as separate jobs on purpose. Function 1 makes the printer reply
-	// with a "mode change notice" before it will accept the value, and
-	// Function 2 performs a software reset — batching all three into one
-	// stream gives the printer no room to do either.
-	// format "hex", not "command": a "\xNN" escape only becomes a byte if
-	// whatever reads the string chooses to decode it, and a printer command
-	// is not a place to leave that to chance.
-	await qz.print(config, [
-		{ type: "raw", format: "hex", data: cmds.enter_user_setting_mode },
-	]);
-	await new Promise((r) => setTimeout(r, 400));
-	await qz.print(config, [{ type: "raw", format: "hex", data: cmds.set_density }]);
-	await new Promise((r) => setTimeout(r, 200));
-	await qz.print(config, [
-		{ type: "raw", format: "hex", data: cmds.end_user_setting_mode },
-	]);
-	// The reset takes a moment; printing immediately after would be dropped.
-	await new Promise((r) => setTimeout(r, 1500));
-
-	await frappe.xcall("santu_hardware.santu_hardware.api.set_printer_density", {
-		printer_name,
-		level: cmds.level,
-		mark_applied: 1,
-	});
-	return cmds;
-}
-
-// Deliberately raw ESC/POS text, not the usual PDF pipeline: nothing about
-// the real bill's layout, fonts, margins, paper width or GST formatting is
-// involved, so a density test cannot disturb any of it.
-async function santu_qz_print_density_test(printer_name, level) {
-	await santu_qz_connect();
-	const receipt = await frappe.xcall(
-		"santu_hardware.santu_hardware.api.get_density_test_receipt",
-		{ level, printer_name }
-	);
-	const config = qz.configs.create(printer_name);
-	await qz.print(config, [{ type: "raw", format: "hex", data: receipt.data }]);
-	return receipt;
-}
+// What is left of QZ in this file is only the connector used to list
+// printers as a last-resort fallback. No bill travels through it.

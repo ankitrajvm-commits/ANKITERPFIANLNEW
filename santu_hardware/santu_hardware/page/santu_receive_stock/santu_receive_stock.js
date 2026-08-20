@@ -122,6 +122,38 @@ function render_receive_stock(page) {
 		});
 	}
 
+	// Scan straight into "receive stock": the goods are in one hand and the
+	// scanner in the other, so a recognised code jumps past searching and
+	// lands on the quantity box, ready to type how many arrived.
+	if (window.santu_barcode) {
+		window.santu_barcode.listen((code) => {
+			frappe
+				.xcall("santu_hardware.santu_hardware.api.find_item_by_barcode", { barcode: code })
+				.then((r) => {
+					if (r && r.found) {
+						open_form({
+							item_code: r.item_code,
+							item_name: r.item_name,
+							stock_uom: r.stock_uom,
+							available_qty: r.available_qty,
+						});
+						frappe.show_alert({ message: __("{0}", [r.item_name]), indicator: "green" });
+						return;
+					}
+					// Unknown code: put it in the search box so the operator can
+					// find the item by name and, once found, the Sale screen's
+					// attach flow will bind it. Never a dead end.
+					show_step($search_step);
+					$search.val(code).trigger("focus").trigger("select");
+					frappe.show_alert({
+						message: __("Ye barcode kisi saman par nahi laga — naam se dhoondhiye"),
+						indicator: "orange",
+					});
+				})
+				.catch(() => {});
+		}, "santu-receive-stock");
+	}
+
 	function open_form(item) {
 		selected_item = item;
 		$root.find(".santu-receive-item-card").html(`

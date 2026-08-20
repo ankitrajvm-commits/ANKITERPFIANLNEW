@@ -43,6 +43,78 @@
 	color: #fff;
 }
 
+.santu-stock-more-btn {
+	background: #fff;
+	border: 1px solid #d8dbe3;
+	border-radius: 6px;
+	width: 34px;
+	height: 34px;
+	font-size: 16px;
+	color: #4a4d5e;
+	line-height: 1;
+}
+
+/* Products/Services — folded in from the old Items screen (2026-08-17
+   merge) so this table is the one place both kinds of item live. */
+.santu-stock-tabs {
+	display: flex;
+	gap: 4px;
+	padding: 10px 24px 0;
+	background: #fff;
+	border-bottom: 1px solid #e6e8ee;
+}
+
+.santu-stock-tab {
+	background: none;
+	border: none;
+	border-bottom: 2px solid transparent;
+	padding: 8px 4px;
+	margin-right: 16px;
+	font-size: 13px;
+	font-weight: 600;
+	color: #8b8e9c;
+	cursor: pointer;
+}
+
+.santu-stock-tab-active {
+	color: #1f2233;
+	border-bottom-color: #e8453c;
+}
+
+/* Manage Categories / Manage Units dialogs. */
+.santu-stock-master-list {
+	max-height: 60vh;
+	overflow-y: auto;
+}
+
+.santu-stock-master-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 10px 4px;
+	border-bottom: 1px solid #f0f1f5;
+	cursor: pointer;
+}
+
+.santu-stock-master-row span:first-child {
+	flex: 1;
+	font-weight: 500;
+}
+
+.santu-stock-master-count {
+	font-size: 12px;
+	color: #8b8e9c;
+	white-space: nowrap;
+}
+
+.santu-stock-master-rename {
+	background: none;
+	border: 1px solid #d8dbe3;
+	border-radius: 4px;
+	padding: 3px 8px;
+	font-size: 12px;
+}
+
 /* ---------- filters ---------- */
 .santu-stock-filters {
 	display: flex;
@@ -201,6 +273,20 @@
 	text-align: left;
 }
 
+/* Not sortable, so not a pointer/hover target like the real column headers. */
+.santu-stock-th-idx {
+	text-align: right;
+	cursor: default;
+	width: 1%;
+}
+
+.santu-stock-td-idx {
+	text-align: right;
+	color: #9aa0ac;
+	font-variant-numeric: tabular-nums;
+	padding-right: 8px !important;
+}
+
 .santu-stock-table tbody tr {
 	border-bottom: 1px solid #f0f1f5;
 	cursor: pointer;
@@ -235,6 +321,150 @@
 	color: #8b8e9c;
 }
 
+.santu-stock-td-hsn {
+	white-space: nowrap;
+	font-size: 12.5px;
+	color: #4b5563;
+	font-variant-numeric: tabular-nums;
+}
+
+/* Category, Brand, Rack, Unit, Last Purchase — plain reference columns, all
+   the same quiet weight so the row's real numbers (rate, profit, value)
+   keep the visual emphasis. */
+.santu-stock-td-text {
+	white-space: nowrap;
+	font-size: 12.5px;
+	color: #4b5563;
+}
+
+.santu-stock-history-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+
+.santu-stock-history-table th {
+	text-align: left;
+	padding: 6px 10px;
+	border-bottom: 1px solid #e6e8ee;
+	color: #7a7d8c;
+	font-size: 11px;
+	letter-spacing: 0.03em;
+}
+
+.santu-stock-history-table td {
+	padding: 6px 10px;
+	border-bottom: 1px solid #f0f1f5;
+}
+
+/* Which barcode identifies this item — its own column now, not a line under
+   the name, since it is asked for by itself often enough (checking coverage,
+   attaching new codes) to deserve equal footing with cost and sale rate.
+   Deliberately quiet the rest of the time — reference information, not
+   something to read on every row — except when it is missing, which is the
+   state worth noticing. */
+.santu-stock-td-barcode {
+	white-space: nowrap;
+	font-size: 11.5px;
+	color: #6b7280;
+	letter-spacing: 0.02em;
+}
+
+.santu-stock-barcode-edit {
+	cursor: pointer;
+	display: inline-block;
+}
+
+.santu-stock-barcode-edit:hover {
+	text-decoration: underline;
+}
+
+/* The in-row editor. Small and inline on purpose — it replaces one line of
+   text, not a whole cell, so the rest of the row (and the list under it)
+   never jumps around while it is open. */
+.santu-stock-barcode-inline {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.santu-stock-barcode-input {
+	width: 150px;
+	font-size: 12px;
+	padding: 2px 6px;
+	border: 1px solid var(--gray-400, #9ca3af);
+	border-radius: 4px;
+}
+
+.santu-stock-barcode-save,
+.santu-stock-barcode-cancel {
+	border: none;
+	background: none;
+	cursor: pointer;
+	font-size: 13px;
+	line-height: 1;
+	padding: 2px 4px;
+}
+
+.santu-stock-barcode-save {
+	color: #16a34a;
+	font-weight: 700;
+}
+
+.santu-stock-barcode-cancel {
+	color: #dc2626;
+}
+
+.santu-stock-no-barcode {
+	color: #b45309;
+	font-style: italic;
+	font-weight: 600;
+}
+
+/* Item master fields (name, category, brand, HSN, rack) editable right on
+   this list — same click-to-edit-in-place pattern as the barcode cell. */
+.santu-stock-field-edit {
+	cursor: pointer;
+}
+
+.santu-stock-field-edit:hover {
+	text-decoration: underline;
+	text-decoration-style: dotted;
+}
+
+.santu-stock-field-inline {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.santu-stock-field-input {
+	width: 140px;
+	font-size: 12.5px;
+	padding: 2px 6px;
+	border: 1px solid var(--gray-400, #9ca3af);
+	border-radius: 4px;
+}
+
+.santu-stock-field-save,
+.santu-stock-field-cancel {
+	border: none;
+	background: none;
+	cursor: pointer;
+	font-size: 13px;
+	line-height: 1;
+	padding: 2px 4px;
+}
+
+.santu-stock-field-save {
+	color: #16a34a;
+	font-weight: 700;
+}
+
+.santu-stock-field-cancel {
+	color: #dc2626;
+}
+
 .santu-stock-uom {
 	margin-left: 4px;
 	font-size: 11.5px;
@@ -254,6 +484,15 @@
 .santu-stock-qty-low {
 	color: #d1671f;
 	font-weight: 600;
+}
+
+.santu-stock-qty-edit {
+	cursor: pointer;
+}
+
+.santu-stock-qty-edit:hover span {
+	text-decoration: underline;
+	text-decoration-style: dotted;
 }
 
 .santu-stock-gain {

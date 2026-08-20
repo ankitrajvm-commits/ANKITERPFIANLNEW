@@ -38,6 +38,137 @@ body[data-route="santu-sale-invoice"] .page-content {
 	height: 40px;
 }
 
+/* Shown only when a bill was queued for printing and never confirmed as
+   printed. Amber, not red: the sale is safe and the money is recorded —
+   only the paper is missing, and one button fixes it. */
+.santu-si2-print-alert {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 8px 14px;
+	background: #fef3c7;
+	border-bottom: 1px solid #f59e0b;
+	color: #78350f;
+	font-size: 14px;
+}
+
+.santu-si2-print-alert-btn {
+	flex: 0 0 auto;
+	border: 0;
+	border-radius: 6px;
+	padding: 6px 14px;
+	background: #b45309;
+	color: #fff;
+	font-size: 14px;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.santu-si2-print-alert-btn:hover {
+	background: #92400e;
+}
+
+/* Two items sharing a name. Amber, because nothing is broken — the shop
+   really does stock same-name goods in different packs — but the cashier
+   needs to look at the code before tapping. */
+/* The stock figure on a bill row is a button: it is where a wrong count is
+   noticed, so it is where it gets fixed. Dotted underline says "tap me"
+   without shouting on a screen that is mostly numbers. */
+.santu-si2-stock-edit {
+	cursor: pointer;
+	border-bottom: 1px dashed currentColor;
+}
+
+.santu-si2-stock-edit:hover {
+	opacity: 0.75;
+}
+
+.santu-si2-dup-chip {
+	display: inline-block;
+	margin-left: 6px;
+	padding: 1px 7px;
+	border-radius: 10px;
+	background: #fef3c7;
+	color: #92400e;
+	font-size: 11px;
+	font-weight: 600;
+	vertical-align: middle;
+	white-space: nowrap;
+}
+
+/* Units this shop actually uses, as one-tap buttons. The full 264-entry
+   list stays available underneath, but nobody should have to open it to
+   pick "Nos". */
+.santu-si2-uom-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-bottom: 8px;
+}
+
+.santu-si2-uom-chip {
+	border: 1px solid var(--gray-300, #d1d5db);
+	border-radius: 16px;
+	padding: 5px 14px;
+	background: #fff;
+	color: var(--text-color, #1f2937);
+	font-size: 13px;
+	font-weight: 500;
+	cursor: pointer;
+}
+
+.santu-si2-uom-chip:hover {
+	background: var(--gray-100, #f3f4f6);
+}
+
+.santu-si2-uom-chip.is-on {
+	border-color: #1f2937;
+	background: #1f2937;
+	color: #fff;
+	font-weight: 600;
+}
+
+.santu-si2-dup-warn {
+	margin-top: 4px;
+	padding: 10px 12px;
+	border: 1px solid #f59e0b;
+	border-radius: 8px;
+	background: #fffbeb;
+	color: #78350f;
+	font-size: 13px;
+}
+
+.santu-si2-dup-existing-wrap {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 8px;
+}
+
+.santu-si2-dup-existing {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	border: 1px solid #d97706;
+	border-radius: 6px;
+	padding: 5px 10px;
+	background: #fff;
+	color: #78350f;
+	font-size: 13px;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.santu-si2-dup-existing span {
+	font-weight: 400;
+	color: #92400e;
+}
+
+.santu-si2-dup-existing:hover {
+	background: #fef3c7;
+}
+
 .santu-si2-tabs {
 	display: flex;
 	align-items: center;
@@ -94,6 +225,21 @@ body[data-route="santu-sale-invoice"] .page-content {
 	display: flex;
 	gap: 4px;
 }
+/* Shared sizing for the real icons that replaced this screen's emoji. */
+.santu-si2-ico {
+	width: 17px;
+	height: 17px;
+	object-fit: contain;
+	vertical-align: -3px;
+	flex-shrink: 0;
+	user-select: none;
+}
+/* The toolbar sits on a dark slate bar and these icons ship as mid-grey, so
+   lift them rather than shipping a second recoloured copy of each file. */
+.santu-si2-ico.is-on-dark {
+	filter: brightness(1.9);
+}
+
 .santu-si2-icon-btn {
 	width: 30px;
 	height: 30px;
@@ -103,6 +249,9 @@ body[data-route="santu-sale-invoice"] .page-content {
 	font-size: 16px;
 	cursor: pointer;
 	border-radius: 8px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 }
 .santu-si2-icon-btn:hover {
 	background: #4b5563;
@@ -122,53 +271,6 @@ body[data-route="santu-sale-invoice"] .page-content {
 	font-size: 22px;
 	font-weight: 700;
 	color: #111827;
-}
-.santu-si2-mode {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-}
-.santu-si2-mode-label {
-	font-size: 15px;
-	font-weight: 600;
-	color: #9ca3af;
-	cursor: pointer;
-}
-.santu-si2-mode-label.is-active {
-	color: #2563eb;
-}
-.santu-si2-switch {
-	position: relative;
-	display: inline-block;
-	width: 40px;
-	height: 20px;
-}
-.santu-si2-switch input {
-	opacity: 0;
-	width: 0;
-	height: 0;
-}
-.santu-si2-slider {
-	position: absolute;
-	cursor: pointer;
-	inset: 0;
-	background: #2563eb;
-	transition: 0.15s;
-	border-radius: 999px;
-}
-.santu-si2-slider::before {
-	content: "";
-	position: absolute;
-	height: 14px;
-	width: 14px;
-	left: 3px;
-	bottom: 3px;
-	background: #fff;
-	transition: 0.15s;
-	border-radius: 50%;
-}
-.santu-si2-switch input:checked + .santu-si2-slider::before {
-	transform: translateX(20px);
 }
 .santu-si2-mop {
 	margin-left: auto;
@@ -226,15 +328,18 @@ body[data-route="santu-sale-invoice"] .page-content {
 .santu-si2-customer-row1 {
 	display: flex;
 	gap: 10px;
+	flex-wrap: wrap;
 }
+/* Party Name takes the full line, phone + chips share the next one. Written
+   as flex-basis rather than fixed columns because this same block renders on
+   a phone, where a four-across row collapses the name field to zero width. */
 .santu-si2-customer-search-wrap {
 	position: relative;
-	flex: 1;
-	min-width: 0;
+	flex: 1 1 100%;
+	min-width: 140px;
 }
 .santu-si2-customer-search,
-.santu-si2-phone,
-.santu-si2-address {
+.santu-si2-phone {
 	width: 100%;
 	border: 1px solid #d1d5db;
 	padding: 10px 12px;
@@ -243,31 +348,63 @@ body[data-route="santu-sale-invoice"] .page-content {
 	box-sizing: border-box;
 	border-radius: 8px;
 	font-family: inherit;
-	resize: vertical;
 }
 .santu-si2-customer-search {
 	text-transform: uppercase;
 }
+.santu-si2-phone-wrap {
+	position: relative;
+	flex: 1 1 140px;
+	min-width: 120px;
+}
 .santu-si2-phone {
-	max-width: 160px;
+	width: 100%;
+}
+
+/* Notes and "GST & more details" are one tap away instead of permanently
+   occupying two rows of the party block — the counter's common case is a
+   name, a phone and a village, and nothing else. */
+.santu-si2-chip {
+	position: relative;
 	flex-shrink: 0;
+	width: 42px;
+	height: 42px;
+	border: 1px solid #d1d5db;
+	border-radius: 8px;
+	background: #fff;
+	font-size: 17px;
+	line-height: 1;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 }
-.santu-si2-address {
-	min-height: 44px;
-	line-height: 1.35;
+.santu-si2-chip:hover {
+	background: #f3f4f6;
+	border-color: #2563eb;
 }
-.santu-si2-party-advanced {
-	font-size: 12px;
-	color: #2563eb;
-	text-decoration: none;
-	align-self: flex-start;
+.santu-si2-chip.has-value::after {
+	content: "";
+	position: absolute;
+	top: 5px;
+	right: 5px;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: #2563eb;
 }
-.santu-si2-party-advanced:hover {
-	text-decoration: underline;
+.santu-si2-note-info {
+	background: #f9fafb;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	padding: 10px 12px;
+	font-size: 14px;
+	line-height: 1.6;
+	margin-bottom: 4px;
 }
+
 .santu-si2-customer-search:focus,
 .santu-si2-phone:focus,
-.santu-si2-address:focus,
 .santu-si2-village:focus,
 .santu-si2-pincode:focus {
 	outline: none;
@@ -305,7 +442,11 @@ body[data-route="santu-sale-invoice"] .page-content {
 	position: absolute;
 	top: calc(100% + 2px);
 	left: 0;
-	right: 0;
+	/* Wider than the input it hangs off: each row carries a village name plus
+	   its pincode and district, which the input's own ~110px cut in half. */
+	right: auto;
+	min-width: 260px;
+	max-width: 320px;
 	background: #fff;
 	border: 1px solid #d1d5db;
 	max-height: 240px;
@@ -401,7 +542,8 @@ body[data-route="santu-sale-invoice"] .page-content {
 
 /* ---------- Item dropdowns ---------- */
 .santu-si2-customer-dropdown,
-.santu-si2-item-dropdown {
+.santu-si2-item-dropdown,
+.santu-si2-phone-dropdown {
 	position: absolute;
 	top: calc(100% + 2px);
 	left: 0;
@@ -414,6 +556,10 @@ body[data-route="santu-sale-invoice"] .page-content {
 	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 	border-radius: 10px;
 	overflow-x: hidden;
+}
+.santu-si2-phone-dropdown {
+	right: auto;
+	min-width: 260px;
 }
 .santu-si2-dd-heading {
 	padding: 8px 12px;
@@ -556,6 +702,17 @@ body[data-route="santu-sale-invoice"] .page-content {
 	position: relative;
 	padding: 0 20px;
 	background: #fff;
+	/* Must NOT clip: the item-search dropdown is a child of this box and hangs
+	   below it. Setting overflow-x here also computes overflow-y to auto (CSS
+	   spec), which silently cut the dropdown off — the results were in the DOM
+	   but invisible, so searching "fevi" looked like it found nothing. The
+	   horizontal scroll the phone layout needs lives on the inner box below. */
+	overflow: visible;
+}
+/* Only the table scrolls sideways. Nine columns cannot shrink to a phone's
+   width, and without this the table widened the whole page instead. */
+.santu-si2-table-scroll {
+	overflow-x: auto;
 }
 .santu-si2-item-search-wrap {
 	padding: 12px 0 0;
@@ -627,6 +784,58 @@ body[data-route="santu-sale-invoice"] .page-content {
 	color: #6b7280;
 }
 
+/* Per-row barcode — click to attach/replace, in place (2026-08-17).
+   Padded into a real button-sized target, not just the bare text — a
+   12px inline link was too small to reliably hit with a mouse (confirmed
+   live: missed on the first two tries), and this is meant to be tapped
+   at a counter, not aimed at carefully. */
+.santu-si2-row-barcode {
+	display: inline-block;
+	cursor: pointer;
+	color: #6b7280;
+	letter-spacing: 0.02em;
+	padding: 3px 7px;
+	margin: -3px -7px;
+	border-radius: 4px;
+}
+.santu-si2-row-barcode:hover {
+	background: #f3f4f6;
+	text-decoration: underline;
+}
+.santu-si2-row-no-barcode {
+	color: #b45309;
+	font-style: italic;
+	font-weight: 600;
+}
+.santu-si2-barcode-inline {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+.santu-si2-barcode-input {
+	width: 130px;
+	font-size: 12px;
+	padding: 2px 6px;
+	border: 1px solid var(--gray-400, #9ca3af);
+	border-radius: 4px;
+}
+.santu-si2-barcode-save,
+.santu-si2-barcode-cancel {
+	border: none;
+	background: none;
+	cursor: pointer;
+	font-size: 13px;
+	line-height: 1;
+	padding: 2px 4px;
+}
+.santu-si2-barcode-save {
+	color: #16a34a;
+	font-weight: 700;
+}
+.santu-si2-barcode-cancel {
+	color: #dc2626;
+}
+
 .santu-si2-qty-stepper {
 	display: flex;
 	align-items: center;
@@ -679,6 +888,21 @@ body[data-route="santu-sale-invoice"] .page-content {
 	color: #6b7280;
 	font-size: 13px;
 	white-space: nowrap;
+}
+.santu-si2-tax-select {
+	width: 100px;
+}
+.santu-si2-item-edit {
+	border: none;
+	background: none;
+	cursor: pointer;
+	color: #9ca3af;
+	font-size: 12px;
+	padding: 0 2px;
+	vertical-align: middle;
+}
+.santu-si2-item-edit:hover {
+	color: #4b5563;
 }
 .santu-si2-figures {
 	font-variant-numeric: tabular-nums;
@@ -734,6 +958,9 @@ body[data-route="santu-sale-invoice"] .page-content {
 	letter-spacing: 0.02em;
 	border-radius: 999px;
 	margin-left: 6px;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
 }
 .santu-si2-scan-row:hover {
 	background: #f0fdf4;
@@ -763,6 +990,18 @@ body[data-route="santu-sale-invoice"] .page-content {
 	padding: 10px 16px;
 	cursor: pointer;
 	border-radius: 999px;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+.santu-si2-extra-btn .santu-si2-ico,
+.santu-si2-scan-row .santu-si2-ico {
+	vertical-align: 0;
+}
+.santu-si2-chip .santu-si2-ico {
+	width: 19px;
+	height: 19px;
+	vertical-align: 0;
 }
 .santu-si2-extra-btn:hover {
 	border-color: #2563eb;
@@ -942,6 +1181,7 @@ body[data-route="santu-sale-invoice"] .page-content {
 		max-width: none;
 	}
 }
+
 
 @media print {
 	.santu-si2-tabbar,
@@ -1344,4 +1584,15 @@ body[data-route="santu-sale-invoice"] .page-content {
 	border-top: 1px solid #cfe6ff;
 	font-size: 13px;
 	color: #6b7280;
+}
+
+/* Cost-price toggle in the toolbar. It used to be the fourth item inside the
+   "More" menu, which is why nobody could find it — checking margin while
+   billing is a glance, not a three-step hunt (2026-08-17 request). */
+.santu-si2-cost-toggle.is-on {
+	background: #2563eb;
+	border-color: #2563eb;
+}
+.santu-si2-cost-toggle.is-on .santu-si2-ico {
+	filter: brightness(0) invert(1);
 }

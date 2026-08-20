@@ -44,7 +44,7 @@ santu_utilities.views = {
 						<div class="santu-utilities-or">OR</div>
 						<label class="santu-utilities-method-card wide">
 							<input type="radio" name="import_method" value="library" disabled />
-							<h3>Import From Vyapar Library</h3>
+							<h3>Import From Santu Hardware Library</h3>
 							<p>Not configured — use Excel import for bulk catalogue upload.</p>
 						</label>
 						<div class="santu-utilities-footer-bar">
@@ -240,14 +240,55 @@ santu_utilities.views = {
 						<button class="btn btn-primary btn-sm santu-create-item">Create Item from Barcode</button>
 					</div>
 				`);
-				$results.find(".santu-create-item").on("click", async () => {
-					try {
-						const r = await santu_utilities.api.quickCreateItem({ barcode: q, item_name: q });
-						frappe.show_alert({ message: `Created ${r.item_code}`, indicator: "green" });
-						$input.val(r.item_code).trigger("input");
-					} catch (e) {
-						frappe.msgprint(e.message);
-					}
+				// This used to call quickCreateItem with only {barcode, item_name},
+				// but quick_create_item has always required a selling price — so the
+				// button could never create anything, it only ever printed "missing 1
+				// required positional argument" (pre-existing; found 2026-08-20 while
+				// auditing every caller). It now asks for the name, price and opening
+				// stock the item actually needs, the same three the billing screen asks.
+				$results.find(".santu-create-item").on("click", () => {
+					const d = new frappe.ui.Dialog({
+						title: __("Naya saman jodein"),
+						fields: [
+							{ fieldtype: "Data", fieldname: "item_name", label: __("Saman ka naam"), default: q, reqd: 1 },
+							{
+								fieldtype: "Data",
+								fieldname: "barcode",
+								label: __("Barcode"),
+								default: q,
+								read_only: 1,
+							},
+							{ fieldtype: "Currency", fieldname: "selling_price", label: __("Bechne ka daam"), reqd: 1 },
+							{
+								fieldtype: "Float",
+								fieldname: "opening_qty",
+								label: __("Abhi kitna hai?"),
+								description: __("Dukaan me abhi jitna maal hai — bharna zaroori hai."),
+								reqd: 1,
+							},
+						],
+						primary_action_label: __("Banao"),
+						primary_action: async (v) => {
+							try {
+								const r = await santu_utilities.api.quickCreateItem({
+									item_name: v.item_name,
+									selling_price: v.selling_price,
+									opening_qty: v.opening_qty,
+									barcode: q,
+								});
+								d.hide();
+								frappe.show_alert({ message: __("Ban gaya — {0}", [r.item_code]), indicator: "green" });
+								$input.val(r.item_code).trigger("input");
+							} catch (e) {
+								frappe.msgprint({
+									title: __("Saman nahi ban paya"),
+									indicator: "red",
+									message: (e && e.message) || __("Dobara koshish karein."),
+								});
+							}
+						},
+					});
+					d.show();
 				});
 				return;
 			}
@@ -264,7 +305,7 @@ santu_utilities.views = {
 			$results.html(html);
 			$results.find("button[data-code]").on("click", function () {
 				frappe.route_options = { item_code: $(this).data("code") };
-				frappe.set_route("santu-items");
+				frappe.set_route("santu-stock");
 			});
 		}, 200);
 		$input.on("input", run);
@@ -289,7 +330,7 @@ santu_utilities.views = {
 				wrapper: $wrap.find("#santu-item-upload")[0],
 				allow_multiple: false,
 				restrictions: { allowed_file_types: is_pdf ? [".pdf"] : [".xlsx", ".xls", ".csv"] },
-				onsuccess: (file) => {
+				on_success: (file) => {
 					state.file_url = file.file_url;
 					state.step = "map";
 					this._render_excel_import($wrap, state, onBack);
@@ -602,9 +643,9 @@ santu_utilities.views = {
 					<input type="text" class="form-control santu-bulk-scan" placeholder="📷 Scan barcode…" autocomplete="off">
 					<button type="button" class="btn btn-default santu-bulk-pdf-import">📄 Import from PDF</button>
 					<div class="santu-bulk-modes">
-						<label><input type="radio" name="bulk_mode" value="pricing" ${state.mode === "pricing" ? "checked" : ""}> Pricing</label>
+						<label><input type="radio" name="bulk_mode" value="pricing" ${state.mode === "pricing" ? "checked" : ""}> Daam (CP/SP)</label>
 						<label><input type="radio" name="bulk_mode" value="stock" ${state.mode === "stock" ? "checked" : ""}> Stock</label>
-						<label><input type="radio" name="bulk_mode" value="info" ${state.mode === "info" ? "checked" : ""}> Item Information</label>
+						<label><input type="radio" name="bulk_mode" value="info" ${state.mode === "info" ? "checked" : ""}> Item Info</label>
 					</div>
 				</div>
 				<div class="santu-utilities-toolbar">
@@ -613,7 +654,8 @@ santu_utilities.views = {
 				</div>
 				<div class="santu-utilities-table-wrap"><table class="santu-utilities-table santu-bulk-table"><thead><tr>
 					<th><input type="checkbox" class="santu-bulk-all"></th><th>#</th>`;
-			cols.forEach((c) => { html += `<th>${c.replace(/_/g, " ")}</th>`; });
+			const col_labels = { item_name: "Item Name", item_group: "Group", gst_hsn_code: "HSN", valuation_rate: "Kharid Daam (CP)", standard_rate: "Bechne ka Daam (SP)", warehouse: "Godown", actual_qty: "Stock", stock_uom: "Unit", brand: "Brand", barcode: "Barcode", description: "Description" };
+			cols.forEach((c) => { html += `<th>${col_labels[c] || c.replace(/_/g, " ")}</th>`; });
 			html += `</tr></thead><tbody>`;
 			data.items.forEach((it, idx) => {
 				const checked = state.selected.has(it.name) ? "checked" : "";
@@ -701,7 +743,7 @@ santu_utilities.views = {
 					wrapper: dialog.fields_dict.upload_zone.$wrapper[0],
 					allow_multiple: false,
 					restrictions: { allowed_file_types: [".pdf"] },
-					onsuccess: async (file) => {
+					on_success: async (file) => {
 						dialog.hide();
 						frappe.dom.freeze(__("Reading PDF…"));
 						try {
@@ -786,7 +828,7 @@ santu_utilities.views = {
 			wrapper: $wrap.find("#santu-party-upload")[0],
 			allow_multiple: false,
 			restrictions: { allowed_file_types: [".xlsx", ".xls", ".csv"] },
-			onsuccess: async (file) => {
+			on_success: async (file) => {
 				state.file_url = file.file_url;
 				const data = await santu_utilities.api.parsePartiesFile(state.file_url, state.party_type);
 				state.rows = data.rows;
@@ -906,6 +948,50 @@ santu_utilities.views = {
 		return window.santu_render_printer_settings($wrap);
 	},
 
+	/* ── Invoice Settings (2026-08-19 direct request) ─────────
+	   UPI ID had a real backend field (Santu POS Settings.upi_id, used by
+	   the "Scan & Pay" QR on every printed bill) but no screen anywhere in
+	   the app to change it — the only way was the raw Frappe doctype form.
+	   This is that home; more bill-content settings (as opposed to printer
+	   hardware settings, which stay in Printer Settings above) belong here
+	   going forward rather than each getting a one-off screen. */
+	async render_invoice_settings($wrap) {
+		$wrap.html(`<div class="santu-utilities-loading">Loading…</div>`);
+		const settings = await frappe.db.get_doc("Santu POS Settings");
+		const esc = frappe.utils.escape_html;
+
+		$wrap.html(`
+			<div class="santu-shop-profile">
+				<div class="santu-shop-card">
+					<div class="santu-shop-head">
+						<div class="santu-shop-title">Invoice Settings</div>
+						<button type="button" class="santu-shop-save">Save</button>
+					</div>
+					<div class="santu-shop-body">
+						<div class="santu-shop-fields">
+							<label class="santu-shop-field">
+								<span>UPI ID (for "Scan &amp; Pay" QR on printed bills)</span>
+								<input type="text" class="santu-inv-upi" value="${esc(settings.upi_id || "")}" placeholder="e.g. shopname@okhdfcbank" autocomplete="off">
+							</label>
+						</div>
+					</div>
+				</div>
+			</div>
+		`);
+
+		$wrap.find(".santu-shop-save").on("click", () => {
+			const upi_id = ($wrap.find(".santu-inv-upi").val() || "").trim();
+			frappe.dom.freeze(__("Saving…"));
+			frappe.db
+				.set_value("Santu POS Settings", "Santu POS Settings", "upi_id", upi_id)
+				.then(() => {
+					frappe.dom.unfreeze();
+					frappe.show_alert({ message: __("Saved"), indicator: "green" });
+				})
+				.catch(() => frappe.dom.unfreeze());
+		});
+	},
+
 	async render_verify_data($wrap) {
 		$wrap.html(`<div class="santu-utilities-loading">Scanning database…</div>`);
 		const r = await santu_utilities.api.getDataAudit();
@@ -958,5 +1044,98 @@ santu_utilities.views = {
 				() => frappe.show_alert({ message: "Use Shop Profile / your accountant to finish year-end from Utilities.", indicator: "blue" })
 			);
 		});
+	},
+
+	/* ── 12. Bug Report ──────────────────────────────────────── */
+	async render_bug_report($wrap) {
+		const render = async () => {
+			const recentRaw = await frappe.xcall(
+				"santu_hardware.santu_hardware.bug_report_service.get_recent_bugs",
+				{ limit: 20 }
+			).catch(() => []);
+
+			const esc = frappe.utils.escape_html;
+			const rows = (recentRaw || []).map((r) => `
+				<tr>
+					<td>${esc(r.title || "")}</td>
+					<td>${esc(r.creation ? r.creation.slice(0, 16) : "")}</td>
+					<td><span class="santu-bug-status santu-bug-status-${esc((r.status || "new").toLowerCase())}">${esc(r.status || "New")}</span></td>
+				</tr>`).join("");
+
+			$wrap.html(`
+				<div class="santu-utilities-card santu-bug-report-card">
+					<h2 class="santu-utilities-subtitle">Kya problem aayi? Batao humein</h2>
+					<p class="santu-utilities-muted" style="margin-bottom:12px">
+						Yahan type karo ya mic se bolo — Ankit dekh lenge.
+					</p>
+					<div class="santu-bug-input-row">
+						<textarea class="form-control santu-bug-textarea" rows="4" placeholder="Kya hua? Kaunsa screen tha? Kya kiya tha?"></textarea>
+						<button type="button" class="btn santu-bug-mic" title="Mic se bolo">🎙️</button>
+					</div>
+					<div class="santu-utilities-footer-bar" style="margin-top:10px">
+						<button type="button" class="btn btn-primary santu-bug-submit">Bhejo</button>
+					</div>
+				</div>
+				${rows ? `
+				<div class="santu-utilities-card" style="margin-top:16px">
+					<h3 class="santu-utilities-subtitle" style="margin-bottom:8px">Haal ke reports</h3>
+					<div class="santu-utilities-table-wrap">
+						<table class="santu-utilities-table">
+							<thead><tr><th>Kya hua</th><th>Kab</th><th>Status</th></tr></thead>
+							<tbody>${rows}</tbody>
+						</table>
+					</div>
+				</div>` : ""}
+			`);
+
+			// Web Speech API mic button
+			const $mic = $wrap.find(".santu-bug-mic");
+			const $ta = $wrap.find(".santu-bug-textarea");
+			let recognition = null;
+			if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
+				const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+				recognition = new SR();
+				recognition.lang = "hi-IN";
+				recognition.interimResults = false;
+				recognition.maxAlternatives = 1;
+				recognition.onresult = (ev) => {
+					const transcript = ev.results[0][0].transcript;
+					$ta.val(($ta.val() ? $ta.val() + " " : "") + transcript);
+					$mic.removeClass("is-listening").text("🎙️");
+				};
+				recognition.onerror = () => { $mic.removeClass("is-listening").text("🎙️"); };
+				recognition.onend = () => { $mic.removeClass("is-listening").text("🎙️"); };
+				$mic.on("click", () => {
+					if ($mic.hasClass("is-listening")) {
+						recognition.stop();
+					} else {
+						recognition.start();
+						$mic.addClass("is-listening").text("⏹️");
+					}
+				});
+			} else {
+				$mic.prop("disabled", true).attr("title", "Is browser mein mic support nahi hai").css("opacity", 0.4);
+			}
+
+			$wrap.find(".santu-bug-submit").on("click", async () => {
+				const text = ($ta.val() || "").trim();
+				if (!text) { frappe.show_alert({ message: "Kuch likhna padega ya bolna padega pehle.", indicator: "orange" }); return; }
+				const btn = $wrap.find(".santu-bug-submit").prop("disabled", true).text("Bhej rahe hain…");
+				try {
+					await frappe.xcall(
+						"santu_hardware.santu_hardware.bug_report_service.report_bug_from_user",
+						{ what_happened: text, route: frappe.get_route_str() }
+					);
+					$ta.val("");
+					frappe.show_alert({ message: "Report bhej di! Ankit dekh lenge.", indicator: "green" });
+					await render();
+				} catch (e) {
+					frappe.show_alert({ message: "Bhej nahi paye — dobara try karo.", indicator: "red" });
+				} finally {
+					btn.prop("disabled", false).text("Bhejo");
+				}
+			});
+		};
+		await render();
 	},
 };

@@ -30,9 +30,11 @@ frappe.pages["santu-purchase-invoice"].on_page_load = function (wrapper) {
 // which there isn't one of on a plain list row).
 frappe.pages["santu-purchase-invoice"].on_page_show = function () {
 	const prefill = frappe.route_options && frappe.route_options.prefill;
-	if (prefill && window.santu_purchase_pos && santu_purchase_pos.page && santu_purchase_pos.init_data) {
+	const prefill_bills = frappe.route_options && frappe.route_options.prefill_bills;
+	if ((prefill || prefill_bills) && window.santu_purchase_pos && santu_purchase_pos.page && santu_purchase_pos.init_data) {
 		frappe.route_options = null;
-		santu_purchase_pos._apply_prefill(prefill);
+		if (prefill_bills) santu_purchase_pos._apply_prefill_bills(prefill_bills);
+		else santu_purchase_pos._apply_prefill(prefill);
 		return;
 	}
 	if (window.santu_purchase_pos && santu_purchase_pos.page) santu_purchase_pos.render();
@@ -50,10 +52,16 @@ const santu_purchase_pos = {
 
 		$(page.body).html(`<div class="santu-si2-loading">Loading…</div>`);
 
-		santu_purchase_invoice.api.init().then((data) => {
+		Promise.all([santu_purchase_invoice.api.init(), santu_purchase_invoice.api.tax_options()]).then(([data, tax_options]) => {
 			this.init_data = data;
+			this.tax_options = tax_options || [];
 			const prefill = frappe.route_options && frappe.route_options.prefill;
+			const prefill_bills = frappe.route_options && frappe.route_options.prefill_bills;
 			frappe.route_options = null;
+			if (prefill_bills) {
+				this._apply_prefill_bills(prefill_bills);
+				return;
+			}
 			if (prefill) {
 				this._apply_prefill(prefill);
 				return;
@@ -117,6 +125,11 @@ const santu_purchase_pos = {
 			description: "",
 			held: false,
 			saved_invoice: null,
+			// Applied to every new row added after this is changed — the
+			// "whatever bracket most of this bill is" shortcut (2026-08-18:
+			// "top pe default tax ka v option de do jitna v tax bracket h").
+			// A row can still be set to something else individually.
+			default_tax_template: null,
 		};
 	},
 
@@ -129,46 +142,76 @@ const santu_purchase_pos = {
 	},
 
 	// Builds a fresh tab from a mapped-but-unsaved doc (Purchase Order's
-	// "Create Purchase Invoice") — see the matching method in
-	// santu_sales_order.js for why items are re-looked-up via item_row()
-	// rather than trusting the mapped doc's own shape.
-	_apply_prefill(doc) {
+	// "Create Purchase Invoice", or a PDF bill read by Upload Bill) — see
+	// the matching method in santu_sales_order.js for why items are
+	// re-looked-up via item_row() rather than trusting the mapped doc's
+	// own shape. Shared by both the single-bill (route prefill) and
+	// multi-bill (Upload Bill, several invoices in one PDF) entry points
+	// below — each just decides what to do with the finished tab.
+	_build_tab_from_prefill(doc) {
 		const tab = this._blank_tab();
 		tab.supplier = doc.supplier || null;
 		tab.place_of_supply = doc.place_of_supply || tab.place_of_supply;
 		if (doc.terms) tab.terms = doc.terms;
+		if (doc.bill_no) tab.bill_no = doc.bill_no;
+		if (doc.bill_date) tab.posting_date = doc.bill_date;
 		tab.additional_discount_amount = doc.discount_amount || 0;
-		this.tabs.push(tab);
-		this.active_id = tab.id;
-		this._save_debounced();
-		this.render();
 
-		if (tab.supplier) {
-			santu_purchase_invoice.api.supplier_details(tab.supplier).then((d) => {
-				tab.supplier_details = d;
-				this._save_debounced();
-				this._render_customer_info();
-			});
-		}
-
-		(doc.items || []).forEach((r) => {
-			santu_purchase_invoice.api.item_row(tab.supplier, r.item_code, this.init_data.warehouse, r.qty).then((row) => {
+		const item_promises = (doc.items || []).map((r) =>
+			santu_purchase_invoice.api.item_row(tab.supplier, r.item_code, this.init_data.warehouse, r.qty, r.uom).then((row) => {
 				tab.items.push({
 					id: santu_purchase_invoice.utils.uid(),
 					item_code: r.item_code,
 					item_name: row.item_name || r.item_name || r.item_code,
 					qty: r.qty,
+					// Box for a pack-sized item read off a bill (2026-08-17:
+					// "200ml ka 24 pcs, same for all") — this is what makes
+					// qty × conversion_factor land the right piece count in
+					// stock, not the printed carton count.
 					uom: r.uom || row.uom || row.stock_uom,
-					uom_options: row.uom ? [row.uom, row.stock_uom].filter((v, i, a) => v && a.indexOf(v) === i) : [row.stock_uom],
+					uom_options: row.uom_options || [row.uom || row.stock_uom],
 					rate: r.rate,
 					discount_percentage: r.discount_percentage || 0,
 					discount_amount: r.discount_amount || 0,
-					tax_rate: row.tax_rate || 0,
+					item_tax_template: row.item_tax_template || tab.default_tax_template || null,
+					tax_rate: row.tax_rate || this._tax_rate_for_template(row.item_tax_template || tab.default_tax_template),
+					barcode: row.barcode || null,
 					amount: r.amount || r.qty * r.rate,
 				});
-				this._save_debounced();
-				this._render_items();
-			});
+			})
+		);
+
+		const supplier_promise = tab.supplier
+			? santu_purchase_invoice.api.supplier_details(tab.supplier).then((d) => {
+					tab.supplier_details = d;
+			  })
+			: Promise.resolve();
+
+		return Promise.all([supplier_promise, ...item_promises]).then(() => tab);
+	},
+
+	_apply_prefill(doc) {
+		this._build_tab_from_prefill(doc).then((tab) => {
+			this.tabs.push(tab);
+			this.active_id = tab.id;
+			this._save_debounced();
+			this.render();
+		});
+	},
+
+	// One tab per bill a scanned PDF turned out to contain (2026-08-17
+	// direct request: "upload pdf bill me jo ui aata hia, us ui ko vyapaar
+	// type bana do") — the review-and-edit screen after a bill scan is now
+	// this exact same Purchase screen, not a separate dialog with its own
+	// look. Usually one tab (one bill); a PDF bundling several invoices
+	// opens all of them at once, switchable the same way any other
+	// multi-tab purchase already is.
+	_apply_prefill_bills(bills) {
+		Promise.all(bills.map((doc) => this._build_tab_from_prefill(doc))).then((tabs) => {
+			this.tabs.push(...tabs);
+			this.active_id = tabs[0].id;
+			this._save_debounced();
+			this.render();
 		});
 	},
 
@@ -205,6 +248,88 @@ const santu_purchase_pos = {
 		this._render_body();
 		this._bind_toolbar();
 		this._bind_shortcuts();
+		this._listen_for_scans();
+	},
+
+	// Scanning matters more on a purchase than on a sale: goods arrive in a
+	// carton, and every one of them has to be found in the catalogue and
+	// typed in. Scanning is also where a barcode gets ATTACHED — the box is
+	// in your hand, which is the only moment the code and the item are
+	// unambiguously the same thing.
+	_listen_for_scans() {
+		if (!window.santu_barcode) return;
+		window.santu_barcode.listen((code) => this._handle_scan(code), "santu-purchase-invoice");
+	},
+
+	_handle_scan(code) {
+		frappe
+			.xcall("santu_hardware.santu_hardware.api.find_item_by_barcode", { barcode: code })
+			.then((r) => {
+				if (r && r.found) {
+					this._add_item(r.item_code);
+					frappe.show_alert({
+						message: __("{0} jud gaya", [r.item_name || r.item_code]),
+						indicator: "green",
+					});
+					return;
+				}
+				this._unknown_barcode(code);
+			})
+			.catch(() => this._unknown_barcode(code));
+	},
+
+	_unknown_barcode(code) {
+		const d = new frappe.ui.Dialog({
+			title: __("Ye barcode kisi saman par nahi laga hai"),
+			fields: [
+				{
+					fieldtype: "HTML",
+					fieldname: "code",
+					options: `<div style="font-size:15px;margin-bottom:10px">
+						${__("Barcode")}: <b>${frappe.utils.escape_html(code)}</b></div>`,
+				},
+				{
+					fieldtype: "Link",
+					fieldname: "item_code",
+					label: __("Kis saman par lagana hai?"),
+					options: "Item",
+					description: __("Saman dhoondhkar chunein — agli baar scan karte hi wahi aa jayega."),
+				},
+			],
+			primary_action_label: __("Is saman par laga do"),
+			primary_action: (v) => {
+				if (!v.item_code) {
+					frappe.msgprint(__("Pehle saman chunein."));
+					return;
+				}
+				frappe
+					.xcall("santu_hardware.santu_hardware.api.attach_barcode_to_item", {
+						item_code: v.item_code,
+						barcode: code,
+					})
+					.then(() => {
+						d.hide();
+						this._add_item(v.item_code);
+						frappe.show_alert({
+							message: __("Barcode laga diya — aur bill me jud gaya"),
+							indicator: "green",
+						});
+					})
+					.catch((err) =>
+						frappe.msgprint({
+							title: __("Barcode nahi laga"),
+							indicator: "red",
+							message: (err && err.message) || __("Dobara koshish karein."),
+						})
+					);
+			},
+			secondary_action_label: __("Naya saman banao"),
+			secondary_action: () => {
+				d.hide();
+				this._quick_create_item("", { barcode: code });
+			},
+		});
+		d.show();
 	},
 
 	_render_tabbar() {
@@ -314,6 +439,19 @@ const santu_purchase_pos = {
 							<option value="">Select</option>
 							${(this.init_data.place_of_supply_options || [])
 								.map((o) => `<option value="${frappe.utils.escape_html(o)}" ${o === tab.place_of_supply ? "selected" : ""}>${frappe.utils.escape_html(o)}</option>`)
+								.join("")}
+						</select>
+					</div>
+					<!-- Applied to every row added from here on, not a retroactive
+					     bulk-edit — a row someone already picked a different bracket
+					     for keeps it (2026-08-18: "top pe default tax ka v option de
+					     do jitna v tax bracket h"). -->
+					<div class="santu-si2-inv-row">
+						<span class="santu-si2-inv-label">Default Tax</span>
+						<select class="santu-si2-default-tax">
+							<option value="">${__("None")}</option>
+							${(this.tax_options || [])
+								.map((o) => `<option value="${frappe.utils.escape_html(o.value)}" ${o.value === tab.default_tax_template ? "selected" : ""}>${frappe.utils.escape_html(o.label)}</option>`)
 								.join("")}
 						</select>
 					</div>
@@ -443,6 +581,38 @@ const santu_purchase_pos = {
 		santu_party_inline.open_advanced_dialog(this._party_ctx(), name);
 	},
 
+	// Editing an EXISTING supplier's GSTIN, not creating a new one — a
+	// separate small dialog rather than routing through open_add_party_dialog,
+	// which always calls create_supplier_full and would collide with
+	// "A supplier named … already exists" for the very supplier being fixed.
+	_open_gstin_dialog(supplier) {
+		const d = new frappe.ui.Dialog({
+			title: __("{0} ka GSTIN", [supplier]),
+			fields: [
+				{
+					fieldtype: "Data",
+					fieldname: "gstin",
+					label: "GSTIN",
+					description: __("15 akshar ka GST number, bill ke upar likha rehta hai."),
+				},
+			],
+			primary_action_label: __("Save"),
+			primary_action: (v) => {
+				const gstin = (v.gstin || "").trim();
+				if (!gstin) {
+					frappe.msgprint(__("GSTIN daalein."));
+					return;
+				}
+				santu_purchase_invoice.api.update_supplier_inline_gstin(supplier, gstin).then(() => {
+					d.hide();
+					frappe.show_alert({ message: __("GSTIN save ho gaya"), indicator: "green" });
+					this._render_customer_info();
+				});
+			},
+		});
+		d.show();
+	},
+
 	_ensure_party_before_save(tab) {
 		const ctx = this._party_ctx();
 		ctx.tab = tab;
@@ -483,9 +653,24 @@ const santu_purchase_pos = {
 				<tr data-row="${row.id}">
 					<td class="santu-si2-col-idx">${idx + 1}</td>
 					<td class="santu-si2-col-item">
-						<div class="santu-si2-item-name">${frappe.utils.escape_html(row.item_name || row.item_code)}</div>
+						<div class="santu-si2-item-name">
+							${frappe.utils.escape_html(row.item_name || row.item_code)}
+							<button type="button" class="santu-si2-item-edit" title="${__("Naam, category, HSN edit karein")}">✎</button>
+						</div>
 						<div class="santu-si2-item-sub">
 							${row.available_qty != null ? `<span class="${row.available_qty <= 0 ? "santu-si2-stock-out" : row.available_qty <= 5 ? "santu-si2-stock-low" : "santu-si2-stock-ok"}">In Stock: ${row.available_qty} ${frappe.utils.escape_html(row.uom || "")}</span>` : ""}
+							<!-- Per-row, not just the page-wide scanner: an item read
+							     off a PDF bill or picked from search very often has no
+							     barcode yet, and the whole point of scanning is that
+							     it works next time (2026-08-17 direct request: "harek
+							     item pe barcode scanner hoga... jaha pehle se added na
+							     ho... to barcode se v add kr le"). edit_row_barcode()
+							     replaces this span with an input, in place. -->
+							<span class="santu-si2-row-barcode" title="${__("Barcode lagane ya badalne ke liye dabaiye")}">${
+								row.barcode
+									? `▮▯▮ ${frappe.utils.escape_html(row.barcode)}`
+									: `<span class="santu-si2-row-no-barcode">${__("+ barcode")}</span>`
+							}</span>
 						</div>
 					</td>
 					<td class="santu-si2-col-qty">
@@ -498,6 +683,7 @@ const santu_purchase_pos = {
 					<td class="santu-si2-col-uom">
 						<select class="santu-si2-uom-select">
 							${(row.uom_options || [row.uom]).filter(Boolean).map((u) => `<option value="${frappe.utils.escape_html(u)}" ${u === row.uom ? "selected" : ""}>${frappe.utils.escape_html(u)}</option>`).join("")}
+							<option value="__new__">${__("+ Naya Unit")}</option>
 						</select>
 					</td>
 					<td class="santu-si2-col-rate">
@@ -507,8 +693,18 @@ const santu_purchase_pos = {
 						<input type="number" class="santu-si2-disc-pct-input" value="${row.discount_percentage || ""}" min="0" max="100" step="any" placeholder="%">
 						<input type="number" class="santu-si2-disc-amt-input" value="${row.discount_amount || ""}" min="0" step="any" placeholder="₹">
 					</td>
-					<td class="santu-si2-col-tax santu-si2-tax-display" title="From this item's own GST/tax template — not editable here">
-						${row.tax_rate ? row.tax_rate + "%" : "NONE"}
+					<!-- A real dropdown of this shop's own GST slabs, not a
+					     read-only estimate (2026-08-18 direct request: "harek
+					     item me tax daalne ka option de de") — save now sends
+					     item_tax_template through, so this actually posts to
+					     the invoice's real tax lines. -->
+					<td class="santu-si2-col-tax">
+						<select class="santu-si2-tax-select">
+							<option value="">${__("NONE")}</option>
+							${(this.tax_options || [])
+								.map((o) => `<option value="${frappe.utils.escape_html(o.value)}" ${o.value === row.item_tax_template ? "selected" : ""}>${frappe.utils.escape_html(o.label)}</option>`)
+								.join("")}
+						</select>
 					</td>
 					<td class="santu-si2-col-amount santu-si2-figures santu-si2-row-amount">₹ ${santu_purchase_invoice.utils.format_money(row.amount || 0).replace("₹ ", "")}</td>
 					<td class="santu-si2-col-remove"><button type="button" class="santu-si2-row-remove" title="Remove">🗑</button></td>
@@ -563,22 +759,56 @@ const santu_purchase_pos = {
 		$dd.show();
 	},
 
-	_quick_create_item(item_name) {
+	_quick_create_item(item_name, opts = {}) {
 		const d = new frappe.ui.Dialog({
-			title: __("Quick Create Item"),
+			title: __("Naya saman jodein"),
 			fields: [
-				{ fieldtype: "Data", fieldname: "item_name", label: "Item Name", default: item_name, reqd: 1 },
-				{ fieldtype: "Currency", fieldname: "purchase_price", label: "Purchase Price", reqd: 1 },
+				{ fieldtype: "Data", fieldname: "item_name", label: __("Saman ka naam"), default: item_name, reqd: 1 },
+				{
+					fieldtype: "Data",
+					fieldname: "barcode",
+					label: __("Barcode"),
+					default: opts.barcode || "",
+					description: __("Scan kiya hua code — agli baar scan karte hi ye saman aa jayega."),
+					read_only: opts.barcode ? 1 : 0,
+				},
+				{ fieldtype: "Currency", fieldname: "purchase_price", label: __("Kharid ka daam"), reqd: 1 },
+				{
+					fieldtype: "Link",
+					fieldname: "gst_hsn_code",
+					options: "GST HSN Code",
+					label: __("HSN code"),
+					description: __("Bill pe likha rehta hai. Pehle se koi saman ho to khali chhod sakte hain."),
+				},
 			],
-			primary_action_label: __("Create & Add"),
+			primary_action_label: __("Banao aur bill me daalo"),
 			primary_action: (v) => {
-				santu_purchase_invoice.api.quick_create_item(v.item_name, v.purchase_price).then((r) => {
-					d.hide();
-					this._add_item(r.item_code);
-				});
+				santu_purchase_invoice.api
+					.quick_create_item(v.item_name, v.purchase_price, {
+						barcode: v.barcode || undefined,
+						gst_hsn_code: v.gst_hsn_code || undefined,
+					})
+					.then((r) => {
+						d.hide();
+						this._add_item(r.item_code);
+					})
+					.catch((err) =>
+						frappe.msgprint({
+							title: __("Saman nahi ban paya"),
+							indicator: "red",
+							message: (err && err.message) || __("Dobara koshish karein."),
+						})
+					);
 			},
 		});
 		d.show();
+	},
+
+	_tax_rate_for_template(template) {
+		if (!template) return 0;
+		const opt = (this.tax_options || []).find((o) => o.value === template);
+		const m = opt && opt.label.match(/(\d+(?:\.\d+)?)%/);
+		return m ? Number(m[1]) : 0;
 	},
 
 	_add_item(item_code) {
@@ -600,12 +830,19 @@ const santu_purchase_pos = {
 				item_name: row.item_name || item_code,
 				qty: 1,
 				uom: row.uom || row.stock_uom,
-				uom_options: row.uom ? [row.uom, row.stock_uom].filter((v, i, a) => v && a.indexOf(v) === i) : [row.stock_uom],
+				uom_options: row.uom_options || [row.uom || row.stock_uom],
 				rate: row.price_list_rate || row.rate || 0,
 				discount_percentage: 0,
 				discount_amount: 0,
-				tax_rate: row.tax_rate || 0,
+				// The item's own tax slab if it has one; otherwise whatever
+				// this invoice's Default Tax is currently set to (2026-08-18:
+				// "top pe default tax ka v option de do") — a fresh row
+				// should not silently start at "no tax" just because nobody
+				// has told this particular item its GST rate yet.
+				item_tax_template: row.item_tax_template || tab.default_tax_template || null,
+				tax_rate: row.tax_rate || this._tax_rate_for_template(row.item_tax_template || tab.default_tax_template),
 				available_qty: row.available_qty,
+				barcode: row.barcode || null,
 				can_edit_rate: !(frappe.user.has_role("Cashier") && !frappe.user.has_role("System Manager")),
 				amount: row.price_list_rate || row.rate || 0,
 			};
@@ -617,8 +854,10 @@ const santu_purchase_pos = {
 
 	_recompute_row(row) {
 		const tab = this._active_tab();
-		return santu_purchase_invoice.api.item_row(tab.supplier, row.item_code, this.init_data.warehouse, row.qty).then((r) => {
+		return santu_purchase_invoice.api.item_row(tab.supplier, row.item_code, this.init_data.warehouse, row.qty, row.uom).then((r) => {
 			row.available_qty = r.available_qty;
+			row.barcode = r.barcode || null;
+			if (r.uom_options) row.uom_options = r.uom_options;
 			this._save_debounced();
 		});
 	},
@@ -740,6 +979,23 @@ const santu_purchase_pos = {
 			tab.place_of_supply = e.target.value;
 			this._save_debounced();
 		});
+		$root.find(".santu-si2-default-tax").on("change", (e) => {
+			tab.default_tax_template = e.target.value || null;
+			// Applies to the whole bill in one shot — every existing row
+			// gets this tax so the operator doesn't have to set each row
+			// individually. Per-row selects still work fine after this,
+			// for the odd item that needs a different rate.
+			const opt = (this.tax_options || []).find((o) => o.value === tab.default_tax_template);
+			const m = opt && opt.label.match(/(\d+(?:\.\d+)?)%/);
+			const tax_rate = m ? Number(m[1]) : 0;
+			(tab.items || []).forEach((row) => {
+				row.item_tax_template = tab.default_tax_template;
+				row.tax_rate = tax_rate;
+			});
+			this._save_debounced();
+			this._render_items();
+			this._recalc_totals();
+		});
 
 		$root.find(".santu-si2-add-row, .santu-si2-scan-row").on("click", () => this._open_item_search_inline());
 
@@ -827,8 +1083,27 @@ const santu_purchase_pos = {
 				on_change();
 			});
 			$tr.find(".santu-si2-uom-select").on("change", (e) => {
+				if (e.target.value === "__new__") {
+					// Reset the visible select back to the current unit while
+					// the dialog is open — otherwise it's left showing "+ Naya
+					// Unit" as if that were now the row's actual unit.
+					e.target.value = row.uom;
+					this._add_custom_uom(row, $tr);
+					return;
+				}
 				row.uom = e.target.value;
+				this._recompute_row(row).then(() => on_change());
+			});
+			$tr.find(".santu-si2-tax-select").on("change", (e) => {
+				row.item_tax_template = e.target.value || null;
+				const opt = (this.tax_options || []).find((o) => o.value === row.item_tax_template);
+				const m = opt && opt.label.match(/(\d+(?:\.\d+)?)%/);
+				row.tax_rate = m ? Number(m[1]) : 0;
 				on_change();
+			});
+			$tr.find(".santu-si2-item-edit").on("click", (e) => {
+				e.stopPropagation();
+				this._edit_item_master(row, $tr);
 			});
 			$tr.find(".santu-si2-rate-input").on("input", (e) => {
 				row.rate = Number(e.target.value) || 0;
@@ -851,7 +1126,212 @@ const santu_purchase_pos = {
 				this._save_debounced();
 				this._render_items();
 			});
+			$tr.find(".santu-si2-row-barcode").on("click", (e) => {
+				e.stopPropagation();
+				this._edit_row_barcode($(e.currentTarget), row);
+			});
 		});
+	},
+
+	// Attach (or replace) one row's barcode without leaving this screen —
+	// same dialog-free, click-to-edit pattern as the Stock Summary barcode
+	// editor. The page-wide scanner (_listen_for_scans) is what adds a new
+	// row when scanning; this is the counterpart for "this row's item
+	// specifically doesn't have one yet."
+	_edit_row_barcode($cell, row) {
+		if ($cell.data("editing")) return;
+		$cell.data("editing", true);
+		const existing = row.barcode || "";
+
+		$cell.html(`
+			<span class="santu-si2-barcode-inline">
+				<input type="text" class="santu-si2-barcode-input" value="${frappe.utils.escape_html(existing)}" placeholder="${__("Scan karein ya type karein")}">
+				<button type="button" class="santu-si2-barcode-save" title="${__("Save")}">✓</button>
+				<button type="button" class="santu-si2-barcode-cancel" title="${__("Cancel")}">✕</button>
+			</span>
+		`);
+		const $input = $cell.find(".santu-si2-barcode-input");
+		$input.trigger("focus").trigger("select");
+
+		// The page-wide scanner points here while this box is open, same as
+		// every other inline barcode editor in this app.
+		const previous_listener_active = window.santu_barcode && window.santu_barcode.is_listening();
+		const release_scanner = () => {
+			if (!window.santu_barcode) return;
+			window.santu_barcode.stop("santu-si2-row-barcode");
+			if (previous_listener_active) this._listen_for_scans();
+		};
+		if (window.santu_barcode) {
+			window.santu_barcode.listen((code) => {
+				$input.val(code);
+				save();
+			}, "santu-si2-row-barcode");
+		}
+
+		const render_resting = () => {
+			$cell.html(
+				row.barcode
+					? `▮▯▮ ${frappe.utils.escape_html(row.barcode)}`
+					: `<span class="santu-si2-row-no-barcode">${__("+ barcode")}</span>`
+			);
+		};
+
+		const close = () => {
+			release_scanner();
+			$cell.data("editing", false);
+			render_resting();
+		};
+
+		// Save-button click and the input's own blur/change both call save()
+		// — without this guard the two race and send the request twice
+		// (confirmed live: a second concurrent write hit the same Item
+		// Barcode row and MySQL reported a deadlock).
+		let saving = false;
+		const save = () => {
+			if (saving) return;
+			const code = $input.val().trim();
+			if (!code || code === existing) return close();
+			saving = true;
+			frappe
+				.xcall("santu_hardware.santu_hardware.api.attach_barcode_to_item", {
+					item_code: row.item_code,
+					barcode: code,
+				})
+				.then(() => {
+					row.barcode = code;
+					this._save_debounced();
+					frappe.show_alert({
+						message: __("{0} par barcode lag gaya", [row.item_name || row.item_code]),
+						indicator: "green",
+					});
+					close();
+				})
+				.catch((err) => {
+					saving = false;
+					frappe.show_alert({
+						message: (err && err.message) || __("Ye barcode shayad kisi aur saman par laga hai."),
+						indicator: "red",
+					});
+					$input.trigger("focus").trigger("select");
+				});
+		};
+
+		$cell.find(".santu-si2-barcode-save").on("click", (e) => {
+			e.stopPropagation();
+			save();
+		});
+		$cell.find(".santu-si2-barcode-cancel").on("click", (e) => {
+			e.stopPropagation();
+			close();
+		});
+		$input.on("click", (e) => e.stopPropagation());
+		$input.on("change", () => save());
+		$input.on("keydown", (e) => {
+			if (e.key === "Enter") {
+				e.preventDefault();
+				save();
+			}
+			if (e.key === "Escape") close();
+		});
+	},
+
+	// The row's UOM dropdown only ever offered stock_uom and a pack "Box"
+	// — this is the escape hatch when the supplier's bill says something
+	// else entirely, like Dozen or Sack (2026-08-18 direct request: "unit
+	// ka v multiple options do"). Saved onto the Item itself, not just this
+	// one row, so it's there to pick again next time without re-adding it.
+	_add_custom_uom(row, $tr) {
+		const d = new frappe.ui.Dialog({
+			title: __("Naya Unit"),
+			fields: [
+				{
+					fieldtype: "Link",
+					fieldname: "uom",
+					label: __("Unit ka naam"),
+					options: "UOM",
+					reqd: 1,
+					description: __("Jo naam pehle se nahi hai wo bhi type kar sakte hain — naya ban jayega."),
+				},
+				{
+					fieldtype: "Float",
+					fieldname: "conversion_factor",
+					label: __("1 {0} me kitne {1}?", [row.item_name || row.item_code, row.uom || "Nos"]),
+					reqd: 1,
+					default: 1,
+				},
+			],
+			primary_action_label: __("Jodein"),
+			primary_action: (v) => {
+				frappe.dom.freeze(__("Saving…"));
+				santu_purchase_invoice.api
+					.add_uom_conversion(row.item_code, v.uom, v.conversion_factor)
+					.then(() => {
+						frappe.dom.unfreeze();
+						d.hide();
+						row.uom = v.uom;
+						this._recompute_row(row).then(() => {
+							this._save_debounced();
+							this._render_items();
+						});
+					})
+					.catch((err) => {
+						frappe.dom.unfreeze();
+						frappe.msgprint({
+							title: __("Save nahi ho paya"),
+							indicator: "red",
+							message: (err && err.message) || __("Dobara koshish karein."),
+						});
+					});
+			},
+		});
+		d.show();
+	},
+
+	// Naam/Category/HSN correctable right from this bill (2026-08-18 direct
+	// request: "aur item edit krne ka option do") — reuses the exact same
+	// endpoint and allow-list Stock Summary's inline editors already use,
+	// so an item corrected mid-purchase and one corrected from Stock
+	// Summary go through the identical validation either way.
+	_edit_item_master(row, $tr) {
+		const d = new frappe.ui.Dialog({
+			title: row.item_name || row.item_code,
+			fields: [
+				{ fieldtype: "Data", fieldname: "item_name", label: __("Naam"), default: row.item_name, reqd: 1 },
+				{ fieldtype: "Link", fieldname: "item_group", label: __("Category"), options: "Item Group" },
+				{ fieldtype: "Link", fieldname: "gst_hsn_code", label: __("HSN"), options: "GST HSN Code" },
+			],
+			primary_action_label: __("Save"),
+			primary_action: (v) => {
+				frappe.dom.freeze(__("Saving…"));
+				const updates = [
+					["item_name", v.item_name],
+					["item_group", v.item_group],
+					["gst_hsn_code", v.gst_hsn_code],
+				].filter(([, value]) => value);
+				Promise.all(
+					updates.map(([fieldname, value]) =>
+						santu_purchase_invoice.api.update_item_field(row.item_code, fieldname, value)
+					)
+				)
+					.then(() => {
+						frappe.dom.unfreeze();
+						d.hide();
+						row.item_name = v.item_name;
+						this._save_debounced();
+						this._render_items();
+						frappe.show_alert({ message: __("Item update ho gaya"), indicator: "green" });
+					})
+					.catch((err) => {
+						frappe.dom.unfreeze();
+						frappe.msgprint({
+							title: __("Save nahi ho paya"),
+							indicator: "red",
+							message: (err && err.message) || __("Dobara koshish karein."),
+						});
+					});
+			},
+		});
+		d.show();
 	},
 
 	_open_extra(kind) {
@@ -1021,7 +1501,9 @@ const santu_purchase_pos = {
 	},
 
 	_validate_before_save(tab) {
-		if (!tab.supplier) {
+		// A typed-but-not-picked name is enough — _ensure_party_before_save
+		// creates the supplier from it. Only a genuinely empty box is an error.
+		if (!santu_party_inline.has_party_or_name(this.$root, tab, santu_party_inline.SUPPLIER)) {
 			frappe.msgprint(__("Please select a supplier."));
 			return false;
 		}
@@ -1040,6 +1522,15 @@ const santu_purchase_pos = {
 
 	_save_purchase(tab, action) {
 		if (!this._validate_before_save(tab)) return;
+		// Resolve the party first: the operator may have typed a supplier name
+		// without picking it from the dropdown. This creates it from the typed
+		// name/phone/address, so tab.supplier is always set by the time we post.
+		this._ensure_party_before_save(tab)
+			.then(() => this._post_purchase(tab, action))
+			.catch(() => {});
+	},
+
+	_post_purchase(tab, action) {
 		const submit = action !== "submit_draft" ? 1 : 0;
 
 		const payload = {
@@ -1061,6 +1552,7 @@ const santu_purchase_pos = {
 				uom: r.uom,
 				discount_percentage: r.discount_percentage || 0,
 				discount_amount: r.discount_amount || 0,
+				item_tax_template: r.item_tax_template || null,
 			})),
 			payments:
 				tab.payment_mode === "cash" && tab.mode_of_payment
@@ -1081,7 +1573,43 @@ const santu_purchase_pos = {
 					frappe.set_route("print", "Purchase Invoice", r.name);
 				}
 			})
-			.catch(() => frappe.dom.unfreeze());
+			.catch((err) => {
+				frappe.dom.unfreeze();
+				// A GST slab was picked (per-row or Default Tax) but this
+				// supplier has no GSTIN on file — india_compliance correctly
+				// refuses to charge GST to an unregistered party, but its own
+				// message ("Invalid GST Account… Supplier without GSTIN") is
+				// English/technical and leaves the operator stuck not knowing
+				// what to do. Most real suppliers (like a cement dealer) are
+				// GST-registered; the GSTIN just hasn't been added yet — so
+				// point straight at the existing "GST & more details" dialog
+				// instead of a dead end (2026-08-18 real bill: JANTA CEMENT).
+				const msg = (err && err.message) || "";
+				if (msg.includes("without GSTIN") || msg.includes("Invalid GST Account")) {
+					frappe.msgprint({
+						title: __("Supplier ka GSTIN nahi mila"),
+						indicator: "orange",
+						message: __(
+							"{0} ke liye GST tax lagane se pehle unka GSTIN daalna hoga. Agar unke paas GSTIN nahi hai to Default Tax ko \"None\" kar dein.",
+							[tab.supplier || __("Is supplier")]
+						),
+						primary_action: {
+							label: __("GSTIN daalein"),
+							action: () => this._open_gstin_dialog(tab.supplier),
+						},
+					});
+					return;
+				}
+				// `save()` now calls with `silent: true`, so frappe.call no
+				// longer shows its own error dialog for anything — every other
+				// failure must be surfaced here too, or it fails with nothing
+				// on screen at all.
+				frappe.msgprint({
+					title: __("Save nahi ho paya"),
+					indicator: "red",
+					message: msg || __("Kuch galat ho gaya. Dobara koshish karein."),
+				});
+			});
 	},
 
 	_send_whatsapp(tab) {

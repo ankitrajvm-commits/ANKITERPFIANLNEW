@@ -160,7 +160,7 @@ function build_row(row, show_code) {
 		</tr>
 	`).on("click", () => {
 		frappe.route_options = { item_code: row.item_code };
-		frappe.set_route("santu-items");
+		frappe.set_route("santu-stock");
 	});
 }
 
@@ -182,5 +182,36 @@ function share_low_stock_on_whatsapp(rows) {
 		lines.push("");
 	});
 
-	window.open(`https://wa.me/?text=${encodeURIComponent(lines.join("\n").trim())}`, "_blank");
+	// Sends through the same WhatsApp Connect (Meta bridge) integration the
+	// bills already go out on, same as the Parties screen's WhatsApp button
+	// (2026-08-18: "santuhardware app me whatsapp already hai jaha pe bill
+	// jata hai, wahi map kr do"). There's no "pick a contact" step on the
+	// Cloud API bridge the way wa.me's own picker had, so the number is
+	// asked for up front instead.
+	const message = lines.join("\n").trim();
+	frappe.require("/assets/santu_hardware/js/santu_whatsapp_connect/wa_connect_api.js", () => {
+		santu_wa_connect.api.status().then((status) => {
+			if (status.state !== "CONNECTED") {
+				frappe.set_route("santu-whatsapp-connect");
+				return;
+			}
+			frappe.prompt(
+				{ fieldtype: "Data", fieldname: "phone", label: __("Send to (phone number)"), reqd: 1 },
+				(v) => {
+					const digits = (v.phone || "").replace(/\D/g, "");
+					const num = digits.length === 10 ? "91" + digits : digits;
+					frappe.dom.freeze(__("Sending…"));
+					santu_wa_connect.api
+						.send(num, message)
+						.then(() => {
+							frappe.dom.unfreeze();
+							frappe.show_alert({ message: __("Sent"), indicator: "green" });
+						})
+						.catch(() => frappe.dom.unfreeze());
+				},
+				__("Share Low Stock List on WhatsApp"),
+				__("Send")
+			);
+		});
+	});
 }

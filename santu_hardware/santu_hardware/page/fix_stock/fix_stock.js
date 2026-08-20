@@ -78,13 +78,15 @@ function update_current_stock(dialog) {
 		dialog.set_value("current_qty", "");
 		return;
 	}
-	// get_stock_balance needs a specific warehouse; look it up first since
-	// this shop only ever has the one active warehouse.
-	frappe.db.get_list("Warehouse", { filters: { is_group: 0, disabled: 0 }, limit: 1 }).then((wh) => {
-		if (!wh.length) return;
+	// get_stock_balance needs a specific warehouse. Ask which one the shop
+	// sells out of — picking "the first warehouse" would show the old shop's
+	// stock here the moment a second warehouse exists, and this dialog is
+	// used to *correct* stock, so a wrong number does real damage.
+	frappe.xcall("santu_hardware.santu_hardware.api.get_default_selling_warehouse").then((warehouse) => {
+		if (!warehouse) return;
 		frappe.call({
 			method: "erpnext.stock.utils.get_stock_balance",
-			args: { item_code, warehouse: wh[0].name },
+			args: { item_code, warehouse },
 			callback: (r) => {
 				dialog.set_value("current_qty", r.message != null ? String(r.message) : "0");
 			},

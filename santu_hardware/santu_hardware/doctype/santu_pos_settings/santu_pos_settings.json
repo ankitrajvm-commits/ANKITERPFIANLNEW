@@ -10,6 +10,8 @@
   "large_amount_threshold",
   "discount_limit_percent",
   "credit_sale_limit",
+  "stock_section",
+  "selling_warehouse",
   "printer_settings_section",
   "printer_name",
   "paper_width",
@@ -57,6 +59,18 @@
    "fieldname": "credit_sale_limit",
    "fieldtype": "Currency",
    "label": "Credit Sale Limit"
+  },
+  {
+   "fieldname": "stock_section",
+   "fieldtype": "Section Break",
+   "label": "Stock"
+  },
+  {
+   "description": "Bikri isi godaam se katti hai. Ek se zyada godaam hone par ye zaroori hai.",
+   "fieldname": "selling_warehouse",
+   "fieldtype": "Link",
+   "label": "Bechne wala godaam",
+   "options": "Warehouse"
   },
   {
    "fieldname": "printer_settings_section",

@@ -491,13 +491,32 @@ const santu_sales_order_page = {
 			fields: [
 				{ fieldtype: "Data", fieldname: "item_name", label: "Item Name", default: item_name, reqd: 1 },
 				{ fieldtype: "Currency", fieldname: "selling_price", label: "Selling Price", reqd: 1 },
+				// Opening stock is mandatory for every item created on the selling
+				// side (2026-08-20) — without it the item used to be created as a
+				// non-stock Service and vanish from stock counts. See quick_create_item.
+				{
+					fieldtype: "Float",
+					fieldname: "opening_qty",
+					label: __("Abhi kitna hai?"),
+					description: __("Dukaan me abhi jitna maal hai — bharna zaroori hai."),
+					reqd: 1,
+				},
 			],
 			primary_action_label: __("Create & Add"),
 			primary_action: (v) => {
-				santu_sale_invoice.api.quick_create_item(v.item_name, v.selling_price).then((r) => {
-					d.hide();
-					this._add_item(r.item_code);
-				});
+				santu_sale_invoice.api
+					.quick_create_item(v.item_name, v.selling_price, { opening_qty: v.opening_qty })
+					.then((r) => {
+						d.hide();
+						this._add_item(r.item_code);
+					})
+					.catch((err) =>
+						frappe.msgprint({
+							title: __("Saman nahi ban paya"),
+							indicator: "red",
+							message: (err && err.message) || __("Dobara koshish karein."),
+						})
+					);
 			},
 		});
 		d.show();

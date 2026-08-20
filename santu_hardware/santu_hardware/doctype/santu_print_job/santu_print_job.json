@@ -1,0 +1,104 @@
+{
+ "actions": [],
+ "autoname": "format:SPJ-{YYYY}{MM}{DD}-{#####}",
+ "creation": "2026-08-17 04:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "invoice_doctype",
+  "invoice_name",
+  "is_duplicate",
+  "status",
+  "method",
+  "attempts",
+  "column_break_1",
+  "printed_on",
+  "confirmed_by_user",
+  "error_message",
+  "attempt_log"
+ ],
+ "fields": [
+  {
+   "fieldname": "invoice_doctype",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Bill Type",
+   "options": "DocType",
+   "reqd": 1
+  },
+  {
+   "fieldname": "invoice_name",
+   "fieldtype": "Dynamic Link",
+   "in_list_view": 1,
+   "label": "Bill",
+   "options": "invoice_doctype",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_duplicate",
+   "fieldtype": "Check",
+   "label": "Reprint (Duplicate)"
+  },
+  {
+   "default": "Queued",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Queued\nPrinted\nConfirmed\nNot Printed\nFailed",
+   "reqd": 1
+  },
+  {
+   "fieldname": "method",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Printed Via",
+   "options": "\nPrinter\nDirect USB\nPDF\nQZ Tray"
+  },
+  {
+   "default": "0",
+   "fieldname": "attempts",
+   "fieldtype": "Int",
+   "label": "Attempts"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "printed_on",
+   "fieldtype": "Datetime",
+   "label": "Printed On"
+  },
+  {
+   "fieldname": "confirmed_by_user",
+   "fieldtype": "Link",
+   "label": "Confirmed By",
+   "options": "User"
+  },
+  {
+   "fieldname": "error_message",
+   "fieldtype": "Small Text",
+   "label": "Error"
+  },
+  {
+   "fieldname": "attempt_log",
+   "fieldtype": "Small Text",
+   "label": "Attempt Log"
+  }
+ ],
+ "module": "Santu Hardware",
+ "name": "Santu Print Job",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC"
+}

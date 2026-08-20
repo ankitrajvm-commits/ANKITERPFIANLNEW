@@ -804,3 +804,24 @@
 	.santu-shop-row { flex-direction: column; }
 	.santu-shop-field-pin { flex: 1 1 auto; }
 }
+
+/* Bug Report view */
+.santu-bug-report-card { max-width: 600px; }
+.santu-bug-input-row { display: flex; gap: 8px; align-items: flex-start; }
+.santu-bug-textarea { flex: 1; resize: vertical; min-height: 90px; font-size: 15px; }
+.santu-bug-mic {
+	flex-shrink: 0;
+	width: 44px; height: 44px;
+	font-size: 22px;
+	padding: 0;
+	border-radius: 50%;
+	background: #f0f4ff;
+	border: 1px solid #c5d0e6;
+	transition: background .15s;
+}
+.santu-bug-mic.is-listening { background: #fee2e2; border-color: #ef4444; animation: santu-pulse .8s infinite; }
+@keyframes santu-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+.santu-bug-status { font-size: 12px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+.santu-bug-status-new { background: #fef3c7; color: #92400e; }
+.santu-bug-status-acknowledged { background: #dbeafe; color: #1e40af; }
+.santu-bug-status-resolved { background: #d1fae5; color: #065f46; }

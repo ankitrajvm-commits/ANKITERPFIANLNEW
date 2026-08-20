@@ -39,7 +39,7 @@
 				return;
 			}
 			if (doctype === "Item") {
-				frappe.set_route("santu-items");
+				frappe.set_route("santu-stock");
 				return;
 			}
 			frappe.set_route("santu-dashboard");
@@ -113,14 +113,14 @@
 			frappe.set_route("santu-sale");
 			$(document).trigger("santu-sale-view-change");
 		},
-		Item: () => frappe.set_route("santu-items"),
+		Item: () => frappe.set_route("santu-stock"),
 		Customer: () => frappe.set_route("santu-parties"),
 		Supplier: () => frappe.set_route("santu-parties"),
 		Contact: () => frappe.set_route("santu-parties"),
 		Address: () => frappe.set_route("santu-parties"),
 		"Stock Entry": () => frappe.set_route("santu-stock"),
 		Warehouse: () => frappe.set_route("santu-stock"),
-		"Item Group": () => frappe.set_route("santu-items"),
+		"Item Group": () => frappe.set_route("santu-stock"),
 		Account: () => frappe.set_route("santu-cash-bank"),
 		Company: () => window.santu_open_shop_profile && window.santu_open_shop_profile(),
 		"Mode of Payment": () => window.santu_open_payment_modes && window.santu_open_payment_modes(),
@@ -434,7 +434,7 @@
 					<div class="santu-topbar-search-dropdown" style="display:none;"></div>
 				</div>
 				<button type="button" class="santu-topbar-btn santu-topbar-btn-sale">+ Add Sale</button>
-				<button type="button" class="santu-topbar-btn santu-topbar-btn-purchase">+ Add Purchase</button>
+				<button type="button" class="santu-topbar-btn santu-topbar-btn-purchase">+ Receive Stock</button>
 				<button type="button" class="santu-topbar-icon-btn santu-topbar-quick" title="Quick Add">+</button>
 				<button type="button" class="santu-topbar-icon-btn santu-topbar-more" title="More">⋮</button>
 			</div>
@@ -455,8 +455,20 @@
 				}
 			});
 
-		$extra.find(".santu-topbar-btn-sale").on("click", () => frappe.set_route("santu-sale-invoice"));
-		$extra.find(".santu-topbar-btn-purchase").on("click", () => frappe.set_route("santu-purchase-invoice"));
+		// Points at Billing (POS), not New Sale Invoice (2026-08-18 direct
+		// request: "add sale ko pos billing se map kro") — Billing is meant
+		// to be the one daily-use counter screen, so the global quick-add
+		// button should land there too, not on the separate detailed form.
+		$extra.find(".santu-topbar-btn-sale").on("click", () => frappe.set_route("santu-billing"));
+		// Points at Receive Stock (Quick), not the Purchase Bill screen
+		// (2026-08-18 direct request: replace "+ Add Purchase" with "+ Receive
+		// Stock") — a real Purchase Bill (supplier, GST, payment) is still
+		// reachable from Purchase & Expense > Purchase Bills, the mega-menu's
+		// "Purchase Bill" item, and ⌥P; this quick button is specifically for
+		// "maal aaya, turant chadha do", which is what Receive Stock already
+		// handles end to end (also the top item in the Purchase Bills dropdown
+		// per the same 2026-08-17 reordering request).
+		$extra.find(".santu-topbar-btn-purchase").on("click", () => frappe.set_route("santu-receive-stock"));
 		$extra.find(".santu-topbar-quick").on("click", (e) => open_quick_menu($(e.currentTarget)));
 		$extra.find(".santu-topbar-more").on("click", (e) => open_more_menu($(e.currentTarget)));
 	}

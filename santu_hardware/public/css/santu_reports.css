@@ -73,6 +73,29 @@
 	padding-left: 15px;
 }
 
+/* Less-used reports tucked behind this per-category toggle (2026-08-17). */
+.santu-reports-nav-more {
+	display: block;
+	width: 100%;
+	padding: 7px 14px 7px 18px;
+	border: none;
+	background: transparent;
+	text-align: left;
+	font-size: 12.5px;
+	font-weight: 600;
+	color: #6b7280;
+	cursor: pointer;
+}
+.santu-reports-nav-more:hover {
+	color: #374151;
+}
+.santu-reports-nav-more-arrow {
+	font-size: 10px;
+}
+.santu-reports-nav-more-items .santu-reports-nav-item {
+	padding-left: 26px;
+}
+
 /* ---------- Workspace ---------- */
 .santu-reports-workspace {
 	flex: 1;

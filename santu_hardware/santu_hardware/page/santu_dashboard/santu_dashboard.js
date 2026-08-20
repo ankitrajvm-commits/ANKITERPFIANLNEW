@@ -74,7 +74,12 @@ function render_dashboard_data($root, data) {
 }
 
 function render_receivable_payable($root, data) {
-	const $row = $(`<div class="santu-dash-vy-row"></div>`).appendTo($root);
+	// Total Payable moved off Home entirely (2026-08-18 direct request) —
+	// it now lives on the Purchase Bills page itself (More > Purchase &
+	// Expense > Purchase Bills), right where the Paid/Unpaid/Total figures
+	// it overlaps with already are. Total Receivable takes the freed-up
+	// width rather than sitting in a now-half-empty row.
+	const $row = $(`<div class="santu-dash-vy-row santu-dash-vy-row-single"></div>`).appendTo($root);
 
 	$row.append(
 		build_vy_summary_card(
@@ -85,20 +90,6 @@ function render_receivable_payable($root, data) {
 			"good",
 			() => frappe.set_route("santu-customer-dues"),
 			"You don't have any pending amount to be received."
-		)
-	);
-	$row.append(
-		build_vy_summary_card(
-			"Total Payable",
-			data.pending_supplier_payments,
-			data.payable_party_count,
-			SANTU_DASH_PAY_ICON,
-			"warning",
-			() => {
-				frappe.route_options = { party_type: "Supplier", only_with_balance: 1 };
-				frappe.set_route("santu-parties");
-			},
-			"You don't have to pay any amount."
 		)
 	);
 }
@@ -113,7 +104,7 @@ function build_vy_summary_card(label, amount, party_count, icon_html, tone, on_c
 			<div class="santu-dash-vy-card-top">
 				<div class="santu-dash-vy-card-data">
 					<div class="santu-dash-vy-card-label">${label}</div>
-					<div class="santu-dash-vy-card-amount santu-figures">₹ ${format_currency_plain(amount || 0)}</div>
+					<div class="santu-dash-vy-card-amount santu-figures">₹ ${santu_dashboard_amount(amount || 0)}</div>
 				</div>
 				<div class="santu-dash-vy-card-icon santu-tone-${tone}">${icon_html}</div>
 			</div>
@@ -141,11 +132,22 @@ function render_reports_row($root) {
 	$section.find(".santu-dash-view-all").on("click", () => frappe.set_route("santu-reports"));
 
 	const $row = $section.find(".santu-dash-reports-row");
+	// "Party Statement" swapped for "Printer Settings" (2026-08-18 direct
+	// request) — the only card here that isn't a report, so it opens
+	// Utilities' Printer Settings view directly instead of routing through
+	// open_santu_report(), which only knows how to select a report_id.
 	const reports = [
 		{ label: "Sale Report", report_id: "sale" },
 		{ label: "All Transactions", report_id: "all_transactions" },
 		{ label: "Daybook Report", report_id: "day_book" },
-		{ label: "Party Statement", report_id: "party_statement" },
+		{
+			label: "Printer Settings",
+			open: () => {
+				sessionStorage.setItem("santu_utilities_view", "printer_settings");
+				frappe.route_options = { view: "printer_settings" };
+				frappe.set_route("santu-utilities");
+			},
+		},
 	];
 
 	reports.forEach((r) => {
@@ -155,7 +157,7 @@ function render_reports_row($root) {
 				<span class="santu-dash-report-arrow">›</span>
 			</div>
 		`)
-			.on("click", () => open_santu_report(r.report_id))
+			.on("click", () => (r.open ? r.open() : open_santu_report(r.report_id)))
 			.appendTo($row);
 	});
 }
@@ -237,7 +239,7 @@ function load_sale_chart($section, range, from_date, to_date) {
 		args: { range_key: range, from_date: from_date || null, to_date: to_date || null },
 		callback: (r) => {
 			const data = r.message || { total: 0, points: [], empty: true, percent_change: 0 };
-			$section.find(".santu-dash-vy-chart-amount").text("₹ " + format_currency_plain(data.total));
+			$section.find(".santu-dash-vy-chart-amount").text("₹ " + santu_dashboard_amount(data.total));
 			const pct = Number(data.percent_change || 0);
 			const $pct = $section.find(".santu-dash-vy-chart-pct");
 			$pct.removeClass("is-up is-down is-same");
@@ -251,27 +253,16 @@ function load_sale_chart($section, range, from_date, to_date) {
 			$chart_el.empty();
 
 			if (!data.points || !data.points.length) {
+				santu_stop_watching_chart_resize();
 				$chart_el.html(`<div class="santu-dash-chart-empty">No sales recorded for this period.</div>`);
 				return;
 			}
 
-			const chart_h = Math.max(180, ($chart_el.height() || 220) - 8);
-			new frappe.Chart($chart_el[0], {
-				data: {
-					labels: data.points.map((p) => p.date),
-					datasets: [{ name: "Sales", values: data.points.map((p) => p.total) }],
-				},
-				type: "line",
-				height: chart_h,
-				colors: ["#0075e8"],
-				axisOptions: { xIsSeries: true },
-				lineOptions: { regionFill: 1, hideDots: 0 },
-				tooltipOptions: {
-					formatTooltipY: (value) => "₹ " + format_currency_plain(value || 0),
-				},
-			});
+			draw_sale_chart($chart_el, data.points);
+			watch_chart_resize($chart_el, data.points);
 		},
 		error: () => {
+			santu_stop_watching_chart_resize();
 			$chart_el.html(`
 				<div class="santu-dash-chart-empty">
 					Unable to load chart.
@@ -281,6 +272,66 @@ function load_sale_chart($section, range, from_date, to_date) {
 			$chart_el.find(".santu-chart-retry").on("click", () => load_sale_chart($section, range, from_date, to_date));
 		},
 	});
+}
+
+// frappe-charts draws its SVG at whatever pixel height the container has at
+// that one instant and never re-measures. The desktop app
+// (SantuHardware.app) finishes sizing its window AFTER the page has already
+// rendered, so the chart stayed locked to that small early height and left a
+// big blank gap below it inside the card — while the same build in a browser,
+// where the window is already at its final size when the chart draws, filled
+// the card properly (reported 2026-08-19 with side-by-side screenshots of
+// both). Redrawing whenever the container's own height actually changes makes
+// the two identical, and also fixes the chart after any later window resize.
+let santu_chart_resize_observer = null;
+
+function draw_sale_chart($chart_el, points) {
+	const chart_h = Math.max(180, ($chart_el.height() || 220) - 8);
+	$chart_el.empty();
+	new frappe.Chart($chart_el[0], {
+		data: {
+			labels: points.map((p) => p.date),
+			datasets: [{ name: "Sales", values: points.map((p) => p.total) }],
+		},
+		type: "line",
+		height: chart_h,
+		colors: ["#0075e8"],
+		axisOptions: { xIsSeries: true },
+		lineOptions: { regionFill: 1, hideDots: 0 },
+		tooltipOptions: {
+			formatTooltipY: (value) => "₹ " + santu_dashboard_amount(value || 0),
+		},
+	});
+	$chart_el.data("santu-drawn-height", chart_h);
+}
+
+function santu_stop_watching_chart_resize() {
+	if (santu_chart_resize_observer) {
+		santu_chart_resize_observer.disconnect();
+		santu_chart_resize_observer = null;
+	}
+}
+
+function watch_chart_resize($chart_el, points) {
+	santu_stop_watching_chart_resize();
+	if (typeof ResizeObserver === "undefined") return;
+
+	let timer = null;
+	santu_chart_resize_observer = new ResizeObserver(() => {
+		// Debounced: dragging a window edge fires this continuously, and every
+		// redraw rebuilds the entire SVG.
+		clearTimeout(timer);
+		timer = setTimeout(() => {
+			if (!$chart_el.is(":visible")) return;
+			const drawn = $chart_el.data("santu-drawn-height") || 0;
+			const target = Math.max(180, ($chart_el.height() || 220) - 8);
+			// Only redraw on a real change — the observer also fires for the
+			// size change our own redraw causes, which would otherwise loop.
+			if (Math.abs(target - drawn) < 24) return;
+			draw_sale_chart($chart_el, points);
+		}, 150);
+	});
+	santu_chart_resize_observer.observe($chart_el[0]);
 }
 
 function refresh_period_widgets(from_date, to_date, period) {
@@ -352,7 +403,7 @@ function render_widget_panel($panel, data) {
 function build_active_widget(w, selected) {
 	const value_html =
 		w.kind === "currency"
-			? `<div class="santu-dash-w-value">₹ ${format_currency_plain(w.value || 0)}</div>`
+			? `<div class="santu-dash-w-value">₹ ${santu_dashboard_amount(w.value || 0)}</div>`
 			: `<div class="santu-dash-w-value">${frappe.utils.escape_html(w.text || "")}</div>`;
 
 	const $el = $(`
@@ -408,7 +459,7 @@ function open_widget_picker($panel, catalog, selected) {
 	catalog.forEach((w) => {
 		const added = selected.includes(w.key);
 		const value =
-			w.kind === "currency" ? `₹ ${format_currency_plain(w.value || 0)}` : w.text || "";
+			w.kind === "currency" ? `₹ ${santu_dashboard_amount(w.value || 0)}` : w.text || "";
 		const $row = $(`
 			<div class="santu-dash-picker-row">
 				<div>
@@ -465,7 +516,7 @@ function save_widgets(keys, keep_picker) {
 	});
 }
 
-function format_currency_plain(value) {
+function santu_dashboard_amount(value) {
 	const n = Number(value || 0);
 	if (!Number.isFinite(n)) return "0";
 	return n.toLocaleString("en-IN", {

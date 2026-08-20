@@ -51,6 +51,12 @@ function santu_set_privacy_mode(active) {
 	}
 	document.body.classList.toggle("santu-privacy-mode-active", active);
 	santu_render_status_bar();
+	// Screens that print cost price into their own markup have to repaint when
+	// this flips, or the flag goes off while the figures stay on screen — which
+	// is exactly what happened: privacy expired on its timer and the Sale
+	// screen kept showing "Cost: ₹…" until something else happened to
+	// re-render it (2026-08-17 bug report). One event, every screen listens.
+	document.dispatchEvent(new CustomEvent("santu-privacy-mode-change", { detail: { active } }));
 }
 
 // santu_toggle_privacy_mode now lives in santu_privacy.js, which owns the

@@ -18,10 +18,14 @@ santu_sale_invoice.INDIAN_STATES = [
 ];
 
 santu_sale_invoice.BIHAR_DISTRICTS = [
+	// Saran leads the list — it's this shop's own district, so it's the
+	// common case and shouldn't need scrolling past 30 alphabetical
+	// districts to reach (2026-08-19 direct request).
+	"Saran",
 	"Araria", "Arwal", "Aurangabad", "Banka", "Begusarai", "Bhagalpur", "Bhojpur", "Buxar",
 	"Darbhanga", "East Champaran", "Gaya", "Gopalganj", "Jamui", "Jehanabad", "Kaimur", "Katihar",
 	"Khagaria", "Kishanganj", "Lakhisarai", "Madhepura", "Madhubani", "Munger", "Muzaffarpur",
-	"Nalanda", "Nawada", "Patna", "Purnia", "Rohtas", "Saharsa", "Samastipur", "Saran", "Sheikhpura",
+	"Nalanda", "Nawada", "Patna", "Purnia", "Rohtas", "Saharsa", "Samastipur", "Sheikhpura",
 	"Sheohar", "Sitamarhi", "Siwan", "Supaul", "Vaishali", "West Champaran",
 ];
 
@@ -143,7 +147,7 @@ santu_sale_invoice.utils = {
 						<div class="frappe-control">
 							<label class="control-label">${__("District")}</label>
 							<select class="form-control santu-party-district">
-								${santu_sale_invoice.BIHAR_DISTRICTS.map((dd) => `<option value="${frappe.utils.escape_html(dd)}" ${dd === "Saran" ? "selected" : ""}>${frappe.utils.escape_html(dd)}</option>`).join("")}
+								<option value="">${__("Auto (from pincode)")}</option>${santu_sale_invoice.BIHAR_DISTRICTS.map((dd) => `<option value="${frappe.utils.escape_html(dd)}">${frappe.utils.escape_html(dd)}</option>`).join("")}
 							</select>
 						</div>
 						<div class="frappe-control">
@@ -204,8 +208,19 @@ santu_sale_invoice.utils = {
 		const $district = $html.find(".santu-party-district");
 		const $pincode = $html.find(".santu-party-pincode");
 
+		// Ticketed lookups: only the newest reply is allowed to paint, and
+		// nothing fires on an empty box. The wide "everything" search that
+		// ran on focus used to come back after the narrow typed one and
+		// replace real matches with an unrelated list (2026-08-18).
+		let village_seq = 0;
 		const search_village = santu_sale_invoice.utils.debounce((q) => {
+			if ((q || "").length < 2) {
+				$villageDD.hide().empty();
+				return;
+			}
+			const ticket = ++village_seq;
 			santu_sale_invoice.api.search_bihar_villages($district.val(), q).then((rows) => {
+				if (ticket !== village_seq) return;
 				$villageDD.empty();
 				if (!rows.length) {
 					$villageDD.append(`<div class="santu-party-village-empty">${__("No matches")}</div>`);
@@ -216,6 +231,7 @@ santu_sale_invoice.utils = {
 							state.village = r.village;
 							$village.val(r.village);
 							if (!$pincode.val()) $pincode.val(r.pincode);
+							if (r.district) $district.val(r.district);
 							$villageDD.hide();
 						})
 						.appendTo($villageDD);
@@ -272,10 +288,10 @@ santu_sale_invoice.utils = {
 			const simple = $html.find(".santu-party-billing-simple").val();
 			if (simple && simple.trim()) {
 				payload.address_line1 = simple.trim();
-				// Address requires a City — the simple box doesn't collect one
-				// separately, so fall back to the (always-selected) district
-				// name rather than block the save on a field this mode never asked for.
-				payload.city = $html.find(".santu-party-district").val() || "Saran";
+				// City/village is deliberately not sent here: this simple box
+				// only collects a free-text address. Stuffing the district into
+				// the City field is what wrote "Saran" onto every party. The
+				// server fills City from the village, else the pincode's district.
 				payload.country = "India";
 			}
 		}
@@ -304,6 +320,12 @@ santu_sale_invoice.api = {
 	search_customers(q) {
 		return frappe.xcall("santu_hardware.santu_hardware.api.search_customers_by_name", { query: q });
 	},
+	search_customers_by_phone(q) {
+		return frappe.xcall("santu_hardware.santu_hardware.api.search_customers_by_phone", { query: q });
+	},
+	district_for_pincode(pincode) {
+		return frappe.xcall("santu_hardware.santu_hardware.api.district_for_pincode", { pincode });
+	},
 	customer_details(customer) {
 		return frappe.xcall("santu_hardware.santu_hardware.api.get_customer_details_for_sale", { customer });
 	},
@@ -319,6 +341,95 @@ santu_sale_invoice.api = {
 	},
 	search_bihar_villages(district, search) {
 		return frappe.xcall("santu_hardware.santu_hardware.api.search_bihar_villages", { district, search });
+	},
+	// District-free: each row carries its own pincode and district, so the
+	// counter never picks a district and an out-of-district customer still
+	// turns up.
+	search_villages(search) {
+		return frappe.xcall("santu_hardware.santu_hardware.api.search_villages", { search });
+	},
+	invoice_pdf_base64(doctype, name, print_format) {
+		return frappe.xcall("santu_hardware.santu_hardware.api.get_invoice_pdf_base64", {
+			doctype,
+			name,
+			print_format,
+		});
+	},
+	// Print ladder (see print_service.py). The job row is written before
+	// anything is sent, so a bill that never came out is visible instead of
+	// silent — that is the whole point of these four calls.
+	create_print_job(invoice_doctype, invoice_name, is_duplicate) {
+		return frappe.xcall("santu_hardware.santu_hardware.print_service.create_print_job", {
+			invoice_doctype,
+			invoice_name,
+			is_duplicate: is_duplicate ? 1 : 0,
+		});
+	},
+	record_print_attempt(job_name, method, ok, error) {
+		return frappe.xcall("santu_hardware.santu_hardware.print_service.record_print_attempt", {
+			job_name,
+			method,
+			ok: ok ? 1 : 0,
+			error: error || undefined,
+		});
+	},
+	confirm_print_job(job_name, printed) {
+		return frappe.xcall("santu_hardware.santu_hardware.print_service.confirm_print_job", {
+			job_name,
+			printed: printed ? 1 : 0,
+		});
+	},
+	print_via_cups(invoice_doctype, invoice_name, is_duplicate) {
+		return frappe.xcall("santu_hardware.santu_hardware.print_service.print_via_cups", {
+			invoice_doctype,
+			invoice_name,
+			is_duplicate: is_duplicate ? 1 : 0,
+		});
+	},
+	print_via_usb(invoice_doctype, invoice_name, is_duplicate) {
+		return frappe.xcall("santu_hardware.santu_hardware.print_service.print_via_usb", {
+			invoice_doctype,
+			invoice_name,
+			is_duplicate: is_duplicate ? 1 : 0,
+		});
+	},
+	find_item_by_barcode(barcode) {
+		return frappe.xcall("santu_hardware.santu_hardware.api.find_item_by_barcode", { barcode });
+	},
+	attach_barcode_to_item(item_code, barcode) {
+		return frappe.xcall("santu_hardware.santu_hardware.api.attach_barcode_to_item", {
+			item_code,
+			barcode,
+		});
+	},
+	set_item_stock(item_code, new_qty, reason) {
+		return frappe.xcall("santu_hardware.santu_hardware.api.set_item_stock", {
+			item_code,
+			new_qty,
+			reason,
+		});
+	},
+	uom_options() {
+		return frappe.xcall("santu_hardware.santu_hardware.api.sale_uom_options");
+	},
+	items_with_same_name(item_name) {
+		return frappe.xcall("santu_hardware.santu_hardware.api.items_with_same_name", { item_name });
+	},
+	report_bug(what_happened, invoice_name) {
+		return frappe.xcall("santu_hardware.santu_hardware.bug_report_service.report_bug_from_user", {
+			what_happened,
+			route: (frappe.get_route && frappe.get_route().join("/")) || "",
+			reference_doctype: invoice_name ? "Sales Invoice" : undefined,
+			reference_name: invoice_name || undefined,
+		});
+	},
+	open_print_jobs(hours) {
+		return frappe.xcall("santu_hardware.santu_hardware.print_service.open_print_jobs", {
+			hours: hours || 24,
+		});
+	},
+	retry_print_job(job_name) {
+		return frappe.xcall("santu_hardware.santu_hardware.print_service.retry_print_job", { job_name });
 	},
 	update_customer_note(customer, note) {
 		return frappe.xcall("santu_hardware.santu_hardware.api.update_customer_note", { customer, note });
@@ -348,13 +459,24 @@ santu_sale_invoice.api = {
 			qty,
 		});
 	},
-	quick_create_item(item_name, selling_price, item_group, uom, barcode) {
+	// Third argument is an options bag, not a positional list — six other
+	// screens call this with just (name, price), and an options object lets
+	// the Sale screen ask for unit / opening stock / cost without any of
+	// them having to change or accidentally passing a value in the wrong
+	// slot.
+	quick_create_item(item_name, selling_price, opts = {}) {
 		return frappe.xcall("santu_hardware.santu_hardware.api.quick_create_item", {
 			item_name,
 			selling_price,
-			item_group,
-			uom,
-			barcode,
+			item_group: opts.item_group,
+			uom: opts.uom,
+			barcode: opts.barcode,
+			gst_hsn_code: opts.gst_hsn_code,
+			opening_qty: opts.opening_qty || 0,
+			cost_price: opts.cost_price || 0,
+			// Only Estimate/Quotation passes 0 here — it quotes goods the shop
+			// may not stock yet. Everywhere else the count stays mandatory.
+			require_opening_qty: opts.require_opening_qty === 0 ? 0 : 1,
 		});
 	},
 	item_cost_price(item_code, warehouse) {

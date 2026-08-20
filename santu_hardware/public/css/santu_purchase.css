@@ -227,6 +227,32 @@ input.santu-purchase-pill[type="date"] {
 	margin-bottom: 10px;
 }
 
+/* Total Payable — moved here from Home (2026-08-18). Kept visually distinct
+   from the Paid/Unpaid/Total triple below: it is the overall figure across
+   every supplier, not scoped to whichever date range is selected there. */
+.santu-purchase-total-payable {
+	background: #fde8ea;
+	border-radius: 8px;
+	padding: 18px 24px;
+	margin-bottom: 12px;
+}
+.santu-purchase-total-payable-label {
+	font-size: 14px;
+	font-weight: 600;
+	color: #7a2530;
+	margin-bottom: 4px;
+}
+.santu-purchase-total-payable-amount {
+	font-size: 32px;
+	font-weight: 700;
+	color: #a8323f;
+}
+.santu-purchase-total-payable-sub {
+	font-size: 13px;
+	color: #7a2530;
+	margin-top: 4px;
+}
+
 .santu-purchase-summary-triple {
 	display: flex;
 	align-items: center;

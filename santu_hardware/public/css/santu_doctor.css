@@ -1,0 +1,159 @@
+/* Doctor — plain, readable rows. Colour carries the verdict so it reads at a
+   glance from across the counter, not just up close. */
+.santu-doc {
+	max-width: 900px;
+	margin: 0 auto;
+	padding: 20px 16px 60px;
+}
+.santu-doc-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	flex-wrap: wrap;
+	margin-bottom: 16px;
+}
+.santu-doc-title {
+	font-size: 24px;
+	font-weight: 700;
+	color: #111827;
+}
+.santu-doc-sub {
+	color: #6b7280;
+	font-size: 14px;
+	margin-top: 2px;
+}
+.santu-doc-run {
+	border: none;
+	background: #2563eb;
+	color: #fff;
+	font-weight: 700;
+	font-size: 15px;
+	padding: 12px 22px;
+	border-radius: 999px;
+	cursor: pointer;
+}
+.santu-doc-run:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+.santu-doc-summary {
+	padding: 12px 16px;
+	border-radius: 10px;
+	font-weight: 600;
+	margin-bottom: 14px;
+}
+.santu-doc-summary.is-clean {
+	background: #ecfdf5;
+	color: #047857;
+}
+.santu-doc-summary.is-bad {
+	background: #fffbeb;
+	color: #b45309;
+}
+.santu-doc-empty {
+	color: #6b7280;
+	padding: 24px 4px;
+}
+.santu-doc-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 12px;
+	padding: 14px 16px;
+	margin-bottom: 10px;
+}
+.santu-doc-dot {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	flex-shrink: 0;
+	background: #9ca3af;
+}
+.santu-doc-row.is-ok .santu-doc-dot {
+	background: #16a34a;
+}
+.santu-doc-row.is-warn .santu-doc-dot {
+	background: #f59e0b;
+}
+.santu-doc-row.is-fail .santu-doc-dot {
+	background: #dc2626;
+}
+.santu-doc-text {
+	flex: 1;
+	min-width: 0;
+}
+.santu-doc-row-title {
+	font-weight: 600;
+	color: #111827;
+}
+.santu-doc-row-detail {
+	color: #6b7280;
+	font-size: 13.5px;
+	margin-top: 2px;
+}
+.santu-doc-right {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-shrink: 0;
+}
+.santu-doc-badge {
+	font-size: 12.5px;
+	font-weight: 700;
+	color: #6b7280;
+}
+.santu-doc-row.is-ok .santu-doc-badge {
+	color: #16a34a;
+}
+.santu-doc-row.is-warn .santu-doc-badge {
+	color: #b45309;
+}
+.santu-doc-row.is-fail .santu-doc-badge {
+	color: #dc2626;
+}
+.santu-doc-fix {
+	border: 1px solid #2563eb;
+	background: #fff;
+	color: #2563eb;
+	font-weight: 700;
+	font-size: 13px;
+	padding: 8px 14px;
+	border-radius: 999px;
+	cursor: pointer;
+}
+.santu-doc-fix:hover {
+	background: #eff6ff;
+}
+.santu-doc-fix:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+
+/* Two buttons side by side: check, and mend whatever the check found. */
+.santu-doc-actions {
+	display: flex;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+.santu-doc-fixall {
+	border: none;
+	background: #16a34a;
+	color: #fff;
+	font-weight: 700;
+	font-size: 15px;
+	padding: 12px 22px;
+	border-radius: 999px;
+	cursor: pointer;
+}
+.santu-doc-fixall:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+/* Nothing to mend: still there, just quieter than the green "there is work" state. */
+.santu-doc-fixall.is-idle {
+	background: #e5e7eb;
+	color: #4b5563;
+}

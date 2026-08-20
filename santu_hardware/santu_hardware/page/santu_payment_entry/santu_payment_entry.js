@@ -437,10 +437,22 @@ window.santu_payment_entry_page = {
 			$bar.empty();
 			return;
 		}
+		// Direction from the SIGN, not from which screen this is. The
+		// settlement table now includes return credits (negative
+		// outstanding), so a customer can genuinely net out to "shop owes
+		// them" — labelling that "This party owes you ₹-600" was the exact
+		// opposite of the truth (2026-08-19 bug report).
+		const due = Number(s.total_outstanding) || 0;
+		const owes_you = this._is_in() ? due > 0 : due < 0;
+		const due_label = !due
+			? __("All settled — nothing pending")
+			: owes_you
+				? __("This party owes you")
+				: __("You owe this party");
 		$bar.html(`
-			<div class="santu-pay-duebar-inner ${s.total_outstanding > 0 ? "santu-pay-duebar-owed" : "santu-pay-duebar-clear"}">
-				<span class="santu-pay-duebar-label">${this._is_in() ? "This party owes you" : "You owe this party"}</span>
-				<span class="santu-pay-duebar-amount santu-si2-figures">₹ ${format_currency_num(s.total_outstanding)}</span>
+			<div class="santu-pay-duebar-inner ${due ? "santu-pay-duebar-owed" : "santu-pay-duebar-clear"}">
+				<span class="santu-pay-duebar-label">${due_label}</span>
+				${due ? `<span class="santu-pay-duebar-amount santu-si2-figures">₹ ${format_currency_num(Math.abs(due))}</span>` : ""}
 			</div>
 		`);
 	},

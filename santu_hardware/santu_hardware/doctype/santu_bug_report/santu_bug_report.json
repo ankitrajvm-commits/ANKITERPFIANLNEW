@@ -1,0 +1,128 @@
+{
+ "actions": [],
+ "autoname": "format:BUG-{YYYY}{MM}{DD}-{#####}",
+ "creation": "2026-08-17 04:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "title",
+  "source",
+  "status",
+  "occurrences",
+  "column_break_1",
+  "route",
+  "app_version",
+  "reference_doctype",
+  "reference_name",
+  "reported_by",
+  "last_seen_on",
+  "details_section",
+  "message",
+  "traceback",
+  "fingerprint"
+ ],
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "What went wrong",
+   "reqd": 1
+  },
+  {
+   "default": "Server",
+   "fieldname": "source",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Source",
+   "options": "Server\nBrowser\nReported by User"
+  },
+  {
+   "default": "New",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "New\nSeen\nFixed\nIgnored"
+  },
+  {
+   "default": "1",
+   "fieldname": "occurrences",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Times Seen"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "route",
+   "fieldtype": "Data",
+   "label": "Screen / Route"
+  },
+  {
+   "fieldname": "app_version",
+   "fieldtype": "Data",
+   "label": "App Version"
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "label": "Related Doctype",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Related Record",
+   "options": "reference_doctype"
+  },
+  {
+   "fieldname": "reported_by",
+   "fieldtype": "Link",
+   "label": "Reported By",
+   "options": "User"
+  },
+  {
+   "fieldname": "last_seen_on",
+   "fieldtype": "Datetime",
+   "label": "Last Seen"
+  },
+  {
+   "fieldname": "details_section",
+   "fieldtype": "Section Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "message",
+   "fieldtype": "Text",
+   "label": "Message"
+  },
+  {
+   "fieldname": "traceback",
+   "fieldtype": "Code",
+   "label": "Traceback"
+  },
+  {
+   "fieldname": "fingerprint",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Fingerprint",
+   "unique": 1
+  }
+ ],
+ "module": "Santu Hardware",
+ "name": "Santu Bug Report",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}

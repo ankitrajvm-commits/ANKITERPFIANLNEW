@@ -104,15 +104,34 @@ window.santu_view_invoice_page = {
 
 	_render_actionbar($body, d, { whatsapp = true } = {}) {
 		$body.find('[data-action="back"]').on("click", () => window.history.back());
-		$body.find('[data-action="print"]').on("click", () => frappe.set_route("print", d.doctype, d.name));
-		$body.find('[data-action="pdf"]').on("click", () => {
+		const open_pdf = () => {
 			window.open(
 				frappe.urllib.get_full_url(
 					`/api/method/frappe.utils.print_format.download_pdf?doctype=${encodeURIComponent(d.doctype)}&name=${encodeURIComponent(d.name)}&format=&no_letterhead=0`
 				),
 				"_blank"
 			);
+		};
+		// Sales Invoice/POS Invoice get the real thermal ladder
+		// (santu_print_thermal_bill — 2026-08-19: full-page print instead of
+		// the thermal slip, paper never cutting). Everything else here used
+		// to fall through to santu_print_thermal_bill's own default, which is
+		// frappe.set_route("print", ...) — ERPNext's raw native print page,
+		// with the shop's own topbar/sidebar gone and the doctype's actual
+		// field names showing ("Exchange Gain/Loss", "Paid From Account
+		// Type"...). For a Payment In/Out receipt that reads as the app
+		// crashing, not as a print dialog (2026-08-19 bug report: "app
+		// crash kr raha jab maine koi bill pay kiya... print pe click kiya
+		// then app crashed"). This screen's own header comment already
+		// bans the native Form/print view outright, so Print does what PDF
+		// already safely does — a real PDF in a new tab, app shell intact —
+		// for every doctype that doesn't have its own thermal format.
+		const THERMAL_DOCTYPES = ["Sales Invoice", "POS Invoice"];
+		$body.find('[data-action="print"]').on("click", () => {
+			if (THERMAL_DOCTYPES.includes(d.doctype)) window.santu_print_thermal_bill(d.doctype, d.name);
+			else open_pdf();
 		});
+		$body.find('[data-action="pdf"]').on("click", open_pdf);
 		if (whatsapp) {
 			$body.find('[data-action="whatsapp"]').on("click", () => this._send_whatsapp());
 		}

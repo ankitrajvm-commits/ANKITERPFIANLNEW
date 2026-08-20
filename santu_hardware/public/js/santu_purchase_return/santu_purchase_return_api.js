@@ -17,4 +17,11 @@ santu_purchase_return.api = {
 			submit: submit ? 1 : 0,
 		});
 	},
+	create_refund_payment(doctype, return_name, mode_of_payment) {
+		return frappe.xcall("santu_hardware.santu_hardware.api.create_return_refund_payment", {
+			doctype,
+			return_name,
+			mode_of_payment,
+		});
+	},
 };

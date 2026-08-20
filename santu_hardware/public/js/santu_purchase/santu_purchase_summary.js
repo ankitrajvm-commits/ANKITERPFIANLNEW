@@ -7,7 +7,25 @@ santu_purchase.summary = {
 		const type = summary.summary_type || view;
 
 		if (type === "bills") {
+			// Total Payable — moved here from Home (2026-08-18 direct request:
+			// "home se total payable ko hata do aur more me daal do"). This is
+			// the overall pending-across-every-supplier figure, deliberately
+			// separate from the Paid/Unpaid/Total triple below it, which is
+			// scoped to whichever date filter is selected — the two numbers
+			// answer different questions and shouldn't be made to look like one.
+			const party_count = summary.payable_party_count || 0;
+			const payable_html =
+				(summary.total_payable || 0) > 0
+					? `
+				<div class="santu-purchase-total-payable">
+					<div class="santu-purchase-total-payable-label">Total Payable</div>
+					<div class="santu-purchase-total-payable-amount santu-figures">${u.format_money(summary.total_payable)}</div>
+					<div class="santu-purchase-total-payable-sub">From <b>${party_count}</b> ${party_count === 1 ? "Party" : "Parties"}</div>
+				</div>
+			`
+					: "";
 			$wrap.html(`
+				${payable_html}
 				<div class="santu-purchase-summary-triple">
 					<div class="santu-purchase-sum-card santu-purchase-sum-paid">
 						<div class="santu-purchase-sum-label">Paid</div>

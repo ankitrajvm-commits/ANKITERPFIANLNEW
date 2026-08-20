@@ -36,6 +36,21 @@ const SANTU_SI2_STORAGE_KEY = "santu_sale_pos_tabs_v1";
 const SANTU_SI2_DEFAULT_TERMS =
 	"The goods returned can only be exchanged at store only. Call before making any exchange or return confirmation.";
 
+// Shape of the placeholder name given to a party auto-created from a bare
+// phone number ("Customer 6780"). Recognising it again is what lets the
+// screen refuse to leave baaki on someone whose details were never filled in.
+const SANTU_SI2_AUTO_NAME_RE = /^customer\s+\d+$/i;
+
+const flt_factor = (v) => (Number(v) > 0 ? Number(v) : 1);
+
+// Real icons instead of emoji. Emoji render differently on every OS (and the
+// shop is used from both this Mac and a phone), and several of the ones this
+// screen used — 🧮 ＋ ☰ — read as decoration rather than as buttons.
+const SANTU_SI2_ICON_DIR = "/assets/santu_hardware/images/items";
+
+const santu_si2_icon = (file, cls = "") =>
+	`<img class="santu-si2-ico ${cls}" src="${SANTU_SI2_ICON_DIR}/${file}" alt="" draggable="false">`;
+
 // Explicitly on `window`, not a top-level `const`: a classic script's
 // top-level const lives in the global lexical environment, not on window,
 // so `window.santu_sale_pos` read undefined everywhere it was checked —
@@ -108,10 +123,15 @@ window.santu_sale_pos = {
 			customer: null,
 			customer_details: null,
 			phone: "",
-			address: "",
-			payment_mode: "credit",
+			note: "", // free-text identification note (e.g. house/landmark) — NOT a postal address; Village/Pincode carry the actual place
 			mode_of_payment: (this.init_data.payment_modes[0] || {}).name || null,
-			paid_amount: null, // null = "full amount" (Cash mode); a number less than the total = partial payment, remainder goes to the customer's account
+			// null = "auto": Received Amount defaults to (and live-tracks) the
+			// bill's full total, so an operator who saves without touching
+			// this field gets a fully-paid bill, not a silent baaki (2026-08-19
+			// direct request: "hamesha baaki hi chala jaa raha hai, dhyaan
+			// naa dene pe"). Typing a real number here switches the tab out
+			// of auto mode for a genuine partial/credit sale.
+			paid_amount: null,
 			items: [],
 			additional_discount_amount: 0,
 			round_off: true,
@@ -150,18 +170,6 @@ window.santu_sale_pos = {
 		if (tab.customer) {
 			santu_sale_invoice.api.customer_details(tab.customer).then((d) => {
 				tab.customer_details = d;
-				// Same Walk-in-must-be-Cash correction _select_customer applies —
-				// a prefilled tab sets tab.customer directly, bypassing it, which
-				// let a converted Quotation for Walk-in Customer reach Save still
-				// on Credit and fail with "cannot have an outstanding balance"
-				// (confirmed live 2026-08-15).
-				if ((d.customer_name || "").trim().toLowerCase() === "walk-in customer" && tab.payment_mode === "credit") {
-					tab.payment_mode = "cash";
-					frappe.show_alert({ message: __("Walk-in Customer must pay in full — switched to Cash."), indicator: "orange" });
-					this._save_debounced();
-					this._render_body();
-					return;
-				}
 				this._save_debounced();
 				this._render_customer_info();
 			});
@@ -209,10 +217,12 @@ window.santu_sale_pos = {
 				<div class="santu-si2-tabbar">
 					<div class="santu-si2-tabs"></div>
 					<div class="santu-si2-toolbar">
-						<button type="button" class="santu-si2-icon-btn" data-action="calculator" title="Calculator">🧮</button>
-						<button type="button" class="santu-si2-icon-btn" data-action="settings" title="Settings">⚙</button>
+						<button type="button" class="santu-si2-icon-btn santu-si2-cost-toggle" data-toolbar="privacy" title="${__("Show cost price")}">${santu_si2_icon("lock-icon.svg", "is-on-dark")}</button>
+						<button type="button" class="santu-si2-icon-btn" data-action="calculator" title="Calculator">${santu_si2_icon("calculator.svg", "is-on-dark")}</button>
+						<button type="button" class="santu-si2-icon-btn" data-action="settings" title="Settings">${santu_si2_icon("setting_black.svg", "is-on-dark")}</button>
 					</div>
 				</div>
+				<div class="santu-si2-print-alert" style="display:none"></div>
 				<div class="santu-si2-body"></div>
 			</div>
 		`);
@@ -221,6 +231,141 @@ window.santu_sale_pos = {
 		this._render_body();
 		this._bind_toolbar();
 		this._bind_shortcuts();
+		this._refresh_print_alert();
+		this._listen_for_scans();
+	},
+
+	// Scan a barcode anywhere on this screen and the item lands on the bill.
+	// No box to click into first: the operator has one hand on the scanner
+	// and one on the goods, and the focus is wherever the last tap left it.
+	_listen_for_scans() {
+		if (!window.santu_barcode) return;
+		window.santu_barcode.listen((code) => this._handle_scan(code), "santu-sale-invoice");
+	},
+
+	_handle_scan(code) {
+		santu_sale_invoice.api
+			.find_item_by_barcode(code)
+			.then((r) => {
+				if (r && r.found) {
+					this._add_item(r.item_code);
+					frappe.show_alert({
+						message: __("{0} jud gaya", [r.item_name || r.item_code]),
+						indicator: "green",
+					});
+					return;
+				}
+				this._unknown_barcode(code);
+			})
+			.catch(() => this._unknown_barcode(code));
+	},
+
+	// An unrecognised code is normal, not an error — new stock arrives with
+	// codes the shop has never seen. Offer the two things that actually
+	// resolve it, and keep the sale moving.
+	_unknown_barcode(code) {
+		const d = new frappe.ui.Dialog({
+			title: __("Ye barcode kisi saman par nahi laga hai"),
+			fields: [
+				{
+					fieldtype: "HTML",
+					fieldname: "code",
+					options: `<div style="font-size:15px;margin-bottom:10px">
+						${__("Barcode")}: <b>${frappe.utils.escape_html(code)}</b></div>`,
+				},
+				{
+					fieldtype: "Link",
+					fieldname: "item_code",
+					label: __("Kis saman par lagana hai?"),
+					options: "Item",
+					description: __("Saman dhoondhkar chunein — agli baar scan karte hi wahi aa jayega."),
+				},
+			],
+			primary_action_label: __("Is saman par laga do"),
+			primary_action: (v) => {
+				if (!v.item_code) {
+					frappe.msgprint(__("Pehle saman chunein."));
+					return;
+				}
+				santu_sale_invoice.api
+					.attach_barcode_to_item(v.item_code, code)
+					.then(() => {
+						d.hide();
+						this._add_item(v.item_code);
+						frappe.show_alert({ message: __("Barcode laga diya — aur bill me jud gaya"), indicator: "green" });
+					})
+					.catch((err) =>
+						frappe.msgprint({
+							title: __("Barcode nahi laga"),
+							indicator: "red",
+							message: (err && err.message) || __("Dobara koshish karein."),
+						})
+					);
+			},
+			secondary_action_label: __("Naya saman banao"),
+			secondary_action: () => {
+				d.hide();
+				// Carry the scanned code into the new item, so the very first
+				// scan of a new product is also the moment it gets its code.
+				this._quick_create_item("", { barcode: code });
+			},
+		});
+		d.show();
+	},
+
+	// A bill that never came out on paper must not be able to sit there
+	// unnoticed while the counter carries on selling. The job rows already
+	// know; this is the part that says so out loud, on the one screen the
+	// shop actually looks at.
+	_refresh_print_alert() {
+		const $alert = this.$root && this.$root.find(".santu-si2-print-alert");
+		if (!$alert || !$alert.length) return;
+		santu_sale_invoice.api
+			.open_print_jobs(24)
+			.then((jobs) => {
+				if (!jobs || !jobs.length) return $alert.hide().empty();
+				const list = jobs
+					.map((j) => frappe.utils.escape_html(j.invoice_name))
+					.join(", ");
+				$alert
+					.html(
+						`<span>${__("Ye bill print nahi hue")}: <b>${list}</b></span>
+						 <button type="button" class="santu-si2-print-alert-btn" data-action="retry-prints">${__("Dobara chhapo")}</button>`
+					)
+					.show();
+				$alert.find('[data-action="retry-prints"]').on("click", () => this._retry_stuck_prints(jobs));
+			})
+			.catch(() => $alert.hide());
+	},
+
+	_retry_stuck_prints(jobs) {
+		frappe.dom.freeze(__("Dobara chhap rahe hain…"));
+		const results = [];
+		jobs
+			.reduce(
+				(chain, j) =>
+					chain.then(() =>
+						santu_sale_invoice.api
+							.retry_print_job(j.name)
+							.then(() => results.push([j.invoice_name, true]))
+							.catch(() => results.push([j.invoice_name, false]))
+					),
+				Promise.resolve()
+			)
+			.finally(() => {
+				frappe.dom.unfreeze();
+				const failed = results.filter((r) => !r[1]).map((r) => r[0]);
+				if (failed.length) {
+					frappe.msgprint({
+						title: __("Kuch bill ab bhi nahi chhape"),
+						indicator: "red",
+						message: __("Baaki hain: {0}. Utilities → Doctor Uncle kholkar jaanchein.", [failed.join(", ")]),
+					});
+				} else {
+					frappe.show_alert({ message: __("Sab chhap gaye"), indicator: "green" });
+				}
+				this._refresh_print_alert();
+			});
 	},
 
 	_render_tabbar() {
@@ -281,14 +426,6 @@ window.santu_sale_pos = {
 		$wrap.html(`
 			<div class="santu-si2-header">
 				<div class="santu-si2-header-title">Sale</div>
-				<div class="santu-si2-mode">
-					<span class="santu-si2-mode-label${tab.payment_mode === "credit" ? " is-active" : ""}" data-mode="credit">Credit</span>
-					<label class="santu-si2-switch">
-						<input type="checkbox" class="santu-si2-mode-input" ${tab.payment_mode === "cash" ? "checked" : ""}>
-						<span class="santu-si2-slider"></span>
-					</label>
-					<span class="santu-si2-mode-label${tab.payment_mode === "cash" ? " is-active" : ""}" data-mode="cash">Cash</span>
-				</div>
 			</div>
 
 			<div class="santu-si2-toprow">
@@ -296,20 +433,23 @@ window.santu_sale_pos = {
 					<div class="santu-si2-customer-fields">
 						<div class="santu-si2-customer-row1">
 							<div class="santu-si2-customer-search-wrap">
-								<input type="text" class="santu-si2-customer-search" placeholder="Party Name *" autocomplete="off">
+								<input type="text" class="santu-si2-customer-search" placeholder="Party Name *" name="santu-party-name" autocomplete="new-password" data-lpignore="true" data-form-type="other">
 								<div class="santu-si2-customer-dropdown" style="display:none;"></div>
 							</div>
-							<input type="text" class="santu-si2-phone" placeholder="Phone No.">
+							<div class="santu-si2-phone-wrap">
+								<input type="text" class="santu-si2-phone" placeholder="Phone No." name="santu-party-phone" autocomplete="new-password" data-lpignore="true" data-form-type="other">
+								<div class="santu-si2-phone-dropdown" style="display:none;"></div>
+							</div>
+							<button type="button" class="santu-si2-chip santu-si2-chip-note" title="${__("Notes & customer info")}">${santu_si2_icon("iconInfo.svg")}</button>
+							<button type="button" class="santu-si2-chip santu-si2-chip-more" title="${__("GST & more details")}">${santu_si2_icon("GST_Entry_Point.svg")}</button>
 						</div>
-						<textarea class="santu-si2-address" placeholder="Address" rows="2"></textarea>
 						<div class="santu-si2-customer-row2">
 							<div class="santu-si2-village-wrap">
-								<input type="text" class="santu-si2-village" placeholder="Village / City" autocomplete="off">
+								<input type="text" class="santu-si2-village" placeholder="Village / City" name="santu-party-village" autocomplete="new-password" data-lpignore="true" data-form-type="other">
 								<div class="santu-si2-village-dropdown" style="display:none;"></div>
 							</div>
-							<input type="text" class="santu-si2-pincode" placeholder="Pincode" maxlength="6" inputmode="numeric">
+							<input type="text" class="santu-si2-pincode" placeholder="Pincode" maxlength="6" inputmode="numeric" name="santu-party-pincode" autocomplete="new-password" data-lpignore="true" data-form-type="other">
 						</div>
-						<a href="#" class="santu-si2-party-advanced">${__("GST & more details…")}</a>
 					</div>
 				</div>
 				<div class="santu-si2-customer-info"></div>
@@ -339,6 +479,7 @@ window.santu_sale_pos = {
 			</div>
 
 			<div class="santu-si2-table-wrap">
+				<div class="santu-si2-table-scroll">
 				<table class="santu-si2-table">
 					<thead>
 						<tr>
@@ -356,7 +497,7 @@ window.santu_sale_pos = {
 					<tbody></tbody>
 					<tfoot>
 						<tr>
-							<td colspan="2"><button type="button" class="santu-si2-add-row">+ ADD ROW</button> <button type="button" class="santu-si2-scan-row" title="Scan a barcode">📷 SCAN BARCODE</button></td>
+							<td colspan="2"><button type="button" class="santu-si2-add-row">+ ADD ROW</button> <button type="button" class="santu-si2-scan-row" title="Scan a barcode">${santu_si2_icon("barcode_icon.webp")} SCAN BARCODE</button></td>
 							<td class="santu-si2-total-qty">0</td>
 							<td></td>
 							<td></td>
@@ -367,14 +508,15 @@ window.santu_sale_pos = {
 						</tr>
 					</tfoot>
 				</table>
+				</div>
 			</div>
 
 			<div class="santu-si2-lowerrow">
 				<div class="santu-si2-extras">
-					<button type="button" class="santu-si2-extra-btn" data-extra="terms">☰ ADD TERMS &amp; CONDITIONS</button>
-					<button type="button" class="santu-si2-extra-btn" data-extra="description">＋ ADD DESCRIPTION</button>
-					<button type="button" class="santu-si2-extra-btn" data-extra="image">📷 ADD IMAGE</button>
-					<button type="button" class="santu-si2-extra-btn" data-extra="document">📄 ADD DOCUMENT</button>
+					<button type="button" class="santu-si2-extra-btn" data-extra="terms">${santu_si2_icon("checklist-icon.svg")} ADD TERMS &amp; CONDITIONS</button>
+					<button type="button" class="santu-si2-extra-btn" data-extra="description">${santu_si2_icon("baseline-edit.svg")} ADD DESCRIPTION</button>
+					<button type="button" class="santu-si2-extra-btn" data-extra="image">${santu_si2_icon("baseline-add_a_photo.svg")} ADD IMAGE</button>
+					<button type="button" class="santu-si2-extra-btn" data-extra="document">${santu_si2_icon("documentIcon.svg")} ADD DOCUMENT</button>
 				</div>
 				<div class="santu-si2-summary">
 					<div class="santu-si2-summary-row">
@@ -418,8 +560,8 @@ window.santu_sale_pos = {
         class="santu-si2-received-input"
         min="0"
         step="0.01"
-        value="${tab.paid_amount != null ? tab.paid_amount : (tab.payment_mode === "cash" ? "" : "0")}"
-        placeholder="${tab.payment_mode === "cash" ? "Full amount" : "0"}"
+        value="${tab.paid_amount != null ? tab.paid_amount : (tab._computed_total || "")}"
+        placeholder="0"
     >
 </div>
 <div class="santu-si2-remaining-note" style="display:none;"></div>
@@ -446,7 +588,7 @@ window.santu_sale_pos = {
 							<button type="button" data-more="payment">Payment</button>
 							<button type="button" data-more="sales_return">Sales Return</button>
 							<button type="button" data-more="submit_draft">Save as Draft (don't submit)</button>
-							<button type="button" data-more="privacy">Show Cost Price</button>
+							<button type="button" data-more="report_bug">Kuch gadbad hai? Batao</button>
 						</div>
 					</div>
 				</div>
@@ -468,35 +610,63 @@ window.santu_sale_pos = {
 		const tab = this._active_tab();
 		const name = (this.$root.find(".santu-si2-customer-search").val() || "").trim();
 		const phone = (this.$root.find(".santu-si2-phone").val() || "").trim();
-		const address = (this.$root.find(".santu-si2-address").val() || "").trim();
+		// Notes live behind the 📝 chip, not an inline field — read them off
+		// the tab, which the chip's dialog is what writes to.
+		const note = (tab.note || "").trim();
 		const city = (this.$root.find(".santu-si2-village").val() || "").trim();
 		const pincode = (this.$root.find(".santu-si2-pincode").val() || "").trim();
 		tab.phone = phone;
-		tab.address = address;
 		tab.city = city;
 		tab.pincode = pincode;
-		return { name, phone, address, city, pincode };
+		return { name, phone, note, city, pincode };
 	},
 
 	_sync_inline_customer_fields() {
 		const tab = this._active_tab();
 		const $search = this.$root.find(".santu-si2-customer-search");
 		const $phone = this.$root.find(".santu-si2-phone");
-		const $address = this.$root.find(".santu-si2-address");
 		const $village = this.$root.find(".santu-si2-village");
 		const $pincode = this.$root.find(".santu-si2-pincode");
 		const d = tab.customer_details || {};
 		$search.val(d.customer_name || tab.customer || "");
 		$phone.val(d.mobile_no || tab.phone || "");
-		$address.val(d.address_line1 || tab.address || "");
-		$village.val(d.city || tab.city || "");
+		if (d.note != null) tab.note = d.note;
+		// d.city is the Address record's city and is blank for anyone created
+		// without a full address — santu_village (returned as d.village) is
+		// where the place actually lives for those parties, so fall back to it
+		// or picking a customer by phone leaves Village blank even though the
+		// party card right beside it shows the village fine.
+		$village.val(d.city || d.village || tab.city || "");
 		$pincode.val(d.pincode || tab.pincode || "");
+
+		// Chrome refills a blank Phone/Village from its own saved contact and
+		// address data a moment after the fields render, ignoring
+		// autocomplete="off" on address-shaped inputs. The tab really is empty
+		// — the app never carried anything over — but the counter sees the last
+		// customer's number and village sitting in a brand new sale and can
+		// bill the wrong person (2026-08-17 bug report). Re-assert empty once
+		// the browser has had its turn, and only while the tab is still
+		// untouched, so nothing typed in the meantime is wiped.
+		const blank = !tab.customer && !(tab.phone || "").trim() && !(tab.city || "").trim() && !(tab.pincode || "").trim();
+		if (blank) {
+			clearTimeout(this._autofill_timer);
+			this._autofill_timer = setTimeout(() => {
+				const t = this._active_tab();
+				if (!t || t.id !== tab.id) return;
+				if (t.customer || (t.phone || "").trim() || (t.city || "").trim() || (t.pincode || "").trim()) return;
+				this.$root.find(".santu-si2-customer-search, .santu-si2-phone, .santu-si2-village, .santu-si2-pincode")
+					.each((_, el) => {
+						if (el.value) el.value = "";
+					});
+			}, 400);
+		}
 	},
 
 	_render_customer_info() {
 		const tab = this._active_tab();
 		const $info = this.$root.find(".santu-si2-customer-info");
 		this._sync_inline_customer_fields();
+		this._render_customer_chips();
 		if (!tab.customer) {
 			$info.empty();
 			return;
@@ -519,7 +689,7 @@ window.santu_sale_pos = {
 			tab.customer = null;
 			tab.customer_details = null;
 			tab.phone = "";
-			tab.address = "";
+			tab.note = "";
 			this._save_debounced();
 			this._render_body();
 		});
@@ -606,24 +776,120 @@ window.santu_sale_pos = {
 		});
 	},
 
+	// Mirrors _customer_search but keyed off the Phone field — typing a
+	// number that's already on file should surface the matching party the
+	// same way typing their name does, so name/village/notes all come along
+	// together instead of being typed twice (2026-08-16 direct request).
+	_phone_search(q) {
+		const $dd = this.$root.find(".santu-si2-phone-dropdown");
+		const digits = (q || "").replace(/\D/g, "");
+		if (digits.length < 4) {
+			$dd.hide().empty();
+			return;
+		}
+		santu_sale_invoice.api.search_customers_by_phone(digits).then((rows) => {
+			$dd.empty();
+			if (!rows.length) {
+				$dd.hide();
+				return;
+			}
+
+			// Typed the whole number and exactly one party has it: that IS the
+			// customer — pull them in without making anyone click a one-row
+			// dropdown. Everything (name, village, notes) fills from here.
+			const exact = rows.filter((c) => (c.mobile_no || "").replace(/\D/g, "") === digits);
+			if (digits.length >= 10 && exact.length === 1) {
+				$dd.hide();
+				if (this._active_tab().customer !== exact[0].name) this._select_customer(exact[0].name);
+				return;
+			}
+
+			rows.forEach((c) => {
+				$(`
+					<div class="santu-si2-dd-row" data-customer="${frappe.utils.escape_html(c.name)}">
+						<div class="santu-si2-dd-row-main">
+							<div class="santu-si2-dd-row-text">
+								<b>${frappe.utils.escape_html(c.customer_name)}</b>
+								<span>${frappe.utils.escape_html(c.mobile_no || "")}</span>
+							</div>
+						</div>
+					</div>
+				`)
+					.on("click", () => {
+						$dd.hide().empty();
+						this._select_customer(c.name);
+					})
+					.appendTo($dd);
+			});
+			$dd.show();
+		});
+	},
+
+	// The 📝 chip beside the phone field. Notes used to sit inline as a
+	// permanent two-line textarea taking up space on every sale, while the
+	// thing a counter actually wants mid-sale — "who is this, what do they
+	// already owe" — wasn't shown at all. Now one tap gives both.
+	_open_customer_note_dialog() {
+		const tab = this._active_tab();
+		const d = tab.customer_details || {};
+		const money = (v) => santu_sale_invoice.utils.format_money(v || 0);
+		const info = tab.customer
+			? `
+				<div class="santu-si2-note-info">
+					<div><b>${frappe.utils.escape_html(d.customer_name || tab.customer)}</b></div>
+					${d.mobile_no ? `<div>📞 ${frappe.utils.escape_html(d.mobile_no)}</div>` : ""}
+					${d.city || d.village ? `<div>📍 ${frappe.utils.escape_html(d.city || d.village)}</div>` : ""}
+					<div>${__("Outstanding")}: <b>${money(d.outstanding_amount)}</b></div>
+				</div>`
+			: `<div class="santu-si2-note-info">${__("New party — the note is saved along with the sale.")}</div>`;
+
+		const dialog = new frappe.ui.Dialog({
+			title: __("Notes & customer info"),
+			fields: [
+				{ fieldtype: "HTML", fieldname: "info", options: info },
+				{
+					fieldtype: "Small Text",
+					fieldname: "note",
+					label: __("Note (house / landmark / anything to recognise them)"),
+					default: tab.note || "",
+				},
+			],
+			primary_action_label: __("Save"),
+			primary_action: (values) => {
+				const note = (values.note || "").trim();
+				tab.note = note;
+				this._save_debounced();
+				this._render_customer_chips();
+				dialog.hide();
+				// An existing party's note is written through immediately — the
+				// same thing the search dropdown's "Save note" does — so it
+				// isn't lost if this sale is never saved.
+				if (tab.customer) {
+					santu_sale_invoice.api.update_customer_note(tab.customer, note).then(() => {
+						if (tab.customer_details) tab.customer_details.note = note;
+						frappe.show_alert({ message: __("Note saved"), indicator: "green" });
+					});
+				}
+			},
+		});
+		dialog.show();
+	},
+
+	// Chips carry a dot when they hold something, so a note that's already on
+	// file isn't invisible just because it lives behind a tap.
+	_render_customer_chips() {
+		const tab = this._active_tab();
+		this.$root.find(".santu-si2-chip-note").toggleClass("has-value", !!(tab.note || "").trim());
+	},
+
 	_select_customer(name) {
 		const tab = this._active_tab();
 		tab.customer = name;
 		this.$root.find(".santu-si2-customer-dropdown").hide().empty();
 		santu_sale_invoice.api.customer_details(name).then((d) => {
 			tab.customer_details = d;
-			// Walk-in Customer can't carry a balance — switch out of Credit
-			// automatically rather than let the cashier build a whole sale
-			// and only find out at Save.
-			let mode_changed = false;
-			if ((d.customer_name || "").trim().toLowerCase() === "walk-in customer" && tab.payment_mode === "credit") {
-				tab.payment_mode = "cash";
-				mode_changed = true;
-				frappe.show_alert({ message: __("Walk-in Customer must pay in full — switched to Cash."), indicator: "orange" });
-			}
 			this._save_debounced();
-			if (mode_changed) this._render_body();
-			else this._render_customer_info();
+			this._render_customer_info();
 		});
 	},
 
@@ -650,34 +916,53 @@ window.santu_sale_pos = {
 		this.$root.find(".santu-si2-phone").focus();
 	},
 
+	// A phone number is, on its own, enough to find someone again — Party
+	// Name isn't required if a phone was given. "Customer 7048" (last 4
+	// digits) is what goes on record and into the WhatsApp greeting when
+	// nobody typed a real name; it beats a blank "Namaste, !" message.
+	_default_customer_name(phone) {
+		const digits = (phone || "").replace(/\D/g, "");
+		return "Customer " + (digits.slice(-4) || digits);
+	},
+
 	_ensure_customer_before_save(tab) {
-		const { name, phone, address, city, pincode } = this._get_inline_customer_fields();
+		const { name, phone, note, city, pincode } = this._get_inline_customer_fields();
 
 		if (tab.customer) {
 			const d = tab.customer_details || {};
 			const currentName = (d.customer_name || "").trim();
 			const currentPhone = (d.mobile_no || "").trim();
-			const currentAddress = (d.address_line1 || "").trim();
+			const currentNote = (d.note || "").trim();
 			const currentCity = (d.city || "").trim();
 			const currentPincode = (d.pincode || "").trim();
 			const nameChanged = name && name !== currentName;
 			const phoneChanged = phone !== currentPhone;
-			const addressChanged = address !== currentAddress;
+			const noteChanged = note !== currentNote;
 			const cityChanged = city !== currentCity;
 			const pincodeChanged = pincode !== currentPincode;
 
-			if (nameChanged || phoneChanged || addressChanged || cityChanged || pincodeChanged) {
-				return santu_sale_invoice.api
-					.update_customer_inline(
+			const steps = [];
+			if (nameChanged || phoneChanged || cityChanged || pincodeChanged) {
+				steps.push(() =>
+					santu_sale_invoice.api.update_customer_inline(
 						tab.customer,
 						nameChanged ? name : null,
 						phoneChanged ? phone : null,
-						addressChanged ? address : null,
+						null,
 						cityChanged ? city : null,
 						pincodeChanged ? pincode : null
 					)
+				);
+			}
+			if (noteChanged) {
+				steps.push(() => santu_sale_invoice.api.update_customer_note(tab.customer, note));
+			}
+
+			if (steps.length) {
+				return steps
+					.reduce((p, step) => p.then((r) => step().then((r2) => r2 || r)), Promise.resolve(null))
 					.then((r) => {
-						if (r.party && r.party !== tab.customer) tab.customer = r.party;
+						if (r && r.party && r.party !== tab.customer) tab.customer = r.party;
 						return santu_sale_invoice.api.customer_details(tab.customer).then((details) => {
 							tab.customer_details = details;
 							this._save_debounced();
@@ -688,19 +973,20 @@ window.santu_sale_pos = {
 			return Promise.resolve(tab.customer);
 		}
 
-		if (!name) {
-			frappe.msgprint(__("Please enter a party name or select a customer."));
-			return Promise.reject();
+		if (!name && !phone) {
+			frappe.msgprint(__("Please enter a party name or a phone number."));
+			return Promise.reject({ santu_handled: true });
 		}
 
-		if (!phone && !address && !city && !pincode) {
-			frappe.msgprint(__("Add a phone number or an address for {0} — one of the two is needed.", [name]));
-			return Promise.reject();
+		const finalName = name || this._default_customer_name(phone);
+
+		if (!phone && !city && !pincode) {
+			frappe.msgprint(__("Add a phone number or a village for {0} — one of the two is needed.", [finalName]));
+			return Promise.reject({ santu_handled: true });
 		}
 
-		const payload = { customer_name: name, phone: phone || null };
-		if (address || city || pincode) {
-			if (address) payload.address_line1 = address;
+		const payload = { customer_name: finalName, phone: phone || null };
+		if (city || pincode) {
 			if (city) payload.city = city;
 			if (pincode) payload.pincode = pincode;
 			payload.state = "Bihar";
@@ -709,11 +995,14 @@ window.santu_sale_pos = {
 
 		return santu_sale_invoice.api.create_customer_full(payload).then((customer_name) => {
 			tab.customer = customer_name;
-			return santu_sale_invoice.api.customer_details(customer_name).then((d) => {
-				tab.customer_details = d;
-				this._save_debounced();
-				return customer_name;
-			});
+			const afterNote = note ? santu_sale_invoice.api.update_customer_note(customer_name, note) : Promise.resolve();
+			return afterNote.then(() =>
+				santu_sale_invoice.api.customer_details(customer_name).then((d) => {
+					tab.customer_details = d;
+					this._save_debounced();
+					return customer_name;
+				})
+			);
 		});
 	},
 
@@ -743,7 +1032,7 @@ window.santu_sale_pos = {
 					<td class="santu-si2-col-item">
 						<div class="santu-si2-item-name">${frappe.utils.escape_html(row.item_name || row.item_code)}</div>
 						<div class="santu-si2-item-sub">
-							${row.available_qty != null ? `<span class="${row.available_qty <= 0 ? "santu-si2-stock-out" : row.available_qty <= 5 ? "santu-si2-stock-low" : "santu-si2-stock-ok"}">Available: ${row.available_qty} ${frappe.utils.escape_html(row.uom || "")}</span>` : ""}
+							${row.available_qty != null ? `<span class="santu-si2-stock-edit ${row.available_qty <= 0 ? "santu-si2-stock-out" : row.available_qty <= 5 ? "santu-si2-stock-low" : "santu-si2-stock-ok"}" data-stock-edit="${row.id}" title="${__("Galat hai? Yahin theek karein")}">Available: ${row.available_qty} ${frappe.utils.escape_html(row.uom || "")}</span>` : ""}
 							${santu_is_privacy_mode_active && santu_is_privacy_mode_active() && row.cost_price != null ? `<span class="santu-si2-cost-price">Cost: ₹ ${santu_sale_invoice.utils.format_money(row.cost_price).replace("₹ ", "")}</span>` : ""}
 						</div>
 					</td>
@@ -756,7 +1045,7 @@ window.santu_sale_pos = {
 					</td>
 					<td class="santu-si2-col-uom">
 						<select class="santu-si2-uom-select">
-							${(row.uom_options || [row.uom]).filter(Boolean).map((u) => `<option value="${frappe.utils.escape_html(u)}" ${u === row.uom ? "selected" : ""}>${frappe.utils.escape_html(u)}</option>`).join("")}
+							${(row.uom_options || []).map((o) => { const u = o.uom || o; return `<option value="${frappe.utils.escape_html(u)}" ${u === row.uom ? "selected" : ""}>${frappe.utils.escape_html(u)}</option>`; }).join("")}
 						</select>
 					</td>
 					<td class="santu-si2-col-rate">
@@ -800,10 +1089,16 @@ window.santu_sale_pos = {
 		}
 		rows.forEach((item) => {
 			const out_of_stock = item.available_qty != null && item.available_qty <= 0;
+			// Two items with the same name look identical in this list, and the
+			// cashier picks one in a second flat. Say so, and show the code —
+			// the code is the only thing that actually tells them apart.
+			const twins = item.same_name_count > 1
+				? `<span class="santu-si2-dup-chip" title="${__("Is naam ke {0} saman hain — code dekh kar chunein", [item.same_name_count])}">${__("{0} same naam", [item.same_name_count])}</span>`
+				: "";
 			$(`
 				<div class="santu-si2-dd-row santu-si2-item-dd-row">
 					<div>
-						<b>${frappe.utils.escape_html(item.item_name)}</b>
+						<b>${frappe.utils.escape_html(item.item_name)}</b>${twins}
 						<span class="santu-si2-dd-sub">${frappe.utils.escape_html(item.item_code)}${item.brand ? " · " + frappe.utils.escape_html(item.brand) : ""}</span>
 					</div>
 					<div class="santu-si2-dd-right">
@@ -823,22 +1118,182 @@ window.santu_sale_pos = {
 		$dd.show();
 	},
 
-	_quick_create_item(item_name) {
+	_quick_create_item(item_name, opts = {}) {
 		const d = new frappe.ui.Dialog({
-			title: __("Quick Create Item"),
+			title: __("Naya saman jodein"),
 			fields: [
-				{ fieldtype: "Data", fieldname: "item_name", label: "Item Name", default: item_name, reqd: 1 },
-				{ fieldtype: "Currency", fieldname: "selling_price", label: "Selling Price", reqd: 1 },
+				{ fieldtype: "Data", fieldname: "item_name", label: __("Saman ka naam"), default: item_name, reqd: 1 },
+				{ fieldtype: "HTML", fieldname: "same_name_warning" },
+				{
+					fieldtype: "Data",
+					fieldname: "barcode",
+					label: __("Barcode"),
+					default: opts.barcode || "",
+					description: __("Scan kiya hua code — agli baar scan karte hi ye saman aa jayega."),
+					read_only: opts.barcode ? 1 : 0,
+				},
+				{ fieldtype: "Section Break" },
+				{ fieldtype: "Data", fieldname: "uom", label: __("Unit"), default: "Nos", hidden: 1 },
+				{ fieldtype: "HTML", fieldname: "uom_picker", label: __("Unit") },
+				{
+					fieldtype: "Float",
+					fieldname: "opening_qty",
+					label: __("Abhi kitna hai?"),
+					description: __("Dukaan me abhi jitna maal hai — bharna zaroori hai."),
+					reqd: 1,
+				},
+				{ fieldtype: "Column Break" },
+				{ fieldtype: "Currency", fieldname: "cost_price", label: __("Kharid ka daam"), description: __("Optional") },
+				{ fieldtype: "Currency", fieldname: "selling_price", label: __("Bechne ka daam"), reqd: 1 },
+				{ fieldtype: "Section Break" },
+				{
+					fieldtype: "Link",
+					fieldname: "gst_hsn_code",
+					options: "GST HSN Code",
+					label: __("HSN code"),
+					description: __("Pehle se koi saman ho to khali chhod sakte hain — wahi HSN apne aap lag jayega."),
+				},
 			],
-			primary_action_label: __("Create & Add"),
+			primary_action_label: __("Banao aur bill me daalo"),
 			primary_action: (v) => {
-				santu_sale_invoice.api.quick_create_item(v.item_name, v.selling_price).then((r) => {
-					d.hide();
-					this._add_item(r.item_code);
-				});
+				frappe.dom.freeze(__("Saman ban raha hai…"));
+				santu_sale_invoice.api
+					.quick_create_item(v.item_name, v.selling_price, {
+						uom: v.uom,
+						opening_qty: v.opening_qty,
+						cost_price: v.cost_price,
+						barcode: v.barcode || undefined,
+						gst_hsn_code: v.gst_hsn_code || undefined,
+					})
+					.then((r) => {
+						frappe.dom.unfreeze();
+						d.hide();
+						if (r.opening_qty) {
+							frappe.show_alert({
+								message: __("{0} — {1} {2} stock me chadh gaya", [r.item_name, r.opening_qty, r.uom]),
+								indicator: "green",
+							});
+						}
+						this._add_item(r.item_code);
+					})
+					.catch((err) => {
+						frappe.dom.unfreeze();
+						// Say what went wrong instead of leaving the dialog
+						// sitting there looking like nothing happened.
+						frappe.msgprint({
+							title: __("Saman nahi ban paya"),
+							indicator: "red",
+							message: (err && err.message) || __("Dobara koshish karein."),
+						});
+					});
 			},
 		});
 		d.show();
+
+		// The duplicates already in this catalog were not created on purpose —
+		// someone typed a name that already existed and nothing said so. Say
+		// so, offer the existing item, but never refuse: the same name in two
+		// pack sizes is normal in a hardware shop.
+		const check_name = (name) => {
+			const $slot = d.fields_dict.same_name_warning.$wrapper;
+			if (!name || !name.trim()) return $slot.empty();
+			santu_sale_invoice.api
+				.items_with_same_name(name)
+				.then((matches) => {
+					$slot.empty();
+					if (!matches || !matches.length) return;
+					const list = matches
+						.map(
+							(m) =>
+								`<button type="button" class="santu-si2-dup-existing" data-code="${frappe.utils.escape_html(m.item_code)}">
+									${frappe.utils.escape_html(m.item_code)}
+									<span>${m.available_qty != null ? m.available_qty + " " + (m.stock_uom || "") : ""}</span>
+								</button>`
+						)
+						.join("");
+					$slot.append(
+						`<div class="santu-si2-dup-warn">
+							<div><b>${__("Is naam ka saman pehle se hai")}</b> — ${__("naya banane ki zaroorat hai kya?")}</div>
+							<div class="santu-si2-dup-existing-wrap">${list}</div>
+						</div>`
+					);
+					$slot.find(".santu-si2-dup-existing").on("click", (e) => {
+						d.hide();
+						this._add_item($(e.currentTarget).data("code"));
+					});
+				})
+				.catch(() => $slot.empty());
+		};
+
+		check_name(item_name);
+		d.fields_dict.item_name.$input.on(
+			"input",
+			frappe.utils.debounce(() => check_name(d.get_value("item_name")), 400)
+		);
+
+		this._render_uom_picker(d);
+	},
+
+	// ERPNext ships 264 units. In an alphabetical list "Nos" and "Box" sit
+	// somewhere past Hectare and Kilopascal, so adding an item meant hunting
+	// to the bottom of a list of things a hardware shop will never sell
+	// (2026-08-17 feedback). The units this shop actually stocks become
+	// one-tap buttons; everything else stays reachable behind "Aur…".
+	_render_uom_picker(d) {
+		const $slot = d.fields_dict.uom_picker.$wrapper;
+		$slot.html(`<div class="santu-si2-uom-loading">${__("Unit…")}</div>`);
+		santu_sale_invoice.api
+			.uom_options()
+			.then((rows) => {
+				if (!rows || !rows.length) return $slot.empty();
+				const quick = rows.filter((r) => r.group !== "baaki");
+				const rest = rows.filter((r) => r.group === "baaki");
+				$slot.html(`
+					<label class="control-label">${__("Unit")}</label>
+					<div class="santu-si2-uom-chips">
+						${quick
+							.map(
+								(r) =>
+									`<button type="button" class="santu-si2-uom-chip" data-uom="${frappe.utils.escape_html(r.name)}">${frappe.utils.escape_html(r.name)}</button>`
+							)
+							.join("")}
+					</div>
+					<select class="santu-si2-uom-more form-control">
+						<option value="">${__("Aur koi unit…")}</option>
+						${rest
+							.map(
+								(r) =>
+									`<option value="${frappe.utils.escape_html(r.name)}">${frappe.utils.escape_html(r.name)}</option>`
+							)
+							.join("")}
+					</select>
+				`);
+
+				const mark = (value) => {
+					d.set_value("uom", value);
+					$slot.find(".santu-si2-uom-chip").each(function () {
+						$(this).toggleClass("is-on", $(this).data("uom") === value);
+					});
+					// Keep the dropdown showing the value only when it is the
+					// one that supplied it, so the chips stay the visible truth.
+					const in_rest = rest.some((r) => r.name === value);
+					$slot.find(".santu-si2-uom-more").val(in_rest ? value : "");
+				};
+
+				$slot.find(".santu-si2-uom-chip").on("click", (e) => mark($(e.currentTarget).data("uom")));
+				$slot.find(".santu-si2-uom-more").on("change", (e) => {
+					if (e.target.value) mark(e.target.value);
+				});
+				mark(d.get_value("uom") || (quick[0] && quick[0].name) || "Nos");
+			})
+			.catch(() => {
+				// Never leave the dialog without a way to set a unit.
+				$slot.html(
+					`<label class="control-label">${__("Unit")}</label>
+					 <input type="text" class="form-control santu-si2-uom-fallback" value="${frappe.utils.escape_html(d.get_value("uom") || "Nos")}">`
+				);
+				$slot.find(".santu-si2-uom-fallback").on("input", (e) => d.set_value("uom", e.target.value));
+			});
 	},
 
 	_add_item(item_code) {
@@ -860,7 +1315,12 @@ window.santu_sale_pos = {
 				item_name: row.item_name || item_code,
 				qty: 1,
 				uom: row.uom || row.stock_uom,
-				uom_options: row.uom ? [row.uom, row.stock_uom].filter((v, i, a) => v && a.indexOf(v) === i) : [row.stock_uom],
+				// Real unit list from the item, plus the rate and stock held in
+				// STOCK units, so switching Nos <-> Box just multiplies.
+				uom_options: (row.uoms && row.uoms.length ? row.uoms : [{ uom: row.uom || row.stock_uom, conversion_factor: 1 }]),
+				conversion_factor: 1,
+				base_rate: row.price_list_rate || row.rate || 0,
+				base_available_qty: row.available_qty,
 				rate: row.price_list_rate || row.rate || 0,
 				discount_percentage: 0,
 				discount_amount: 0,
@@ -877,10 +1337,7 @@ window.santu_sale_pos = {
 			this._save_debounced();
 			this._render_items();
 			if (santu_is_privacy_mode_active && santu_is_privacy_mode_active()) {
-				santu_sale_invoice.api.item_cost_price(item_code, this.init_data.warehouse).then((c) => {
-					new_row.cost_price = c.cost_price || c;
-					this._render_items();
-				});
+				this._load_cost_prices(tab).then(() => this._render_items());
 			}
 		});
 	},
@@ -904,18 +1361,15 @@ window.santu_sale_pos = {
 		row._net_amount = after_disc;
 	},
 
-	// What was actually received, whatever the Cash/Credit toggle happens to
-	// say — used by totals, save-validation and the save payload alike, so
-	// the three can't drift out of sync the way they used to. A brand new
-	// tab (paid_amount still null) falls back to the toggle's own default:
-	// Cash implies "the whole bill, unless typed otherwise", Credit implies
-	// "nothing yet". Once the counter types an amount — in EITHER mode —
-	// that typed figure is what counts. This is exactly the "₹500 bill,
-	// ₹200 handed over, ₹300 to the khata" case: nothing about the toggle
-	// needs to change for a partial payment to register.
+	// What was actually received — used by totals, save-validation and the
+	// save payload alike. `null` (auto mode, untouched) means the full bill
+	// total — a bill nobody edits Received Amount on saves as fully paid,
+	// not baaki. Typing a real amount here is what makes it a genuine
+	// partial/credit sale — the "₹500 bill, ₹200 handed over, ₹300 to the
+	// khata" case.
 	_effective_paid_amount(tab) {
-		if (tab.paid_amount != null) return Math.max(Number(tab.paid_amount) || 0, 0);
-		return tab.payment_mode === "cash" ? tab._computed_total || 0 : 0;
+		if (tab.paid_amount == null) return Math.max(Number(tab._computed_total) || 0, 0);
+		return Math.max(Number(tab.paid_amount) || 0, 0);
 	},
 
 	_recalc_totals() {
@@ -960,10 +1414,15 @@ window.santu_sale_pos = {
 		this.$root.find(".santu-si2-payment-left").text(
 			"₹ " + santu_sale_invoice.utils.format_money(left).replace("₹ ", "")
 		);
-		this.$root.find(".santu-si2-received-input").attr(
-			"placeholder",
-			tab.payment_mode === "cash" ? "Full amount: ₹ " + santu_sale_invoice.utils.format_money(rounded).replace("₹ ", "") : "0"
-		);
+		const $received = this.$root.find(".santu-si2-received-input");
+		$received.attr("placeholder", "0");
+		// Auto mode (nothing typed yet): keep the field showing the live
+		// total as items/discounts change, so "save without touching this"
+		// always means "fully paid" — not whatever the total happened to be
+		// a moment ago.
+		if (tab.paid_amount == null && document.activeElement !== $received.get(0)) {
+			$received.val(rounded || "");
+		}
 
 		const $note = this.$root.find(".santu-si2-remaining-note");
 		if (tab.paid_amount != null && left > 0) {
@@ -980,16 +1439,6 @@ window.santu_sale_pos = {
 		const tab = this._active_tab();
 		const $root = this.$root;
 
-		$root.find(".santu-si2-mode-input").on("change", (e) => {
-			tab.payment_mode = e.target.checked ? "cash" : "credit";
-			this._save_debounced();
-			this._render_body();
-		});
-		$root.find(".santu-si2-mode-label").on("click", function () {
-			tab.payment_mode = $(this).data("mode");
-			santu_sale_pos._save_debounced();
-			santu_sale_pos._render_body();
-		});
 		$root.find(".santu-si2-mop").on("change", (e) => {
 			tab.mode_of_payment = e.target.value;
 			this._save_debounced();
@@ -1022,18 +1471,23 @@ window.santu_sale_pos = {
 		$(document)
 			.off("click.santu-si2-dd")
 			.on("click.santu-si2-dd", (e) => {
-				if (!$(e.target).closest(".santu-si2-customer-search-wrap, .santu-si2-item-search-wrap, .santu-si2-item-dropdown, .santu-si2-village-wrap").length) {
-					$root.find(".santu-si2-customer-dropdown, .santu-si2-item-dropdown, .santu-si2-village-dropdown").hide();
+				if (!$(e.target).closest(".santu-si2-customer-search-wrap, .santu-si2-phone-wrap, .santu-si2-item-search-wrap, .santu-si2-item-dropdown, .santu-si2-village-wrap").length) {
+					$root.find(".santu-si2-customer-dropdown, .santu-si2-phone-dropdown, .santu-si2-item-dropdown, .santu-si2-village-dropdown").hide();
 				}
 			});
-		$root.find(".santu-si2-phone").on("change input", (e) => {
+		const $phone = $root.find(".santu-si2-phone");
+		$phone.on(
+			"input",
+			santu_sale_invoice.utils.debounce((e) => this._phone_search(e.target.value))
+		);
+		$phone.on("focus", (e) => {
+			if (e.target.value) this._phone_search(e.target.value);
+		});
+		$phone.on("change input", (e) => {
 			tab.phone = e.target.value;
 			this._save_debounced();
 		});
-		$root.find(".santu-si2-address").on("change input", (e) => {
-			tab.address = e.target.value;
-			this._save_debounced();
-		});
+		$root.find(".santu-si2-chip-note").on("click", () => this._open_customer_note_dialog());
 		$root.find(".santu-si2-pincode").on("change input", (e) => {
 			// Digits only, and stop at 6 — a stray letter here fails Address
 			// validation only after Save, when it's a lot more annoying to fix.
@@ -1043,27 +1497,31 @@ window.santu_sale_pos = {
 			this._save_debounced();
 		});
 
-		// Village/City — same real Bihar village + pincode dataset the full
-		// "Add Party" dialog uses, so the counter gets the same auto-filled
-		// pincode here without needing to open that dialog at all. No
-		// district selector in this compact row (that stays a dialog-only
-		// field for the rare out-of-district customer); "Saran" is this
-		// shop's own district and covers the everyday case.
+		// Village/City. Searched across the whole state, not one hardcoded
+		// district — picking a village fills its pincode, and the pincode is
+		// what the server turns into a district. So the counter types one
+		// thing and the other two follow, and a customer from the next
+		// district over is no longer invisible (2026-08-16 direct request).
 		const $village = $root.find(".santu-si2-village");
 		const $villageDD = $root.find(".santu-si2-village-dropdown");
 		const $pincode = $root.find(".santu-si2-pincode");
 		const search_village = santu_sale_invoice.utils.debounce((q) => {
-			santu_sale_invoice.api.search_bihar_villages("Saran", q).then((rows) => {
+			santu_sale_invoice.api.search_villages(q).then((rows) => {
 				$villageDD.empty();
 				if (!rows.length) {
 					$villageDD.append(`<div class="santu-si2-village-empty">${__("No matches")}</div>`);
 				}
 				rows.forEach((r) => {
-					$(`<div class="santu-si2-village-row">${frappe.utils.escape_html(r.village)} <span>${frappe.utils.escape_html(r.pincode || "")}</span></div>`)
+					const meta = [r.pincode, r.district].filter(Boolean).join(" · ");
+					$(`<div class="santu-si2-village-row">${frappe.utils.escape_html(r.village)} <span>${frappe.utils.escape_html(meta)}</span></div>`)
 						.on("click", () => {
 							$village.val(r.village);
 							tab.city = r.village;
-							if (!$pincode.val() && r.pincode) {
+							// Picking a village is an explicit choice, so its
+							// pincode replaces whatever was there — the old
+							// "only if empty" rule left a stale pincode behind
+							// after correcting the village.
+							if (r.pincode) {
 								$pincode.val(r.pincode);
 								tab.pincode = r.pincode;
 							}
@@ -1083,8 +1541,7 @@ window.santu_sale_pos = {
 		$village.on("focus", (e) => search_village(e.target.value.trim()));
 		$village.on("blur", () => setTimeout(() => $villageDD.hide(), 150));
 
-		$root.find(".santu-si2-party-advanced").on("click", (e) => {
-			e.preventDefault();
+		$root.find(".santu-si2-chip-more").on("click", () => {
 			const name = (this.$root.find(".santu-si2-customer-search").val() || "").trim();
 			this._open_add_party_dialog(name);
 		});
@@ -1157,6 +1614,69 @@ window.santu_sale_pos = {
 		});
 	},
 
+	// Same dialog as the Items screen's "Adjust Stock", brought to the bill.
+	// Posts a real Stock Reconciliation with a reason underneath — this is a
+	// correction to the shop's books, not a display tweak, and it is recorded
+	// as one.
+	_edit_row_stock(row, $tr) {
+		const current = Number(row.available_qty) || 0;
+		const d = new frappe.ui.Dialog({
+			title: __("Stock theek karein"),
+			fields: [
+				{
+					fieldtype: "HTML",
+					fieldname: "head",
+					options: `<div style="font-size:15px;margin-bottom:4px">
+							<b>${frappe.utils.escape_html(row.item_name || row.item_code)}</b>
+						</div>
+						<div style="color:var(--text-muted)">${__("Abhi system me")}: ${current} ${frappe.utils.escape_html(row.uom || "")}</div>`,
+				},
+				{
+					fieldtype: "Float",
+					fieldname: "new_qty",
+					label: __("Dukaan me sach me kitna hai?"),
+					reqd: 1,
+					default: current,
+				},
+				{
+					fieldtype: "Select",
+					fieldname: "reason",
+					label: __("Kyun badla?"),
+					reqd: 1,
+					options: ["Count Correction", "Damage", "Theft", "Other"].join("\n"),
+					default: "Count Correction",
+				},
+			],
+			primary_action_label: __("Theek karein"),
+			primary_action: (v) => {
+				frappe.dom.freeze(__("Stock theek kar rahe hain…"));
+				santu_sale_invoice.api
+					.set_item_stock(row.item_code, v.new_qty, v.reason)
+					.then((r) => {
+						frappe.dom.unfreeze();
+						d.hide();
+						row.available_qty = r.available_qty;
+						this._render_body();
+						frappe.show_alert({
+							message: r.converted_to_stock_item
+								? __("{0} ab stock me ginega — {1} {2}", [row.item_name || row.item_code, r.available_qty, r.uom || ""])
+								: __("Stock theek kar diya — {0} {1}", [r.available_qty, r.uom || ""]),
+							indicator: "green",
+						});
+					})
+					.catch((err) => {
+						frappe.dom.unfreeze();
+						frappe.msgprint({
+							title: __("Stock theek nahi ho paya"),
+							indicator: "red",
+							message: (err && err.message) || __("Dobara koshish karein."),
+						});
+					});
+			},
+		});
+		d.show();
+	},
+
 	_bind_item_row_events() {
 		const tab = this._active_tab();
 		this.$root.find(".santu-si2-table tbody tr[data-row]").each((_, el) => {
@@ -1168,6 +1688,12 @@ window.santu_sale_pos = {
 				this._save_debounced();
 				this._recalc_totals();
 			};
+
+			// "Available: 0" is where the shopkeeper NOTICES the stock is
+			// wrong — mid-sale, customer waiting. Sending them to another
+			// screen to fix it means abandoning the bill, so it is fixed
+			// right here, the same way the Items screen does it.
+			$tr.find("[data-stock-edit]").on("click", () => this._edit_row_stock(row, $tr));
 
 			$tr.find(".santu-si2-qty-input").on("input", (e) => {
 				row.qty = Math.max(Number(e.target.value) || 0, 0);
@@ -1189,6 +1715,15 @@ window.santu_sale_pos = {
 			});
 			$tr.find(".santu-si2-uom-select").on("change", (e) => {
 				row.uom = e.target.value;
+				const opt = (row.uom_options || []).find((o) => (o.uom || o) === row.uom);
+				const factor = (opt && flt_factor(opt.conversion_factor)) || 1;
+				row.conversion_factor = factor;
+				// One Box is `factor` pieces: it costs that much more, and the
+				// shelf holds that many fewer of them.
+				if (row.base_rate) row.rate = Math.round(row.base_rate * factor * 100) / 100;
+				if (row.base_available_qty != null) row.available_qty = Math.floor((row.base_available_qty / factor) * 100) / 100;
+				this._render_items();
+				this._recalc_totals();
 				on_change();
 			});
 			$tr.find(".santu-si2-rate-input").on("input", (e) => {
@@ -1279,6 +1814,37 @@ window.santu_sale_pos = {
 	_bind_toolbar() {
 		this.$root.find('[data-action="calculator"]').on("click", () => this._open_calculator());
 		this.$root.find('[data-action="settings"]').on("click", () => this._open_settings());
+		// Bound here, once, and keyed off data-toolbar rather than data-action:
+		// _bind_body_events re-binds every [data-action] on each body render, so
+		// a button that lives in the persistent toolbar would collect one more
+		// handler per render and toggle itself several times per click.
+		this.$root.find('[data-toolbar="privacy"]').on("click", () => this._handle_action("privacy"));
+		this._render_cost_toggle();
+		// Privacy Mode switches itself back off on a shared timer owned by
+		// kiosk_mode.js. Repaint when that happens, or the flag goes off behind
+		// cost figures that stay on screen — which is what "auto cp show krna
+		// band naa hua" was.
+		if (this._on_privacy_change) document.removeEventListener("santu-privacy-mode-change", this._on_privacy_change);
+		this._on_privacy_change = () => {
+			this._render_items();
+			this._render_cost_toggle();
+		};
+		document.addEventListener("santu-privacy-mode-change", this._on_privacy_change);
+	},
+
+	// Shows whether cost price is currently on, so it reads as a switch rather
+	// than a button that seems to do nothing on a bill with no items yet.
+	_render_cost_toggle() {
+		const on = !!(window.santu_is_privacy_mode_active && santu_is_privacy_mode_active());
+		const $btn = this.$root.find(".santu-si2-cost-toggle");
+		$btn.toggleClass("is-on", on).attr(
+			"title",
+			on ? __("Cost price showing — click to hide") : __("Show cost price")
+		);
+		$btn.find(".santu-si2-ico").attr(
+			"src",
+			`${SANTU_SI2_ICON_DIR}/${on ? "unlock_icon.svg" : "lock-icon.svg"}`
+		);
 	},
 
 	_open_calculator() {
@@ -1376,7 +1942,14 @@ window.santu_sale_pos = {
 			// This screen already knew how to render cost price once Privacy
 			// Mode was on; nothing anywhere ever turned it on. Same gate as
 			// the billing screen's [F11].
-			Promise.resolve(window.santu_toggle_privacy_mode()).then(() => this._render_items());
+			Promise.resolve(window.santu_toggle_privacy_mode())
+				.then(() => {
+					this._render_items();
+					this._render_cost_toggle();
+					if (santu_is_privacy_mode_active && santu_is_privacy_mode_active()) {
+						return this._load_cost_prices(tab).then(() => this._render_items());
+					}
+				});
 			return;
 		}
 		if (action === "hold") {
@@ -1425,12 +1998,56 @@ window.santu_sale_pos = {
 			this._save_sale(tab, action);
 			return;
 		}
+		if (action === "report_bug") {
+			this._report_bug(tab);
+			return;
+		}
+	},
+
+	// One line of text is all that is asked for. Which screen, which bill,
+	// which version and the recent server errors are attached automatically —
+	// a shop owner should never have to know what a "route" or a "traceback"
+	// is in order to say that something is broken.
+	_report_bug(tab) {
+		const invoice = tab && tab.saved_invoice ? tab.saved_invoice.name : null;
+		const d = new frappe.ui.Dialog({
+			title: __("Kya gadbad hui?"),
+			fields: [
+				{
+					fieldname: "what_happened",
+					fieldtype: "Small Text",
+					label: __("Apni bhasha me likh do — jaisa hua waisa"),
+					reqd: 1,
+				},
+			],
+			primary_action_label: __("Bhej do"),
+			primary_action: (values) => {
+				d.hide();
+				santu_sale_invoice.api
+					.report_bug(values.what_happened, invoice)
+					.then(() =>
+						frappe.msgprint({
+							title: __("Mil gaya"),
+							indicator: "green",
+							message: __("Shukriya. Ye baat likh li gayi hai."),
+						})
+					)
+					.catch(() =>
+						frappe.msgprint({
+							title: __("Bhej nahi paye"),
+							indicator: "red",
+							message: __("Ye baat abhi save nahi ho payi. Thodi der baad phir bataiye."),
+						})
+					);
+			},
+		});
+		d.show();
 	},
 
 	_validate_before_save(tab) {
-		const { name, phone, address } = this._get_inline_customer_fields();
-		if (!tab.customer && !name) {
-			frappe.msgprint(__("Please enter a party name or select a customer."));
+		const { name, phone } = this._get_inline_customer_fields();
+		if (!tab.customer && !name && !phone) {
+			frappe.msgprint(__("Please enter a party name or a phone number."));
 			return false;
 		}
 		if (!tab.items.length) {
@@ -1455,16 +2072,38 @@ window.santu_sale_pos = {
 		const outstanding = Math.max(total - paid, 0);
 		if (outstanding > 0) {
 			const d = tab.customer_details || {};
-			const displayName = (name || d.customer_name || tab.customer || "").trim().toLowerCase();
+			// Nothing typed and nobody selected means _ensure_customer_before_save
+			// is about to invent a "Customer NNNN" placeholder — judge that name,
+			// not the empty box, or the rule below never fires on the very case
+			// it exists for.
+			const displayName = (
+				name ||
+				d.customer_name ||
+				tab.customer ||
+				(phone ? this._default_customer_name(phone) : "")
+			)
+				.trim()
+				.toLowerCase();
 			if (displayName === "walk-in customer") {
 				frappe.msgprint(__("Walk-in Customer cannot have an outstanding balance. Select or add a proper customer for a credit/baaki sale."));
 				return false;
 			}
+			// A party auto-created from nothing but a phone number is a
+			// placeholder, not someone you can chase for money — no real name,
+			// no village. Selling to them for cash is fine; leaving baaki on
+			// them is not, until the details are actually filled in
+			// (2026-08-16 direct request).
+			if (SANTU_SI2_AUTO_NAME_RE.test(displayName)) {
+				frappe.msgprint(
+					__("Fill in this customer's name and village before giving them baaki — right now only a phone number is on file.")
+				);
+				return false;
+			}
 			const hasPhone = phone || d.mobile_no || tab.phone;
-			const hasAddress = address || d.address_line1 || d.address || tab.address || d.city || tab.city;
+			const hasVillage = d.city || tab.city;
 			const missing = [];
 			if (!hasPhone) missing.push(__("Phone Number"));
-			if (!hasAddress) missing.push(__("Address"));
+			if (!hasVillage) missing.push(__("Village / City"));
 			if (missing.length) {
 				frappe.msgprint(__("{0} required for {1} to have an outstanding balance (baaki).", [missing.join(" " + __("and") + " "), name || d.customer_name || tab.customer]));
 				return false;
@@ -1473,10 +2112,229 @@ window.santu_sale_pos = {
 		return true;
 	},
 
+	// "Save & Print" used to open Frappe's print view, whose default format a
+	// Property Setter had pointed at "GST Tax Invoice" — so the screen showed a
+	// formal tax invoice while the counter's Epson printed the shop's thermal
+	// bill. Two different documents from one button (2026-08-16 bug report:
+	// "same print nh ho rha"). Send it to the very same thermal bill the
+	// printer produces, so what is pressed is what comes out. If QZ Tray isn't
+	// running, fall back to the print view rather than losing the print.
+	_print_saved_bill(name, opts = {}) {
+		const is_duplicate = opts.is_duplicate ? 1 : 0;
+
+		// The ladder itself lives in thermal_print.js, shared by every screen
+		// that prints a bill. It used to be duplicated here, and the copy was
+		// the only one that got fixed when QZ Tray was dropped — leaving the
+		// other six printing routes still going through the thing that lies
+		// about having printed. One implementation, one behaviour.
+		if (typeof window.santu_print_bill_ladder !== "function") {
+			frappe.msgprint({
+				title: __("Print nahi ho paya"),
+				indicator: "red",
+				message: __("Printing ka hissa load nahi hua. Page refresh karke dobara koshish karein."),
+			});
+			return Promise.resolve();
+		}
+
+		return window
+			.santu_print_bill_ladder("Sales Invoice", name, { is_duplicate: is_duplicate })
+			.then(({ method, job }) => {
+				frappe.show_alert({ message: __("Printed"), indicator: "green" });
+				this._ask_print_confirmation(job, name, method);
+			})
+			.catch(() => {
+				// Every rung failed. Normally the bill itself is safe — it is
+				// saved before any of this runs — and saying so is the most
+				// useful thing here.
+				//
+				// But it must be CHECKED, never assumed. On 2026-08-17 this
+				// message told the operator "bill save ho gaya hai, paisa aur
+				// stock sab sahi hai" about an invoice that did not exist, on
+				// a sale that had never been recorded. A wrong reassurance
+				// about money is worse than no message at all.
+				frappe.db
+					.get_value("Sales Invoice", name, "docstatus")
+					.then((r) => {
+						const doc = r && r.message;
+						const saved = doc && cint(doc.docstatus) === 1;
+						frappe.msgprint({
+							title: saved ? __("Print nahi ho paya") : __("Bill save NAHI hua"),
+							indicator: "red",
+							message: saved
+								? __(
+										"Bill {0} save ho gaya hai — paisa aur stock sab sahi hai. Sirf parchi nahi nikli. Utilities → Doctor Uncle kholkar jaanchein.",
+										[name]
+								  )
+								: __(
+										"Bill {0} kahin nahi mila — ye bikri abhi tak likhi NAHI gayi hai. Bill dobara banaiye. Paisa lene se pehle screen par bill number aana zaroori hai.",
+										[name]
+								  ),
+						});
+					})
+					.catch(() => {
+						frappe.msgprint({
+							title: __("Print nahi ho paya"),
+							indicator: "red",
+							message: __(
+								"Parchi nahi nikli, aur bill {0} ki jaanch bhi nahi ho payi. Sale Invoices list me dekh lijiye ki bill bana ya nahi.",
+								[name]
+							),
+						});
+					});
+			});
+	},
+
+	// The printer reports a job as successful with an empty roll, so the only
+	// reliable paper-out detector at this counter is the person standing at
+	// it. One tap, and a bill that never came out stops being invisible.
+	_ask_print_confirmation(job_name, invoice_name, method) {
+		if (!job_name) return;
+		const d = new frappe.ui.Dialog({
+			title: __("Bill chhap gaya?"),
+			primary_action_label: __("Haan, nikal gaya"),
+			secondary_action_label: __("Nahi — dobara"),
+			primary_action: () => {
+				santu_sale_invoice.api.confirm_print_job(job_name, 1);
+				d.hide();
+			},
+			secondary_action: () => {
+				d.hide();
+				santu_sale_invoice.api.confirm_print_job(job_name, 0);
+				this._print_saved_bill(invoice_name, { is_duplicate: true });
+			},
+		});
+		d.$body.append(
+			`<div style="font-size:15px;line-height:1.7">
+				<div>${__("Bill")}: <b>${frappe.utils.escape_html(invoice_name)}</b></div>
+				<div style="color:var(--text-muted)">${__("Bheja gaya")}: ${frappe.utils.escape_html(method || "")}</div>
+			</div>`
+		);
+		d.show();
+		// Nobody should have to answer this to carry on selling. If the slip
+		// came out — the normal case — the dialog gets out of the way on its
+		// own and the job stays merely "Printed", not "Confirmed".
+		setTimeout(() => {
+			if (d.$wrapper && d.$wrapper.is(":visible")) d.hide();
+		}, 20000);
+	},
+
+	// Cost price is fetched per row, and used to be fetched ONLY at the moment
+	// an item was added and only if Privacy Mode happened to already be on. So
+	// the normal order of work — ring up the items, then hit "Show Cost Price"
+	// to check the margin — re-rendered rows that carried no cost at all and
+	// showed nothing (2026-08-17 bug report). Fill in whatever is missing.
+	_load_cost_prices(tab) {
+		const rows = (tab.items || []).filter((r) => r.cost_price == null && r.item_code);
+		if (!rows.length) return Promise.resolve();
+		return Promise.all(
+			rows.map((row) =>
+				santu_sale_invoice.api
+					.item_cost_price(row.item_code, this.init_data.warehouse)
+					.then((c) => {
+						row.cost_price = (c && c.cost_price != null) ? c.cost_price : c;
+					})
+					.catch(() => {})
+			)
+		);
+	},
+
+	// Grand total for any tab, not just the visible one. `_recalc_totals`
+	// only ever computes the active tab and writes into the DOM, so it
+	// cannot answer this question for a tab being checked in the background.
+	_tab_grand_total(tab) {
+		let net_total = 0;
+		let tax_total = 0;
+		(tab.items || []).forEach((row) => {
+			this._row_local_recalc(row);
+			net_total += row._net_amount || 0;
+			tax_total += row._tax_amount || 0;
+		});
+		const pre_round = Math.max(net_total + tax_total - (Number(tab.additional_discount_amount) || 0), 0);
+		return tab.round_off ? Math.round(pre_round) : pre_round;
+	},
+
+	// Is the bill this tab thinks it already saved still real, and still the
+	// bill that is on screen? Answers "ok" | "gone" | "changed".
+	//
+	// "changed" is the one that actually cost a sale: the tab held a saved
+	// bill for one amount while the operator had gone on adding items, so
+	// Save & Print reprinted the old bill and the new items were never
+	// recorded. Comparing the totals catches that.
+	_check_saved_invoice(tab) {
+		const saved = tab.saved_invoice;
+		if (!saved || !saved.name) return Promise.resolve("gone");
+		return frappe.db
+			.get_value("Sales Invoice", saved.name, ["docstatus", "grand_total"])
+			.then((r) => {
+				const doc = r && r.message;
+				if (!doc || !doc.docstatus || cint(doc.docstatus) === 2) return "gone";
+				const on_screen = flt(this._tab_grand_total(tab));
+				// Paise-level rounding differences are not a changed bill.
+				if (Math.abs(flt(doc.grand_total) - on_screen) > 0.5) return "changed";
+				return "ok";
+			})
+			.catch(() => {
+				// Cannot tell — treat as still valid rather than risk cutting a
+				// duplicate bill. Losing a reprint is recoverable; billing the
+				// customer twice is not.
+				return "ok";
+			});
+	},
+
 	_save_sale(tab, action) {
+		// Saving a tab that already produced a bill used to quietly cut a
+		// SECOND one — same customer, same items, stock deducted twice and the
+		// party billed twice. The Save button stays on screen after a save (so
+		// does Ctrl+S), so this is one stray keypress at a busy counter.
+		//
+		// But the guard must not be taken on trust. It fired on 2026-08-17 for
+		// a bill that had since been deleted AND whose items had changed on
+		// screen: Save & Print skipped saving, tried to print a bill that no
+		// longer existed, and the operator was told the sale was recorded when
+		// nothing had been. A guard against double-billing must never become a
+		// reason a real sale is lost — so check that the bill it is protecting
+		// actually still exists and still matches what is on screen.
+		if (tab.saved_invoice) {
+			this._check_saved_invoice(tab).then((state) => {
+				if (state === "gone" || state === "changed") {
+					// Either way this tab is holding a bill it should not:
+					// nothing to protect, so let the sale save normally.
+					tab.saved_invoice = null;
+					this._save_debounced();
+					this._render_body();
+					if (state === "changed") {
+						frappe.show_alert({
+							message: __("Bill badal gaya tha — naya bill banaya ja raha hai."),
+							indicator: "orange",
+						});
+					}
+					this._save_sale(tab, action);
+					return;
+				}
+				if (action === "save_print") {
+					this._print_saved_bill(tab.saved_invoice.name);
+					return;
+				}
+				frappe.msgprint({
+					title: __("Already saved"),
+					indicator: "blue",
+					message: __("This bill is already saved as {0}. Open a new tab (+) to start the next sale.", [
+						tab.saved_invoice.name,
+					]),
+				});
+			});
+			return;
+		}
+		// frappe.dom.freeze() only puts an overlay on screen; it does not stop a
+		// second save from being started (a fast double-click, Ctrl+S twice, or
+		// an impatient tap on a phone all get through). Two submits landing
+		// together deadlock on the naming series / ledger / Bin rows, which the
+		// counter sees as "concurrent conflicting request".
+		if (tab._saving) return;
 		if (!this._validate_before_save(tab)) return;
 		const submit = action !== "submit_draft" ? 1 : 0;
 
+		tab._saving = true;
 		frappe.dom.freeze(__("Saving…"));
 		this._ensure_customer_before_save(tab)
 			.then((customer) => {
@@ -1506,6 +2364,7 @@ window.santu_sale_pos = {
 						qty: r.qty,
 						rate: r.rate,
 						uom: r.uom,
+						conversion_factor: r.conversion_factor || 1,
 						discount_percentage: r.discount_percentage || 0,
 						discount_amount: r.discount_amount || 0,
 					})),
@@ -1518,6 +2377,7 @@ window.santu_sale_pos = {
 				return santu_sale_invoice.api.save(payload, submit);
 			})
 			.then((r) => {
+				tab._saving = false;
 				frappe.dom.unfreeze();
 				if (!r) return;
 				tab.saved_invoice = r;
@@ -1525,10 +2385,28 @@ window.santu_sale_pos = {
 				frappe.show_alert({ message: __("Saved {0}", [r.name]), indicator: "green" });
 				this._render_body();
 				if (action === "save_print") {
-					frappe.set_route("print", "Sales Invoice", r.name);
+					this._print_saved_bill(r.name);
 				}
 			})
-			.catch(() => frappe.dom.unfreeze());
+			.catch((err) => {
+				tab._saving = false;
+				frappe.dom.unfreeze();
+				// Anything that already told the counter what was wrong (the
+				// validation paths above) just unfreezes. Everything else used
+				// to vanish here: the screen unfroze, no bill was created and
+				// nothing was said, so a counter could hand over goods against
+				// a sale that never saved. Say it out loud instead.
+				if (err && err.santu_handled) return;
+				const detail = (err && (err.message || err._error_message)) || "";
+				frappe.msgprint({
+					title: __("Sale not saved"),
+					indicator: "red",
+					message: detail
+						? __("The bill was not saved: {0}", [detail])
+						: __("The bill was not saved. Please try again."),
+				});
+				console.error("santu: save failed", err);
+			});
 	},
 
 	_send_whatsapp(tab) {

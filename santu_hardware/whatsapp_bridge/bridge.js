@@ -168,6 +168,26 @@ async function sendDocument(phone, documentBase64, filename, caption, mimetype) 
 	return { id: r && r.key && r.key.id };
 }
 
+// Baileys' `image` message key is what makes WhatsApp show an inline
+// thumbnail in the chat instead of a document bubble that needs a tap to
+// open — `sendDocument` above can never produce that no matter what
+// mimetype is passed, since the message TYPE (not just the file's content
+// type) is what WhatsApp renders differently (2026-08-19 direct request:
+// bills sent over WhatsApp should be pictures, not a PDF attachment).
+async function sendImage(phone, imageBase64, caption, mimetype) {
+	if (!sock) throw new Error("WhatsApp is not connected.");
+	const jid = jidFromPhone(phone);
+	const buffer = Buffer.from(String(imageBase64 || ""), "base64");
+	if (!buffer.length) throw new Error("Image file is empty.");
+	const payload = {
+		image: buffer,
+		mimetype: mimetype || "image/png",
+	};
+	if (caption) payload.caption = String(caption).slice(0, 1024);
+	const r = await sock.sendMessage(jid, payload);
+	return { id: r && r.key && r.key.id };
+}
+
 function sendJson(res, code, obj) {
 	const body = JSON.stringify(obj);
 	res.writeHead(code, {
@@ -238,6 +258,16 @@ const server = http.createServer(async (req, res) => {
 				body.caption,
 				body.mimetype
 			);
+			sendJson(res, 200, { ok: true, ...r });
+		} catch (e) {
+			sendJson(res, 500, { ok: false, error: String(e.message || e) });
+		}
+		return;
+	}
+	if (req.method === "POST" && req.url === "/send-image") {
+		const body = await readBody(req);
+		try {
+			const r = await sendImage(body.phone, body.image_base64, body.caption, body.mimetype);
 			sendJson(res, 200, { ok: true, ...r });
 		} catch (e) {
 			sendJson(res, 500, { ok: false, error: String(e.message || e) });

@@ -42,7 +42,7 @@ Thank you for shopping with us!
 💰 *Payment Breakdown:*
 *Total Bill:* ₹{{ grand_total }}
 *Amount Paid:* ₹{{ paid_amount }}
-*Balance Due:* ₹{{ outstanding_amount }}
+*Balance Due:* ₹{{ outstanding_amount }}{{ balance_note_line }}
 {{ invoice_link_line }}{{ footer_contact_line }}
 
 We appreciate your business 🙏""",
@@ -397,7 +397,16 @@ def build_message_context(doc, transaction_type: str) -> dict:
 	invoice_link_line = f"\nView bill: {invoice_link}" if invoice_link else ""
 	payment_link_line = f"\nPay online: {payment_link}" if payment_link else ""
 	footer_contact_line = f"\nQuestions? Call {company_doc.phone_no}." if company_doc and company_doc.phone_no else ""
-	balance_note_line = f"\nCurrent Balance: ₹{current_balance}" if current_balance_amount > 0 else ""
+	# What the party owes IN TOTAL, not just on this bill. A credit customer
+	# reading "Balance Due: ₹370" assumed that was everything they owed, while
+	# their account actually stood at ₹455 (2026-08-17 report). Only shown when
+	# the account owes more than this one bill, so a customer with a single
+	# unpaid bill doesn't see the same number printed twice.
+	balance_note_line = (
+		f"\n*Total Account Balance:* ₹{current_balance}"
+		if current_balance_amount > flt(outstanding) + 0.01
+		else ""
+	)
 
 	try:
 		posting_date_display = frappe.utils.formatdate(getattr(doc, "posting_date", None) or today(), "dd-MMM-yyyy")
@@ -441,11 +450,30 @@ def _ensure_print_request():
 
 
 def get_invoice_pdf_bytes(doc) -> tuple[bytes, str]:
-	"""Thermal bill PDF for WhatsApp attachment."""
-	from santu_hardware.santu_hardware.api import _thermal_pdf_bytes
+	"""Thermal bill for WhatsApp attachment.
+
+	Sales Invoice deliberately NOT in thermal_formats below: what the
+	customer receives on WhatsApp is the full shop bill (the one with
+	BILLED TO, the item table and the Account Summary showing previous
+	balance / received today / current balance), not the 80mm counter
+	slip. A phone shows a proper page fine, and the balance block is the
+	part a customer actually refers back to (2026-08-17 request). It falls
+	through to the doctype's own default print format below, which is
+	that bill.
+
+	(2026-08-19: briefly switched Sales Invoice to the thermal slip as a
+	picture — "jo invoice whatsapp pe jaa raha hai use change kr ke
+	thermal invoice bhejo in picture format" — then reverted the same day:
+	"wo pdf jo jata tha pahle whatsapp pe wahi same jane de. wo sahi tha.
+	ye thermal image jo jaa raha wo thoda thik naa hai". Sales Invoice is
+	back on the A4 PDF path above; the picture-sending machinery this
+	added — _thermal_image_bytes, send_image/send-image on both WhatsApp
+	providers — is left in place since it's real infrastructure, just
+	unused by this doctype for now.)
+	"""
+	from santu_hardware.santu_hardware.api import _thermal_image_bytes
 
 	thermal_formats = {
-		"Sales Invoice": "Santu Hardware Thermal Bill (Sales Invoice)",
 		"POS Invoice": "Santu Hardware Thermal Bill",
 	}
 	print_format = thermal_formats.get(doc.doctype)
@@ -457,15 +485,19 @@ def get_invoice_pdf_bytes(doc) -> tuple[bytes, str]:
 				{"doc_type": doc.doctype, "property": "default_print_format"},
 				"value",
 			)
-		if not print_format:
-			frappe.throw(f"No print format configured for {doc.doctype}")
+		# No custom format saved is not an error — frappe.get_print(...,
+		# print_format=None, ...) renders Frappe's own standard layout for
+		# the doctype fine (Payment Entry has never had a custom one, and
+		# that's exactly the doctype this was blocking — 2026-08-19 bug
+		# report: "payment in ka pdf nh jaa raha"). Only throw for real
+		# failures, not "nobody customized this one yet".
 		_ensure_print_request()
 		pdf_bytes = frappe.get_print(doc.doctype, doc.name, print_format, as_pdf=True)
 		return pdf_bytes, f"{doc.name}.pdf"
 
 	_ensure_print_request()
-	pdf_bytes = _thermal_pdf_bytes(doc.doctype, doc.name, print_format)
-	return pdf_bytes, f"{doc.name}.pdf"
+	image_bytes = _thermal_image_bytes(doc.doctype, doc.name, print_format)
+	return image_bytes, f"{doc.name}.png"
 
 
 def create_message_log(**kwargs):

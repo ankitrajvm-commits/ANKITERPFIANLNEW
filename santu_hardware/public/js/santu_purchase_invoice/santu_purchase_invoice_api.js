@@ -130,7 +130,7 @@ santu_purchase_invoice.utils = {
 						<div class="frappe-control">
 							<label class="control-label">${__("District")}</label>
 							<select class="form-control santu-party-district">
-								${santu_purchase_invoice.BIHAR_DISTRICTS.map((dd) => `<option value="${frappe.utils.escape_html(dd)}" ${dd === "Saran" ? "selected" : ""}>${frappe.utils.escape_html(dd)}</option>`).join("")}
+								<option value="">${__("Auto (from pincode)")}</option>${santu_purchase_invoice.BIHAR_DISTRICTS.map((dd) => `<option value="${frappe.utils.escape_html(dd)}">${frappe.utils.escape_html(dd)}</option>`).join("")}
 							</select>
 						</div>
 						<div class="frappe-control">
@@ -254,7 +254,9 @@ santu_purchase_invoice.utils = {
 			const simple = $html.find(".santu-party-billing-simple").val();
 			if (simple && simple.trim()) {
 				payload.address_line1 = simple.trim();
-				payload.city = $html.find(".santu-party-district").val() || "Saran";
+				// City/village deliberately not sent: stuffing the district into
+				// the City field is what wrote "Saran" onto every party. The
+				// server fills City from the village, else the pincode's district.
 				payload.country = "India";
 			}
 		}
@@ -304,27 +306,52 @@ santu_purchase_invoice.api = {
 			address: address != null ? address : undefined,
 		});
 	},
+	update_supplier_inline_gstin(party, gstin) {
+		return frappe.xcall("santu_hardware.santu_hardware.api.update_party_details", {
+			party_type: "Supplier",
+			party,
+			gstin,
+		});
+	},
 	search_items(q) {
 		return frappe.xcall("santu_hardware.santu_hardware.api.search_products", { query: q, limit: 15 });
 	},
 	recent_items() {
 		return frappe.xcall("santu_hardware.santu_hardware.api.get_recent_purchase_items");
 	},
-	item_row(supplier, item_code, warehouse, qty) {
+	tax_options() {
+		return frappe.xcall("santu_hardware.santu_hardware.api.get_purchase_tax_options");
+	},
+	add_uom_conversion(item_code, uom, conversion_factor) {
+		return frappe.xcall("santu_hardware.santu_hardware.api.add_item_uom_conversion", {
+			item_code,
+			uom,
+			conversion_factor,
+		});
+	},
+	update_item_field(item_code, fieldname, value) {
+		return frappe.xcall("santu_hardware.santu_hardware.api.update_item_field", { item_code, fieldname, value });
+	},
+	item_row(supplier, item_code, warehouse, qty, uom) {
 		return frappe.xcall("santu_hardware.santu_hardware.api.get_purchase_item_row", {
 			supplier,
 			item_code,
 			warehouse,
 			qty,
+			uom,
 		});
 	},
-	quick_create_item(item_name, purchase_price, item_group, uom, barcode) {
+	// Third argument is an options bag, matching the sale screen's binding.
+	// Purchase Order and Purchase Return call this with two arguments only,
+	// so they are unaffected.
+	quick_create_item(item_name, purchase_price, opts = {}) {
 		return frappe.xcall("santu_hardware.santu_hardware.api.quick_create_item", {
 			item_name,
 			selling_price: purchase_price,
-			item_group,
-			uom,
-			barcode,
+			item_group: opts.item_group,
+			uom: opts.uom,
+			barcode: opts.barcode,
+			gst_hsn_code: opts.gst_hsn_code,
 			buying: 1,
 		});
 	},
@@ -332,9 +359,39 @@ santu_purchase_invoice.api = {
 		return frappe.xcall("santu_hardware.santu_hardware.api.get_item_cost_price", { item_code, warehouse });
 	},
 	save(invoice, submit) {
-		return frappe.xcall("santu_hardware.santu_hardware.api.save_purchase_invoice", {
-			invoice_json: JSON.stringify(invoice),
-			submit: submit ? 1 : 0,
+		// Not a plain xcall: `silent: true` stops frappe.call from popping its
+		// own raw-English error dialog before our promise even rejects — the
+		// page needs the real message text (from _server_messages, since a
+		// frappe.throw()'s title/message never reaches xcall's r.message) so
+		// it can recognise known cases (e.g. "Supplier without GSTIN") and
+		// hand the operator something they can act on, in Hindi, instead of
+		// india_compliance's own wording (2026-08-18 real bill: JANTA CEMENT).
+		return new Promise((resolve, reject) => {
+			frappe.call({
+				method: "santu_hardware.santu_hardware.api.save_purchase_invoice",
+				args: { invoice_json: JSON.stringify(invoice), submit: submit ? 1 : 0 },
+				silent: true,
+				callback: (r) => resolve(r.message),
+				error: (r) => {
+					let message = "";
+					try {
+						if (r && r._server_messages) {
+							message = JSON.parse(r._server_messages)
+								.map((m) => {
+									try {
+										return JSON.parse(m).message || m;
+									} catch (e) {
+										return m;
+									}
+								})
+								.join(" ");
+						}
+					} catch (e) {
+						/* fall through with an empty message */
+					}
+					reject({ message });
+				},
+			});
 		});
 	},
 	whatsapp_preview(doctype, name) {

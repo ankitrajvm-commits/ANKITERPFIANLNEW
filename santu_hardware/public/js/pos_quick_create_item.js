@@ -74,6 +74,13 @@
 					reqd: 1,
 				},
 				{
+					fieldname: "opening_qty",
+					fieldtype: "Float",
+					label: __("Opening Quantity"),
+					description: __("How many are on hand right now — required to create the item."),
+					reqd: 1,
+				},
+				{
 					fieldname: "col_break_1",
 					fieldtype: "Column Break",
 				},
@@ -114,6 +121,7 @@
 						{
 							item_name: values.item_name,
 							selling_price: values.selling_price,
+							opening_qty: values.opening_qty,
 							item_group: values.item_group,
 							uom: values.uom,
 							barcode: values.barcode,

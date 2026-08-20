@@ -35,9 +35,63 @@ app_logo_url = "/assets/santu_hardware/images/logo.svg"
 # Frappe does not auto-hash app_include_css/js the way it hashes bundled JS
 # chunks, and the default Cache-Control on /assets is max-age=43200 (12h) —
 # without a version bump, browsers keep serving a stale copy after every
-# edit during active development. Bump the number whenever these files
-# change.
-SANTU_ASSET_VERSION = "308"
+# edit during active development.
+#
+# This used to be a hand-typed integer, and forgetting to bump it was a
+# recurring bug: the fix shipped, the browser kept the old file, and the shop
+# saw a screen that had already been repaired. It is now derived from the
+# app version plus the current git commit, so every commit busts the cache by
+# itself and nobody has to remember. `_git_revision()` reads .git directly —
+# no subprocess — and falls back to the version alone if anything is off, so
+# a missing or odd .git can never stop the app from booting.
+def _git_revision() -> str:
+	import os
+
+	try:
+		app_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+		git_dir = os.path.join(app_root, ".git")
+		if not os.path.isdir(git_dir):
+			return ""
+		with open(os.path.join(git_dir, "HEAD")) as fh:
+			head = fh.read().strip()
+		if head.startswith("ref:"):
+			ref_path = os.path.join(git_dir, head.split(" ", 1)[1].strip())
+			if not os.path.isfile(ref_path):
+				return ""
+			with open(ref_path) as fh:
+				head = fh.read().strip()
+		return head[:8]
+	except Exception:
+		return ""
+
+
+def _assets_stamp() -> str:
+	"""Newest change time under public/, so an edit busts the cache too.
+
+	The commit alone is not enough: during a fix the files change before
+	anything is committed, and a browser holding the old copy is exactly the
+	"I already fixed that" confusion this is meant to end. Walked once per
+	process, not per request.
+	"""
+	import os
+
+	try:
+		root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "public")
+		newest = 0.0
+		for dirpath, _dirnames, filenames in os.walk(root):
+			for fname in filenames:
+				try:
+					newest = max(newest, os.path.getmtime(os.path.join(dirpath, fname)))
+				except OSError:
+					pass
+		return str(int(newest))[-6:]
+	except Exception:
+		return ""
+
+
+from santu_hardware import __version__ as santu_app_version  # noqa: E402
+
+SANTU_ASSET_VERSION = "-".join(p for p in (santu_app_version, _git_revision(), _assets_stamp()) if p)
 app_include_css = [
 	f"/assets/santu_hardware/css/design_system.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/vyapar_theme.css?v={SANTU_ASSET_VERSION}",
@@ -79,8 +133,12 @@ app_include_css = [
 	f"/assets/santu_hardware/css/santu_topbar.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/pos_large_ui.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/upload_bill.css?v={SANTU_ASSET_VERSION}",
+	f"/assets/santu_hardware/css/santu_doctor.css?v={SANTU_ASSET_VERSION}",
 ]
 app_include_js = [
+	# First, so it is listening before anything else can throw.
+	f"/assets/santu_hardware/js/santu_error_capture.js?v={SANTU_ASSET_VERSION}",
+	f"/assets/santu_hardware/js/santu_barcode_scanner.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/vendor_qz_tray.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/thermal_print.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/santu_printer_settings.js?v={SANTU_ASSET_VERSION}",
@@ -106,6 +164,7 @@ app_include_js = [
 	f"/assets/santu_hardware/js/pos_privacy_mode.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/pos_edit_customer_name.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/pos_numpad_fast_type_fix.js?v={SANTU_ASSET_VERSION}",
+	f"/assets/santu_hardware/js/santu_pwa.js?v={SANTU_ASSET_VERSION}",
 ]
 
 # include js, css files in header of web template
@@ -192,10 +251,21 @@ after_install = "santu_hardware.setup.install.after_install"
 after_migrate = [
 	"santu_hardware.setup.install.hide_vendor_navbar_items",
 	"santu_hardware.setup.install.apply_santu_branding",
-	"santu_hardware.santu_hardware.api.ensure_loyalty_setup",
+	"santu_hardware.setup.install.hide_commission_field",
+	"santu_hardware.setup.install.set_default_print_format",
+	# Loyalty points switched off for now (2026-08-18 direct request) — no
+	# need to keep provisioning the redemption expense account on every
+	# migrate for a feature nothing currently uses.
+	# "santu_hardware.santu_hardware.api.ensure_loyalty_setup",
 	"santu_hardware.setup.install.enforce_unique_supplier_bill_numbers",
+	"santu_hardware.setup.install.enable_auto_backup",
+	"santu_hardware.setup.install.pin_selling_warehouse",
+	"santu_hardware.setup.install.create_batch_pricing_fields",
+	"santu_hardware.setup.install.create_item_pricing_fields",
+	"santu_hardware.setup.install.create_wholesale_price_list",
 	"santu_hardware.santu_hardware.api.migrate_privacy_pin",
 	"santu_hardware.santu_hardware.api.backfill_party_villages",
+	"santu_hardware.santu_hardware.api.clear_district_villages",
 ]
 
 # Uninstallation
@@ -251,6 +321,12 @@ after_migrate = [
 # Hook on document methods and events
 
 doc_events = {
+	# Mirror every server error into Santu Bug Report. Hooking Error Log
+	# rather than the app's own nine log_error call sites means core ERPNext
+	# failures get caught too, and no future call site can forget to report.
+	"Error Log": {
+		"after_insert": "santu_hardware.santu_hardware.bug_report_service.mirror_error_log",
+	},
 	("Customer", "Supplier"): {
 		"before_save": "santu_hardware.santu_hardware.api.title_case_party_name",
 	},
@@ -312,6 +388,13 @@ scheduler_events = {
 	"hourly": [
 		"santu_hardware.santu_hardware.tasks.run_auto_backup_check",
 	],
+	"cron": {
+		# Database-only snapshot every 2 hours during shop hours, so a crash
+		# at 9pm costs at most two hours of bills instead of a whole day.
+		"0 */2 * * *": [
+			"santu_hardware.santu_hardware.tasks.run_backup_snapshot",
+		],
+	},
 }
 
 # Testing

@@ -11,6 +11,15 @@ frappe.pages["santu-parties"].on_page_load = function (wrapper) {
 };
 
 frappe.pages["santu-parties"].on_page_show = function () {
+	// A second route ("santu-parties/customers") reuses this exact same page
+	// rather than a duplicate one (2026-08-18 direct request: the counter's
+	// day-to-day flow only ever needs customers — "party name, party info ka
+	// koi kaam nahi hai [suppliers ke liye]" — while the full Customer+
+	// Supplier directory moves to More as "Parties2" for whenever it's
+	// actually needed, not deleted). Locking is re-derived from the route on
+	// every show, not just page load, since Frappe reuses one page instance
+	// across route changes within the same session.
+	santu_parties_page.locked_party_type = frappe.get_route()[1] === "customers" ? "Customer" : null;
 	santu_parties_page.apply_route_filter();
 };
 
@@ -47,16 +56,16 @@ const santu_parties_page = {
 						<span class="santu-parties-title-text">Parties</span>
 					</div>
 					<div class="santu-parties-header-right">
-						<button type="button" class="btn btn-primary santu-parties-add-btn">${SANTU_PARTIES_PLUS} Add Party</button>
+						<button type="button" class="btn btn-primary santu-parties-add-btn"><span class="santu-parties-add-btn-icon">${SANTU_PARTIES_PLUS}</span> <span class="santu-parties-header-add-text">Add Party</span></button>
 					</div>
 				</div>
 				<div class="santu-parties-landing" style="display:none;">
 					<img src="/assets/santu_hardware/images/party_landing.svg" alt="" width="209" height="162">
 					<div class="santu-parties-landing-text">
-						<h2>Party Details</h2>
+						<h2 class="santu-parties-landing-h2">Party Details</h2>
 						<p>Add your customers and suppliers to manage your business easily.<br>Track payments and grow your business without any hassle!</p>
 					</div>
-					<button type="button" class="btn btn-primary santu-parties-add-btn santu-parties-first-add">${SANTU_PARTIES_PLUS} Add Your First Party</button>
+					<button type="button" class="btn btn-primary santu-parties-add-btn santu-parties-first-add"><span class="santu-parties-add-btn-icon">${SANTU_PARTIES_PLUS}</span> <span class="santu-parties-landing-add-text">Add Your First Party</span></button>
 				</div>
 				<div class="santu-parties">
 					<div class="santu-parties-list-panel">
@@ -82,6 +91,11 @@ const santu_parties_page = {
 		this.$detail = $root.find(".santu-parties-detail-panel");
 		this.$split = $root.find(".santu-parties");
 		this.$landing = $root.find(".santu-parties-landing");
+		this.$landingText = $root.find(".santu-parties-landing-text p");
+		this.$titleText = $root.find(".santu-parties-title-text");
+		this.$landingH2 = $root.find(".santu-parties-landing-h2");
+		this.$headerAddText = $root.find(".santu-parties-header-add-text");
+		this.$landingAddText = $root.find(".santu-parties-landing-add-text");
 
 		let debounce;
 		this.$search.on("input", () => {
@@ -93,7 +107,44 @@ const santu_parties_page = {
 		$root.find(".santu-parties-add-btn").on("click", () => this.open_add_party());
 	},
 
+	// Called once a party is actually created, by either dialog below —
+	// refreshes the list and selects the new row, same behaviour either way.
+	_on_party_created(name, display_name) {
+		this.first_load = false;
+		this.show_split();
+		load_parties(this.$list, this.$search.val(), this.filter, (row, $row) => {
+			this.$list.find(".santu-parties-row").removeClass("santu-parties-row-active");
+			$row.addClass("santu-parties-row-active");
+			load_party_detail(this.$detail, row);
+		}, false).then(() => {
+			const $target = this.$list.find(`.santu-parties-row[data-party="${frappe.utils.escape_html(name)}"]`);
+			if ($target.length) $target.trigger("click");
+		});
+		if (display_name) frappe.show_alert({ message: __("Added {0}", [display_name]), indicator: "green" });
+	},
+
 	open_add_party() {
+		// Locked to Customer, not just defaulted — this dialog is reached
+		// only from the counter's own "Parties" entry, which never shows a
+		// supplier, so letting the type still be switched here would be a
+		// back door into creating one it can't display or manage.
+		const locked = this.locked_party_type === "Customer";
+
+		if (locked) {
+			// The same "Vyapar type" Add Party dialog the Sale/Estimate
+			// screens already use (2026-08-18 direct request) — pixel-matched
+			// tabs (GST & Address / Credit & Balance / Additional Fields)
+			// instead of this page's own plainer one-off dialog. Loaded on
+			// demand since it's normally only bundled with the Sale Invoice
+			// page, not this one.
+			frappe.require("/assets/santu_hardware/js/santu_sale_invoice/santu_sale_invoice_api.js", () => {
+				santu_sale_invoice.utils.open_add_party_dialog({
+					on_created: (customer_name) => this._on_party_created(customer_name),
+				});
+			});
+			return;
+		}
+
 		const d = new frappe.ui.Dialog({
 			title: __("Add Party"),
 			fields: [
@@ -125,17 +176,7 @@ const santu_parties_page = {
 					.then((name) => {
 						frappe.dom.unfreeze();
 						d.hide();
-						frappe.show_alert({ message: __("Added {0}", [v.customer_name]), indicator: "green" });
-						this.first_load = false;
-						this.show_split();
-						load_parties(this.$list, this.$search.val(), this.filter, (row, $row) => {
-							this.$list.find(".santu-parties-row").removeClass("santu-parties-row-active");
-							$row.addClass("santu-parties-row-active");
-							load_party_detail(this.$detail, row);
-						}, false).then(() => {
-							const $target = this.$list.find(`.santu-parties-row[data-party="${frappe.utils.escape_html(name)}"]`);
-							if ($target.length) $target.trigger("click");
-						});
+						this._on_party_created(name, v.customer_name);
 					})
 					.catch(() => frappe.dom.unfreeze());
 			},
@@ -161,9 +202,33 @@ const santu_parties_page = {
 		this.$landing.show();
 	},
 
+	// Search placeholder + empty-state copy say "customers" instead of the
+	// generic "parties" when locked — a hardware-shop operator using the
+	// counter's own "Parties" entry should never read a sentence that
+	// mentions suppliers on a screen that will never show them one.
+	update_locked_copy() {
+		const locked = this.locked_party_type === "Customer";
+		this.$search.attr("placeholder", locked ? "Search Customer Name" : "Search Party Name");
+		this.$titleText.text(locked ? "Customers" : "Parties");
+		this.$landingH2.text(locked ? "Customer Details" : "Party Details");
+		this.$headerAddText.text(locked ? "Add Customer" : "Add Party");
+		this.$landingAddText.text(locked ? "Add Your First Customer" : "Add Your First Party");
+		if (this.$landingText.length) {
+			this.$landingText.html(
+				locked
+					? "Add your customers to manage your business easily.<br>Track payments without any hassle!"
+					: "Add your customers and suppliers to manage your business easily.<br>Track payments and grow your business without any hassle!"
+			);
+		}
+	},
+
 	apply_route_filter() {
 		const opts = frappe.route_options || {};
-		if (opts.party_type || opts.only_with_balance) {
+		if (this.locked_party_type) {
+			// A lock always wins over whatever a caller tried to hand in via
+			// route_options — this view has no "show everyone" escape hatch.
+			this.filter = { party_type: this.locked_party_type, only_with_balance: 0 };
+		} else if (opts.party_type || opts.only_with_balance) {
 			this.filter = {
 				party_type: opts.party_type || null,
 				only_with_balance: opts.only_with_balance ? 1 : 0,
@@ -171,6 +236,7 @@ const santu_parties_page = {
 		} else {
 			this.filter = null;
 		}
+		this.update_locked_copy();
 		// A specific party can also be handed in — used where something used
 		// to jump to the native Customer/Supplier form.
 		const focus = opts.party || null;
@@ -234,11 +300,16 @@ async function load_parties($list, search, filter, on_select, auto_select_first,
 	if (on_meta) on_meta({ empty_all: false });
 
 	rows.forEach((row, idx) => {
-		const tone = row.amount > 0 ? (row.party_type === "Customer" ? "success" : "danger") : "";
+		// Same sign-aware direction the detail panel uses — see
+		// _balance_direction(). Printing the raw figure here showed a return
+		// credit as a bare "-600" in green, which reads as a bigger debt
+		// rather than the opposite of one.
+		const dir = _balance_direction(row);
+		const tone = dir.settled ? "" : dir.owes_you ? "success" : "danger";
 		const $row = $(`
 			<div class="santu-parties-row" role="button" tabindex="0" data-party="${frappe.utils.escape_html(row.party)}">
 				<span class="santu-parties-row-name">${frappe.utils.escape_html(row.party_name)}</span>
-				<span class="santu-parties-row-amount santu-figures ${tone ? "santu-tone-" + tone : ""}">${format_currency_plain(row.amount || 0)}</span>
+				<span class="santu-parties-row-amount santu-figures ${tone ? "santu-tone-" + tone : ""}">${format_currency_plain(dir.amount)}</span>
 			</div>
 		`)
 			.on("click", () => on_select(row, $row))
@@ -253,12 +324,30 @@ async function load_parties($list, search, filter, on_select, auto_select_first,
 // Vyapar, but colour alone is a convention someone has to be taught. The
 // detail panel has room to just say it, so it does. Same wording as the
 // Party Transfer screen, deliberately.
+// Which way the money actually points. The direction comes from the SIGN of
+// the balance, not from the party type alone: a customer holding a return
+// credit has a NEGATIVE balance, which means the SHOP owes THEM. Reading the
+// type only told the counter the exact opposite of the truth in that case
+// (2026-08-19 bug report: goods returned and left as khata credit still read
+// "Manish owes you 600" when the shop owed Manish 600).
+//
+// The sign convention is mirrored per type — a customer's positive balance is
+// money coming in, a supplier's positive balance is money going out — so the
+// same negative case flips a supplier the other way too.
+function _balance_direction(row) {
+	const raw = Number(row.amount) || 0;
+	return {
+		amount: Math.abs(raw),
+		owes_you: row.party_type === "Customer" ? raw > 0 : raw < 0,
+		settled: !raw,
+	};
+}
+
 function _balance_line(row) {
-	const amount = Number(row.amount) || 0;
-	if (!amount) {
+	const { amount, owes_you, settled } = _balance_direction(row);
+	if (settled) {
 		return `<div class="santu-parties-balance santu-parties-balance-clear">All settled — nothing pending</div>`;
 	}
-	const owes_you = row.party_type === "Customer";
 	return `
 		<div class="santu-parties-balance ${owes_you ? "santu-parties-balance-in" : "santu-parties-balance-out"}">
 			<span class="santu-parties-balance-label">${owes_you ? "Owes you" : "You owe"}</span>
@@ -322,11 +411,96 @@ async function load_party_detail($detail, row) {
 		</div>
 	`);
 
+	// Sends through the same WhatsApp Connect (Meta bridge) integration the
+	// bills already go out on — not wa.me / web.whatsapp.com, and not a
+	// whatsapp:// deep link either (2026-08-18: tried the app-scheme link
+	// first, but WhatsApp Desktop on Mac doesn't register it at all —
+	// "bilkul kuch nahi hota" — then direct request: "ye santuhardware app
+	// me whatsapp already hai jaha pe bill jata hai, wahi map kr do").
 	$detail.find(".santu-parties-whatsapp-btn").on("click", () => {
 		const digits = (contact.phone || "").replace(/\D/g, "");
 		if (!digits) return;
 		const num = digits.length === 10 ? "91" + digits : digits;
-		window.open(`https://wa.me/${num}`, "_blank");
+		frappe.require("/assets/santu_hardware/js/santu_whatsapp_connect/wa_connect_api.js", () => {
+			santu_wa_connect.api.status().then((status) => {
+				if (status.state !== "CONNECTED") {
+					// Not linked yet — send the counter to the same connect
+					// screen the bill-sharing flow already relies on, instead
+					// of failing silently on a send that can't go anywhere.
+					frappe.set_route("santu-whatsapp-connect");
+					return;
+				}
+				// The latest bill, for the "send with bill" action below — same
+				// `bills` list already loaded for this panel's own Transactions
+				// table, just picked for its newest posting_date.
+				const latest_bill = (bills || [])
+					.slice()
+					.sort((a, b) => (a.posting_date < b.posting_date ? 1 : -1))[0];
+
+				frappe.dom.freeze(__("Loading…"));
+				santu_wa_connect.api
+					.reminderPreview(row.party_type, row.party)
+					.then((r) => {
+						frappe.dom.unfreeze();
+						// A blank/undue message reads oddly — the reminder text
+						// only makes sense when something is actually owed
+						// (2026-08-18 direct request: "kitna baaki hai, ya kya
+						// bill hai" — balance due, or the bill itself).
+						const default_message =
+							(Number(row.amount) || 0) > 0
+								? r.message
+								: `Hi ${row.party_name},\n\nThank you for shopping with Santu Hardware!`;
+
+						const d = new frappe.ui.Dialog({
+							title: __("Message on WhatsApp"),
+							fields: [
+								{ fieldtype: "Small Text", fieldname: "message", label: __("Message"), reqd: 1, default: default_message },
+								{
+									fieldtype: "Check",
+									fieldname: "attach_summary",
+									label: __("Attach full bill summary (all bills, running balance)"),
+									// On by default — a bare balance figure with nothing
+									// backing it up is what prompted this in the first
+									// place (2026-08-18: "sara bill summary v attach kr
+									// do" — the numbers should come with the bills that
+									// add up to them, not just the one latest bill).
+									default: 1,
+								},
+							],
+							primary_action_label: __("Send"),
+							primary_action: (v) => {
+								frappe.dom.freeze(__("Sending…"));
+								const send = v.attach_summary
+									? santu_wa_connect.api.sendStatement(row.party_type, row.party, v.message)
+									: santu_wa_connect.api.send(num, v.message, row.party_type, row.party);
+								send
+									.then(() => {
+										frappe.dom.unfreeze();
+										d.hide();
+										frappe.show_alert({ message: __("Sent"), indicator: "green" });
+									})
+									.catch(() => frappe.dom.unfreeze());
+							},
+						});
+						if (latest_bill) {
+							d.set_secondary_action_label(__("Send Latest Bill ({0})", [latest_bill.name]));
+							d.$wrapper.find(".btn-secondary").on("click", () => {
+								frappe.dom.freeze(__("Sending…"));
+								santu_wa_connect.api
+									.sendTxn(latest_bill.doctype, latest_bill.name, d.get_value("message"))
+									.then(() => {
+										frappe.dom.unfreeze();
+										d.hide();
+										frappe.show_alert({ message: __("Sent"), indicator: "green" });
+									})
+									.catch(() => frappe.dom.unfreeze());
+							});
+						}
+						d.show();
+					})
+					.catch(() => frappe.dom.unfreeze());
+			});
+		});
 	});
 	$detail.find(".santu-parties-edit-btn").on("click", () =>
 		// Reload the LIST, not just this panel: an edit can change the name

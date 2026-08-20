@@ -11,18 +11,26 @@ def after_install():
 	"""
 	create_hardware_uoms()
 	create_item_location_fields()
+	create_item_pricing_fields()
+	create_wholesale_price_list()
 	create_stock_adjustment_reason_field()
 	create_item_search_keywords_field()
 	create_purchase_bill_pdf_field()
+	create_batch_pricing_fields()
 	create_transaction_message_fields()
 	create_transaction_message_defaults()
 	hide_vendor_navbar_items()
 	apply_santu_branding()
+	hide_commission_field()
+	set_default_print_format()
 
-	from santu_hardware.santu_hardware.api import ensure_loyalty_setup
-
-	ensure_loyalty_setup()
+	# Loyalty points switched off for now (2026-08-18 direct request) —
+	# see the matching comment in hooks.py's after_migrate list.
+	# from santu_hardware.santu_hardware.api import ensure_loyalty_setup
+	# ensure_loyalty_setup()
 	enforce_unique_supplier_bill_numbers()
+	enable_auto_backup()
+	pin_selling_warehouse()
 
 
 def create_hardware_uoms():
@@ -128,6 +136,96 @@ def create_item_search_keywords_field():
 	create_custom_fields(custom_fields, ignore_validate=True)
 
 
+def create_item_pricing_fields():
+	"""MRP, floor price and the GST on/off switch — the three price facts
+	ERPNext has no home for.
+
+	ERPNext keeps rates in Item Price (one row per price list), which covers
+	selling, buying and wholesale properly and is reused as-is. But it has
+	no concept of a printed MRP, no "never sell below this" floor, and no
+	per-item way to say "this one isn't a GST sale at all" — and all three
+	are things a hardware counter genuinely works with (2026-08-18 direct
+	request: the Add Item screen must carry everything needed later for
+	billing, purchase, stock, barcode, GST/non-GST and reporting).
+
+	Deliberately NOT duplicated here, because ERPNext already has them:
+	brand, description, disabled (Active/Inactive), item_group (Category),
+	stock_uom (Unit), barcodes (multiple, with type), reorder_levels
+	(Min Stock), item_defaults.default_supplier, supplier_items (supplier
+	item code), last_purchase_rate, has_batch_no, and gst_hsn_code.
+	"""
+	custom_fields = {
+		"Item": [
+			{
+				"fieldname": "santu_pricing_section",
+				"label": "Shop Pricing",
+				"fieldtype": "Section Break",
+				"insert_after": "custom_bin_location",
+				"collapsible": 1,
+			},
+			{
+				"fieldname": "custom_mrp",
+				"label": "MRP",
+				"fieldtype": "Currency",
+				"insert_after": "santu_pricing_section",
+				"description": "Printed maximum retail price. A batch can override this with its own MRP.",
+			},
+			{
+				"fieldname": "custom_min_selling_price",
+				"label": "Minimum Selling Price",
+				"fieldtype": "Currency",
+				"insert_after": "custom_mrp",
+				"description": "Floor price — the counter should not sell below this.",
+			},
+			{
+				"fieldname": "custom_column_break_pricing",
+				"fieldtype": "Column Break",
+				"insert_after": "custom_min_selling_price",
+			},
+			{
+				"fieldname": "custom_gst_applicable",
+				"label": "GST Applicable",
+				"fieldtype": "Check",
+				"default": "0",
+				"insert_after": "custom_column_break_pricing",
+				"description": "Off for a plain non-GST sale — no HSN is forced and no GST is worked out for this item.",
+			},
+			{
+				"fieldname": "custom_sub_category",
+				"label": "Sub Category",
+				"fieldtype": "Link",
+				"options": "Item Group",
+				"insert_after": "custom_gst_applicable",
+				"description": "Optional second level under Category.",
+			},
+		]
+	}
+	create_custom_fields(custom_fields, ignore_validate=True)
+
+
+def create_wholesale_price_list():
+	"""A real Price List for wholesale rates.
+
+	The Add Item screen already had a "Wholesale Price" box, but nothing
+	ever stored it — save_item dropped it on the floor along with the tax
+	rate and discount (found 2026-08-18). Item Price is the right home; it
+	just needs the list to exist for the rate to hang off.
+	"""
+	if frappe.db.exists("Price List", "Wholesale"):
+		return
+	doc = frappe.get_doc(
+		{
+			"doctype": "Price List",
+			"price_list_name": "Wholesale",
+			"selling": 1,
+			"buying": 0,
+			"enabled": 1,
+			"currency": frappe.defaults.get_global_default("currency") or "INR",
+		}
+	)
+	doc.insert(ignore_permissions=True)
+
+
 def create_stock_adjustment_reason_field():
 	"""Add a Reason field to Stock Reconciliation.
 
@@ -144,6 +242,39 @@ def create_stock_adjustment_reason_field():
 				"fieldtype": "Select",
 				"options": "\nDamage\nTheft\nCount Correction\nOther",
 				"insert_after": "purpose",
+			},
+		]
+	}
+	create_custom_fields(custom_fields, ignore_validate=True)
+
+
+def create_batch_pricing_fields():
+	"""Give a batch its own MRP and purchase rate — its identity, not just a number.
+
+	ERPNext's native Batch doctype has no price fields at all; the selling
+	side already has one (Item Price carries an optional `batch_no`), but
+	nothing records what a batch actually cost or what its MRP was. For a
+	shop where the same item can arrive at a different rate every purchase
+	(2026-08-17 direct request: "har batch ka alag purchase and selling
+	value... mrp ko batch ka hissa bana sakte hai"), that is exactly the
+	fact worth keeping — it is why one item can carry several batches with
+	different economics instead of one blended average.
+	"""
+	custom_fields = {
+		"Batch": [
+			{
+				"fieldname": "custom_mrp",
+				"label": "MRP",
+				"fieldtype": "Currency",
+				"insert_after": "batch_qty",
+				"description": "Printed maximum retail price for this batch.",
+			},
+			{
+				"fieldname": "custom_purchase_rate",
+				"label": "Purchase Rate",
+				"fieldtype": "Currency",
+				"insert_after": "custom_mrp",
+				"description": "What this batch actually cost, per unit.",
 			},
 		]
 	}
@@ -330,6 +461,14 @@ def hide_vendor_navbar_items():
 
 
 SANTU_LOGO_URL = "/assets/santu_hardware/images/logo.svg"
+# wkhtmltopdf (the PDF engine behind Print/WhatsApp document links) can't
+# rasterize SVG — any print format or Company logo pointing at the .svg
+# renders with a broken image link and the PDF fails outright. A pre-rendered
+# PNG (public/images/logo.png, built via `rsvg-convert`) is what anything
+# that goes through wkhtmltopdf must use instead; the crisp SVG stays for the
+# in-app navbar/website, which render in a real browser.
+SANTU_LOGO_PNG_URL = "/assets/santu_hardware/images/logo.png"
+SANTU_FAVICON_PNG_URL = "/assets/santu_hardware/images/logo-favicon.png"
 
 
 def apply_santu_branding():
@@ -355,16 +494,149 @@ def apply_santu_branding():
 	if website.app_logo != SANTU_LOGO_URL:
 		website.app_logo = SANTU_LOGO_URL
 		website_changed = True
-	if website.favicon != SANTU_LOGO_URL:
-		website.favicon = SANTU_LOGO_URL
+	if website.favicon != SANTU_FAVICON_PNG_URL:
+		website.favicon = SANTU_FAVICON_PNG_URL
 		website_changed = True
 	if website_changed:
 		website.save(ignore_permissions=True)
 		changed = True
 
+	company = frappe.db.get_value("Company", {}, "name")
+	if company and frappe.db.get_value("Company", company, "company_logo") != SANTU_LOGO_PNG_URL:
+		frappe.db.set_value("Company", company, "company_logo", SANTU_LOGO_PNG_URL)
+		changed = True
+
 	if changed:
 		frappe.db.commit()
 	return changed
+
+
+SANTU_COMMISSION_FIELD_DOCTYPES = ("Sales Invoice", "Sales Order", "POS Invoice", "Delivery Note")
+
+
+def hide_commission_field():
+	"""Hide "Amount Eligible for Commission" everywhere it's native to ERPNext.
+
+	This shop has no Sales Team/commission setup, so the field never carries
+	real data — it just sits there confusing whoever opens the native form
+	(2026-08-16 direct request: "hata, wo accha sa data carry nh kr paa
+	raha"). A Property Setter, not a form-script hide, so it stays hidden
+	from every entry point (list view, native form, print) not only the
+	desk form JS could reach.
+	"""
+	from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+
+	for doctype in SANTU_COMMISSION_FIELD_DOCTYPES:
+		make_property_setter(doctype, "amount_eligible_for_commission", "hidden", 1, "Check", validate_fields_for_doctype=False)
+	frappe.db.commit()
+
+
+SANTU_SALES_PRINT_FORMAT = "Santu Hardware Bill (Sales Invoice)"
+
+
+def set_default_print_format():
+	"""Point Sales Invoice printing at this shop's own bill.
+
+	A Property Setter had the default on "GST Tax Invoice", so the print view
+	showed a formal tax invoice (HSN/SAC columns, "Generated By: Administrator")
+	while the counter's thermal printer produced the shop's own bill — one
+	button, two different-looking documents (2026-08-16 bug report: "same print
+	nh ho rha"). The shop's format carries GSTIN and the TAX INVOICE heading
+	itself, so nothing legally required is lost by defaulting to it.
+	"""
+	from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+
+	if not frappe.db.exists("Print Format", SANTU_SALES_PRINT_FORMAT):
+		return False
+	current = frappe.db.get_value(
+		"Property Setter",
+		{"doc_type": "Sales Invoice", "property": "default_print_format"},
+		"value",
+	)
+	if current == SANTU_SALES_PRINT_FORMAT:
+		return False
+	make_property_setter(
+		"Sales Invoice", None, "default_print_format", SANTU_SALES_PRINT_FORMAT, "Data",
+		for_doctype=True, validate_fields_for_doctype=False,
+	)
+	frappe.db.commit()
+	return True
+
+
+def pin_selling_warehouse():
+	"""Write down which warehouse the shop sells from, before a second exists.
+
+	While there is exactly one warehouse the answer is obvious and this just
+	records it. That is the entire point: it has to be recorded *before* the
+	old shop's warehouse is created, because after that "the obvious one" is
+	whichever row the database happens to return first.
+	"""
+	current = frappe.db.get_single_value("Santu POS Settings", "selling_warehouse")
+	if current and frappe.db.exists("Warehouse", current):
+		return False
+
+	candidates = frappe.get_all(
+		"Warehouse",
+		filters={"is_group": 0, "disabled": 0},
+		fields=["name"],
+		order_by="creation asc",
+	)
+	if len(candidates) != 1:
+		# Zero: nothing set up yet. More than one: a human must choose, and
+		# guessing here is the exact failure this function exists to prevent.
+		return False
+
+	frappe.db.set_single_value("Santu POS Settings", "selling_warehouse", candidates[0].name)
+	frappe.db.commit()
+	return True
+
+
+def _is_clean_backup_time(value) -> bool:
+	try:
+		parts = [int(x) for x in str(value or "").split(":")]
+	except (ValueError, TypeError):
+		return False
+	return len(parts) == 3 and 0 <= parts[0] < 24 and 0 <= parts[1] < 60 and 0 <= parts[2] < 60
+
+
+def enable_auto_backup():
+	"""Turn the nightly backup on, and keep it on.
+
+	The whole backup service was already built and working, but
+	`auto_backup_enabled` sat at 0 — so the shop had a backup screen, a
+	backup log and no backups. Nobody is going to notice a switch that is
+	off, which is exactly why this is set here rather than left to the UI.
+	"""
+	settings = frappe.get_single("Santu Backup Settings")
+	changed = False
+	if not frappe.utils.cint(settings.auto_backup_enabled):
+		settings.auto_backup_enabled = 1
+		changed = True
+	if not settings.backup_frequency:
+		settings.backup_frequency = "Daily"
+		changed = True
+	# The stored value had drifted to "12:13:49.655113" — whatever clock a
+	# manual backup happened to run at, complete with microseconds. It only
+	# survived because compute_next_backup_time() falls back to 02:00 when
+	# parsing fails. Normalise it so the schedule is what it says it is.
+	if not _is_clean_backup_time(settings.backup_time):
+		settings.backup_time = "02:00:00"
+		changed = True
+	if not frappe.utils.cint(settings.retention_count):
+		settings.retention_count = 10
+		changed = True
+	if not settings.next_backup_on:
+		changed = True
+
+	if not changed:
+		return False
+
+	from santu_hardware.santu_hardware.backup_service import compute_next_backup_time
+
+	settings.next_backup_on = compute_next_backup_time(settings)
+	settings.save(ignore_permissions=True)
+	frappe.db.commit()
+	return True
 
 
 def enforce_unique_supplier_bill_numbers():

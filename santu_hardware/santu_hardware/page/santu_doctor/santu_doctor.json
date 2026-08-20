@@ -1,0 +1,16 @@
+{
+ "content": null,
+ "doctype": "Page",
+ "icon": "octicon octicon-pulse",
+ "idx": 0,
+ "module": "Santu Hardware",
+ "name": "santu-doctor",
+ "page_name": "santu-doctor",
+ "restrict_to_domain": null,
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Doctor Uncle"
+}

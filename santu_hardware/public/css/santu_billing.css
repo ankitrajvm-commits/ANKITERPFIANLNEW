@@ -104,6 +104,66 @@
 .santu-bill-dd-row b { display: block; color: #1f2340; }
 .santu-bill-dd-row span { color: #71748e; font-size: 12px; }
 .santu-bill-dd-right { text-align: right; white-space: nowrap; color: #1f2340; font-weight: 500; }
+/* "Quick-create" row — same blue-link treatment used everywhere else this
+   pattern already exists (.santu-si2-dd-add). */
+.santu-bill-dd-add {
+	color: #2563eb;
+	font-weight: 600;
+}
+
+/* Cells that open an edit prompt on click — clicking anywhere else on the
+   row just selects it. */
+.santu-bill-editable {
+	cursor: pointer;
+}
+.santu-bill-editable:hover {
+	background: #f3f7ff;
+}
+
+.santu-bill-inline-input {
+	width: 100%;
+	min-width: 40px;
+	border: 1px solid #2563eb;
+	border-radius: 4px;
+	padding: 2px 6px;
+	font-size: 13px;
+	font-family: inherit;
+	color: inherit;
+	background: #fff;
+}
+.santu-bill-inline-input:focus {
+	outline: none;
+	box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.santu-bill-qty-stepper {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+.santu-bill-qty-btn {
+	width: 22px;
+	height: 22px;
+	border: 1px solid #dbe3ee;
+	border-radius: 5px;
+	background: #f7f9fc;
+	color: #1f2340;
+	font-size: 15px;
+	line-height: 1;
+	font-weight: 600;
+	cursor: pointer;
+	padding: 0;
+}
+.santu-bill-qty-btn:hover {
+	background: #eaf0fb;
+	border-color: #2563eb;
+	color: #2563eb;
+}
+.santu-bill-qty-val {
+	min-width: 34px;
+	text-align: center;
+	display: inline-block;
+}
 
 /* ---- grid ---- */
 .santu-bill-gridwrap {
@@ -203,6 +263,18 @@
 .santu-bill-received { padding-left: 28px !important; text-align: right; }
 
 .santu-bill-spacer { flex: 1 1 auto; min-height: 0; }
+/* Estimate screen only — shows the saved Quotation's name once an estimate
+   has been saved once, in the same rail spot Billing has no need for. */
+.santu-bill-inv-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	border-top: 1px solid #d7dfea;
+	padding-top: 12px;
+	font-size: 13px;
+	color: #6b7280;
+}
+.santu-bill-inv-row span:last-child { color: #1f2340; font-weight: 600; }
 .santu-bill-changerow {
 	display: flex;
 	align-items: center;
@@ -212,6 +284,32 @@
 	font-size: 16px;
 	font-weight: 600;
 	color: #1f2340;
+}
+/* Baaki (remaining) amount — same shape as Change to Return, red instead of
+   the shop's usual dark ink since this is money still owed, not money back. */
+.santu-bill-baakirow {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	border-top: 1px solid #d7dfea;
+	padding-top: 12px;
+	font-size: 16px;
+	font-weight: 600;
+	color: #b91c1c;
+}
+.santu-bill-baaki-note {
+	font-size: 12px;
+	color: #6b7280;
+	margin-top: 4px;
+}
+
+/* The toolbar (cost-price privacy, calculator) sits inline in the tab bar —
+   Billing has no separate dark header strip like Sale Invoice, so these
+   self-contained dark buttons (.santu-si2-icon-btn already carries its own
+   background) just need spacing to not crowd the tabs/New Bill button. */
+.santu-bill-tabbar .santu-si2-toolbar {
+	margin-left: auto;
+	margin-right: 8px;
 }
 
 /* ---- action bar ---- */
@@ -250,6 +348,20 @@
 	cursor: pointer;
 }
 .santu-bill-save:hover { background: #b7e6ca; }
+/* Same save flow as .santu-bill-save, just without the WhatsApp offer
+   (2026-08-19 direct request) — kept visually close to Save so it still
+   reads as a save action, not a third unrelated thing on this bar. */
+.santu-bill-save-only {
+	background: #eaf6ef;
+	border: 1px solid #b9e2c8;
+	border-radius: 6px;
+	padding: 10px 12px;
+	font-size: 13px;
+	font-weight: 500;
+	color: #11663a;
+	cursor: pointer;
+}
+.santu-bill-save-only:hover { background: #ddf0e4; }
 .santu-bill-credit {
 	background: #fff;
 	border: 1px solid #cfe1fc;
@@ -368,6 +480,7 @@
 }
 .santu-bill-modal-field em { color: #ed1a3b; font-style: normal; }
 .santu-bill-modal-field input,
+.santu-bill-modal-field select,
 .santu-bill-modal-field textarea {
 	width: 100%;
 	border: 1px solid #d0d5dd;
@@ -375,10 +488,106 @@
 	padding: 10px 12px;
 	font-size: 14px;
 	box-sizing: border-box;
+	font-family: inherit;
+	background: #fff;
 }
 .santu-bill-modal-field input:focus,
+.santu-bill-modal-field select:focus,
 .santu-bill-modal-field textarea:focus { border-color: #2563eb; outline: none; }
 .santu-bill-modal-field textarea { resize: vertical; }
+.santu-bill-modal-village-wrap { position: relative; }
+.santu-bill-modal-village-dd {
+	position: absolute;
+	top: 100%;
+	left: 0;
+	right: 0;
+	z-index: 20;
+	background: #fff;
+	border: 1px solid #d0d5dd;
+	border-radius: 6px;
+	max-height: 220px;
+	overflow-y: auto;
+	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+}
+.santu-bill-modal-village-row {
+	padding: 8px 12px;
+	font-size: 13px;
+	display: flex;
+	justify-content: space-between;
+	cursor: pointer;
+}
+.santu-bill-modal-village-row:hover { background: #f3f7ff; }
+.santu-bill-modal-village-row span { color: #71748e; }
+.santu-bill-modal-village-empty {
+	padding: 8px 12px;
+	font-size: 13px;
+	color: #9aa0ac;
+}
+/* ---- sale return ---- */
+.santu-bill-return-modal { width: 520px; max-width: 92vw; }
+.santu-bill-return-list {
+	max-height: 320px;
+	overflow-y: auto;
+	border: 1px solid #e5e8ef;
+	border-radius: 8px;
+	margin-top: 6px;
+}
+.santu-bill-return-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 10px 14px;
+	border-bottom: 1px solid #f0f2f6;
+	cursor: pointer;
+}
+.santu-bill-return-row:last-child { border-bottom: none; }
+.santu-bill-return-row:hover { background: #f3f7ff; }
+.santu-bill-return-row b { display: block; color: #1f2340; }
+.santu-bill-return-row-cust { font-size: 12px; color: #71748e; }
+.santu-bill-return-row-right { text-align: right; }
+.santu-bill-return-row-right span { display: block; }
+.santu-bill-return-row-date { font-size: 12px; color: #9aa0ac; }
+.santu-bill-return-loading { padding: 30px; text-align: center; color: #9aa0ac; }
+.santu-bill-return-invoice-head {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	margin-bottom: 10px;
+	padding-bottom: 10px;
+	border-bottom: 1px solid #f0f2f6;
+}
+.santu-bill-return-invoice-head b { color: #1f2340; }
+.santu-bill-return-invoice-head span { color: #71748e; font-size: 13px; }
+.santu-bill-return-items {
+	max-height: 260px;
+	overflow-y: auto;
+	margin-bottom: 12px;
+}
+.santu-bill-return-item-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 12px;
+	padding: 8px 0;
+	border-bottom: 1px solid #f5f6f9;
+}
+.santu-bill-return-item-name { font-size: 13px; color: #1f2340; }
+.santu-bill-return-item-name span { display: block; font-size: 12px; color: #9aa0ac; }
+.ret-qty-input {
+	width: 70px;
+	border: 1px solid #d0d5dd;
+	border-radius: 6px;
+	padding: 6px 8px;
+	font-size: 14px;
+	text-align: center;
+}
+.santu-bill-return-total {
+	text-align: right;
+	font-size: 15px;
+	color: #1f2340;
+	padding: 4px 0 10px;
+}
+
 .santu-bill-modal-foot { display: flex; gap: 20px; padding: 8px 24px 24px; }
 .santu-bill-modal-save,
 .santu-bill-modal-cancel {
@@ -390,6 +599,9 @@
 	cursor: pointer;
 	border: 1px solid transparent;
 }
+.santu-bill-modal-hint { font-weight: 400; color: #9aa0ac; margin-left: 6px; }
+.santu-bill-modal-field .ni-same-name-warning:empty { display: none; }
+.santu-bill-modal-field .ni-same-name-warning { margin-top: 8px; }
 .santu-bill-modal-save { background: #a8e6c4; color: #11663a; }
 .santu-bill-modal-save:hover { background: #96dfb6; }
 .santu-bill-modal-cancel { background: #f1f3f6; color: #3f4155; }
@@ -404,4 +616,53 @@
 	font-size: 10.5px;
 	color: #8b8e9c;
 	letter-spacing: 0.01em;
+}
+
+/* ---- batch picker + batch tag on a bill line (2026-08-18) ---- */
+.santu-bill-batchlist { max-height: 320px; overflow-y: auto; }
+.santu-bill-batch-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 10px 12px;
+	border: 1px solid #e5e8ef;
+	border-radius: 8px;
+	margin-bottom: 8px;
+	cursor: pointer;
+}
+.santu-bill-batch-row:last-child { margin-bottom: 0; }
+.santu-bill-batch-row:hover { background: #f3f7ff; border-color: #2563eb; }
+.santu-bill-batch-row b { display: block; color: #1f2340; }
+.santu-bill-batch-sub { display: block; font-size: 11.5px; color: #71748e; }
+.santu-bill-batch-right { text-align: right; }
+.santu-bill-batch-right > span:first-child { font-weight: 600; color: #1f2340; }
+.santu-bill-batch-tag {
+	display: inline-block;
+	margin-left: 6px;
+	padding: 1px 6px;
+	border-radius: 4px;
+	background: #eef2ff;
+	color: #3730a3;
+	font-size: 10.5px;
+	font-weight: 600;
+}
+
+/* How much of this item is actually on the shelf, shown right under its
+   name on the bill row — the same "Available: N Unit" indicator the Sale
+   Invoices screen already has, added here too since this is the screen
+   cashiers actually bill from (2026-08-20). */
+.santu-bill-stock-note {
+	display: block;
+	font-size: 11px;
+	margin-top: 2px;
+}
+.santu-bill-stock-ok {
+	color: #16a34a;
+}
+.santu-bill-stock-low {
+	color: #d97706;
+}
+.santu-bill-stock-out {
+	color: #dc2626;
+	font-weight: 700;
 }
