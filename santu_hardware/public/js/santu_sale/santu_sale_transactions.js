@@ -184,16 +184,25 @@ santu_sale.transactions = {
 					${
 						already_converted
 							? `<span class="santu-sale-converted-label">Converted</span>`
-							: `<button type="button" class="santu-sale-convert-btn" data-action="convert-menu">Convert ▾</button>`
+							: `<button type="button" class="santu-sale-convert-btn" data-action="convert">${__("Convert to Bill")}</button>`
 					}
 					<button type="button" class="santu-sale-row-btn" title="More" data-action="more">⋮</button>
 				</td>
 			</tr>
 		`);
 
-		$row.find("[data-action='convert-menu']").on("click", (e) => {
+		// One direct action, no dropdown (2026-08-20). Once every conversion
+		// started landing on Billing, "Convert to Sales Order" and "Convert to
+		// Sales Invoice" both just opened a prefilled bill — two menu entries
+		// doing the identical thing. Neither creates a Sales Order any more,
+		// so the honest label is simply "Convert to Bill", and a one-item
+		// dropdown is a click for nothing.
+		$row.find("[data-action='convert']").on("click", (e) => {
 			e.stopPropagation();
-			this._open_convert_menu($(e.currentTarget), t);
+			this._convert_via_mapped_doc(
+				"erpnext.selling.doctype.quotation.quotation.make_sales_invoice",
+				t.invoice_no
+			);
 		});
 		$row.find("[data-action='more']").on("click", (e) => {
 			e.stopPropagation();
@@ -201,53 +210,6 @@ santu_sale.transactions = {
 		});
 		$row.on("click", () => window.santu_open_invoice_view(t.doctype, t.invoice_no));
 		return $row;
-	},
-
-	_open_convert_menu($anchor, t) {
-		const items = [
-			{
-				label: __("Convert to Sales Order"),
-				action: () => {
-					this._convert_via_mapped_doc(
-						"erpnext.selling.doctype.quotation.quotation.make_sales_order",
-						t.invoice_no
-					);
-				},
-			},
-			{
-				label: __("Convert to Sales Invoice"),
-				action: () => {
-					this._convert_via_mapped_doc(
-						"erpnext.selling.doctype.quotation.quotation.make_sales_invoice",
-						t.invoice_no
-					);
-				},
-			},
-		];
-		$(".santu-sale-row-menu-popup").remove();
-		const $menu = $(`<div class="santu-sale-row-menu-popup"></div>`);
-		items.forEach((item) => {
-			$(`<button type="button" class="santu-sale-row-menu-item">${item.label}</button>`)
-				.on("click", () => {
-					$menu.remove();
-					item.action();
-				})
-				.appendTo($menu);
-		});
-		$("body").append($menu);
-		const rect = $anchor[0].getBoundingClientRect();
-		const menu_width = $menu.outerWidth();
-		let left = rect.left;
-		if (left + menu_width > window.innerWidth) {
-			left = rect.right - menu_width;
-		}
-		left = Math.max(8, left);
-		$menu.css({ top: rect.bottom + 4 + "px", left: left + "px" });
-		setTimeout(() => {
-			$(document).one("click.santu-sale-convert-menu", (e) => {
-				if (!$(e.target).closest(".santu-sale-row-menu-popup").length) $menu.remove();
-			});
-		}, 0);
 	},
 
 	_render_empty($card, view, on_add_sale) {

@@ -516,18 +516,6 @@ input.santu-sale-pill[type="date"] {
 	padding: 4px 6px;
 }
 
-.santu-sale-row-menu-popup {
-	position: fixed;
-	background: #fff;
-	border: none;
-	border-radius: 8px;
-	box-shadow: 0 5px 15px 2px rgba(63, 65, 85, 0.25);
-	min-width: 190px;
-	z-index: 1200;
-	overflow: hidden;
-	padding: 4px 0;
-}
-
 .santu-sale-loading {
 	padding: 24px;
 	text-align: center;
