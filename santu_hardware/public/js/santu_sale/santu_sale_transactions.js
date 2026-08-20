@@ -12,11 +12,15 @@ santu_sale.transactions = {
 	// The mapped doc comes back UNSAVED (no real name yet) — routing it
 	// through santu_open_invoice_view (a read-only view of an already-saved
 	// document) threw "Sales Order new-sales-order-xxx not found" (confirmed
-	// live 2026-08-15: "Convert to Sales Order" from an Estimate). `target`
-	// picks which quick-entry screen's own prefill handler
-	// (santu_sales_order.js / santu_sale_invoice.js _apply_prefill) should
-	// take it instead, so the user reviews/edits before it's actually saved.
-	_convert_via_mapped_doc(method, source_name, target) {
+	// live 2026-08-15: "Convert to Sales Order" from an Estimate). It is
+	// handed to the destination screen's own _apply_prefill instead, so the
+	// user reviews and edits before anything is actually saved.
+	//
+	// Every conversion lands on Billing (POS) — 2026-08-20 direct request,
+	// "sare billing me billing pos ka hi landing daal do". There is no
+	// per-target routing any more; the old `target` argument (which chose
+	// santu-sales-order vs santu-sale-invoice) is gone.
+	_convert_via_mapped_doc(method, source_name) {
 		frappe.call({
 			method,
 			args: { source_name },
@@ -24,11 +28,7 @@ santu_sale.transactions = {
 			callback: (r) => {
 				if (!r.message) return;
 				frappe.route_options = { prefill: r.message };
-				// Sale Invoice was the target here until 2026-08-20 — Billing
-				// (POS) is where sales actually get finished (see the routing
-				// audit in the same commit), so a converted Quotation/Sales
-				// Order now lands there instead.
-				frappe.set_route(target === "sales_order" ? "santu-sales-order" : "santu-billing");
+				frappe.set_route("santu-billing");
 			},
 		});
 	},
@@ -210,8 +210,7 @@ santu_sale.transactions = {
 				action: () => {
 					this._convert_via_mapped_doc(
 						"erpnext.selling.doctype.quotation.quotation.make_sales_order",
-						t.invoice_no,
-						"sales_order"
+						t.invoice_no
 					);
 				},
 			},
@@ -220,8 +219,7 @@ santu_sale.transactions = {
 				action: () => {
 					this._convert_via_mapped_doc(
 						"erpnext.selling.doctype.quotation.quotation.make_sales_invoice",
-						t.invoice_no,
-						"sales_invoice"
+						t.invoice_no
 					);
 				},
 			},
@@ -329,8 +327,7 @@ santu_sale.transactions = {
 					action: () => {
 						this._convert_via_mapped_doc(
 							"erpnext.selling.doctype.sales_order.sales_order.make_sales_invoice",
-							t.invoice_no,
-							"sales_invoice"
+							t.invoice_no
 						);
 					},
 				});
