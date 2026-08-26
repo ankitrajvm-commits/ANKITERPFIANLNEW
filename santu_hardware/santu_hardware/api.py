@@ -4922,7 +4922,16 @@ def item_batches(item_code: str, warehouse: str = None):
 
 @frappe.whitelist()
 def item_uoms(item_code: str):
-	"""[{uom, conversion_factor}] for an item — its stock UOM always first."""
+	"""[{uom, conversion_factor}] for an item — its stock UOM always first,
+	then any alternate units it has a configured conversion factor for,
+	then every other enabled UOM in the system with conversion_factor left
+	at 1 (2026-08-26 direct request: "change unit me sare units daal do" —
+	the cashier wants any unit pickable from Billing's Change Unit dropdown,
+	not just ones someone remembered to add to the item's own UOM table
+	first; a factor of 1 means switching to one of these doesn't try to
+	guess a conversion — the operator adjusts rate themselves afterwards,
+	same as BUG-318's "we can fix the unit ourselves" ask).
+	"""
 	stock_uom = frappe.db.get_value("Item", item_code, "stock_uom")
 	rows = frappe.get_all(
 		"UOM Conversion Detail",
@@ -4939,6 +4948,11 @@ def item_uoms(item_code: str):
 			continue
 		seen.add(r.uom)
 		out.append({"uom": r.uom, "conversion_factor": factor})
+	for uom in frappe.get_all("UOM", pluck="name", order_by="name"):
+		if uom in seen:
+			continue
+		seen.add(uom)
+		out.append({"uom": uom, "conversion_factor": 1})
 	return out
 
 
