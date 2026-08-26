@@ -46,6 +46,7 @@ santu_items.detail = {
 						<button type="button" class="santu-items-share-btn" title="Share">
 							<img src="/assets/santu_hardware/images/items/shareOnlineStoreItem.svg" alt="" width="16" height="16">
 						</button>
+						<button type="button" class="btn btn-danger santu-items-delete-btn" title="Delete Item">DELETE ITEM</button>
 					</div>
 					<div class="santu-items-price-row">
 						<div class="santu-items-price-block">
@@ -91,6 +92,7 @@ santu_items.detail = {
 		$detail.find(".santu-items-share-btn").on("click", () => this.share_item(item));
 		$detail.find(".santu-items-txn-export").on("click", () => this.export_transactions(item, txns));
 		$detail.find(".santu-items-adjust-btn").on("click", () => this.adjust_stock(item));
+		$detail.find(".santu-items-delete-btn").on("click", () => this.delete_item($detail, item));
 
 		const $txn_wrap = $detail.find(".santu-items-txn-table-wrap");
 		const state = { txns, item, sort_key: "txn_date", sort_dir: "desc", type_filter: "", search: "" };
@@ -174,6 +176,30 @@ santu_items.detail = {
 			},
 		});
 		d.show();
+	},
+
+	delete_item($detail, item) {
+		frappe.confirm(
+			__("Delete {0}? This cannot be undone.", [frappe.utils.escape_html(item.item_name || item.item_code)]),
+			() => {
+				frappe.dom.freeze();
+				santu_items.api
+					.delete_item(item.item_code)
+					.then((res) => {
+						frappe.dom.unfreeze();
+						if (res && res.disabled) {
+							frappe.show_alert({
+								message: __("This item has past bills/stock linked to it, so it can't be fully deleted — it has been hidden from billing instead."),
+								indicator: "orange",
+							});
+						} else {
+							frappe.show_alert({ message: __("Item deleted"), indicator: "green" });
+						}
+						if (window.santu_items_page) santu_items_page.reload_list();
+					})
+					.catch(() => frappe.dom.unfreeze());
+			}
+		);
 	},
 
 	export_transactions(item, txns) {

@@ -403,13 +403,20 @@ def search_products(query: str, limit: int = 20):
 			"same_name_count": name_counts.get((item.item_name or "").strip().lower(), 1),
 		})
 
-	# "No additional click" for an unambiguous exact match (item code,
-	# barcode, or exact name) — the frontend auto-opens this one instead of
-	# waiting for a tap when it's clearly the answer, not just the top guess.
+	# "No additional click" only for a match that is unambiguous WITHOUT
+	# reading — an exact item code or a scanned barcode. Both are numbers
+	# a person only "arrives at" by scanning or by typing the exact code on
+	# purpose. An exact NAME match doesn't get this: a cashier typing a
+	# product name is still reading the dropdown to pick the right one, and
+	# auto-dropping the top hit before they finish looks like the screen
+	# "randomly choosing" an item for them (2026-08-25 bug report — typing a
+	# name was auto-adding the first match with no chance to pick).
 	exact_match = None
 	if results and results[0]["score"] >= _SCORE_NAME_EXACT:
-		if len(results) == 1 or results[1]["score"] < _SCORE_NAME_PREFIX:
-			exact_match = results[0]["item_code"]
+		top_code = results[0]["item_code"]
+		is_code_or_barcode_match = top_code.lower() == query or top_code in barcode_item_codes
+		if is_code_or_barcode_match and (len(results) == 1 or results[1]["score"] < _SCORE_NAME_PREFIX):
+			exact_match = top_code
 	# Never skip the tap when two items share this name. Auto-opening the
 	# top one is a convenience everywhere else; here it would quietly choose
 	# between two things the cashier cannot tell apart, which is the whole
@@ -1028,8 +1035,25 @@ def _thermal_pdf_bytes(doctype: str, name: str, print_format: str) -> bytes:
 	# that can actually be printed instead.
 	printable_width = {80: 72.0, 58: 48.0}.get(int(paper_width), max(paper_width - 8, 40))
 
-	item_count = len(frappe.get_cached_doc(doctype, name).get("items") or [])
-	page_height = 170 + item_count * 10
+	items = frappe.get_cached_doc(doctype, name).get("items") or []
+	item_count = len(items)
+	# The header logo (43mm wide, ~29mm tall including the wordmark) is
+	# roughly 24mm taller than the plain bold company-name line it replaces
+	# when Show Logo on Bill is on -- add that back or the extra height
+	# pushes the bottom of a long bill (many items + QR) past this page's
+	# fixed canvas and gets clipped, same class of bug the printable-width
+	# fix above exists for.
+	logo_extra = 24 if settings.get("show_logo_on_bill") else 0
+	# The 10mm/item budget only covers one line of item name. A name too
+	# long to fit `.t-item-name`'s width (11px bold, print format CSS) wraps
+	# to a 2nd line in the browser preview, but this fixed-height PDF canvas
+	# doesn't grow to match, so that 2nd line got clipped instead of shown
+	# (2026-08-26 bug report — Ritik's invoice item name printed incomplete,
+	# didn't wrap). Estimate wrapped lines per item from its name length and
+	# add the extra height those lines need.
+	chars_per_line = max(int(printable_width / 1.6), 10)
+	wrap_extra = sum(max(0, -(-len(item.item_name or "") // chars_per_line) - 1) * 4 for item in items)
+	page_height = 170 + item_count * 10 + logo_extra + wrap_extra
 
 	html = frappe.get_print(doctype, name, print_format, as_pdf=False)
 	html = scrub_urls(html)
@@ -1200,6 +1224,27 @@ def get_barcode_data_uri(data: str):
 		options={"write_text": False, "module_height": 8.0, "quiet_zone": 2.0},
 	)
 	encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+	return f"data:image/png;base64,{encoded}"
+
+
+
+
+@frappe.whitelist()
+def get_bill_logo_data_uri() -> str:
+	"""The thermal bill's header logo, embedded inline as the thermal QR
+	already is — wkhtmltopdf renders these formats with
+	`disable-local-file-access` set (see `_thermal_pdf_bytes`), so a plain
+	`/assets/...` <img> src would render blank; the bytes have to travel
+	inside the HTML itself. Cropped to its real content (the source PNG
+	carries a wide white margin) and pre-shrunk to 43mm-wide/203dpi so the
+	PDF embeds a few KB instead of the multi-hundred-KB original, and the
+	SH icon is pre-compacted to ~70% against the wordmark below it — sizing
+	and cropping Ankit approved directly (2026-08-23), not something to
+	redo from the source file.
+	"""
+	path = frappe.get_app_path("santu_hardware", "public", "images", "thermal_bill_logo.png")
+	with open(path, "rb") as f:
+		encoded = base64.b64encode(f.read()).decode("ascii")
 	return f"data:image/png;base64,{encoded}"
 
 
@@ -1916,21 +1961,30 @@ def search_transactions_topbar(query: str, limit: int = 10):
 	if not query or len(query) < 2:
 		return []
 
+	# ("doctype", party_field, has_santu_bill_no) — only Sales Invoice and POS
+	# Invoice carry the shop's own running Bill No (santu_bill_no). Matching
+	# only on `name` here meant searching "297" for a bill the operator can
+	# see is numbered 297 on the Parties panel and the thermal slip came back
+	# "No transactions found", because the real document ID is something like
+	# SINV-26-00254 which doesn't contain "297" anywhere (2026-08-23 report).
 	specs = [
-		("Sales Invoice", "customer"),
-		("POS Invoice", "customer"),
-		("Purchase Invoice", "supplier"),
-		("Sales Order", "customer"),
-		("Purchase Order", "supplier"),
-		("Quotation", "party_name"),
-		("Delivery Note", "customer"),
+		("Sales Invoice", "customer", True),
+		("POS Invoice", "customer", True),
+		("Purchase Invoice", "supplier", False),
+		("Sales Order", "customer", False),
+		("Purchase Order", "supplier", False),
+		("Quotation", "party_name", False),
+		("Delivery Note", "customer", False),
 	]
 	out = []
-	for doctype, party_field in specs:
+	for doctype, party_field, has_bill_no in specs:
+		or_filters = {"name": ["like", f"%{query}%"], party_field: ["like", f"%{query}%"]}
+		if has_bill_no and query.strip().isdigit():
+			or_filters["santu_bill_no"] = ["like", f"%{query}%"]
 		rows = frappe.get_all(
 			doctype,
 			filters={"docstatus": ["!=", 2]},
-			or_filters={"name": ["like", f"%{query}%"], party_field: ["like", f"%{query}%"]},
+			or_filters=or_filters,
 			fields=["name", party_field + " as party"],
 			order_by="modified desc",
 			limit_page_length=limit,
@@ -1938,7 +1992,22 @@ def search_transactions_topbar(query: str, limit: int = 10):
 		for r in rows:
 			out.append({"doctype": doctype, "name": r.name, "party": r.party})
 	out.sort(key=lambda r: r["name"], reverse=True)
-	return out[: int(limit)]
+	out = out[: int(limit)]
+
+	# Same running Bill No the Parties panel shows, for the same reason: the
+	# document ID means nothing to an operator, the printed Bill No does.
+	bill_no_by_name = {}
+	for bill_doctype in ("Sales Invoice", "POS Invoice"):
+		names = [r["name"] for r in out if r["doctype"] == bill_doctype]
+		if not names:
+			continue
+		for row in frappe.get_all(bill_doctype, filters={"name": ["in", names]}, fields=["name", "santu_bill_no"]):
+			bill_no_by_name[row.name] = row.santu_bill_no
+	for r in out:
+		bill_no = bill_no_by_name.get(r["name"])
+		r["display_number"] = format_bill_no(bill_no) if bill_no else r["name"]
+
+	return out
 
 
 @frappe.whitelist()
@@ -2737,6 +2806,66 @@ def get_customer_all_bills(customer: str):
 
 
 @frappe.whitelist()
+def add_manual_due(customer: str, amount: float, note: str = None):
+	"""Let the owner directly add to a customer's outstanding balance from
+	the Customer Dues page (2026-08-20 direct request: "customer ka add
+	direct more baki amont add kr saku") — for dues that didn't come from a
+	sale made in this system (an old udhaar carried over, a loan, etc).
+
+	Books as a real, tiny Sales Invoice against a fixed non-stock
+	"Udhaar / Purana Baki" line item, rather than inventing a second
+	balance-tracking mechanism. get_customer_dues() and
+	get_customer_all_bills() already sum Sales Invoice outstanding_amount,
+	so this shows up there for free, and the customer's whole history
+	(this due, and whenever it eventually gets paid off) stays in the one
+	place every other bill already lives — see [[feedback_one_path_per_task]].
+	strip_gst_line_items() (doc_events, before_validate/validate) clears
+	tax templates on every Sales Invoice regardless, so grand_total lands
+	exactly on `amount` with no GST inflating it.
+	"""
+	amount = flt(amount)
+	if not customer:
+		frappe.throw(_("Customer is required."))
+	if amount <= 0:
+		frappe.throw(_("Please enter a valid amount."))
+
+	item_code = "PURANA-BAKI"
+	if not frappe.db.exists("Item", item_code):
+		item = frappe.new_doc("Item")
+		item.item_code = item_code
+		item.item_name = "Udhaar / Purana Baki"
+		item.item_group = "Products"
+		item.stock_uom = "Nos"
+		# Deliberately NOT stock-tracked (unlike every item quick_create_item
+		# makes) — this is a ledger adjustment, not real goods leaving a
+		# shelf, so it must never appear in Stock Summary or low-stock counts.
+		item.is_stock_item = 0
+		item.include_item_in_manufacturing = 0
+		item.gst_hsn_code = _default_hsn_code()
+		item.insert(ignore_permissions=True)
+
+	company = frappe.defaults.get_user_default("Company")
+	doc = frappe.new_doc("Sales Invoice")
+	doc.flags.ignore_pos_profile = True
+	doc.customer = customer
+	doc.company = company
+	doc.posting_date = frappe.utils.today()
+	doc.set_posting_time = 1
+	doc.due_date = doc.posting_date
+	doc.selling_price_list = (
+		frappe.db.get_single_value("Selling Settings", "selling_price_list") or "Standard Selling"
+	)
+	doc.update_stock = 0
+	doc.remarks = note or _("Purana baki / manual due added")
+	doc.append("items", {"item_code": item_code, "qty": 1, "rate": amount})
+	doc.run_method("set_missing_values")
+	doc.run_method("calculate_taxes_and_totals")
+	doc.insert(ignore_permissions=True)
+	doc.submit()
+	return {"name": doc.name, "grand_total": doc.grand_total}
+
+
+@frappe.whitelist()
 def get_parties_list(search: str = None, party_type: str = None, only_with_balance: int = 0):
 	"""Combined Customer + Supplier list for the Vyapar-style "Parties"
 	screen (2026-08-06 direct request, matching Vyapar's own split-view
@@ -2923,6 +3052,30 @@ def get_vyapar_items_list(
 
 
 @frappe.whitelist()
+def delete_item(item_code: str):
+	"""Delete an Item from the catalog (Items screen, 2026-08-25 bug report:
+	no way to remove an item that was added by mistake).
+
+	A real hardware-shop item almost always has stock/sales/purchase history
+	linked to it — deleting that would break past invoices. So: if nothing
+	links to it, delete it outright; if something does, disable it instead
+	(hidden from billing/search, history stays intact) and tell the operator
+	that's what happened, in plain language, not Frappe's LinkExistsError.
+	"""
+	if not item_code or not frappe.db.exists("Item", item_code):
+		frappe.throw(_("Item {0} not found").format(item_code or ""))
+
+	try:
+		frappe.delete_doc("Item", item_code, ignore_permissions=True)
+		return {"deleted": True}
+	except Exception:
+		frappe.db.rollback()
+		frappe.db.set_value("Item", item_code, "disabled", 1)
+		frappe.db.commit()
+		return {"deleted": False, "disabled": True}
+
+
+@frappe.whitelist()
 def get_item_detail(item_code: str):
 	"""Full item detail for the Items screen's right-hand panel."""
 	from erpnext.accounts.doctype.pos_invoice.pos_invoice import get_pos_reserved_qty
@@ -2936,9 +3089,14 @@ def get_item_detail(item_code: str):
 	selling_rate = frappe.db.get_value(
 		"Item Price", {"item_code": item_code, "selling": 1}, "price_list_rate"
 	)
-	purchase_rate = flt(item.last_purchase_rate) or flt(
+	# Same rule as Stock Summary's cost column: a Kharid Daam the shop typed
+	# in beats whatever the last purchase document happened to say. The old
+	# order had last_purchase_rate first, so one purchase entry silently
+	# buried a hand-set CP here while the bulk screen went on reporting the
+	# edit as saved.
+	purchase_rate = flt(
 		frappe.db.get_value("Item Price", {"item_code": item_code, "buying": 1}, "price_list_rate")
-	)
+	) or flt(item.last_purchase_rate)
 
 	available_qty = None
 	actual_qty = None
@@ -7177,7 +7335,7 @@ def get_party_transactions(party_type: str, party: str):
 		si_rows = frappe.get_all(
 			"Sales Invoice",
 			filters={"customer": party, "docstatus": 1},
-			fields=["name", "posting_date", "grand_total", "outstanding_amount"],
+			fields=["name", "posting_date", "grand_total", "outstanding_amount", "santu_bill_no"],
 		)
 		for r in si_rows:
 			r["type"] = "Sale"
@@ -7187,7 +7345,7 @@ def get_party_transactions(party_type: str, party: str):
 		pos_rows = frappe.get_all(
 			"POS Invoice",
 			filters={"customer": party, "docstatus": 1, "consolidated_invoice": ["in", ["", None]]},
-			fields=["name", "posting_date", "grand_total", "outstanding_amount"],
+			fields=["name", "posting_date", "grand_total", "outstanding_amount", "santu_bill_no"],
 		)
 		for r in pos_rows:
 			r["type"] = "Sale"
@@ -7205,6 +7363,15 @@ def get_party_transactions(party_type: str, party: str):
 			r["type"] = "Purchase"
 			r["doctype"] = "Purchase Invoice"
 		_attach_item_summaries(rows, "Purchase Invoice", "Purchase Invoice Item")
+
+	# The "Number" column on the Parties detail panel should read the way the
+	# shop actually numbers its bills -- the running count printed on the
+	# thermal slip and the number an operator would search by -- not the
+	# document ID (SINV-26-00254). Purchase Invoice has no santu_bill_no (no
+	# thermal bill exists for suppliers), so it falls back to its own name.
+	for r in rows:
+		bill_no = r.get("santu_bill_no")
+		r["display_number"] = format_bill_no(bill_no) if bill_no else r["name"]
 
 	rows.sort(key=lambda r: r["posting_date"], reverse=True)
 	return rows
@@ -8461,6 +8628,19 @@ def update_party_details(
 
 
 @frappe.whitelist()
+def create_brand(brand_name: str):
+	"""Create a new Brand master record and return its name."""
+	brand_name = (brand_name or "").strip()
+	if not brand_name:
+		frappe.throw(_("Brand name cannot be empty."))
+	if not frappe.db.exists("Brand", brand_name):
+		doc = frappe.get_doc({"doctype": "Brand", "brand": brand_name})
+		doc.insert(ignore_permissions=True)
+		frappe.db.commit()
+	return {"name": brand_name, "brand": brand_name}
+
+
+@frappe.whitelist()
 def get_add_item_init():
 	"""Defaults for the Add Item screen.
 
@@ -8582,7 +8762,11 @@ def save_item(item_json: str):
 	item.include_item_in_manufacturing = 0
 	item.disabled = 0 if cint(data.get("is_active", 1)) else 1
 	if data.get("brand"):
-		item.brand = data.get("brand")
+		brand_val = str(data.get("brand")).strip()
+		if brand_val:
+			if not frappe.db.exists("Brand", brand_val):
+				frappe.get_doc({"doctype": "Brand", "brand": brand_val}).insert(ignore_permissions=True)
+			item.brand = brand_val
 	if data.get("description"):
 		item.description = data.get("description")
 	if data.get("sub_category"):
@@ -9263,6 +9447,8 @@ def get_stock_summary(search: str = None, item_group: str = None, only_low: int 
 			  where r.parent = i.name)                                               as reorder_level,
 			(select ip.price_list_rate from `tabItem Price` ip
 			  where ip.item_code = i.name and ip.selling = 1 order by ip.modified desc limit 1) as sale_rate,
+			(select ip.price_list_rate from `tabItem Price` ip
+			  where ip.item_code = i.name and ip.buying = 1 order by ip.modified desc limit 1) as buy_rate,
 			(select group_concat(ib.barcode separator ', ') from `tabItem Barcode` ib
 			  where ib.parent = i.name)                                              as barcodes,
 			-- This shop's stock almost never arrives via a real Purchase
@@ -9294,12 +9480,29 @@ def get_stock_summary(search: str = None, item_group: str = None, only_low: int 
 	for r in rows:
 		is_stock_item = cint(r.is_stock_item)
 		qty = flt(r.qty)
-		# Weighted-average cost per unit, derived from what the stock is
-		# actually valued at rather than any list price.
-		if qty and flt(r.stock_value):
+		# Cost per unit. A Kharid Daam the shop has actually typed in — via
+		# Update Items In Bulk, or the item form -- WINS over the warehouse's
+		# weighted average, on Ankit's direct instruction (2026-08-23: "jo mai
+		# update kr rha hun wo update ho jaye, and sari value v update hogi ye
+		# mujhe pata h").
+		#
+		# Before this, the average won whenever any stock was on hand, so an
+		# edited CP silently did nothing until the shelf emptied: CP was set to
+		# 900, the screen kept showing 800, and the bulk screen still said
+		# "Updated". The edit had in fact saved -- only nothing ever read it.
+		#
+		# This deliberately moves money figures. STOCK VALUE below is qty *
+		# cost, so re-pricing stock that is already on the shelf restates what
+		# it is worth, and the profit card moves with it. That trade was made
+		# with eyes open: the shopkeeper's own number is treated as the truth
+		# about what this item costs.
+		manual_cost = flt(r.buy_rate) or flt(r.master_valuation_rate)
+		if manual_cost:
+			cost = manual_cost
+		elif qty and flt(r.stock_value):
 			cost = flt(r.stock_value) / qty
 		else:
-			cost = flt(r.last_purchase_rate) or flt(r.master_valuation_rate)
+			cost = flt(r.last_purchase_rate)
 		sale = flt(r.sale_rate)
 		reorder = flt(r.reorder_level)
 		# A service has nothing to run low on — "qty <= 0" would otherwise

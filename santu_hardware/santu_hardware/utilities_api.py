@@ -210,8 +210,21 @@ def import_items_valid(rows: str):
 	for entry in rows:
 		data = entry.get("data") if isinstance(entry, dict) else entry
 		try:
-			item_code = (data.get("item_code") or "").strip() or frappe.scrub(data.get("item_name"))
-			if frappe.db.exists("Item", item_code):
+			item_code = (data.get("item_code") or "").strip()
+			if not item_code:
+				# No Item Code column mapped — generate a real item number the
+				# same way quick_create_item does (api.py), not frappe.scrub's
+				# lowercase/underscore slug of the name, which isn't a usable
+				# item number (2026-08-25 bug: bulk-imported items had "no
+				# item number"). Collision-safe with a numeric suffix, same
+				# as the quick-create flow.
+				slug = re.sub(r"[^A-Za-z0-9]+", "-", data.get("item_name") or "").strip("-").upper() or "ITEM"
+				item_code = slug
+				suffix = 1
+				while frappe.db.exists("Item", item_code):
+					suffix += 1
+					item_code = f"{slug}-{suffix}"
+			elif frappe.db.exists("Item", item_code):
 				failed.append({"item_code": item_code, "error": "Already exists"})
 				continue
 			item = frappe.new_doc("Item")
@@ -478,6 +491,11 @@ def bulk_update_items(updates: str):
 				elif k == "valuation_rate":
 					_upsert_item_price(name, "Standard Buying", buying=1, rate=flt(v))
 					doc.valuation_rate = flt(v)
+				elif k in ["custom_min_selling_price", "custom_mrp"]:
+					# Ensure numeric and non-negative
+					if v is None or (isinstance(v, (int, float, str)) and float(v) < 0):
+						raise ValueError(f"{k} must be a non‑negative number")
+					doc.set(k, flt(v))
 				elif hasattr(doc, k):
 					doc.set(k, v)
 			doc.save(ignore_permissions=True)

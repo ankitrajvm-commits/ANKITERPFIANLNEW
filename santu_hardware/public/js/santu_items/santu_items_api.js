@@ -34,6 +34,13 @@ santu_items.api = {
 		return item;
 	},
 
+	async delete_item(item_code) {
+		const res = await frappe.xcall("santu_hardware.santu_hardware.api.delete_item", { item_code });
+		this.clear_item_cache(item_code);
+		this.clear_list_cache();
+		return res;
+	},
+
 	async get_item_transactions(item_code, force = false) {
 		if (!force && this._txn_cache.has(item_code)) {
 			return this._txn_cache.get(item_code);

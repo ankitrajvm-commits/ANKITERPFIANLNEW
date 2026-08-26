@@ -111,7 +111,7 @@ window.santu_billing_page = {
 					item_name: row.item_name || r.item_name || r.item_code,
 					qty: r.qty,
 					uom: r.uom || row.uom || row.stock_uom,
-					uom_options: [row.uom, row.stock_uom].filter((v, i, a) => v && a.indexOf(v) === i),
+					uom_options: row.uoms && row.uoms.length ? row.uoms : [{ uom: row.uom || row.stock_uom, conversion_factor: 1 }],
 					rate: r.rate || row.price_list_rate || row.rate || 0,
 					discount: r.discount_amount || 0,
 					batch_no: null,
@@ -131,6 +131,12 @@ window.santu_billing_page = {
 			const parsed = raw ? JSON.parse(raw) : null;
 			if (parsed && Array.isArray(parsed.tabs) && parsed.tabs.length) {
 				this.tabs = parsed.tabs;
+				const today = (this.init_data && this.init_data.posting_date) || frappe.datetime.get_today();
+				this.tabs.forEach((t) => {
+					if (!t.saved && t.posting_date && t.posting_date < today) {
+						t.posting_date = today;
+					}
+				});
 				this.active_id =
 					parsed.active_id && this.tabs.some((t) => t.id === parsed.active_id) ? parsed.active_id : this.tabs[0].id;
 			}
@@ -138,6 +144,7 @@ window.santu_billing_page = {
 			this.tabs = [];
 		}
 	},
+
 	_persist() {
 		try {
 			localStorage.setItem(SANTU_BILL_KEY, JSON.stringify({ tabs: this.tabs, active_id: this.active_id }));
@@ -1113,7 +1120,7 @@ window.santu_billing_page = {
 				item_name: row.item_name || item_code,
 				qty: 1,
 				uom: row.uom || row.stock_uom,
-				uom_options: [row.uom, row.stock_uom].filter((v, i, a) => v && a.indexOf(v) === i),
+				uom_options: row.uoms && row.uoms.length ? row.uoms : [{ uom: row.uom || row.stock_uom, conversion_factor: 1 }],
 				// ERPNext's get_item_details leaves `rate` at 0 until a pricing
 				// rule or margin applies; the sellable price is price_list_rate.
 				// Same order the Sale Invoice screen uses. A batch with its own
@@ -1222,9 +1229,33 @@ window.santu_billing_page = {
 			if (!r) return;
 			const d = new frappe.ui.Dialog({
 				title: __("Change Unit"),
-				fields: [{ fieldtype: "Select", fieldname: "uom", label: __("Unit"), options: (r.uom_options || [r.uom]).join("\n"), default: r.uom }],
+				fields: [
+					{
+						fieldtype: "Select",
+						fieldname: "uom",
+						label: __("Unit"),
+						options: (r.uom_options || [{ uom: r.uom, conversion_factor: 1 }]).map((o) => o.uom || o).join("\n"),
+						default: r.uom,
+					},
+				],
 				primary_action_label: __("OK"),
 				primary_action: (v) => {
+					const opt = (r.uom_options || []).find((o) => (o.uom || o) === v.uom);
+					const old_factor = (r.uom_options || []).find((o) => (o.uom || o) === r.uom);
+					const old_cf = (old_factor && old_factor.conversion_factor) || 1;
+					const new_cf = (opt && opt.conversion_factor) || 1;
+					if (opt && new_cf !== old_cf) {
+						// Rate and stock are quoted per the OLD unit; rescale so the
+						// bill still charges/tracks the same real quantity of stock
+						// after switching e.g. Nos -> Kg.
+						r.rate = (r.rate * old_cf) / new_cf;
+						if (r.available_qty != null) r.available_qty = (r.available_qty * old_cf) / new_cf;
+						// Quantity typed against the OLD unit means the same amount
+						// (2026-08-25 bug: switching unit left qty stuck at the old
+						// number, e.g. "1" stayed "1" after Nos -> Kg instead of
+						// becoming the equivalent 1/25).
+						r.qty = (r.qty * old_cf) / new_cf;
+					}
 					r.uom = v.uom;
 					d.hide();
 					this._persist_soon();
@@ -1664,6 +1695,9 @@ window.santu_billing_page = {
 			)
 			.then((r) => {
 				frappe.dom.unfreeze();
+				if (typeof santu_set_privacy_mode === "function" && typeof santu_is_privacy_mode_active === "function" && santu_is_privacy_mode_active()) {
+					santu_set_privacy_mode(false);
+				}
 				frappe.show_alert({ message: __("Saved {0}", [r.name]), indicator: "green" });
 				if (typeof santu_print_thermal_bill === "function") {
 					santu_print_thermal_bill("Sales Invoice", r.name);
