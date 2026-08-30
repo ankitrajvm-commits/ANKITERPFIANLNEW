@@ -1547,6 +1547,42 @@ def format_bill_no(bill_no) -> str:
 	return f"{letters}{within:02d}"
 
 
+@frappe.whitelist()
+def bill_label(bill_no=None, doctype: str = None, name: str = None) -> str:
+	"""The ONLY string allowed to stand for a bill anywhere the shop can see.
+
+	Standing order, repeated many times and finally as an absolute rule
+	(2026-08-30): the internal docname ("SINV-26-00426") must NEVER appear
+	as a bill name/number — not on a slip, a banner, a dialog, an export, a
+	WhatsApp message, or an error. Every `format_bill_no(x) if x else name`
+	fallback in this codebase was a leak waiting for one invoice with an
+	empty `santu_bill_no` (amended, imported, restored, or still a draft).
+
+	So there is no docname fallback here, by construction. A bill with no
+	number yet reads as "—": no number is strictly better than the wrong
+	one, and the operator can still find the bill by customer/date/amount.
+
+	Pass `bill_no` directly, or `doctype`+`name` to look it up.
+	"""
+	if bill_no in (None, "") and doctype and name:
+		if frappe.db.has_column(doctype, "santu_bill_no"):
+			bill_no = frappe.db.get_value(doctype, name, "santu_bill_no")
+	return format_bill_no(bill_no) or "—"
+
+
+def voucher_display(voucher_type: str, voucher_no: str) -> str:
+	"""How a ledger/statement row should name its voucher.
+
+	Ledger reports hand back raw docnames. For a bill that means SINV-…,
+	which may never be shown (see `bill_label`) — so bills are relabelled
+	with the shop's own number. Other vouchers (Payment Entry, Journal
+	Entry) have no shop-facing number of their own, so they keep theirs.
+	"""
+	if voucher_type in ("Sales Invoice", "POS Invoice") and voucher_no:
+		return bill_label(doctype=voucher_type, name=voucher_no)
+	return voucher_no or ""
+
+
 def apply_billing_defaults(doc, method=None):
 	"""`doc_events` hook (POS Invoice / Sales Invoice `before_submit`) —
 	2026-07-30 direct request: a clean numeric bill number (not the full
@@ -2105,7 +2141,7 @@ def search_transactions_topbar(query: str, limit: int = 10):
 			bill_no_by_name[row.name] = row.santu_bill_no
 	for r in out:
 		bill_no = bill_no_by_name.get(r["name"])
-		r["display_number"] = format_bill_no(bill_no) if bill_no else r["name"]
+		r["display_number"] = bill_label(bill_no)
 
 	return out
 
@@ -3057,7 +3093,7 @@ def get_customer_khata(customer: str, from_date: str = None, to_date: str = None
 				"_seq": _khata_sequence("Sales Invoice", r["name"], r.get("creation"), r.get("amended_from")),
 				"doctype": "Sales Invoice",
 				"voucher_no": r["name"],
-				"display_number": format_bill_no(r["santu_bill_no"]) if r.get("santu_bill_no") else r["name"],
+				"display_number": bill_label(r.get("santu_bill_no")),
 				"type": "Sale Return" if r["is_return"] else "Sale",
 				"items": r["items"],
 				"items_summary": r["items_summary"],
@@ -3085,7 +3121,7 @@ def get_customer_khata(customer: str, from_date: str = None, to_date: str = None
 				"_seq": _khata_sequence("POS Invoice", r["name"], r.get("creation"), r.get("amended_from")),
 				"doctype": "POS Invoice",
 				"voucher_no": r["name"],
-				"display_number": format_bill_no(r["santu_bill_no"]) if r.get("santu_bill_no") else r["name"],
+				"display_number": bill_label(r.get("santu_bill_no")),
 				"type": "Sale Return" if r["is_return"] else "Sale",
 				"items": r["items"],
 				"items_summary": r["items_summary"],
@@ -4287,7 +4323,7 @@ def _sale_fetch_pos_rows(start, end, company, is_return=None, search=None):
 			{
 				"name": r.name,
 				"doctype": "POS Invoice",
-				"invoice_no": format_bill_no(r.santu_bill_no) if r.get("santu_bill_no") else r.name,
+				"invoice_no": bill_label(r.get("santu_bill_no")),
 				"posting_date": r.posting_date,
 				"party_name": r.customer,
 				"transaction": "Return" if r.is_return else "Sale",
@@ -4336,7 +4372,7 @@ def _sale_fetch_si_rows(start, end, company, is_return=None, drafts_only=False, 
 			{
 				"name": r.name,
 				"doctype": "Sales Invoice",
-				"invoice_no": format_bill_no(r.santu_bill_no) if r.get("santu_bill_no") else r.name,
+				"invoice_no": bill_label(r.get("santu_bill_no")),
 				"posting_date": r.posting_date,
 				"party_name": r.customer,
 				"transaction": txn,
@@ -4382,7 +4418,7 @@ def _sale_view_transactions(view, start, end, company, search=None):
 				{
 					"name": r.name,
 					"doctype": "Quotation",
-					"invoice_no": format_bill_no(r.santu_bill_no) if r.get("santu_bill_no") else r.name,
+					"invoice_no": bill_label(r.get("santu_bill_no")),
 					"posting_date": r.transaction_date,
 					"party_name": r.party_name,
 					"transaction": "Estimate",
@@ -6435,7 +6471,7 @@ def get_invoice_for_edit(invoice_name: str):
 	edit path here since nothing in this app ever creates one.
 	"""
 	if not frappe.db.exists("Sales Invoice", invoice_name):
-		frappe.throw(_("{0} not found").format(invoice_name))
+		frappe.throw(_("Bill {0} nahi mila.").format(bill_label(doctype="Sales Invoice", name=invoice_name)))
 
 	# Editing a bill that has already been corrected must reopen the LATEST
 	# version of it, never a stale link partway down the chain — re-editing
@@ -6459,8 +6495,9 @@ def get_invoice_for_edit(invoice_name: str):
 
 	doc = frappe.get_doc("Sales Invoice", invoice_name)
 	if doc.docstatus != 1:
-		frappe.throw(_("Only a submitted bill can be edited — {0} is {1}.").format(
-			invoice_name, {0: "a draft", 2: "already cancelled"}.get(doc.docstatus, "not submitted")
+		frappe.throw(_("Sirf submit ho chuki bill sudhaari ja sakti hai — Bill {0} {1} hai.").format(
+			bill_label(doc.get("santu_bill_no")),
+			{0: "abhi draft", 2: "cancel ho chuki"}.get(doc.docstatus, "submit nahi hui"),
 		))
 
 	return {
@@ -6600,7 +6637,7 @@ def edit_submitted_sale_invoice(invoice_name: str, invoice_json: str):
 			pass
 
 	if not frappe.db.exists("Sales Invoice", invoice_name):
-		frappe.throw(_("{0} not found").format(invoice_name))
+		frappe.throw(_("Bill {0} nahi mila.").format(bill_label(doctype="Sales Invoice", name=invoice_name)))
 
 	# Walking forward along the amendment chain to always edit the LATEST submitted version
 	current = invoice_name
@@ -6615,8 +6652,9 @@ def edit_submitted_sale_invoice(invoice_name: str, invoice_json: str):
 
 	old_doc = frappe.get_doc("Sales Invoice", invoice_name)
 	if old_doc.docstatus != 1:
-		frappe.throw(_("Only a submitted bill can be edited — {0} is {1}.").format(
-			invoice_name, {0: "a draft", 2: "already cancelled"}.get(old_doc.docstatus, "not submitted")
+		frappe.throw(_("Sirf submit ho chuki bill sudhaari ja sakti hai — Bill {0} {1} hai.").format(
+			bill_label(old_doc.get("santu_bill_no")),
+			{0: "abhi draft", 2: "cancel ho chuki"}.get(old_doc.docstatus, "submit nahi hui"),
 		))
 
 	if old_doc.customer and frappe.db.get_value("Customer", old_doc.customer, "disabled"):
@@ -7434,7 +7472,7 @@ def get_party_outstanding(party_type: str, party: str):
 				# settlement table was still the one screen showing the raw
 				# docname after the rest of the app moved to plain numbers).
 				"display_number": (
-					format_bill_no(r.get("santu_bill_no")) if r.get("santu_bill_no") else r.name
+					bill_label(r.get("santu_bill_no"))
 				),
 				"posting_date": str(r.posting_date) if r.posting_date else None,
 				"due_date": str(r.due_date) if r.due_date else None,
@@ -7555,14 +7593,14 @@ def create_payment_entry(
 			["name", party_field, "docstatus", "outstanding_amount"], as_dict=True,
 		)
 		if not ref:
-			frappe.throw(_("Bill {0} not found.").format(name))
+			frappe.throw(_("Bill {0} nahi mila.").format(bill_label(doctype=outstanding_doctype, name=name)))
 		if ref.docstatus == 2:
-			frappe.throw(_("Bill {0} is cancelled — money cannot be settled against it.").format(name))
+			frappe.throw(_("Bill {0} cancel ho chuki hai — iske against paisa settle nahi kar sakte.").format(bill_label(doctype=outstanding_doctype, name=name)))
 		if ref.docstatus == 0:
-			frappe.throw(_("Bill {0} is still a draft — submit it before taking payment against it.").format(name))
+			frappe.throw(_("Bill {0} abhi draft hai — pehle use save/submit karein.").format(bill_label(doctype=outstanding_doctype, name=name)))
 		if ref.get(party_field) != party:
-			frappe.throw(_("Bill {0} does not belong to {1}.").format(name, party))
-		frappe.throw(_("Bill {0} has nothing outstanding to settle.").format(name))
+			frappe.throw(_("Bill {0} {1} ki nahi hai.").format(bill_label(doctype=outstanding_doctype, name=name), party))
+		frappe.throw(_("Bill {0} par kuch baaki nahi hai.").format(bill_label(doctype=outstanding_doctype, name=name)))
 
 	remaining = amount
 	for row in rows:
@@ -7742,7 +7780,7 @@ def get_invoice_view_data(doctype: str, name: str):
 	return {
 		"doctype": doctype,
 		"name": doc.name,
-		"display_number": format_bill_no(doc.santu_bill_no) if doc.get("santu_bill_no") else doc.name,
+		"display_number": bill_label(doc.get("santu_bill_no")),
 		"santu_bill_no": doc.get("santu_bill_no"),
 		"kind": "item",
 		"docstatus": doc.docstatus,
@@ -8199,7 +8237,7 @@ def get_purchase_items_for_return(invoice: str):
 	"""Line items of one Purchase Invoice with how much of each is still
 	returnable. Buying-side mirror of get_invoice_items_for_return."""
 	if not invoice or not frappe.db.exists("Purchase Invoice", invoice):
-		frappe.throw(_("Bill {0} not found").format(invoice or ""))
+		frappe.throw(_("Bill {0} nahi mila.").format(bill_label(doctype="Purchase Invoice", name=invoice)))
 
 	returned = frappe.db.sql(
 		"""
@@ -8447,7 +8485,7 @@ def get_invoice_items_for_return(invoice: str):
 	validation.
 	"""
 	if not invoice or not frappe.db.exists("Sales Invoice", invoice):
-		frappe.throw(_("Invoice {0} not found").format(invoice or ""))
+		frappe.throw(_("Bill {0} nahi mila.").format(bill_label(doctype="Sales Invoice", name=invoice)))
 
 	returned = frappe.db.sql(
 		"""
@@ -8504,19 +8542,20 @@ def _validate_return_against(return_against, party, company, doctype="Sales Invo
 		["name", party_field, "company", "docstatus", "is_return"], as_dict=True,
 	)
 	if not ref:
-		frappe.throw(_("Bill {0} not found.").format(return_against))
+		frappe.throw(_("Bill {0} nahi mila.").format(bill_label(doctype=doctype, name=return_against)))
 	if ref.is_return:
-		frappe.throw(_("{0} is itself a return — goods cannot be returned against a credit note.").format(return_against))
+		frappe.throw(_("Bill {0} khud ek return hai — return ke against return nahi ho sakta.").format(bill_label(doctype=doctype, name=return_against)))
 	if ref.docstatus != 1:
 		frappe.throw(
-			_("Bill {0} is {1} — a return can only be booked against a live bill.").format(
-				return_against, "cancelled" if ref.docstatus == 2 else "still a draft"
+			_("Bill {0} {1} hai — return sirf live bill ke against ho sakta hai.").format(
+				bill_label(doctype=doctype, name=return_against),
+				"cancel ho chuki" if ref.docstatus == 2 else "abhi draft",
 			)
 		)
 	if ref.get(party_field) != party:
-		frappe.throw(_("Bill {0} belongs to {1}, not {2}.").format(return_against, ref.get(party_field), party))
+		frappe.throw(_("Bill {0} {1} ki hai, {2} ki nahi.").format(bill_label(doctype=doctype, name=return_against), ref.get(party_field), party))
 	if company and ref.company != company:
-		frappe.throw(_("Bill {0} belongs to another company.").format(return_against))
+		frappe.throw(_("Bill {0} kisi doosri company ki hai.").format(bill_label(doctype=doctype, name=return_against)))
 
 
 def _match_return_row(return_against, item_code, qty, batch_no=None):
@@ -8721,9 +8760,9 @@ def create_return_refund_payment(doctype: str, return_name: str, mode_of_payment
 	if doctype not in ("Sales Invoice", "Purchase Invoice"):
 		frappe.throw(_("Refund settlement is only supported for Sales/Purchase returns."))
 	if not frappe.db.exists(doctype, return_name):
-		frappe.throw(_("{0} not found").format(return_name))
+		frappe.throw(_("Bill {0} nahi mila.").format(bill_label(doctype=doctype, name=return_name)))
 	if not frappe.db.get_value(doctype, return_name, "is_return"):
-		frappe.throw(_("{0} is not a return.").format(return_name))
+		frappe.throw(_("Bill {0} return nahi hai.").format(bill_label(doctype=doctype, name=return_name)))
 
 	pe = get_payment_entry(doctype, return_name)
 	pe.mode_of_payment = mode_of_payment or "Cash"
@@ -9088,7 +9127,7 @@ def get_party_transactions(party_type: str, party: str):
 	# thermal bill exists for suppliers), so it falls back to its own name.
 	for r in rows:
 		bill_no = r.get("santu_bill_no")
-		r["display_number"] = format_bill_no(bill_no) if bill_no else r["name"]
+		r["display_number"] = bill_label(bill_no)
 
 	rows.sort(key=lambda r: r["posting_date"], reverse=True)
 	return rows
@@ -10151,6 +10190,10 @@ def get_account_ledger(account: str, limit: int = 50):
 		order_by="posting_date desc, creation desc",
 		limit_page_length=cint(limit) or 50,
 	)
+	# This list is shown on screen, so a bill row must carry the shop's own
+	# bill number — never the SINV docname the GL stores.
+	for r in rows:
+		r["voucher_no"] = voucher_display(r.get("voucher_type"), r.get("voucher_no"))
 	return rows
 
 

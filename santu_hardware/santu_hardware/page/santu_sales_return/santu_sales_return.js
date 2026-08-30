@@ -181,7 +181,7 @@ window.santu_sales_return_page = {
 								${(b.return_invoices || [])
 									.map(
 										(inv) =>
-											`<option value="${frappe.utils.escape_html(inv.name)}" ${inv.name === b.return_against ? "selected" : ""}>${frappe.utils.escape_html(inv.bill_no || inv.name)} · ₹${format_number(inv.grand_total, null, 2)}</option>`
+											`<option value="${frappe.utils.escape_html(inv.name)}" ${inv.name === b.return_against ? "selected" : ""}>${frappe.utils.escape_html(santu_bill_label(inv.bill_no))} · ₹${format_number(inv.grand_total, null, 2)}</option>`
 									)
 									.join("")}
 							</select>
@@ -341,9 +341,9 @@ window.santu_sales_return_page = {
 		if (privacy_on) this._fetch_costs(b);
 		const $tb = this.$root.find(".santu-bill-grid tbody").empty();
 		b.items.forEach((r, i) => {
-			const is_cpvc = santu_is_cpvc_item(r.item_code, r.item_name);
+			const row_hl = santu_item_row_class(r.item_code, r.item_name);
 			const $tr = $(`
-				<tr class="${r.id === b.selected_row ? "is-selected" : ""} ${is_cpvc ? "santu-cpvc-row" : ""}" data-row="${r.id}">
+				<tr class="${r.id === b.selected_row ? "is-selected" : ""} ${row_hl}" data-row="${r.id}">
 					<td class="c-idx">${i + 1}</td>
 					<td class="c-code">${frappe.utils.escape_html(r.item_code || "-")}</td>
 					<td class="c-name santu-bill-editable" title="${__("Badalne ke liye dabaiye")}">${frappe.utils.escape_html(r.item_name)}${
@@ -504,7 +504,7 @@ window.santu_sales_return_page = {
 			$dd.empty();
 			rows.forEach((it) => {
 				$(`
-					<div class="santu-bill-dd-row ${santu_cpvc_dd_class(it.item_code, it.item_name)}">
+					<div class="santu-bill-dd-row ${santu_item_dd_class(it.item_code, it.item_name)}">
 						<div><b>${frappe.utils.escape_html(it.item_name)}</b><span>${frappe.utils.escape_html(it.item_code)}</span></div>
 						<div class="santu-bill-dd-right">₹ ${format_number(it.price || 0, null, 2)}</div>
 					</div>
@@ -657,7 +657,7 @@ window.santu_sales_return_page = {
 			${(b.return_invoices || [])
 				.map(
 					(inv) =>
-						`<option value="${frappe.utils.escape_html(inv.name)}" ${inv.name === b.return_against ? "selected" : ""}>${frappe.utils.escape_html(inv.bill_no || inv.name)} · ₹${format_number(inv.grand_total, null, 2)}</option>`
+						`<option value="${frappe.utils.escape_html(inv.name)}" ${inv.name === b.return_against ? "selected" : ""}>${frappe.utils.escape_html(santu_bill_label(inv.bill_no))} · ₹${format_number(inv.grand_total, null, 2)}</option>`
 				)
 				.join("")}
 		`);
@@ -673,7 +673,15 @@ window.santu_sales_return_page = {
 		santu_sales_return.api.invoice_items(invoice).then((r) => {
 			const rows = (r.items || []).filter((row) => row.returnable_qty > 0);
 			if (!rows.length) {
-				frappe.show_alert({ message: __("Everything on {0} has already been returned.", [invoice]), indicator: "orange" });
+					// The picked <option>'s value is the docname; name the bill by
+				// its own number, which is the only name the shop may see.
+				const picked = (b.return_invoices || []).find((inv) => inv.name === invoice);
+				frappe.show_alert({
+					message: __("Bill {0} par sab kuch already return ho chuka hai.", [
+						santu_bill_label(picked && picked.bill_no),
+					]),
+					indicator: "orange",
+				});
 				return;
 			}
 			b.items = rows.map((row) => ({

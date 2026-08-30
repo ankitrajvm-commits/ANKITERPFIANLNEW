@@ -605,8 +605,8 @@ def get_tally_export_data(from_date: str, to_date: str, types: str = None):
 			filters=c_filters,
 			fields=["name", "posting_date", "customer", "grand_total", "santu_bill_no"],
 		):
-			from santu_hardware.santu_hardware.api import format_bill_no
-			inv_no = format_bill_no(r.santu_bill_no) if r.get("santu_bill_no") else r.name
+			from santu_hardware.santu_hardware.api import bill_label
+			inv_no = bill_label(r.get("santu_bill_no"))
 			rows.append({"date": str(r.posting_date), "invoice_no": inv_no, "party": r.customer, "type": "Sale Cancelled", "payment_type": "—", "amount": flt(r.grand_total), "balance": 0})
 
 	rows.sort(key=lambda x: (str(x.get("date") or ""), str(x.get("invoice_no") or "")), reverse=True)
@@ -946,6 +946,27 @@ def generate_barcode_labels(items: str, label_size: str = "50x25"):
 SANTU_BILL_DOCTYPES = ("Sales Invoice", "POS Invoice")
 
 
+def _deleted_doc_label(doctype: str, docname: str, data: str = None) -> str:
+	"""How a deleted document should be named back to the operator.
+
+	A deleted bill is gone from its table, so `bill_label`'s live lookup
+	finds nothing — the number has to come out of the archived JSON. And a
+	bill may never be named by its docname (see api.bill_label), so for
+	bills this returns "Bill <number>" and never the SINV name.
+	"""
+	import json as _json
+
+	if doctype in SANTU_BILL_DOCTYPES:
+		from santu_hardware.santu_hardware.api import bill_label
+
+		try:
+			bill_no = (_json.loads(data or "{}") or {}).get("santu_bill_no")
+		except Exception:
+			bill_no = None
+		return _("Bill {0}").format(bill_label(bill_no))
+	return docname
+
+
 @frappe.whitelist()
 def restore_deleted_document(name: str):
 	import json as _json
@@ -953,7 +974,11 @@ def restore_deleted_document(name: str):
 	frappe.only_for("System Manager")
 	deleted = frappe.get_doc("Deleted Document", name)
 	if deleted.restored:
-		frappe.throw(_("{0} has already been restored.").format(deleted.deleted_name))
+		frappe.throw(
+			_("{0} pehle hi restore ho chuka hai.").format(
+				_deleted_doc_label(deleted.deleted_doctype, deleted.deleted_name, deleted.data)
+			)
+		)
 
 	data = _json.loads(deleted.data or "{}")
 	doctype = deleted.deleted_doctype
@@ -964,11 +989,15 @@ def restore_deleted_document(name: str):
 			_(
 				"{0} was cancelled, not lost — cancelled bills are kept for the record and "
 				"cannot be brought back. Make a fresh bill instead."
-			).format(old_name)
+			).format(_deleted_doc_label(doctype, old_name, deleted.data))
 		)
 
 	if frappe.db.exists(doctype, old_name):
-		frappe.throw(_("{0} already exists — nothing to restore.").format(old_name))
+		frappe.throw(
+			_("{0} already maujood hai — restore karne ko kuch nahi.").format(
+				_deleted_doc_label(doctype, old_name, deleted.data)
+			)
+		)
 
 	# Two live documents must never claim the same customer-facing bill number.
 	bill_no = cint(data.get("santu_bill_no"))

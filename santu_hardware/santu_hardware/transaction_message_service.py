@@ -413,9 +413,9 @@ def build_message_context(doc, transaction_type: str) -> dict:
 	except Exception:
 		posting_date_display = str(getattr(doc, "posting_date", today()))
 
-	from santu_hardware.santu_hardware.api import format_bill_no
+	from santu_hardware.santu_hardware.api import bill_label
 
-	bill_no_val = format_bill_no(doc.santu_bill_no) if doc.get("santu_bill_no") else doc.name
+	bill_no_val = bill_label(doc.get("santu_bill_no"))
 
 	return {
 		"customer_name": customer_name,

@@ -362,8 +362,45 @@
 	// Mode" (which reveals cost price behind a PIN in POS) — opposite
 	// default state and opposite purpose, reusing that name here would
 	// make both features behave unpredictably against each other.
+	// Screens Privacy must never cover: the ones someone is WORKING on with
+	// a customer standing there. Blurring the bill being typed helps nobody
+	// — the customer is watching their own bill get made, and the operator
+	// cannot work blind (2026-08-30: "billing, estimate, return wagerah ke
+	// alawa sab me privacy daal de"). Everything else — the dashboard's
+	// takings, khata balances, reports, purchase/cost screens, stock value —
+	// is exactly what Privacy is for, and stays covered.
+	const PRIVACY_EXEMPT_ROUTES = [
+		"santu-billing",
+		"point-of-sale",
+		"santu-estimate",
+		"santu-sales-return",
+		"santu-purchase-return",
+		"santu-delivery-challan",
+		"santu-receive-stock",
+		"santu-add-item",
+	];
+
+	function privacy_exempt_route() {
+		const route = frappe.get_route() || [];
+		return PRIVACY_EXEMPT_ROUTES.includes(route[0]);
+	}
+
+	// Runs on every route change as well as on the toggle: Privacy stays ON
+	// while someone walks from the dashboard into a bill and back, it just
+	// stops covering the screen while they are on the bill.
+	function sync_privacy_exempt() {
+		document.body.classList.toggle("santu-dash-privacy-exempt", privacy_exempt_route());
+	}
+
 	function toggle_dashboard_privacy() {
-		document.body.classList.toggle("santu-dash-privacy-active");
+		sync_privacy_exempt();
+		const on = document.body.classList.toggle("santu-dash-privacy-active");
+		if (on && privacy_exempt_route()) {
+			frappe.show_alert({
+				message: __("Privacy chalu — is screen par kaam chalta rahega, baaki jagah dhak jayegi."),
+				indicator: "blue",
+			});
+		}
 	}
 
 	function show_dropdown($anchor, items) {
@@ -403,7 +440,7 @@
 				rows.forEach((r) => {
 					$(`
 						<div class="santu-topbar-dd-row">
-							<span>${frappe.utils.escape_html(r.display_number || r.name)}</span>
+							<span>${frappe.utils.escape_html(r.display_number || santu_bill_label(r.santu_bill_no))}</span>
 							<span class="santu-topbar-dd-sub">${frappe.utils.escape_html(r.doctype)} · ${frappe.utils.escape_html(r.party || "")}</span>
 						</div>
 					`)
@@ -615,6 +652,8 @@
 			</div>
 		`).appendTo("body");
 	}
+
+	frappe.router.on("change", sync_privacy_exempt);
 
 	function toggle_topbar() {
 		if (is_kiosk()) {

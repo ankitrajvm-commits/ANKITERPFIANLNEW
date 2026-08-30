@@ -209,15 +209,16 @@ app_include_css = _LiveAssets([
 	f"/assets/santu_hardware/css/santu_doctor.css?v={SANTU_ASSET_VERSION}",
 	# Sabse aakhir me: CPVC ka pila rang har screen ke apne row rules ke
 	# baad aana chahiye, warna un rules se dhak jaata hai.
-	f"/assets/santu_hardware/css/santu_cpvc_highlight.css?v={SANTU_ASSET_VERSION}",
+	f"/assets/santu_hardware/css/santu_item_highlight.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/santu_keyboard.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/santu_feature_workbook.css?v={SANTU_ASSET_VERSION}",
 ])
 app_include_js = _LiveAssets([
 	# First, so it is listening before anything else can throw.
 	f"/assets/santu_hardware/js/santu_error_capture.js?v={SANTU_ASSET_VERSION}",
-	# Jaldi: har item-list screen isse CPVC row ki class poochti hai.
-	f"/assets/santu_hardware/js/santu_cpvc.js?v={SANTU_ASSET_VERSION}",
+	f"/assets/santu_hardware/js/santu_bill_label.js?v={SANTU_ASSET_VERSION}",
+	# Jaldi: har item-list screen isse row ka rang (CPVC/UPVC) poochti hai.
+	f"/assets/santu_hardware/js/santu_item_highlight.js?v={SANTU_ASSET_VERSION}",
 	# Jaldi: har document screen isse item ke saare units poochti hai.
 	f"/assets/santu_hardware/js/santu_uom.js?v={SANTU_ASSET_VERSION}",
 	# Hover-par-batao: har icon button ka matlab.

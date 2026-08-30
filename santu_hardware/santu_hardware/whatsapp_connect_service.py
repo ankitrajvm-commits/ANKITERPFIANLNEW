@@ -15,6 +15,7 @@ from santu_hardware.santu_hardware.transaction_message_service import (
 	render_template,
 	resolve_transaction_type,
 )
+from santu_hardware.santu_hardware.api import bill_label, voucher_display
 from santu_hardware.santu_hardware.whatsapp_service import get_connection_state, send_chat_message
 
 
@@ -317,7 +318,7 @@ def get_party_statement_data(party_type: str, party_name: str) -> dict:
 		rows = []
 		if party_type == "Customer":
 			for r in frappe.get_all("Sales Invoice", filters={"docstatus": 1, "customer": party_name}, fields=["name", "posting_date", "grand_total", "outstanding_amount"], order_by="posting_date asc"):
-				rows.append({"posting_date": r.posting_date, "voucher_type": "Sales Invoice", "voucher_no": r.name, "debit": r.grand_total, "credit": 0, "balance": r.outstanding_amount})
+				rows.append({"posting_date": r.posting_date, "voucher_type": "Sales Invoice", "voucher_no": bill_label(doctype="Sales Invoice", name=r.name), "debit": r.grand_total, "credit": 0, "balance": r.outstanding_amount})
 
 	opening = flt(rows[0].get("balance", 0)) if rows else 0
 	closing = get_party_outstanding(party_type, party_name)
@@ -367,7 +368,7 @@ def generate_party_statement_pdf(party_type: str, party_name: str) -> tuple[byte
 		rows_html += f"""
 		<tr>
 			<td>{row.get('posting_date', '')}</td>
-			<td>{row.get('voucher_type', '')}<br><span class="voucher-no">{row.get('voucher_no', '')}</span></td>
+			<td>{row.get('voucher_type', '')}<br><span class="voucher-no">{voucher_display(row.get('voucher_type', ''), row.get('voucher_no', ''))}</span></td>
 			<td class="num">{f"₹{debit:,.2f}" if debit else "-"}</td>
 			<td class="num">{f"₹{credit:,.2f}" if credit else "-"}</td>
 			<td class="num">₹{flt(row.get('balance')):,.2f}</td>

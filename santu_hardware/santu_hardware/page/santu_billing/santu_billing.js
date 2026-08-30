@@ -349,7 +349,7 @@ window.santu_billing_page = {
 
 				${
 					b.editing
-						? `<div class="santu-bill-edit-banner">${__("Sudhaar mode")} — ${__("Bill")} #${frappe.utils.escape_html(String(b.editing.santu_bill_no || b.editing.name))} (${frappe.utils.escape_html(b.editing.name)}) ${__("ko sudhaara ja raha hai. Save karte hi purani bill cancel hokar nayi sahi bill ban jaayegi.")}</div>`
+						? `<div class="santu-bill-edit-banner">${__("Sudhaar mode")} — ${__("Bill")} #${frappe.utils.escape_html(santu_bill_label(b.editing.santu_bill_no))} ${__("ko sudhaara ja raha hai. Save karte hi purani bill cancel hokar nayi sahi bill ban jaayegi.")}</div>`
 						: ""
 				}
 
@@ -607,7 +607,7 @@ window.santu_billing_page = {
 						$(`
 							<div class="santu-bill-return-row" data-invoice="${frappe.utils.escape_html(r.name)}">
 								<div>
-									<b>${frappe.utils.escape_html(r.bill_no || r.name)}</b>
+									<b>${frappe.utils.escape_html(santu_bill_label(r.bill_no))}</b>
 									<span class="santu-bill-return-row-cust">${frappe.utils.escape_html(r.customer || "")}</span>
 								</div>
 								<div class="santu-bill-return-row-right">
@@ -776,9 +776,9 @@ window.santu_billing_page = {
 		if (privacy_on) this._fetch_costs(b);
 		const $tb = this.$root.find(".santu-bill-grid tbody").empty();
 		b.items.forEach((r, i) => {
-			const is_cpvc = santu_is_cpvc_item(r.item_code, r.item_name);
+			const row_hl = santu_item_row_class(r.item_code, r.item_name);
 			const $tr = $(`
-				<tr class="${r.id === b.selected_row ? "is-selected" : ""} ${is_cpvc ? "santu-cpvc-row" : ""}" data-row="${r.id}">
+				<tr class="${r.id === b.selected_row ? "is-selected" : ""} ${row_hl}" data-row="${r.id}">
 					<td class="c-idx">${i + 1}</td>
 					<td class="c-code">${frappe.utils.escape_html(r.item_code || "-")}</td>
 					<td class="c-name santu-bill-editable" title="${__("Badalne ke liye dabaiye")}">${frappe.utils.escape_html(r.item_name)}${
@@ -989,7 +989,7 @@ window.santu_billing_page = {
 			$dd.empty();
 			rows.forEach((it) => {
 				$(`
-					<div class="santu-bill-dd-row ${santu_cpvc_dd_class(it.item_code, it.item_name)}">
+					<div class="santu-bill-dd-row ${santu_item_dd_class(it.item_code, it.item_name)}">
 						<div><b>${frappe.utils.escape_html(it.item_name)}</b><span>${frappe.utils.escape_html(it.item_code)}</span></div>
 						<div class="santu-bill-dd-right">₹ ${format_number(it.price || 0, null, 2)}${
 							it.available_qty != null ? `<span>${format_number(it.available_qty, null, 0)} left</span>` : ""
@@ -1722,14 +1722,41 @@ window.santu_billing_page = {
 			.open_print_jobs(24)
 			.then((jobs) => {
 				if (!jobs || !jobs.length) return $alert.hide().empty();
-				const list = jobs.map((j) => frappe.utils.escape_html(j.invoice_name)).join(", ");
+				// Always the shop's own bill number, never the SINV docname —
+				// that internal name must never appear as a bill number. A
+				// non-bill job (a customer's khata) carries its own label.
+				const list = jobs
+					.map((j) => frappe.utils.escape_html(j.display_name || santu_bill_label(j.bill_no)))
+					.join(", ");
 				$alert
 					.html(
 						`<span>${__("Ye bill print nahi hue")}: <b>${list}</b></span>
-						 <button type="button" class="santu-bill-print-alert-btn">${__("Dobara chhapo")}</button>`
+						 <button type="button" class="santu-bill-print-alert-btn">${__("Dobara chhapo")}</button>
+						 <button type="button" class="santu-bill-print-alert-close" title="${__("Ab ye bill print nahi karna")}">&times;</button>`
 					)
 					.show();
 				$alert.find(".santu-bill-print-alert-btn").on("click", () => this._retry_stuck_prints(jobs));
+				// A bill can be genuinely abandoned — customer left, slip
+				// written by hand — and the notice used to have no way out
+				// (2026-08-30 request). Confirmed first: this is the only
+				// reminder that the bill never printed.
+				$alert.find(".santu-bill-print-alert-close").on("click", () => {
+					frappe.confirm(
+						__("Ye bill ab print nahi karna? Yaad-dilana band ho jayega.<br><b>{0}</b>", [list]),
+						() => {
+							santu_sale_invoice.api
+								.dismiss_print_jobs(jobs.map((j) => j.name))
+								.then(() => {
+									$alert.hide().empty();
+									frappe.show_alert({
+										message: __("Theek hai — ab ye yaad nahi dilayenge."),
+										indicator: "green",
+									});
+								})
+								.catch(() => frappe.msgprint(__("Band nahi kar paye, dobara koshish karein.")));
+						}
+					);
+				});
 			})
 			.catch(() => $alert.hide());
 	},
@@ -1743,8 +1770,8 @@ window.santu_billing_page = {
 					chain.then(() =>
 						santu_sale_invoice.api
 							.retry_print_job(j.name)
-							.then(() => results.push([j.invoice_name, true]))
-							.catch(() => results.push([j.invoice_name, false]))
+							.then(() => results.push([santu_bill_label(j.bill_no), true]))
+							.catch(() => results.push([santu_bill_label(j.bill_no), false]))
 					),
 				Promise.resolve()
 			)
@@ -2075,9 +2102,8 @@ window.santu_billing_page = {
 			const payment_mode = "cash";
 			const payments = [{ mode_of_payment: b.payment_mode || "Cash", amount: t.payable }];
 			frappe.confirm(
-				__("Bill #{0} ({1}) — Purana Total ₹{2}, Naya Total ₹{3} ({4} - Pura Paid). Purani bill cancel hokar nayi corrected bill save hogi. Continue?", [
-					b.editing.santu_bill_no || b.editing.name,
-					b.editing.name,
+				__("Bill #{0} — Purana Total ₹{1}, Naya Total ₹{2} ({3} - Pura Paid). Purani bill cancel hokar nayi corrected bill save hogi. Continue?", [
+					santu_bill_label(b.editing.santu_bill_no),
 					format_number(old_total, null, 2),
 					format_number(new_total, null, 2),
 					b.payment_mode || "Cash",

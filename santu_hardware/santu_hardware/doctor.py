@@ -394,7 +394,9 @@ def _check_stuck_print_jobs():
 	if not jobs:
 		return _result("stuck_prints", _("Sab bill chhap gaye"), OK,
 		               _("Pichhle 24 ghante me koi bill atka nahi."))
-	names = ", ".join(j["invoice_name"] for j in jobs[:5])
+	from santu_hardware.santu_hardware.api import bill_label
+
+	names = ", ".join(bill_label(j.get("bill_no")) for j in jobs[:5])
 	return _result(
 		"stuck_prints",
 		_("Sab bill chhap gaye"),
@@ -662,13 +664,15 @@ def _fix_retry_prints():
 	if not jobs:
 		return True, _("Koi bill atka hua nahi hai.")
 
+	from santu_hardware.santu_hardware.api import bill_label
+
 	done, failed = [], []
 	for job in jobs:
 		try:
 			retry_print_job(job["name"])
-			done.append(job["invoice_name"])
+			done.append(bill_label(job.get("bill_no")))
 		except Exception:
-			failed.append(job["invoice_name"])
+			failed.append(bill_label(job.get("bill_no")))
 
 	if failed:
 		return False, _("{0} chhap gaye, {1} phir bhi nahi: {2}").format(

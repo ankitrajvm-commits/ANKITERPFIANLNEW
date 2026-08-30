@@ -353,7 +353,7 @@ santu_sale.transactions = {
 			items.push({
 				label: `<span style="color:#dc2626;font-weight:600;">🗑️ ${delete_label}</span>`,
 				action: () => {
-					const display_name = t.invoice_no || doc_name;
+					const display_name = t.invoice_no || santu_bill_label(t.santu_bill_no);
 					frappe.confirm(
 						__(
 							"Kya aap sach me {0} <b>{1}</b> ko delete karna chahte hain? Isse iska poora record delete ho jayega.",
@@ -382,7 +382,7 @@ santu_sale.transactions = {
 			});
 
 			const d = new frappe.ui.Dialog({
-				title: t.invoice_no || doc_name,
+				title: t.invoice_no || santu_bill_label(t.santu_bill_no),
 				fields: [{ fieldtype: "HTML", fieldname: "menu" }],
 			});
 			const $menu = $(`<div class="santu-sale-row-menu"></div>`);

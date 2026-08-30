@@ -861,7 +861,7 @@ async function load_party_detail($detail, row) {
 		$(`
 			<tr class="santu-parties-bill-row">
 				<td>${frappe.utils.escape_html(b.type)}</td>
-				<td>${frappe.utils.escape_html(b.display_number || b.name)}</td>
+				<td>${frappe.utils.escape_html(b.display_number || santu_bill_label(b.santu_bill_no))}</td>
 				<td>${frappe.datetime.str_to_user(b.posting_date)}</td>
 				<td class="num">₹ ${format_currency_plain(b.grand_total)}</td>
 				<td class="num">${b.outstanding_amount > 0 ? "₹ " + format_currency_plain(b.outstanding_amount) : "-"}</td>

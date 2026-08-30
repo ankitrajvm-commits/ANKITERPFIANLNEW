@@ -164,7 +164,14 @@ def escpos_bill_bytes(doctype: str, name: str, is_duplicate: bool = False) -> by
 	lines.append(ALIGN_LEFT)
 	lines.append(_line().encode("ascii") + b"\n")
 	label = "Estimate" if is_estimate else "Bill"
-	lines.append(_ascii(_two_col(f"{label}: {doc.name}", str(doc_date))).encode("ascii") + b"\n")
+	# The shop's own plain number, never the SINV docname — this is the slip
+	# the customer walks out with, so it is the last place that name may
+	# appear (2026-08-30 absolute rule).
+	from santu_hardware.santu_hardware.api import bill_label
+
+	lines.append(
+		_ascii(_two_col(f"{label}: {bill_label(doc.get('santu_bill_no'))}", str(doc_date))).encode("ascii") + b"\n"
+	)
 	customer = doc.get("customer_name") or party or ""
 	lines.append(_ascii(f"Party: {customer}").encode("ascii") + b"\n")
 	mobile = doc.get("contact_mobile") or (
@@ -615,13 +622,76 @@ def open_print_jobs(hours: int = 24):
 	from frappe.utils import add_to_date
 
 	since = add_to_date(now_datetime(), hours=-int(hours))
-	return frappe.get_all(
+	jobs = frappe.get_all(
 		"Santu Print Job",
 		filters={"creation": (">", since), "status": ("in", ["Queued", "Failed", "Not Printed"])},
 		fields=["name", "invoice_doctype", "invoice_name", "status", "method", "attempts", "error_message"],
 		order_by="creation desc",
 		limit_page_length=50,
 	)
+	# Two things this list must get right, both found live on 2026-08-30:
+	#
+	# 1. Name each job by the shop's own bill number (`santu_bill_no`, plain
+	#    1, 2, 3). The SINV docname is internal and must never stand for a
+	#    bill anywhere the shop can see it.
+	# 2. Drop jobs whose document no longer exists. A deleted bill cannot be
+	#    reprinted and has no number left to show, so nagging about it is
+	#    pure noise — the banner was listing five of these.
+	out = []
+	for job in jobs:
+		doctype = job.get("invoice_doctype")
+		name = job.get("invoice_name")
+		if not doctype or not name or not frappe.db.exists(doctype, name):
+			continue
+		job["bill_no"] = (
+			frappe.db.get_value(doctype, name, "santu_bill_no")
+			if frappe.db.has_column(doctype, "santu_bill_no")
+			else None
+		)
+		# Not every print job is a bill — a khata/statement job points at a
+		# Customer, whose own name is the right thing to show.
+		job["display_name"] = None if job["bill_no"] is not None else (name if doctype not in ("Sales Invoice", "POS Invoice") else None)
+		out.append(job)
+	return out
+
+
+@frappe.whitelist()
+def dismiss_print_jobs(job_names):
+	"""Stop nagging about these bills — the shop has decided not to print them.
+
+	The unprinted-bill notice on Billing had no way out (2026-08-30 request:
+	"uspe side me cross daal do taki mai use kaat saku ki bill ab print nahi
+	karna"). A bill can be legitimately abandoned — the customer left, the
+	slip was hand-written, the sale was cancelled — and until now the banner
+	sat there forever with no way to say so.
+
+	The job is closed, not deleted: `Cancelled` keeps the record that a bill
+	was queued and deliberately never printed, which is the whole point of
+	having a print log.
+	"""
+	import json
+
+	names = json.loads(job_names) if isinstance(job_names, str) else job_names
+	if isinstance(names, str):
+		names = [names]
+
+	closed = []
+	for name in names or []:
+		if not frappe.db.exists("Santu Print Job", name):
+			continue
+		frappe.db.set_value(
+			"Santu Print Job",
+			name,
+			{
+				"status": "Cancelled",
+				"confirmed_by_user": frappe.session.user,
+				"error_message": _("User ne kaha: ab ye bill print nahi karna."),
+			},
+		)
+		closed.append(name)
+
+	frappe.db.commit()
+	return {"closed": closed}
 
 
 # After this many attempts on one bill, stop printing and tell a human. Ten

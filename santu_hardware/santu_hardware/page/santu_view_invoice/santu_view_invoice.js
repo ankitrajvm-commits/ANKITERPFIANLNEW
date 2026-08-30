@@ -342,7 +342,7 @@ window.santu_view_invoice_page = {
 				<div class="santu-si2-tabbar">
 					<div class="santu-si2-tabs">
 						<button type="button" class="santu-si2-tab is-active" disabled>
-							<span class="santu-si2-tab-label">${frappe.utils.escape_html(d.display_number || d.name)}</span>
+							<span class="santu-si2-tab-label">${frappe.utils.escape_html(d.display_number || santu_bill_label(d.santu_bill_no))}</span>
 						</button>
 					</div>
 				</div>
@@ -361,7 +361,7 @@ window.santu_view_invoice_page = {
 						<div class="santu-si2-invoice-info">
 							<div class="santu-si2-inv-row">
 								<span class="santu-si2-inv-label">${doc_label} Number</span>
-								<span class="santu-si2-inv-value">${frappe.utils.escape_html(d.display_number || d.name)}</span>
+								<span class="santu-si2-inv-value">${frappe.utils.escape_html(d.display_number || santu_bill_label(d.santu_bill_no))}</span>
 							</div>
 							<div class="santu-si2-inv-row">
 								<span class="santu-si2-inv-label">${doc_label} Date</span>
@@ -494,7 +494,7 @@ window.santu_view_invoice_page = {
 			frappe.set_route(cfg.route);
 		});
 		$body.find('[data-action="delete-doc"]').on("click", () => {
-			const display_no = d.display_number || d.name;
+			const display_no = d.display_number || santu_bill_label(d.santu_bill_no);
 			const label = d.doctype === "Quotation" ? "Estimate" : (d.doctype === "Delivery Note" ? "Challan" : (d.doctype === "Sales Order" ? "Order" : "Bill"));
 			frappe.confirm(
 				__("Kya aap sach me {0} <b>{1}</b> ko delete karna chahte hain? Isse iska poora record delete ho jayega.", [label, display_no]),
