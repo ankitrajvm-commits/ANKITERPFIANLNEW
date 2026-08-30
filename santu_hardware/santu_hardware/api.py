@@ -5745,14 +5745,16 @@ _COMMON_UOMS = [
 
 
 def _ordered_uoms(rows, seen, all_uoms):
-	"""Append the remaining system units to `rows`: shop-common ones first."""
+	"""Append the shop-usable units to `rows` — just _COMMON_UOMS.
+
+	`all_uoms` used to be appended in full after these (2026-08-26): every
+	system UOM, ~250 of them, most nothing a hardware shop ever sells in
+	("Abampere", "Wavelength In Gigametres"). Found live 2026-08-30 — the
+	Change Unit dropdown was 264 entries deep for a 24-unit list. Keeping
+	the parameter (unused now) rather than touching every caller.
+	"""
 	for uom in _COMMON_UOMS:
 		if uom in seen or uom not in all_uoms:
-			continue
-		seen.add(uom)
-		rows.append({"uom": uom, "conversion_factor": 1})
-	for uom in all_uoms:
-		if uom in seen:
 			continue
 		seen.add(uom)
 		rows.append({"uom": uom, "conversion_factor": 1})
