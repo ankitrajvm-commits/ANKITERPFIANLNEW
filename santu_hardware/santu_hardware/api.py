@@ -2218,22 +2218,10 @@ def _default_hsn_code() -> str:
 # item meant scrolling a list of things this shop will never sell
 # (2026-08-17: "yaha pe mujhe more and more me sabse niche khojna pada").
 SANTU_HARDWARE_COMMON_UOMS = [
-	"Nos",
-	"Box",
-	"Packet",
-	"Kg",
-	"Litre",
-	"Bundle",
-	"Can",
-	"Pair",
-	"Set",
-	"Dozen",
-	"Meter",
-	"Feet",
-	"Roll",
-	"Bag",
-	"Gram",
-	"Ml",
+	"Nos", "Pcs", "Kg", "Gram", "Litre", "Millilitre",
+	"Meter", "Centimeter", "Millimeter", "Foot", "Inch",
+	"Box", "Packet", "Bag", "Bundle", "Roll", "Coil",
+	"Set", "Pair", "Dozen", "Can",
 ]
 
 
@@ -5739,7 +5727,8 @@ def _conversion_factor_for(item_code, uom, supplied=None):
 _COMMON_UOMS = [
 	"Nos", "Pcs", "Unit", "Kg", "Gram", "Litre", "Millilitre",
 	"Meter", "Centimeter", "Millimeter", "Foot", "Inch",
-	"Box", "Packet", "Bag", "Bundle", "Dozen", "Pair", "Roll", "Set",
+	"Box", "Packet", "Bag", "Bundle", "Roll", "Coil",
+	"Set", "Pair", "Dozen", "Can",
 	"Square Meter", "Square Foot", "Tonne", "Kilometer",
 ]
 
