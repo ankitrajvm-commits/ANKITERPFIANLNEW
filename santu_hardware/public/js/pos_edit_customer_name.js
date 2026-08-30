@@ -26,7 +26,7 @@
 
 	function inject_edit_icon(cart) {
 		const info = cart.customer_info || {};
-		if (!info.customer || info.customer === "Walk-in Customer") return;
+		if (!info.customer) return;
 
 		get_customer_name_els(cart).each(function () {
 			const $el = $(this);

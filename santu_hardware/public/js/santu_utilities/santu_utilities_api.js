@@ -40,8 +40,8 @@ santu_utilities.api = {
 	getTallyData(from_date, to_date, types) {
 		return frappe.xcall(`${UTILITIES_API}.get_tally_export_data`, { from_date, to_date, types });
 	},
-	downloadTally(from_date, to_date, types) {
-		return frappe.xcall(`${UTILITIES_API}.download_tally_export`, { from_date, to_date, types });
+	downloadTally(from_date, to_date, types, file_format = "xlsx") {
+		return frappe.xcall(`${UTILITIES_API}.download_tally_export`, { from_date, to_date, types, file_format });
 	},
 	getDataAudit() {
 		return frappe.xcall(`${UTILITIES_API}.get_data_audit`);

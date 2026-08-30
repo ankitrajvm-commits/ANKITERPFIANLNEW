@@ -1,14 +1,14 @@
 /* global frappe, santu_sale_invoice, santu_purchase_invoice */
-// Santu Hardware — Payment-In / Payment-Out screen (2026-08-15 direct
-// request: "payment in me ui vyapaar ke jaisa kro and kuch bugs hai").
-// Replaces the cramped `santu_open_collect_payment` frappe.ui.Dialog, which
-// asked for a bare amount with nothing on screen about what the party
-// actually owed. Reuses the santu-si2-* classes the Sale Invoice / Purchase
-// Order screens use, so this is the same visual language, not a new one.
+// Santu Hardware — Payment-In / Payment-Out screen.
 //
-// One screen serves both directions (party_type Customer = Payment-In,
-// Supplier = Payment-Out) — they're mirror images of the same action, the
-// same way santu-sale / santu-purchase mirror each other.
+// Rebuilt 2026-08-28 direct request: "payment in ka ui billing pos ki
+// tarah kr" — same tab bar (multiple receipts open at once, persisted like
+// Billing's bills), same left/right split panel, same customer search +
+// Add Party modal as Billing (POS). Reuses the santu-bill-* classes
+// santu_billing.css already defines app-wide, so this needed no new CSS —
+// only the markup and the tab/state plumbing changed. The invoice
+// allocation logic itself (auto-settle, per-row Paying Now, advance
+// handling) is unchanged from the previous single-screen version.
 frappe.pages["santu-payment-entry"].on_page_load = function (wrapper) {
 	frappe.require(
 		[
@@ -36,6 +36,8 @@ frappe.pages["santu-payment-entry"].on_page_show = function () {
 	santu_payment_entry_page.apply_route_options(opts);
 };
 
+const SANTU_PAY_KEY = "santu_payment_tabs_v1";
+
 // Explicitly on `window`, not a top-level `const`: a classic script's
 // top-level const lives in the global lexical environment, not on window, so
 // `window.santu_payment_entry_page` would read undefined — and both
@@ -44,348 +46,417 @@ window.santu_payment_entry_page = {
 	init(page) {
 		this.page = page;
 		this.init_data = null;
-		this.state = this._blank_state();
+		this.tabs = [];
+		this.active_id = null;
+		this._persist_soon = frappe.utils.debounce(() => this._persist(), 400);
 
-		$(page.body).html(`<div class="santu-si2-loading">Loading…</div>`);
+		$(page.body).html(`<div class="santu-bill-loading">Loading…</div>`);
 
 		const opts = frappe.route_options || {};
 		frappe.route_options = null;
-		this.state.party_type = opts.party_type || "Customer";
 
-		this._load_init().then(() => {
-			this.render();
-			if (opts.party) this._select_party(opts.party);
+		this._load_init(opts.party_type || "Customer").then(() => {
+			this._load();
+			if (opts.party) {
+				const b = this._new_bill(true);
+				b.party_type = opts.party_type || "Customer";
+				this.render();
+				this._select_party(opts.party);
+			} else {
+				if (!this.tabs.length) this._new_bill(false);
+				this.render();
+			}
 			if (opts.amount) {
-				this.state.amount = flt(opts.amount);
+				const b = this._payment();
+				b.amount = flt(opts.amount);
+				b.amount_touched = true;
 				this._render_body();
 			}
 		});
 	},
 
-	_blank_state() {
+	apply_route_options(opts) {
+		if (!opts || (!opts.party && !opts.party_type)) return;
+		const b = this._new_bill(true);
+		b.party_type = opts.party_type || "Customer";
+		this.render();
+		if (opts.party) this._select_party(opts.party);
+		if (opts.amount) {
+			b.amount = flt(opts.amount);
+			b.amount_touched = true;
+			this._render_body();
+		}
+	},
+
+	_is_in(b) {
+		return (b || this._payment()).party_type === "Customer";
+	},
+	_screen_title() {
+		return this._is_in() ? "Payment - In" : "Payment - Out";
+	},
+	_party_api(b) {
+		return this._is_in(b) ? santu_sale_invoice : santu_purchase_invoice;
+	},
+
+	_load_init(party_type) {
+		return frappe
+			.xcall("santu_hardware.santu_hardware.api.get_payment_entry_init", { party_type })
+			.then((data) => {
+				this.init_data = data;
+			});
+	},
+
+	// ---------- tab state (same shape as Billing's tabs array) ----------
+	_load() {
+		try {
+			const raw = localStorage.getItem(SANTU_PAY_KEY);
+			const parsed = raw ? JSON.parse(raw) : null;
+			if (parsed && Array.isArray(parsed.tabs) && parsed.tabs.length) {
+				this.tabs = parsed.tabs;
+				this.active_id =
+					parsed.active_id && this.tabs.some((t) => t.id === parsed.active_id) ? parsed.active_id : this.tabs[0].id;
+			}
+		} catch (e) {
+			this.tabs = [];
+		}
+	},
+	_persist() {
+		try {
+			localStorage.setItem(SANTU_PAY_KEY, JSON.stringify({ tabs: this.tabs, active_id: this.active_id }));
+		} catch (e) {
+			/* storage unavailable — screen still works */
+		}
+	},
+
+	_blank_payment(party_type) {
 		return {
-			party_type: "Customer",
+			id: santu_sale_invoice.utils.uid(),
+			party_type: party_type || "Customer",
 			party: null,
+			party_label: "",
 			party_details: null,
-			amount: 0,
-			// null = "follow the invoice table automatically"; a number means
-			// the cashier typed their own total and it shouldn't be
-			// overwritten when allocations shift.
-			amount_touched: false,
-			mode_of_payment: null,
 			posting_date: frappe.datetime.get_today(),
+			mode_of_payment: (this.init_data && (this.init_data.payment_modes || []).length) ? this.init_data.payment_modes[0].name : null,
 			reference_no: "",
 			remarks: "",
 			invoices: [],
 			total_outstanding: 0,
+			amount: 0,
+			// null/false = "auto": Amount follows the allocation table until
+			// the counter types their own figure (an advance).
+			amount_touched: false,
 			// { invoice_name: allocated_amount }
 			allocations: {},
 			saved: null,
 		};
 	},
-
-	_load_init() {
-		return frappe
-			.xcall("santu_hardware.santu_hardware.api.get_payment_entry_init", {
-				party_type: this.state.party_type,
-			})
-			.then((data) => {
-				this.init_data = data;
-				this.state.posting_date = data.posting_date;
-				this.state.mode_of_payment = data.default_mode;
-			});
+	_new_bill(focus = true) {
+		const b = this._blank_payment(this.tabs.length ? this._payment().party_type : "Customer");
+		this.tabs.push(b);
+		if (focus) this.active_id = b.id;
+		else if (!this.active_id) this.active_id = b.id;
+		this._persist_soon();
+		return b;
 	},
-
-	apply_route_options(opts) {
-		const want_type = opts.party_type || this.state.party_type;
-		const switching = want_type !== this.state.party_type;
-		// A fresh screen every time it's opened — a stale party/amount left
-		// over from the last collection is worse than an empty form.
-		this.state = this._blank_state();
-		this.state.party_type = want_type;
-		this.state.posting_date = this.init_data.posting_date;
-		this.state.mode_of_payment = this.init_data.default_mode;
-
-		const proceed = () => {
-			this.render();
-			if (opts.party) this._select_party(opts.party);
-			if (opts.amount) {
-				this.state.amount = flt(opts.amount);
-				this.state.amount_touched = true;
-				this._render_body();
-			}
-		};
-		// Mode-of-payment ordering is party_type-specific, so re-fetch when
-		// the direction flips rather than reusing the other side's defaults.
-		if (switching) this._load_init().then(proceed);
-		else proceed();
-	},
-
-	_is_in() {
-		return this.state.party_type === "Customer";
-	},
-	_screen_title() {
-		return this._is_in() ? "Payment - In" : "Payment - Out";
-	},
-	_party_api() {
-		return this._is_in() ? santu_sale_invoice : santu_purchase_invoice;
+	_payment() {
+		return this.tabs.find((t) => t.id === this.active_id) || this.tabs[0];
 	},
 
 	render() {
-		const $body = $(this.page.body);
-		$body.html(`
-			<div class="santu-si2 santu-pay">
-				<div class="santu-si2-body"></div>
-			</div>
-		`);
-		this.$root = $body.find(".santu-si2");
-		// One screen serves both directions, but the Page was registered as
-		// "Payment In" — so recording a payment to a supplier left the
-		// browser tab (and every recent-pages entry) reading "Payment In"
-		// while the body correctly said Payment - Out. Money going out under
-		// a heading that says "In" is exactly the kind of thing nobody
-		// double-checks. Keep the page's own title honest too.
+		if (!this.tabs.length) this._new_bill(false);
+		const b = this._payment();
 		if (this.page && this.page.set_title) this.page.set_title(this._screen_title());
-		this._render_body();
-	},
-
-	_render_body() {
-		const s = this.state;
-		const $wrap = this.$root.find(".santu-si2-body");
-		$wrap.html(`
-			<div class="santu-si2-header">
-				<div class="santu-si2-header-title">${this._screen_title()}</div>
-			</div>
-
-			<div class="santu-si2-toprow">
-				<div class="santu-si2-customer-col">
-					<div class="santu-si2-customer-search-wrap">
-						<input type="text" class="santu-si2-customer-search" placeholder="Search by Name/Phone *" autocomplete="off">
-						<div class="santu-si2-customer-dropdown" style="display:none;"></div>
+		$(this.page.body).html(`
+			<div class="santu-bill santu-pay">
+				<div class="santu-bill-tabbar">
+					<div class="santu-bill-tabs"></div>
+					<div class="santu-si2-toolbar santu-pay-dirtoggle">
+						<button type="button" class="santu-pay-dir-btn ${this._is_in(b) ? "is-active" : ""}" data-dir="Customer">Payment In</button>
+						<button type="button" class="santu-pay-dir-btn ${!this._is_in(b) ? "is-active" : ""}" data-dir="Supplier">Payment Out</button>
 					</div>
-					<input type="text" class="santu-si2-phone" placeholder="Phone No.">
+					<button type="button" class="santu-bill-newtab">+ New Payment <span class="santu-bill-kbd">Ctrl+T</span></button>
 				</div>
-				<div class="santu-si2-customer-info"></div>
-				<div class="santu-si2-invoice-info">
-					<div class="santu-si2-inv-row">
-						<span class="santu-si2-inv-label">Receipt No.</span>
-						<span class="santu-si2-inv-value">${s.saved ? frappe.utils.escape_html(s.saved.name) : "(auto)"}</span>
+
+				<div class="santu-bill-main">
+					<div class="santu-bill-left">
+						<div class="santu-bill-gridwrap">
+							<div class="santu-bill-gridscroll">
+								<table class="santu-bill-grid santu-pay-table">
+									<thead>
+										<tr>
+											<th class="c-idx">#</th>
+											<th class="santu-pay-col-inv">INVOICE NO.</th>
+											<th class="santu-pay-col-date">DATE</th>
+											<th class="santu-pay-col-amt">INVOICE AMOUNT</th>
+											<th class="santu-pay-col-due">AMOUNT DUE</th>
+											<th class="santu-pay-col-pay">PAYING NOW</th>
+										</tr>
+									</thead>
+									<tbody></tbody>
+								</table>
+							</div>
+							<div class="santu-bill-gridfoot">
+								<button type="button" class="santu-pay-settle-all">SETTLE ALL</button>
+								<button type="button" class="santu-pay-clear-all">CLEAR</button>
+								<span class="santu-bill-grandrow santu-pay-foot-alloc">₹ 0.00</span>
+							</div>
+						</div>
 					</div>
-					<div class="santu-si2-inv-row">
-						<span class="santu-si2-inv-label">Date</span>
-						<input type="date" class="santu-pay-date" value="${s.posting_date}">
-					</div>
-					<div class="santu-si2-inv-row">
-						<span class="santu-si2-inv-label">Payment Type</span>
-						<select class="santu-pay-mode">
-							${(this.init_data.payment_modes || [])
-								.map(
-									(m) =>
-										`<option value="${frappe.utils.escape_html(m.name)}" ${
-											m.name === s.mode_of_payment ? "selected" : ""
-										}>${frappe.utils.escape_html(m.name)}</option>`
-								)
-								.join("")}
-						</select>
-					</div>
-					<div class="santu-si2-inv-row">
-						<span class="santu-si2-inv-label">Reference No.</span>
-						<input type="text" class="santu-pay-refno" value="${frappe.utils.escape_html(s.reference_no || "")}" placeholder="Optional">
+
+					<div class="santu-bill-right">
+						<div class="santu-bill-datewrap">
+							<input type="date" class="santu-pay-date" value="${b.posting_date}">
+						</div>
+						<div class="santu-bill-custwrap">
+							<input type="text" class="santu-bill-customer santu-pay-party-search" placeholder="Search by Name/Phone *" value="${frappe.utils.escape_html(b.party_label || "")}" autocomplete="off">
+							<div class="santu-bill-cust-dropdown" style="display:none;"></div>
+						</div>
+
+						<div class="santu-pay-duebar"></div>
+
+						<div class="santu-bill-totalcard">
+							<div class="santu-bill-totalcard-left">
+								<span class="santu-bill-receipt">🧾</span>
+								<div>
+									<div class="santu-bill-total-big santu-pay-sum-due">Total Due ₹ 0.00</div>
+									<div class="santu-bill-total-sub">${b.saved ? frappe.utils.escape_html(b.saved.name) : "(auto receipt no.)"}</div>
+								</div>
+							</div>
+						</div>
+
+						<div class="santu-bill-payrow">
+							<div class="santu-bill-field">
+								<label>Payment Type</label>
+								<select class="santu-pay-mode">
+									${(this.init_data.payment_modes || [])
+										.map(
+											(m) =>
+												`<option value="${frappe.utils.escape_html(m.name)}" ${
+													m.name === b.mode_of_payment ? "selected" : ""
+												}>${frappe.utils.escape_html(m.name)}</option>`
+										)
+										.join("")}
+								</select>
+							</div>
+							<div class="santu-bill-field">
+								<label>Reference No.</label>
+								<input type="text" class="santu-pay-refno" value="${frappe.utils.escape_html(b.reference_no || "")}" placeholder="Optional">
+							</div>
+						</div>
+
+						<div class="santu-bill-payrow">
+							<div class="santu-bill-field">
+								<label>${this._is_in(b) ? "Received" : "Paid"}</label>
+								<div class="santu-bill-amt-wrap">
+									<span class="santu-bill-rs">₹</span>
+									<input type="number" min="0" step="0.01" class="santu-pay-amount santu-si2-figures" value="${b.amount || ""}" placeholder="0.00">
+								</div>
+							</div>
+						</div>
+
+						<div class="santu-si2-summary">
+							<div class="santu-si2-summary-row">
+								<span>Settling</span>
+								<span class="santu-si2-figures santu-pay-sum-alloc">₹ 0.00</span>
+							</div>
+							<div class="santu-si2-summary-row santu-pay-advance-row">
+								<span>Advance (unadjusted)</span>
+								<span class="santu-si2-figures santu-pay-sum-advance">₹ 0.00</span>
+							</div>
+						</div>
+
+						<div class="santu-bill-spacer"></div>
 					</div>
 				</div>
-			</div>
 
-			<div class="santu-pay-duebar"></div>
-
-			<div class="santu-si2-table-wrap">
-				<table class="santu-si2-table santu-pay-table">
-					<thead>
-						<tr>
-							<th class="santu-si2-col-idx">#</th>
-							<th class="santu-pay-col-inv">INVOICE NO.</th>
-							<th class="santu-pay-col-date">DATE</th>
-							<th class="santu-pay-col-amt">INVOICE AMOUNT</th>
-							<th class="santu-pay-col-due">AMOUNT DUE</th>
-							<th class="santu-pay-col-pay">PAYING NOW</th>
-						</tr>
-					</thead>
-					<tbody></tbody>
-					<tfoot>
-						<tr>
-							<td colspan="4"><button type="button" class="santu-pay-settle-all">SETTLE ALL</button> <button type="button" class="santu-pay-clear-all">CLEAR</button></td>
-							<td class="santu-si2-figures santu-pay-foot-due">₹ 0</td>
-							<td class="santu-si2-figures santu-pay-foot-alloc">₹ 0</td>
-						</tr>
-					</tfoot>
-				</table>
-			</div>
-
-			<div class="santu-si2-lowerrow">
-				<div class="santu-si2-extras santu-pay-notes-col">
-					<label class="santu-pay-notes-label">Notes</label>
-					<textarea class="santu-pay-remarks" rows="3" placeholder="Optional note for this receipt">${frappe.utils.escape_html(s.remarks || "")}</textarea>
-				</div>
-				<div class="santu-si2-summary">
-					<div class="santu-si2-summary-row">
-						<span>Total Due</span>
-						<span class="santu-si2-figures santu-pay-sum-due">₹ 0</span>
+				<div class="santu-bill-actions">
+					<div class="santu-bill-fkeys santu-pay-notes-col">
+						<textarea class="santu-pay-remarks" rows="1" placeholder="Optional note for this receipt">${frappe.utils.escape_html(b.remarks || "")}</textarea>
 					</div>
-					<div class="santu-si2-summary-row">
-						<span>Settling</span>
-						<span class="santu-si2-figures santu-pay-sum-alloc">₹ 0</span>
+					<div class="santu-bill-savecol">
+						<button type="button" class="santu-bill-save santu-pay-save-btn">Save <span class="santu-bill-kbd">Ctrl+S</span></button>
 					</div>
-					<div class="santu-si2-summary-row santu-pay-advance-row">
-						<span>Advance (unadjusted)</span>
-						<span class="santu-si2-figures santu-pay-sum-advance">₹ 0</span>
-					</div>
-					<div class="santu-si2-summary-row santu-si2-summary-total">
-						<span>${this._is_in() ? "Received" : "Paid"}</span>
-						<input type="number" min="0" step="0.01" class="santu-pay-amount santu-si2-figures" value="${s.amount || ""}" placeholder="0">
-					</div>
-				</div>
-			</div>
-
-			<div class="santu-si2-actionbar">
-				<div class="santu-si2-actionbar-left"></div>
-				<div class="santu-si2-actionbar-right">
-					<button type="button" class="santu-si2-btn santu-si2-btn-primary" data-action="save">Save <span class="santu-si2-kbd">Ctrl+S</span></button>
 				</div>
 			</div>
 		`);
-
+		this.$root = $(this.page.body).find(".santu-bill");
+		this._render_tabs();
 		this._render_party_info();
 		this._render_invoices();
 		this._bind_events();
 	},
 
-	// ---------- party ----------
-	_render_party_info() {
-		const s = this.state;
-		const $info = this.$root.find(".santu-si2-customer-info");
-		const $search = this.$root.find(".santu-si2-customer-search");
-		const $phone = this.$root.find(".santu-si2-phone");
-		if (!s.party) {
-			$info.empty();
-			return;
-		}
-		const d = s.party_details || {};
-		const display = d.customer_name || d.supplier_name || s.party;
-		$search.val(display);
-		$phone.val(d.mobile_no || "");
-		$info.html(`
-			<div class="santu-si2-cust-card">
-				<div class="santu-si2-cust-name">${frappe.utils.escape_html(display)}
-					<button type="button" class="santu-si2-cust-clear" title="Change party">×</button>
-				</div>
-			</div>
-		`);
-		$info.find(".santu-si2-cust-clear").on("click", () => {
-			this.state.party = null;
-			this.state.party_details = null;
-			this.state.invoices = [];
-			this.state.allocations = {};
-			this.state.total_outstanding = 0;
-			this._render_body();
+	_render_tabs() {
+		const $t = this.$root.find(".santu-bill-tabs").empty();
+		this.tabs.forEach((b, i) => {
+			const label = b.saved ? b.saved.name : `#${i + 1}`;
+			$(`
+				<button type="button" class="santu-bill-tab ${b.id === this.active_id ? "is-active" : ""}">
+					<span>${frappe.utils.escape_html(label)}</span>
+					<span class="santu-bill-tab-x">×</span>
+				</button>
+			`)
+				.on("click", (e) => {
+					if ($(e.target).hasClass("santu-bill-tab-x")) {
+						this._close_tab(b.id);
+						return;
+					}
+					this.active_id = b.id;
+					this._persist_soon();
+					this.render();
+				})
+				.appendTo($t);
 		});
 	},
 
-	_party_search(q) {
-		const $dd = this.$root.find(".santu-si2-customer-dropdown");
-		if (!q || q.length < 2) {
-			$dd.hide().empty();
-			return;
-		}
-		const api = this._party_api().api;
-		const search = this._is_in() ? api.search_customers(q) : api.search_suppliers(q);
-		search.then((rows) => {
+	_close_tab(id) {
+		const b = this.tabs.find((t) => t.id === id);
+		if (!b) return;
+		const drop = () => {
+			this.tabs = this.tabs.filter((t) => t.id !== id);
+			if (!this.tabs.length) this._new_bill(false);
+			if (this.active_id === id) this.active_id = this.tabs[0].id;
+			this._persist_soon();
+			this.render();
+		};
+		if (!b.party) return drop();
+		frappe.confirm(__("Close this receipt?"), drop);
+	},
+
+	// ---------- party ----------
+	_render_party_info() {
+		// The Billing-style right rail shows the picked party's name right
+		// in the search box (like Billing does) — nothing extra to render
+		// here beyond what the input's own value already carries.
+	},
+
+	_pick_party(name, label) {
+		const b = this._payment();
+		b.party = name;
+		b.party_label = label;
+		this.$root.find(".santu-bill-customer").val(label);
+		this.$root.find(".santu-bill-cust-dropdown").hide().empty();
+		this._persist_soon();
+		this._select_party(name);
+	},
+
+	_cust_search(q) {
+		const $dd = this.$root.find(".santu-bill-cust-dropdown");
+		const b = this._payment();
+		const is_in = this._is_in(b);
+		const draw = (rows) => {
 			$dd.empty();
+			if (rows.length) {
+				$dd.append(`<div class="santu-bill-cust-head"><span>Name</span><span>Phone Number</span></div>`);
+			}
 			rows.forEach((p) => {
 				const label = p.customer_name || p.supplier_name || p.name;
 				$(`
-					<div class="santu-si2-dd-row">
-						<div class="santu-si2-dd-row-main">
-							<div class="santu-si2-dd-row-text">
-								<b>${frappe.utils.escape_html(label)}</b>
-								${p.mobile_no ? `<span>${frappe.utils.escape_html(p.mobile_no)}</span>` : ""}
-							</div>
-						</div>
+					<div class="santu-bill-cust-row">
+						<span>${frappe.utils.escape_html(label)}</span>
+						<span class="santu-bill-cust-phone">${frappe.utils.escape_html(p.mobile_no || "—")}</span>
 					</div>
 				`)
-					.on("click", () => this._select_party(p.name))
+					.on("click", () => this._pick_party(p.name, label))
 					.appendTo($dd);
 			});
+			// A payment needs an existing party — no "Add Party" shortcut
+			// here the way Billing has one for a brand-new sale; someone to
+			// collect money from or pay out to has to already be on file.
 			if (!rows.length) {
-				$dd.append(`<div class="santu-si2-dd-row santu-pay-dd-empty">No match. A payment needs an existing party.</div>`);
+				$dd.append(`<div class="santu-bill-cust-row santu-pay-dd-empty">No match — a payment needs an existing party.</div>`);
 			}
 			$dd.show();
-		});
+		};
+
+		if (!q || q.length < 2) {
+			draw([]);
+			return;
+		}
+		const api = this._party_api(b).api;
+		if (is_in) {
+			Promise.all([api.search_customers(q), api.search_customers_by_phone(q)]).then(([by_name, by_phone]) => {
+				const rows = by_name || [];
+				const seen = new Set(rows.map((r) => r.name));
+				(by_phone || []).forEach((r) => {
+					if (!seen.has(r.name)) {
+						seen.add(r.name);
+						rows.push(r);
+					}
+				});
+				draw(rows);
+			});
+		} else {
+			api.search_suppliers(q).then((rows) => draw(rows || []));
+		}
 	},
 
 	_select_party(name) {
-		const s = this.state;
-		s.party = name;
-		this.$root.find(".santu-si2-customer-dropdown").hide().empty();
+		const b = this._payment();
+		b.party = name;
+		this.$root.find(".santu-bill-cust-dropdown").hide().empty();
 
-		const api = this._party_api().api;
-		const details = this._is_in() ? api.customer_details(name) : api.supplier_details(name);
+		const api = this._party_api(b).api;
+		const details = this._is_in(b) ? api.customer_details(name) : api.supplier_details(name);
 		details.then((d) => {
-			s.party_details = d;
-			this._render_party_info();
+			b.party_details = d;
+			this._persist_soon();
 		});
 
 		return frappe
 			.xcall("santu_hardware.santu_hardware.api.get_party_outstanding", {
-				party_type: s.party_type,
+				party_type: b.party_type,
 				party: name,
 			})
 			.then((r) => {
-				s.invoices = r.invoices || [];
-				s.total_outstanding = flt(r.total_outstanding);
+				b.invoices = r.invoices || [];
+				b.total_outstanding = flt(r.total_outstanding);
 				// Default to settling everything, oldest-first, capped at the
 				// amount already typed if the cashier led with a figure.
-				s.allocations = {};
-				this._auto_allocate(s.amount_touched ? flt(s.amount) : s.total_outstanding);
-				if (!s.amount_touched) s.amount = this._allocated_total();
-				this._render_body();
+				b.allocations = {};
+				this._auto_allocate(b, b.amount_touched ? flt(b.amount) : b.total_outstanding);
+				if (!b.amount_touched) b.amount = this._allocated_total(b);
+				this._persist_soon();
+				this.$root.find(".santu-pay-amount").val(b.amount || "");
+				this._render_invoices();
 			});
 	},
 
 	// ---------- allocations ----------
-	_auto_allocate(budget) {
-		const s = this.state;
+	_auto_allocate(b, budget) {
 		let remaining = flt(budget);
-		s.allocations = {};
-		s.invoices.forEach((inv) => {
+		b.allocations = {};
+		b.invoices.forEach((inv) => {
 			if (remaining <= 0) return;
 			const alloc = Math.min(flt(inv.outstanding_amount), remaining);
 			if (alloc > 0) {
-				s.allocations[inv.name] = alloc;
+				b.allocations[inv.name] = alloc;
 				remaining -= alloc;
 			}
 		});
 	},
 
-	_allocated_total() {
-		return Object.values(this.state.allocations).reduce((a, b) => a + flt(b), 0);
+	_allocated_total(b) {
+		return Object.values((b || this._payment()).allocations).reduce((a, v) => a + flt(v), 0);
 	},
 
 	_render_invoices() {
-		const s = this.state;
+		const b = this._payment();
 		const $tbody = this.$root.find(".santu-pay-table tbody");
 		$tbody.empty();
 
-		if (!s.party) {
+		if (!b.party) {
 			$(`<tr class="santu-si2-empty-row"><td colspan="6">Select a party to see their unpaid bills.</td></tr>`).appendTo($tbody);
-		} else if (!s.invoices.length) {
+		} else if (!b.invoices.length) {
 			$(`<tr class="santu-si2-empty-row"><td colspan="6">No unpaid bills — this will be recorded as an advance.</td></tr>`).appendTo($tbody);
 		}
 
-		s.invoices.forEach((inv, idx) => {
-			const alloc = flt(s.allocations[inv.name] || 0);
+		b.invoices.forEach((inv, idx) => {
+			const alloc = flt(b.allocations[inv.name] || 0);
 			const $tr = $(`
 				<tr class="santu-pay-row">
 					<td class="santu-si2-col-idx">${idx + 1}</td>
-					<td class="santu-pay-col-inv">${frappe.utils.escape_html(inv.name)}</td>
+					<td class="santu-pay-col-inv">${frappe.utils.escape_html(inv.display_number || inv.name)}</td>
 					<td class="santu-pay-col-date">${inv.posting_date ? frappe.datetime.str_to_user(inv.posting_date) : "—"}</td>
 					<td class="santu-pay-col-amt santu-si2-figures">₹ ${format_currency_num(inv.grand_total)}</td>
 					<td class="santu-pay-col-due santu-si2-figures">₹ ${format_currency_num(inv.outstanding_amount)}</td>
@@ -401,14 +472,15 @@ window.santu_payment_entry_page = {
 					v = cap;
 					$(e.target).val(cap);
 				}
-				if (v > 0) s.allocations[inv.name] = v;
-				else delete s.allocations[inv.name];
+				if (v > 0) b.allocations[inv.name] = v;
+				else delete b.allocations[inv.name];
 				// Typing in the table drives the received total, unless the
 				// cashier has explicitly overridden it (advance payment).
-				if (!s.amount_touched) {
-					s.amount = this._allocated_total();
-					this.$root.find(".santu-pay-amount").val(s.amount || "");
+				if (!b.amount_touched) {
+					b.amount = this._allocated_total(b);
+					this.$root.find(".santu-pay-amount").val(b.amount || "");
 				}
+				this._persist_soon();
 				this._render_totals();
 			});
 			$tr.appendTo($tbody);
@@ -418,14 +490,13 @@ window.santu_payment_entry_page = {
 	},
 
 	_render_totals() {
-		const s = this.state;
-		const allocated = this._allocated_total();
-		const amount = flt(s.amount);
+		const b = this._payment();
+		const allocated = this._allocated_total(b);
+		const amount = flt(b.amount);
 		const advance = Math.max(amount - allocated, 0);
 
-		this.$root.find(".santu-pay-foot-due").text(`₹ ${format_currency_num(s.total_outstanding)}`);
 		this.$root.find(".santu-pay-foot-alloc").text(`₹ ${format_currency_num(allocated)}`);
-		this.$root.find(".santu-pay-sum-due").text(`₹ ${format_currency_num(s.total_outstanding)}`);
+		this.$root.find(".santu-pay-sum-due").text(`Total Due ₹ ${format_currency_num(b.total_outstanding)}`);
 		this.$root.find(".santu-pay-sum-alloc").text(`₹ ${format_currency_num(allocated)}`);
 		this.$root.find(".santu-pay-sum-advance").text(`₹ ${format_currency_num(advance)}`);
 		// The old dialog silently parked any excess as an unallocated advance
@@ -433,7 +504,7 @@ window.santu_payment_entry_page = {
 		this.$root.find(".santu-pay-advance-row").toggleClass("santu-pay-advance-on", advance > 0);
 
 		const $bar = this.$root.find(".santu-pay-duebar");
-		if (!s.party) {
+		if (!b.party) {
 			$bar.empty();
 			return;
 		}
@@ -441,9 +512,9 @@ window.santu_payment_entry_page = {
 		// settlement table now includes return credits (negative
 		// outstanding), so a customer can genuinely net out to "shop owes
 		// them" — labelling that "This party owes you ₹-600" was the exact
-		// opposite of the truth (2026-08-19 bug report).
-		const due = Number(s.total_outstanding) || 0;
-		const owes_you = this._is_in() ? due > 0 : due < 0;
+		// opposite of the truth.
+		const due = Number(b.total_outstanding) || 0;
+		const owes_you = this._is_in(b) ? due > 0 : due < 0;
 		const due_label = !due
 			? __("All settled — nothing pending")
 			: owes_you
@@ -459,93 +530,148 @@ window.santu_payment_entry_page = {
 
 	// ---------- events ----------
 	_bind_events() {
-		const s = this.state;
 		const $r = this.$root;
 
-		$r.find(".santu-si2-customer-search").on(
+		$r.find(".santu-bill-newtab").on("click", () => {
+			this._new_bill(true);
+			this.render();
+		});
+
+		$r.find(".santu-pay-dir-btn").on("click", (e) => {
+			const b = this._payment();
+			// Switching direction only makes sense before a party is picked
+			// on this receipt — once one's on file the two sides use
+			// different search APIs and outstanding data entirely.
+			if (b.party) {
+				frappe.msgprint(__("Close this receipt and start a new one to switch direction."));
+				return;
+			}
+			const dir = $(e.currentTarget).data("dir");
+			if (dir === b.party_type) return;
+			b.party_type = dir;
+			this._load_init(dir).then(() => {
+				b.mode_of_payment = (this.init_data.payment_modes || []).length ? this.init_data.payment_modes[0].name : null;
+				this._persist_soon();
+				this.render();
+			});
+		});
+
+		$r.find(".santu-bill-customer").on(
 			"input",
-			frappe.utils.debounce((e) => this._party_search($(e.target).val()), 250)
+			frappe.utils.debounce((e) => this._cust_search($(e.target).val()), 250)
 		);
+		$r.find(".santu-bill-customer").on("focus", () => this._cust_search($r.find(".santu-bill-customer").val()));
 		$(document).off("click.santu-pay-dd").on("click.santu-pay-dd", (e) => {
-			if (!$(e.target).closest(".santu-si2-customer-search-wrap").length) {
-				$r.find(".santu-si2-customer-dropdown").hide();
+			if (!$(e.target).closest(".santu-bill-custwrap").length) {
+				$r.find(".santu-bill-cust-dropdown").hide();
 			}
 		});
 
-		$r.find(".santu-pay-date").on("change", (e) => (s.posting_date = $(e.target).val()));
-		$r.find(".santu-pay-mode").on("change", (e) => (s.mode_of_payment = $(e.target).val()));
-		$r.find(".santu-pay-refno").on("input", (e) => (s.reference_no = $(e.target).val()));
-		$r.find(".santu-pay-remarks").on("input", (e) => (s.remarks = $(e.target).val()));
+		$r.find(".santu-pay-date").on("change", (e) => {
+			this._payment().posting_date = $(e.target).val();
+			this._persist_soon();
+		});
+		$r.find(".santu-pay-mode").on("change", (e) => {
+			this._payment().mode_of_payment = $(e.target).val();
+			this._persist_soon();
+		});
+		$r.find(".santu-pay-refno").on("input", (e) => {
+			this._payment().reference_no = $(e.target).val();
+			this._persist_soon();
+		});
+		$r.find(".santu-pay-remarks").on("input", (e) => {
+			this._payment().remarks = $(e.target).val();
+			this._persist_soon();
+		});
 
 		$r.find(".santu-pay-amount").on("input", (e) => {
-			s.amount = flt($(e.target).val());
-			s.amount_touched = true;
+			const b = this._payment();
+			b.amount = flt($(e.target).val());
+			b.amount_touched = true;
+			this._persist_soon();
 			this._render_totals();
 		});
 
 		$r.find(".santu-pay-settle-all").on("click", () => {
-			this._auto_allocate(s.total_outstanding);
-			s.amount = this._allocated_total();
-			s.amount_touched = false;
-			this._render_body();
+			const b = this._payment();
+			this._auto_allocate(b, b.total_outstanding);
+			b.amount = this._allocated_total(b);
+			b.amount_touched = false;
+			this._persist_soon();
+			this.render();
 		});
 		$r.find(".santu-pay-clear-all").on("click", () => {
-			s.allocations = {};
-			s.amount = 0;
-			s.amount_touched = false;
-			this._render_body();
+			const b = this._payment();
+			b.allocations = {};
+			b.amount = 0;
+			b.amount_touched = false;
+			this._persist_soon();
+			this.render();
 		});
 
-		$r.find("[data-action='save']").on("click", () => this._save());
+		$r.find(".santu-pay-save-btn").on("click", () => this._save());
 
 		$(document).off("keydown.santu-pay").on("keydown.santu-pay", (e) => {
-			if ((e.ctrlKey || e.metaKey) && e.key === "s" && frappe.get_route()[0] === "santu-payment-entry") {
+			if (frappe.get_route()[0] !== "santu-payment-entry") return;
+			if ((e.ctrlKey || e.metaKey) && e.key === "s") {
 				e.preventDefault();
 				this._save();
+			}
+			if ((e.ctrlKey || e.metaKey) && e.key === "t") {
+				e.preventDefault();
+				this._new_bill(true);
+				this.render();
 			}
 		});
 	},
 
 	// ---------- save ----------
 	_save() {
-		const s = this.state;
-		if (!s.party) {
-			frappe.msgprint(__("Please select a {0}.", [s.party_type]));
+		const b = this._payment();
+		if (!b.party) {
+			frappe.msgprint(__("Please select a {0}.", [b.party_type]));
 			return;
 		}
-		const amount = flt(s.amount);
+		const amount = flt(b.amount);
 		if (amount <= 0) {
 			frappe.msgprint(__("Enter an amount greater than zero."));
 			return;
 		}
-		if (!s.mode_of_payment) {
+		if (!b.mode_of_payment) {
 			frappe.msgprint(__("Select a payment type."));
 			return;
 		}
 
-		const allocations = Object.keys(s.allocations).map((name) => ({
+		const allocations = Object.keys(b.allocations).map((name) => ({
 			name,
-			allocated_amount: flt(s.allocations[name]),
+			allocated_amount: flt(b.allocations[name]),
 		}));
-		const advance = amount - this._allocated_total();
+		const advance = amount - this._allocated_total(b);
 
 		const submit = () => {
 			frappe.dom.freeze(__("Saving…"));
 			frappe
 				.xcall("santu_hardware.santu_hardware.api.create_payment_entry", {
-					party_type: s.party_type,
-					party: s.party,
+					party_type: b.party_type,
+					party: b.party,
 					amount,
-					mode_of_payment: s.mode_of_payment,
-					posting_date: s.posting_date,
-					reference_no: s.reference_no || null,
-					remarks: s.remarks || null,
+					mode_of_payment: b.mode_of_payment,
+					posting_date: b.posting_date,
+					reference_no: b.reference_no || null,
+					remarks: b.remarks || null,
 					allocations_json: allocations.length ? JSON.stringify(allocations) : null,
 				})
 				.then((r) => {
 					frappe.dom.unfreeze();
 					frappe.show_alert({ message: __("Saved {0}", [r.name]), indicator: "green" });
-					window.santu_open_invoice_view("Payment Entry", r.name);
+					b.saved = { name: r.name };
+					// Receipt done: drop this tab and open a clean one, the
+					// same way Billing moves on after Save & Print.
+					this.tabs = this.tabs.filter((t) => t.id !== b.id);
+					if (!this.tabs.length) this._new_bill(false);
+					this.active_id = this.tabs[0].id;
+					this._persist_soon();
+					this.render();
 				})
 				.catch(() => frappe.dom.unfreeze());
 		};

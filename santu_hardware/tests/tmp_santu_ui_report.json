@@ -4,7 +4,7 @@
       "id": 1,
       "name": "Dashboard loads with summary + table",
       "status": "PASS",
-      "notes": "Summary card visible; 25 transaction row(s)",
+      "notes": "Summary card visible; 6 transaction row(s)",
       "screenshot": null
     },
     {
@@ -80,8 +80,8 @@
     {
       "id": 4,
       "name": "Row click → santu-view-invoice",
-      "status": "PASS",
-      "notes": "Route: santu-view-invoice",
+      "status": "SKIP",
+      "notes": "No transaction rows to click",
       "screenshot": null
     },
     {
@@ -94,8 +94,8 @@
     {
       "id": 6,
       "name": "Send on WhatsApp on saved invoice",
-      "status": "PASS",
-      "notes": "Found 1 WhatsApp button(s)",
+      "status": "SKIP",
+      "notes": "No saved invoices in list",
       "screenshot": null
     },
     {
@@ -115,9 +115,9 @@
     {
       "id": 9,
       "name": "Share button on sale list row",
-      "status": "PASS",
-      "notes": "Found 2 share button(s)",
-      "screenshot": null
+      "status": "FAIL",
+      "notes": "No share buttons visible on transaction rows",
+      "screenshot": "/Users/santuhardware/erpnext/frappe-bench/apps/santu_hardware/santu_hardware/tests/tmp_santu_ui_screenshots/test9-share.png"
     },
     {
       "id": 10,

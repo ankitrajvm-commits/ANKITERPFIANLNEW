@@ -3,7 +3,7 @@ app_title = "Santu Hardware"
 app_publisher = "Ankit Kumar"
 app_description = "Hardware store management system built on ERPNext for inventory, billing, POS, GST, purchase, sales, stock management and custom workflows."
 app_email = "ankitrajvm@gmail.com"
-app_license = "mit"
+app_license = "Proprietary"
 
 # Shown in the top-left of every Desk page (frappe.boot.app_logo_url, via
 # Navbar Settings -> get_app_logo() in frappe core) and reused as the site
@@ -76,14 +76,27 @@ def _assets_stamp() -> str:
 	import os
 
 	try:
-		root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "public")
+		here = os.path.dirname(os.path.abspath(__file__))
+		# Desk page scripts (santu_parties.js, santu_dashboard.js, the billing
+		# screen...) live under santu_hardware/page/, NOT public/. Walking only
+		# public/ meant editing a page's own JS or CSS left the stamp unchanged,
+		# so the browser kept serving the previous copy even after a restart --
+		# the edit looked like it had done nothing (2026-08-29 report: "home,
+		# printer setting, parties me changes reflect nahi ho rahe").
+		roots = [
+			os.path.join(here, "public"),
+			os.path.join(here, "santu_hardware", "page"),
+		]
 		newest = 0.0
-		for dirpath, _dirnames, filenames in os.walk(root):
-			for fname in filenames:
-				try:
-					newest = max(newest, os.path.getmtime(os.path.join(dirpath, fname)))
-				except OSError:
-					pass
+		for root in roots:
+			for dirpath, _dirnames, filenames in os.walk(root):
+				for fname in filenames:
+					if not fname.endswith((".js", ".css", ".html", ".json", ".svg", ".png")):
+						continue
+					try:
+						newest = max(newest, os.path.getmtime(os.path.join(dirpath, fname)))
+					except OSError:
+						pass
 		return str(int(newest))[-6:]
 	except Exception:
 		return ""
@@ -92,7 +105,67 @@ def _assets_stamp() -> str:
 from santu_hardware import __version__ as santu_app_version  # noqa: E402
 
 SANTU_ASSET_VERSION = "-".join(p for p in (santu_app_version, _git_revision(), _assets_stamp()) if p)
-app_include_css = [
+
+
+# --- live asset versioning -------------------------------------------------
+# The stamp above is computed once, when this module is first imported. That is
+# the whole reason an edit to a CSS or page file kept "not showing up": the URL
+# the browser was handed carried the same ?v= as before, so it happily reused
+# the copy it already had, and only a full server restart could change that.
+#
+# In developer mode frappe.get_hooks() re-reads this module's hook lists on
+# every request, so the lists themselves are free to answer differently each
+# time. `_LiveAssets` is a real list (frappe's append_hook requires that) that
+# holds the bare paths and stamps them at the moment it is read -- so a save on
+# disk becomes a new URL on the very next page load. No restart, no build.
+#
+# The walk is cached for a second: one page render asks for these hooks many
+# times over, and re-walking the tree for each of those would be waste, while a
+# second is far shorter than the gap between saving a file and reloading.
+_STAMP_TTL = 1.0
+_stamp_cache = {"at": 0.0, "value": None}
+
+
+def _live_version() -> str:
+	import time
+
+	now = time.monotonic()
+	if _stamp_cache["value"] is None or (now - _stamp_cache["at"]) > _STAMP_TTL:
+		try:
+			_stamp_cache["value"] = "-".join(
+				p for p in (santu_app_version, _git_revision(), _assets_stamp()) if p
+			)
+		except Exception:
+			# Never let versioning break asset delivery -- a stale stamp only
+			# costs a manual refresh, a raised error costs the whole page.
+			_stamp_cache["value"] = SANTU_ASSET_VERSION
+		_stamp_cache["at"] = now
+	return _stamp_cache["value"]
+
+
+class _LiveAssets(list):
+	"""Asset URLs whose ?v= is recomputed each time the list is read."""
+
+	def __init__(self, paths):
+		self._paths = [str(x).split("?", 1)[0] for x in paths]
+		super().__init__(self._paths)
+
+	def _stamped(self):
+		v = _live_version()
+		return [f"{path}?v={v}" for path in self._paths]
+
+	def __iter__(self):
+		return iter(self._stamped())
+
+	def __getitem__(self, index):
+		return self._stamped()[index]
+
+	def __repr__(self):
+		return repr(self._stamped())
+
+
+app_include_css = _LiveAssets([
+	f"/assets/santu_hardware/css/santu_tooltips.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/design_system.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/vyapar_theme.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/desk_theme.css?v={SANTU_ASSET_VERSION}",
@@ -134,10 +207,24 @@ app_include_css = [
 	f"/assets/santu_hardware/css/pos_large_ui.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/upload_bill.css?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/css/santu_doctor.css?v={SANTU_ASSET_VERSION}",
-]
-app_include_js = [
+	# Sabse aakhir me: CPVC ka pila rang har screen ke apne row rules ke
+	# baad aana chahiye, warna un rules se dhak jaata hai.
+	f"/assets/santu_hardware/css/santu_cpvc_highlight.css?v={SANTU_ASSET_VERSION}",
+	f"/assets/santu_hardware/css/santu_keyboard.css?v={SANTU_ASSET_VERSION}",
+	f"/assets/santu_hardware/css/santu_feature_workbook.css?v={SANTU_ASSET_VERSION}",
+])
+app_include_js = _LiveAssets([
 	# First, so it is listening before anything else can throw.
 	f"/assets/santu_hardware/js/santu_error_capture.js?v={SANTU_ASSET_VERSION}",
+	# Jaldi: har item-list screen isse CPVC row ki class poochti hai.
+	f"/assets/santu_hardware/js/santu_cpvc.js?v={SANTU_ASSET_VERSION}",
+	# Jaldi: har document screen isse item ke saare units poochti hai.
+	f"/assets/santu_hardware/js/santu_uom.js?v={SANTU_ASSET_VERSION}",
+	# Hover-par-batao: har icon button ka matlab.
+	f"/assets/santu_hardware/js/santu_tooltips.js?v={SANTU_ASSET_VERSION}",
+	# Jaldi: screens isse apni search-list keyboard se chalane ke liye
+	# poochti hain.
+	f"/assets/santu_hardware/js/santu_keyboard.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/santu_barcode_scanner.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/vendor_qz_tray.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/thermal_print.js?v={SANTU_ASSET_VERSION}",
@@ -165,7 +252,7 @@ app_include_js = [
 	f"/assets/santu_hardware/js/pos_edit_customer_name.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/pos_numpad_fast_type_fix.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/santu_pwa.js?v={SANTU_ASSET_VERSION}",
-]
+])
 
 # include js, css files in header of web template
 # design_system.css + login.css are loaded on "web" pages (login screen
@@ -264,8 +351,6 @@ after_migrate = [
 	"santu_hardware.setup.install.create_item_pricing_fields",
 	"santu_hardware.setup.install.create_wholesale_price_list",
 	"santu_hardware.santu_hardware.api.migrate_privacy_pin",
-	"santu_hardware.santu_hardware.api.backfill_party_villages",
-	"santu_hardware.santu_hardware.api.clear_district_villages",
 ]
 
 # Uninstallation
@@ -356,6 +441,9 @@ doc_events = {
 		"on_submit": "santu_hardware.santu_hardware.transaction_message_service.on_transaction_submit",
 	},
 	"Quotation": {
+		"before_insert": "santu_hardware.santu_hardware.api.apply_quotation_defaults",
+		"validate": "santu_hardware.santu_hardware.api.apply_quotation_defaults",
+		"before_submit": "santu_hardware.santu_hardware.api.apply_quotation_defaults",
 		"on_submit": "santu_hardware.santu_hardware.transaction_message_service.on_transaction_submit",
 	},
 	"Delivery Note": {

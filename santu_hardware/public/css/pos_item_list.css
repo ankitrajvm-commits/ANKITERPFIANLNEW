@@ -30,14 +30,15 @@ body[data-route="point-of-sale"] .item-wrapper {
 	width: 100% !important;
 	max-width: 100% !important;
 	margin: 0 !important;
-	padding: 10px 12px !important;
+	padding: 10px 16px !important;
 	border: none !important;
-	border-bottom: 1px solid var(--santu-border, #e5e7eb) !important;
+	border-bottom: 1px solid #e2e8f0 !important;
 	border-radius: 0 !important;
 	box-shadow: none !important;
+	transition: background 0.15s !important;
 }
 body[data-route="point-of-sale"] .item-wrapper:hover {
-	background: var(--santu-gray-50, #f9fafb) !important;
+	background: #f8fafc !important;
 }
 
 body[data-route="point-of-sale"] .item-display.abbr {

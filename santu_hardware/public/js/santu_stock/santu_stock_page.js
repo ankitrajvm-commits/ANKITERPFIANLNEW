@@ -551,6 +551,62 @@ santu_stock.create_page = function () {
 
 	// Batch concept removed from this app entirely (2026-08-17: "bath ka
 	// concept hata do pura") — one number per item, corrected directly.
+
+	// Changing an item's unit from the shelf-view. Two outcomes, decided by
+	// the server: an item that has never moved simply switches its unit,
+	// while one with history keeps counting stock in its old unit and gains
+	// the new one as an alternate to bill in. Both are stated plainly in the
+	// dialog so nobody has to guess which one happened.
+	edit_unit(r) {
+		santu_uom.list(r.item_code, r.uom).then((opts) => {
+			const others = opts.filter((o) => o.uom !== r.uom);
+			const d = new frappe.ui.Dialog({
+				title: __("Unit badlein"),
+				fields: [
+					{
+						fieldtype: "HTML",
+						options: `<div style="margin-bottom:8px">${frappe.utils.escape_html(r.item_name || r.item_code)}<br>
+							<span style="color:var(--text-muted)">${__("Abhi")}: <b>${frappe.utils.escape_html(r.uom || "")}</b></span></div>`,
+					},
+					{
+						fieldtype: "Select",
+						fieldname: "uom",
+						label: __("Naya Unit"),
+						reqd: 1,
+						options: others.map((o) => o.uom).join("\n"),
+					},
+					{
+						fieldtype: "Float",
+						fieldname: "conversion_factor",
+						label: __("1 naya unit = kitne {0}?", [r.uom || ""]),
+						description: __("Khali chhod dein to system khud samajhne ki koshish karega (jaise 1 Gram = 0.001 Kg)."),
+					},
+				],
+				primary_action_label: __("Save"),
+				primary_action: (v) => {
+					frappe
+						.call({
+							method: "santu_hardware.santu_hardware.api.set_item_unit",
+							args: {
+								item_code: r.item_code,
+								uom: v.uom,
+								conversion_factor: v.conversion_factor || null,
+							},
+						})
+						.then((res) => {
+							const m = (res && res.message) || {};
+							d.hide();
+							// The unit list just changed, so the cached copy is stale.
+							delete santu_uom._cache[r.item_code];
+							frappe.show_alert({ message: m.message || __("Ho gaya."), indicator: "green" }, 7);
+							this.load();
+						});
+				},
+			});
+			d.show();
+		});
+	},
+
 	edit_stock(row) {
 		this._edit_stock_dialog(row);
 	},
@@ -752,27 +808,15 @@ santu_stock.create_page = function () {
 		// a purchase already supplies it.
 		const head = [
 			["item_name", "ITEM", "left"],
-			// Was "CATEGORY" (2026-08-18 direct request) — HSN moved here in
-			// its place, and to the end of the row, so the daily-use columns
-			// (stock, rates) stay up front and HSN — GST paperwork, not
-			// something read off a shelf — sits out of the way at the end,
-			// same reasoning that kept it off this table entirely until now
-			// (2026-08-17 feedback, see the item-detail dialog / Add Item
-			// note below).
-			["brand", "BRAND", "left"],
-			["barcodes", "BARCODE", "left"],
-			["rack", "RACK / LOCATION", "left"],
 			["qty", "IN STOCK", "right"],
 			["cost_rate", "PURCHASE RATE", "right"],
-			// Was "SALE RATE" + a separate "PROFIT / PIECE" column (2026-08-18
-			// direct request: remove Profit/Piece, replace it with Selling
-			// Price) — Sale Rate already IS the selling price, so this is that
-			// same column relabelled, not a new one; Profit/Piece is gone, not
-			// duplicated.
 			["sale_rate", "SELLING PRICE", "right"],
 			["last_purchase_date", "LAST PURCHASE", "right"],
 			["stock_value", "STOCK VALUE", "right"],
 			["hsn_code", "HSN", "right"],
+			["brand", "BRAND", "left"],
+			["barcodes", "BARCODE", "left"],
+			["rack", "RACK / LOCATION", "left"],
 		];
 
 		const $t = $(`
@@ -800,12 +844,26 @@ santu_stock.create_page = function () {
 			// A dash, not "₹ 0.00": an item nobody has priced yet has no
 			// selling rate, and showing zero would read as "sells for nothing".
 			const dash = `<span class="santu-stock-dash">—</span>`;
+			const is_cpvc = santu_is_cpvc_item(r.item_code, r.item_name);
 			const $tr = $(`
-				<tr class="${r.low ? "santu-stock-row-low" : ""}">
+				<tr class="${r.low ? "santu-stock-row-low" : ""} ${is_cpvc ? "santu-cpvc-row" : ""}">
 					<td class="santu-stock-td-idx">${idx + 1}</td>
 					<td class="santu-stock-td-item">
 						<div class="santu-stock-item-name santu-stock-field-edit" data-field="item_name" title="${__("Naam badalne ke liye dabaiye")}">${frappe.utils.escape_html(r.item_name)}</div>
 					</td>
+					<!-- Unit folded in here rather than its own column
+					     (2026-08-17: "in stock me hi number ke saath unit
+					     aaye") — "90" on its own answers nothing without
+					     knowing if that's 90 pieces or 90 boxes. -->
+					<td class="santu-stock-td-num santu-stock-qty-edit" title="${__("Stock theek karne ke liye dabaiye")}">
+						<span class="${r.low ? "santu-stock-qty-low" : ""}">${format_number(r.qty, null, 0)}</span>
+						<span class="santu-stock-uom santu-stock-uom-edit" title="${__("Unit badalne ke liye dabaiye")}">${frappe.utils.escape_html(r.uom || "")}</span>
+					</td>
+					<td class="santu-stock-td-num santu-stock-rate-edit" data-kind="purchase" title="${__("Purchase Rate badalne ke liye dabaiye")}">${r.cost_rate ? this._money(r.cost_rate) : dash}</td>
+					<td class="santu-stock-td-num santu-stock-rate-edit" data-kind="selling" title="${__("Selling Price badalne ke liye dabaiye")}">${r.sale_rate ? this._money(r.sale_rate) : dash}</td>
+					<td class="santu-stock-td-text">${r.last_purchase_date ? frappe.datetime.str_to_user(r.last_purchase_date) : dash}</td>
+					<td class="santu-stock-td-num">${this._money(r.stock_value)}</td>
+					<td class="santu-stock-td-text santu-stock-td-hsn">${r.hsn_code ? frappe.utils.escape_html(r.hsn_code) : dash}</td>
 					<td class="santu-stock-td-text santu-stock-field-edit" data-field="brand" title="${__("Brand badalne ke liye dabaiye")}">${r.brand ? frappe.utils.escape_html(r.brand) : dash}</td>
 					<!-- Which code identifies this item. Without it there is no way to
 					     tell, from this screen, whether an item can be scanned at all —
@@ -819,23 +877,6 @@ santu_stock.create_page = function () {
 					}</td>
 					<!-- edit_barcode() replaces this cell's contents with an input, in place. -->
 					<td class="santu-stock-td-text santu-stock-field-edit" data-field="rack" title="${__("Rack/Location badalne ke liye dabaiye")}">${r.rack ? frappe.utils.escape_html(r.rack) : dash}</td>
-					<!-- Unit folded in here rather than its own column
-					     (2026-08-17: "in stock me hi number ke saath unit
-					     aaye") — "90" on its own answers nothing without
-					     knowing if that's 90 pieces or 90 boxes. -->
-					<td class="santu-stock-td-num santu-stock-qty-edit" title="${__("Stock theek karne ke liye dabaiye")}">
-						<span class="${r.low ? "santu-stock-qty-low" : ""}">${format_number(r.qty, null, 0)}</span>
-						<span class="santu-stock-uom">${frappe.utils.escape_html(r.uom || "")}</span>
-					</td>
-					<td class="santu-stock-td-num santu-stock-rate-edit" data-kind="purchase" title="${__("Purchase Rate badalne ke liye dabaiye")}">${r.cost_rate ? this._money(r.cost_rate) : dash}</td>
-					<td class="santu-stock-td-num santu-stock-rate-edit" data-kind="selling" title="${__("Selling Price badalne ke liye dabaiye")}">${r.sale_rate ? this._money(r.sale_rate) : dash}</td>
-					<td class="santu-stock-td-text">${r.last_purchase_date ? frappe.datetime.str_to_user(r.last_purchase_date) : dash}</td>
-					<td class="santu-stock-td-num">${this._money(r.stock_value)}</td>
-					<!-- GST paperwork, not a shelf label — kept at the very end of the
-					     row rather than up near the item name (2026-08-18 direct
-					     request). Editable from the item detail dialog / Add Item, same
-					     as before this column existed here at all. -->
-					<td class="santu-stock-td-text santu-stock-td-hsn">${r.hsn_code ? frappe.utils.escape_html(r.hsn_code) : dash}</td>
 				</tr>
 			`);
 			$tr.find(".santu-stock-rate-edit").on("click", (e) => {
@@ -852,6 +893,13 @@ santu_stock.create_page = function () {
 				// Must not also open the item screen underneath.
 				e.stopPropagation();
 				this.edit_item_field($(e.currentTarget), r, $(e.currentTarget).data("field"));
+			});
+			// The unit sits inside the quantity cell, so it has to swallow the
+			// click itself -- otherwise tapping "Kg" would open the
+			// fix-the-stock-count dialog instead of the unit one.
+			$tr.find(".santu-stock-uom-edit").on("click", (e) => {
+				e.stopPropagation();
+				this.edit_unit(r);
 			});
 			$tr.find(".santu-stock-qty-edit").on("click", (e) => {
 				// Must not also open the item screen underneath.

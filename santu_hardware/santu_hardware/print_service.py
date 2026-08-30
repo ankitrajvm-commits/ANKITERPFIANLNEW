@@ -45,10 +45,31 @@ from frappe.utils import cint, flt, now_datetime
 SANTU_THERMAL_DOCTYPES = {
 	"Sales Invoice": "Santu Hardware Thermal Bill (Sales Invoice)",
 	"POS Invoice": "Santu Hardware Thermal Bill",
+	# Estimate/Quotation ka apna thermal parcha (2026-08-27 direct request).
+	# Design jaan-boojh kar bill se alag hai: na PAID, na baaki, na UPI QR —
+	# estimate ek daam hai, udhaar nahi. Upar bada "ESTIMATE" aur "Yeh bill
+	# nahi hai" isliye ki koi ise bill samajh kar na le jaaye.
+	"Quotation": "Santu Hardware Thermal Estimate (Quotation)",
 }
 
 
 def _thermal_format_for(invoice_doctype: str) -> str:
+	# A Sales Invoice honours the template the shop picked in Printer Settings.
+	# Each template is its own Print Format ("Santu Thermal - <name>"), so the
+	# choice is a real change of layout, not a label -- and the same format the
+	# preview showed is the one that reaches the printer. Anything missing or
+	# unset falls straight back to the long-standing default, so a bad value in
+	# settings can never stop a bill printing.
+	if invoice_doctype == "Sales Invoice":
+		try:
+			chosen = frappe.db.get_single_value("Santu POS Settings", "invoice_template_style")
+		except Exception:
+			chosen = None
+		if chosen:
+			candidate = f"Santu Thermal - {chosen}"
+			if frappe.db.exists("Print Format", candidate):
+				return candidate
+
 	fmt = SANTU_THERMAL_DOCTYPES.get(invoice_doctype)
 	if not fmt:
 		frappe.throw(
@@ -126,14 +147,33 @@ def escpos_bill_bytes(doctype: str, name: str, is_duplicate: bool = False) -> by
 	if is_duplicate:
 		lines += [BOLD_ON, b"** DUPLICATE / NAKAL **\n", BOLD_OFF]
 
+	# Quotation ek bikri nahi hai, isliye uske field bhi alag hain:
+	# posting_date ki jagah transaction_date, customer ki jagah party_name.
+	# Pehle yahan sirf Sales Invoice ke naam likhe the — Quotation bhejte hi
+	# "'Quotation' object has no attribute 'posting_date'" aa jaata tha
+	# (2026-08-27). PDF wala raasta chalta rehta tha, isliye ye tabhi
+	# pakda jaata jab asli printer juda ho.
+	is_estimate = doctype == "Quotation"
+	doc_date = doc.get("posting_date") or doc.get("transaction_date")
+	party = doc.get("customer") or doc.get("party_name")
+
+	if is_estimate:
+		# Kaagaz par bhi wahi baat jo HTML parche par hai: ye bill nahi hai.
+		lines += [BOLD_ON, b"** ESTIMATE - YEH BILL NAHI HAI **\n", BOLD_OFF]
+
 	lines.append(ALIGN_LEFT)
 	lines.append(_line().encode("ascii") + b"\n")
-	lines.append(_ascii(_two_col(f"Bill: {doc.name}", str(doc.posting_date))).encode("ascii") + b"\n")
-	customer = doc.get("customer_name") or doc.get("customer") or ""
+	label = "Estimate" if is_estimate else "Bill"
+	lines.append(_ascii(_two_col(f"{label}: {doc.name}", str(doc_date))).encode("ascii") + b"\n")
+	customer = doc.get("customer_name") or party or ""
 	lines.append(_ascii(f"Party: {customer}").encode("ascii") + b"\n")
-	mobile = doc.get("contact_mobile") or frappe.db.get_value("Customer", doc.get("customer"), "mobile_no")
+	mobile = doc.get("contact_mobile") or (
+		frappe.db.get_value("Customer", party, "mobile_no") if party else None
+	)
 	if mobile:
 		lines.append(_ascii(f"Phone: {mobile}").encode("ascii") + b"\n")
+	if is_estimate and doc.get("valid_till"):
+		lines.append(_ascii(f"Valid Till: {doc.get('valid_till')}").encode("ascii") + b"\n")
 	lines.append(_line().encode("ascii") + b"\n")
 
 	total_qty = 0
@@ -148,20 +188,29 @@ def escpos_bill_bytes(doctype: str, name: str, is_duplicate: bool = False) -> by
 	lines += [BOLD_ON]
 	lines.append(_ascii(_two_col("TOTAL", _money(doc.grand_total))).encode("ascii") + b"\n")
 	lines += [BOLD_OFF]
-	lines.append(_ascii(_two_col("Paid", _money(doc.get("paid_amount")))).encode("ascii") + b"\n")
 
-	due = flt(doc.get("outstanding_amount"))
-	if due:
-		lines += [BOLD_ON]
-		lines.append(_ascii(_two_col("BALANCE DUE", _money(due))).encode("ascii") + b"\n")
-		lines += [BOLD_OFF]
+	# Estimate par paisa-kaudi ka koi hisaab nahi — na Paid, na baaki, na
+	# khaate ka total. Ek daam bataya gaya hai, liya kuch nahi gaya; "TOTAL
+	# DUE" chhaap dena ise udhaar ka parcha bana deta.
+	if not is_estimate:
+		lines.append(_ascii(_two_col("Paid", _money(doc.get("paid_amount")))).encode("ascii") + b"\n")
 
-	total_due = _total_account_balance(doc, due)
-	if total_due is not None and flt(total_due) > due:
-		lines.append(_ascii(_two_col("TOTAL DUE", _money(total_due))).encode("ascii") + b"\n")
+		due = flt(doc.get("outstanding_amount"))
+		if due:
+			lines += [BOLD_ON]
+			lines.append(_ascii(_two_col("BALANCE DUE", _money(due))).encode("ascii") + b"\n")
+			lines += [BOLD_OFF]
+
+		total_due = _total_account_balance(doc, due)
+		if total_due is not None and flt(total_due) > due:
+			lines.append(_ascii(_two_col("TOTAL DUE", _money(total_due))).encode("ascii") + b"\n")
 
 	lines.append(_line().encode("ascii") + b"\n")
 	lines.append(ALIGN_CENTER)
+	if is_estimate:
+		# Saada hyphen: thermal printer sirf ASCII chhapta hai, em-dash "?"
+		# ban kar nikalta hai.
+		lines.append(_ascii("Sirf daam ka andaaza - bill alag banega").encode("ascii") + b"\n")
 	lines.append(_ascii(settings.get("bill_footer") or "Thank you!").encode("ascii") + b"\n")
 	lines.append(b"\n\n\n")
 	lines.append(CUT)
@@ -252,27 +301,60 @@ def record_print_attempt(job_name: str, method: str, ok=0, error=None):
 	# the call outright when the browser sends null, which is exactly what a
 	# successful attempt sends. That pattern already broke every new-customer
 	# sale once (2026-08-17).
-	"""Log the outcome of one rung of the ladder."""
-	job = frappe.get_doc("Santu Print Job", job_name)
+	"""Log the outcome of one rung of the ladder with retry on concurrent updates."""
 	ok = cint(ok)
-	job.attempts = cint(job.attempts) + 1
-	job.attempt_log = _append_attempt(job, f"{method}: {'ok' if ok else (error or 'failed')}")
-	if ok:
-		job.status = "Printed"
-		job.method = method
-		job.printed_on = now_datetime()
-		job.error_message = None
-	else:
-		job.status = "Failed"
-		job.error_message = (error or "")[:500]
-	# Same reason as on insert: this row records what was attempted, so it
-	# has to stay writable even when the bill it names has gone. Without
-	# this, recording the *outcome* of a print threw LinkValidationError and
-	# the failure vanished — the one case the job row exists to capture.
-	job.flags.ignore_links = True
-	job.save(ignore_permissions=True)
-	frappe.db.commit()
-	return job.status
+	for attempt in range(3):
+		try:
+			job = frappe.get_doc("Santu Print Job", job_name)
+			job.attempts = cint(job.attempts) + 1
+			job.attempt_log = _append_attempt(job, f"{method}: {'ok' if ok else (error or 'failed')}")
+			if ok:
+				job.status = "Printed"
+				job.method = method
+				job.printed_on = now_datetime()
+				job.error_message = None
+			else:
+				job.status = "Failed"
+				job.error_message = (error or "")[:500]
+			# Same reason as on insert: this row records what was attempted, so it
+			# has to stay writable even when the bill it names has gone. Without
+			# this, recording the *outcome* of a print threw LinkValidationError and
+			# the failure vanished — the one case the job row exists to capture.
+			job.flags.ignore_links = True
+			job.flags.ignore_version = True
+			job.flags.ignore_permissions = True
+			job.save(ignore_permissions=True)
+			frappe.db.commit()
+			return job.status
+		except Exception as exc:
+			if attempt == 2 or ("1020" not in str(exc) and "TimestampMismatchError" not in type(exc).__name__):
+				# Direct SQL fallback to guarantee persistence without raising error
+				try:
+					stamped = f"{now_datetime():%H:%M:%S} {method}: {'ok' if ok else (error or 'failed')}"
+					frappe.db.sql(
+						"""UPDATE `tabSantu Print Job`
+						SET attempts = attempts + 1,
+						    status = %s,
+						    method = IF(%s = 1, %s, method),
+						    printed_on = IF(%s = 1, NOW(), printed_on),
+						    error_message = IF(%s = 1, NULL, %s),
+						    attempt_log = CONCAT(IFNULL(attempt_log, ''), '\n', %s),
+						    modified = NOW()
+						WHERE name = %s""",
+						(
+							"Printed" if ok else "Failed",
+							ok, method,
+							ok,
+							ok, (error or "")[:500],
+							stamped,
+							job_name,
+						),
+					)
+					frappe.db.commit()
+					return "Printed" if ok else "Failed"
+				except Exception:
+					pass
+				raise
 
 
 @frappe.whitelist()
@@ -283,18 +365,41 @@ def confirm_print_job(job_name: str, printed=1):
 	reports success while the roll is empty is exactly how a customer walks
 	away without a bill. One tap settles it.
 	"""
-	job = frappe.get_doc("Santu Print Job", job_name)
-	job.status = "Confirmed" if cint(printed) else "Not Printed"
-	job.confirmed_by_user = frappe.session.user
-	job.attempt_log = _append_attempt(job, "operator says " + ("printed" if cint(printed) else "NOT printed"))
-	# Same reason as on insert: this row records what was attempted, so it
-	# has to stay writable even when the bill it names has gone. Without
-	# this, recording the *outcome* of a print threw LinkValidationError and
-	# the failure vanished — the one case the job row exists to capture.
-	job.flags.ignore_links = True
-	job.save(ignore_permissions=True)
-	frappe.db.commit()
-	return job.status
+	for attempt in range(3):
+		try:
+			job = frappe.get_doc("Santu Print Job", job_name)
+			job.status = "Confirmed" if cint(printed) else "Not Printed"
+			job.confirmed_by_user = frappe.session.user
+			job.attempt_log = _append_attempt(job, "operator says " + ("printed" if cint(printed) else "NOT printed"))
+			job.flags.ignore_links = True
+			job.flags.ignore_version = True
+			job.flags.ignore_permissions = True
+			job.save(ignore_permissions=True)
+			frappe.db.commit()
+			return job.status
+		except Exception as exc:
+			if attempt == 2 or ("1020" not in str(exc) and "TimestampMismatchError" not in type(exc).__name__):
+				try:
+					stamped = f"{now_datetime():%H:%M:%S} operator says " + ("printed" if cint(printed) else "NOT printed")
+					frappe.db.sql(
+						"""UPDATE `tabSantu Print Job`
+						SET status = %s,
+						    confirmed_by_user = %s,
+						    attempt_log = CONCAT(IFNULL(attempt_log, ''), '\n', %s),
+						    modified = NOW()
+						WHERE name = %s""",
+						(
+							"Confirmed" if cint(printed) else "Not Printed",
+							frappe.session.user,
+							stamped,
+							job_name,
+						),
+					)
+					frappe.db.commit()
+					return "Confirmed" if cint(printed) else "Not Printed"
+				except Exception:
+					pass
+				raise
 
 
 def _cups_queue_name():
@@ -552,3 +657,140 @@ def retry_print_job(job_name: str):
 		return {"ok": True, "method": method}
 
 	frappe.throw(_("Bill abhi bhi nahi chhapa: {0}").format((last_error or "")[:200]))
+
+
+def escpos_khata_bytes(customer: str, from_date: str = None, to_date: str = None) -> bytes:
+	"""ESC/POS thermal roll bytes for customer khata."""
+	from santu_hardware.santu_hardware.api import get_customer_khata
+
+	data = get_customer_khata(customer, from_date, to_date)
+	settings = frappe.get_single("Santu POS Settings")
+
+	company = frappe.defaults.get_user_default("Company") or frappe.db.get_value("Company", {}, "name") or "Santu Hardware"
+	gstin = frappe.db.get_value("Company", company, "gstin") if company else None
+
+	lines: list[bytes] = [INIT, ALIGN_CENTER, BOLD_ON, DOUBLE_ON]
+	lines.append(_ascii(company).encode("ascii") + b"\n")
+	lines += [DOUBLE_OFF, BOLD_OFF]
+	if gstin:
+		lines.append(_ascii(f"GSTIN: {gstin}").encode("ascii") + b"\n")
+
+	lines += [BOLD_ON, b"** KHATA STATEMENT **\n", BOLD_OFF]
+
+	lines.append(ALIGN_LEFT)
+	lines.append(_line().encode("ascii") + b"\n")
+	lines.append(_ascii(f"Customer: {data['customer_name']}").encode("ascii") + b"\n")
+	mobile = frappe.db.get_value("Customer", customer, "mobile_no")
+	if mobile:
+		lines.append(_ascii(f"Phone: {mobile}").encode("ascii") + b"\n")
+	lines.append(_ascii(f"Period: {data['from_date']} to {data['to_date']}").encode("ascii") + b"\n")
+	lines.append(_line().encode("ascii") + b"\n")
+
+	lines.append(_ascii(_two_col("OPENING BALANCE", f"Rs. {_money(data['opening_balance'])}")).encode("ascii") + b"\n")
+	lines.append(_line().encode("ascii") + b"\n")
+
+	total_debit = 0
+	total_credit = 0
+	for r in data["rows"]:
+		d_str = str(r["date"])
+		b_no = str(r["display_number"])
+		r_type = str(r["type"])
+		amt_str = f"+{_money(r['debit'])}" if r["debit"] else f"-{_money(r['credit'])}"
+		if r["debit"]:
+			total_debit += flt(r["debit"])
+		if r["credit"]:
+			total_credit += flt(r["credit"])
+
+		lines.append(_ascii(_two_col(f"{d_str} #{b_no} ({r_type})", amt_str)).encode("ascii") + b"\n")
+		for it in (r.get("items") or []):
+			lines.append(_ascii(f"  * {it['item_name']} x{it['qty']}").encode("ascii") + b"\n")
+		lines.append(_ascii(_two_col("  Bal", f"Rs. {_money(r['balance'])}")).encode("ascii") + b"\n")
+
+	lines.append(_line().encode("ascii") + b"\n")
+	lines.append(_ascii(_two_col("Total Debit (Sale)", f"Rs. {_money(total_debit)}")).encode("ascii") + b"\n")
+	lines.append(_ascii(_two_col("Total Credit (Paid)", f"Rs. {_money(total_credit)}")).encode("ascii") + b"\n")
+	lines.append(_line().encode("ascii") + b"\n")
+
+	lines += [BOLD_ON]
+	lines.append(_ascii(_two_col("CLOSING BALANCE", f"Rs. {_money(data['closing_balance'])}")).encode("ascii") + b"\n")
+	lines += [BOLD_OFF]
+
+	lines.append(_line().encode("ascii") + b"\n")
+	lines.append(ALIGN_CENTER)
+	lines.append(_ascii(settings.get("bill_footer") or "Thank you!").encode("ascii") + b"\n")
+	lines.append(b"\n\n\n")
+	lines.append(CUT)
+	return b"".join(lines)
+
+
+@frappe.whitelist()
+def print_customer_khata(customer: str, from_date: str = None, to_date: str = None):
+	"""Print Customer Khata through the thermal ladder: CUPS -> USB -> Screen."""
+	import os
+	import subprocess
+	import tempfile
+	from santu_hardware.santu_hardware.api import _thermal_khata_pdf_bytes
+
+	job = None
+	try:
+		job = create_print_job("Customer", customer)
+	except Exception:
+		job = None
+
+	# Rung 1: CUPS (Native Thermal Printer Queue)
+	try:
+		queue = _cups_queue_name()
+		pdf = _thermal_khata_pdf_bytes(customer, from_date, to_date)
+		if pdf and len(pdf) > 500:
+			path = None
+			try:
+				with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as fh:
+					fh.write(pdf)
+					path = fh.name
+
+				result = subprocess.run(
+					["lp", "-d", queue, "-o", "TmxPaperCut=CutPerJob", "-t", f"Khata-{customer}", path],
+					capture_output=True,
+					text=True,
+					timeout=30,
+				)
+				if result.returncode == 0:
+					job_id = ""
+					for token in (result.stdout or "").split():
+						if "-" in token and token.split("-")[-1].isdigit():
+							job_id = token
+							break
+					_wait_for_cups_job(job_id)
+					if job:
+						record_print_attempt(job, "Printer", 1)
+					return {"ok": True, "method": "Printer", "queue": queue}
+				else:
+					err_msg = (result.stderr or "").strip()[:200]
+					if job:
+						record_print_attempt(job, "Printer", 0, err_msg)
+			finally:
+				if path and os.path.isfile(path):
+					try:
+						os.unlink(path)
+					except OSError:
+						pass
+	except Exception as e:
+		if job:
+			record_print_attempt(job, "Printer", 0, str(e))
+
+	# Rung 2: Direct USB ESC/POS
+	try:
+		raw_bytes = escpos_khata_bytes(customer, from_date, to_date)
+		_usb_send(raw_bytes)
+		if job:
+			record_print_attempt(job, "Direct USB", 1)
+		return {"ok": True, "method": "Direct USB"}
+	except Exception as e:
+		if job:
+			record_print_attempt(job, "Direct USB", 0, str(e))
+
+	# Rung 3: PDF / Screen fallback
+	if job:
+		record_print_attempt(job, "PDF", 1)
+	return {"ok": True, "method": "PDF"}
+

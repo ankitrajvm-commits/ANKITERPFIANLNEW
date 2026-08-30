@@ -397,8 +397,9 @@ const santu_purchase_order_page = {
 		}
 
 		tab.items.forEach((row, idx) => {
+			const is_cpvc = santu_is_cpvc_item(row.item_code, row.item_name);
 			const $tr = $(`
-				<tr data-row="${row.id}">
+				<tr data-row="${row.id}" class="${is_cpvc ? "santu-cpvc-row" : ""}">
 					<td class="santu-si2-col-idx">${idx + 1}</td>
 					<td class="santu-si2-col-item">
 						<div class="santu-si2-item-name">${frappe.utils.escape_html(row.item_name || row.item_code)}</div>
@@ -456,7 +457,7 @@ const santu_purchase_order_page = {
 		}
 		rows.forEach((item) => {
 			$(`
-				<div class="santu-si2-dd-row santu-si2-item-dd-row">
+				<div class="santu-si2-dd-row santu-si2-item-dd-row ${santu_cpvc_dd_class(item.item_code, item.item_name)}">
 					<div>
 						<b>${frappe.utils.escape_html(item.item_name)}</b>
 						<span class="santu-si2-dd-sub">${frappe.utils.escape_html(item.item_code)}${item.brand ? " · " + frappe.utils.escape_html(item.brand) : ""}</span>
@@ -687,8 +688,18 @@ const santu_purchase_order_page = {
 				$tr.find(".santu-si2-qty-input").val(row.qty);
 				on_change();
 			});
+			// Full unit list comes from santu_uom (the item's own units plus
+			// every unit in the system) -- this select used to be built from
+			// [row.uom, row.stock_uom] alone, so a Kg item could never be
+			// switched to grams here.
+			santu_uom.fill_select($tr.find(".santu-si2-uom-select"), row.item_code, row.uom, {
+				on_ready: (opts) => (row.uom_options = opts),
+			});
 			$tr.find(".santu-si2-uom-select").on("change", (e) => {
-				row.uom = e.target.value;
+				// Rescale rate/qty/stock with the unit so the row still means
+				// the same real amount: 1 Kg @ 1600 -> 1000 g @ 1.60.
+				santu_uom.convert(row, e.target.value, row.uom_options);
+				this._render_items();
 				on_change();
 			});
 			$tr.find(".santu-si2-rate-input").on("input", (e) => {
@@ -850,6 +861,7 @@ const santu_purchase_order_page = {
 			description: tab.description || null,
 			items: tab.items.map((r) => ({
 				item_code: r.item_code,
+				item_name: r.item_name,
 				qty: r.qty,
 				rate: r.rate,
 				uom: r.uom,

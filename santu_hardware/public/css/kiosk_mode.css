@@ -46,11 +46,23 @@ body.santu-kiosk-mode .navbar {
 }
 
 /*
- * Status bar (UX_STRATEGY.md SS5 finding 6 / SS7) — thin, always-visible
- * strip so "who's billing / register state / Privacy Mode" never has to be
- * held in anyone's head.
+ * Status bar (UX_STRATEGY.md SS5 finding 6 / SS7) — a Back/Home strip whose
+ * whole reason to exist is that kiosk mode hides the real navbar just above
+ * it, so it's the only way out. It rendered unconditionally, though, with
+ * no `body.santu-kiosk-mode` scoping -- so once the billing screen's route
+ * name changed to "santu-billing" (SANTU_KIOSK_ROUTES in kiosk_mode.js
+ * still only lists the old "point-of-sale"), kiosk mode stopped triggering
+ * there, the navbar stayed visible, and this bar kept showing anyway: two
+ * separate Back buttons stacked on screen, "−" here and "‹" in the topbar
+ * (2026-08-23 report: "do do aage piche jane ka option h ... left wala
+ * hata de"). Scoping display to kiosk mode removes the redundant one on
+ * santu-billing while leaving the real safety net intact wherever the
+ * navbar genuinely is hidden.
  */
 .santu-status-bar {
+	display: none;
+}
+body.santu-kiosk-mode .santu-status-bar {
 	display: flex;
 	gap: 4px;
 	align-items: center;

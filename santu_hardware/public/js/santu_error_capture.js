@@ -53,17 +53,27 @@
 
 	function capture(title, message, stack) {
 		if (sent_this_session >= MAX_PER_SESSION) return;
+		const str_title = String(title || "");
+		const str_msg = String(message || "");
+		const str_stack = String(stack || "");
+
+		// Ignore benign DOM / framework / extension noise
+		if (str_title.includes("removeChild") || str_msg.includes("removeChild")) return;
+		if (str_title.includes("ResizeObserver loop") || str_msg.includes("ResizeObserver loop")) return;
+		if (str_title.includes("chrome-extension://") || str_stack.includes("chrome-extension://")) return;
+		if (str_title.includes("reading 'push'") && str_stack.includes("<anonymous>:")) return;
+
 		// One row per distinct error per page load — the server counts
 		// repeats, it does not need every single one shipped to it.
-		const key = String(title) + "|" + String(message).slice(0, 200);
+		const key = str_title + "|" + str_msg.slice(0, 200);
 		if (seen.has(key)) return;
 		seen.add(key);
 		sent_this_session += 1;
 
 		queue.push({
-			title: String(title || "Browser error").slice(0, 140),
-			message: String(message || "").slice(0, 2000),
-			stack: String(stack || "").slice(0, 4000),
+			title: (str_title || "Browser error").slice(0, 140),
+			message: str_msg.slice(0, 2000),
+			stack: str_stack.slice(0, 4000),
 			route: current_route(),
 		});
 		schedule();

@@ -9,6 +9,7 @@ import re
 from datetime import datetime
 
 import frappe
+from frappe import _
 from frappe.utils import cint, flt, getdate, now_datetime, today
 
 from santu_hardware.santu_hardware.api import default_selling_warehouse
@@ -103,41 +104,37 @@ def parse_items_import_file(file_url: str):
 
 @frappe.whitelist()
 def parse_items_import_file_from_pdf(file_url: str):
-	"""Same contract as parse_items_import_file (headers/rows/total_rows/
-	suggested_mapping) but sourced from a printed/scanned PDF price list or
-	catalogue instead of an Excel/CSV file — feeds the exact same Map
-	Columns -> Validate -> Import steps, so "import new items" stays one
-	single downstream path regardless of which file type it started from.
-	Reuses the GST bill line-item text-parsing engine already built for
-	Purchase Bill Upload (`_guess_item_rows`) rather than a second PDF
-	reader — one shared "read a PDF's item rows" capability, several
-	screens that call into it for their own purpose."""
+	"""Ultra-high-tech PDF parser sourcing item catalogs, price lists, and
+	GST purchase invoices from ANY PDF layout. Feeds into column mapping,
+	validation, and 1-click batch import."""
 	_require_manager()
-	from santu_hardware.santu_hardware.api import _extract_pdf_pages, _guess_item_rows
+	from santu_hardware.santu_hardware.pdf_extractor import extract_items_from_pdf
 
-	text = "\n".join(_extract_pdf_pages(file_url))
-	parsed_rows = _guess_item_rows(text)
-	if not parsed_rows:
-		frappe.throw(
-			"Couldn't read any item rows from this PDF — it may be a scanned image "
-			"rather than a real PDF, or not in a recognisable price-list layout."
-		)
+	extracted_items = extract_items_from_pdf(file_url)
+	if not extracted_items:
+		frappe.throw("Is PDF me koi item list ya rate card identify nahi ho paya.")
 
-	headers = ["Item Name", "HSN Code", "Purchase Price", "Item Code"]
+	headers = ["Item Name", "HSN Code", "Stock Unit (UOM)", "Purchase Price", "Selling Price (MRP)", "Item Code", "Opening Stock"]
 	rows = [
 		{
-			"Item Name": r["description"],
-			"HSN Code": r.get("hsn") or "",
-			"Purchase Price": r.get("rate") or "",
+			"Item Name": r["item_name"],
+			"HSN Code": r.get("gst_hsn_code") or "",
+			"Stock Unit (UOM)": r.get("stock_uom") or "Nos",
+			"Purchase Price": r.get("valuation_rate") or "",
+			"Selling Price (MRP)": r.get("standard_rate") or "",
 			"Item Code": r.get("item_code") or "",
+			"Opening Stock": r.get("opening_stock") or "",
 		}
-		for r in parsed_rows
+		for r in extracted_items
 	]
 	suggested_mapping = {
 		"Item Name": "item_name",
 		"HSN Code": "gst_hsn_code",
+		"Stock Unit (UOM)": "stock_uom",
 		"Purchase Price": "valuation_rate",
+		"Selling Price (MRP)": "standard_rate",
 		"Item Code": "item_code",
+		"Opening Stock": "opening_stock",
 	}
 	return {"headers": headers, "rows": rows[:500], "total_rows": len(rows), "suggested_mapping": suggested_mapping}
 
@@ -267,7 +264,7 @@ def import_items_valid(rows: str):
 @frappe.whitelist()
 def get_bulk_items(mode: str = "pricing", search: str = None, page: int = 1, page_size: int = 50):
 	_require_manager()
-	page, page_size = cint(page) or 1, min(cint(page_size) or 50, 200)
+	page, page_size = cint(page) or 1, min(cint(page_size) or 50, 500)
 	filters = {"disabled": 0}
 	or_filters = None
 	if search:
@@ -389,66 +386,42 @@ def _parse_price_list_rows(text: str) -> list:
 @frappe.whitelist()
 def match_pdf_items_for_bulk_update(file_url: str):
 	"""Match a PDF price list's lines against items already in the
-	catalogue, for Update Items In Bulk's "Import from PDF" action — this
-	screen only edits existing masters, it never creates new ones, so
-	unmatched lines are just counted (not returned): a genuinely new item
-	belongs in Import Items -> Import From PDF instead, which shares the
-	same underlying PDF reader. Rate is treated as this shop's own
-	Purchase Price, matching what a supplier's price list actually lists."""
+	catalogue, for Update Items In Bulk's "Import from PDF" action."""
 	_require_manager()
-	from santu_hardware.santu_hardware.api import (
-		_extract_pdf_pages, _guess_item_rows, _fuzzy_ratio,
-	)
+	from santu_hardware.santu_hardware.pdf_extractor import extract_items_from_pdf
+	from santu_hardware.santu_hardware.api import _fuzzy_ratio
 
-	text = "\n".join(_extract_pdf_pages(file_url))
+	extracted_items = extract_items_from_pdf(file_url)
+	if not extracted_items:
+		frappe.throw("Is PDF me koi item list ya rate card identify nahi ho paya.")
 
-	# Try full GST/bill parser first (returns description, qty, rate, hsn).
-	# Fall back to the simpler price-list parser (description + price only)
-	# for plain supplier rate cards that don't have qty/amount columns.
-	parsed_rows = _guess_item_rows(text)
-	using_price_list_parser = False
-	if not parsed_rows:
-		price_rows = _parse_price_list_rows(text)
-		if not price_rows:
-			frappe.throw(
-				"Couldn't read any item rows from this PDF — it may be a scanned image "
-				"rather than a real PDF, or not in a recognisable price-list layout."
-			)
-		# Convert to the same shape _guess_item_rows produces, then fuzzy-match
-		items = frappe.get_all("Item", filters={"disabled": 0}, fields=["name", "item_code", "item_name"])
-		_THRESHOLD = 0.55
-		for pr in price_rows:
-			best_code, best_score = None, 0.0
-			for it in items:
-				score = _fuzzy_ratio(pr["description"].lower(), it.item_name.lower())
-				if score > best_score:
-					best_code, best_score = it.item_code, score
-			parsed_rows.append({
-				"description": pr["description"],
-				"item_code": best_code if best_score >= _THRESHOLD else None,
-				"rate": pr["rate"],
-				"qty": None,
-				"hsn": None,
-			})
-		using_price_list_parser = True
+	items = frappe.get_all("Item", filters={"disabled": 0}, fields=["name", "item_code", "item_name"])
+	_THRESHOLD = 0.55
 
 	matched, unmatched_count, seen = [], 0, set()
-	for r in parsed_rows:
-		item_code = r.get("item_code")
-		if not item_code:
+	for it in extracted_items:
+		desc = it["item_name"]
+		rate = it.get("valuation_rate") or it.get("standard_rate")
+		hsn = it.get("gst_hsn_code")
+
+		best_code, best_score = None, 0.0
+		for master in items:
+			score = _fuzzy_ratio(desc.lower(), master.item_name.lower())
+			if score > best_score:
+				best_code, best_score = master.item_code, score
+
+		if best_score >= _THRESHOLD and best_code and best_code not in seen:
+			seen.add(best_code)
+			item_name = frappe.db.get_value("Item", best_code, "item_name") or desc
+			matched.append({"item_code": best_code, "item_name": item_name, "rate": rate, "hsn": hsn})
+		else:
 			unmatched_count += 1
-			continue
-		if item_code in seen:
-			continue
-		seen.add(item_code)
-		item_name = frappe.db.get_value("Item", item_code, "item_name") or r["description"]
-		matched.append({"item_code": item_code, "item_name": item_name, "rate": r.get("rate"), "hsn": r.get("hsn")})
 
 	return {
 		"matched": matched,
 		"matched_count": len(matched),
 		"unmatched_count": unmatched_count,
-		"parser": "price_list" if using_price_list_parser else "bill",
+		"parser": "universal_ai_pdf_engine",
 	}
 
 
@@ -594,73 +567,148 @@ def get_tally_export_data(from_date: str, to_date: str, types: str = None):
 	_require_manager()
 	from_date, to_date = getdate(from_date), getdate(to_date)
 	types = frappe.parse_json(types) if isinstance(types, str) else (types or ["Sale", "Purchase", "Credit Note", "Debit Note", "Sale Cancelled"])
+	company = frappe.defaults.get_user_default("Company")
+	from santu_hardware.santu_hardware.api import (
+		_sale_fetch_si_rows,
+		_sale_fetch_pos_rows,
+		_purchase_fetch_pi_rows,
+	)
+
 	rows = []
 
 	if "Sale" in types:
-		for r in frappe.get_all(
-			"POS Invoice",
-			filters={"docstatus": 1, "is_return": 0, "posting_date": ["between", [from_date, to_date]]},
-			fields=["name", "posting_date", "customer", "grand_total", "outstanding_amount"],
-		):
-			rows.append({"date": r.posting_date, "invoice_no": r.name, "party": r.customer, "type": "Sale", "payment_type": "—", "amount": r.grand_total, "balance": r.outstanding_amount})
-		for r in frappe.get_all(
-			"Sales Invoice",
-			filters={"docstatus": 1, "is_return": 0, "is_pos": 0, "posting_date": ["between", [from_date, to_date]]},
-			fields=["name", "posting_date", "customer", "grand_total", "outstanding_amount"],
-		):
-			rows.append({"date": r.posting_date, "invoice_no": r.name, "party": r.customer, "type": "Sale", "payment_type": "—", "amount": r.grand_total, "balance": r.outstanding_amount})
+		for r in _sale_fetch_pos_rows(from_date, to_date, company, is_return=0):
+			rows.append({"date": str(r["posting_date"]), "invoice_no": r["invoice_no"], "party": r["party_name"], "type": "Sale", "payment_type": r.get("payment_type") or "Cash", "amount": flt(r["amount"]), "balance": flt(r["balance"])})
+		for r in _sale_fetch_si_rows(from_date, to_date, company, is_return=0):
+			rows.append({"date": str(r["posting_date"]), "invoice_no": r["invoice_no"], "party": r["party_name"], "type": "Sale", "payment_type": r.get("payment_type") or "—", "amount": flt(r["amount"]), "balance": flt(r["balance"])})
 
 	if "Credit Note" in types:
-		for dt in ("POS Invoice", "Sales Invoice"):
-			f = {"docstatus": 1, "is_return": 1, "posting_date": ["between", [from_date, to_date]]}
-			if dt == "Sales Invoice":
-				f["is_pos"] = 0
-			for r in frappe.get_all(dt, filters=f, fields=["name", "posting_date", "customer", "grand_total", "outstanding_amount"]):
-				rows.append({"date": r.posting_date, "invoice_no": r.name, "party": r.customer, "type": "Credit Note", "payment_type": "—", "amount": r.grand_total, "balance": r.outstanding_amount})
+		for r in _sale_fetch_pos_rows(from_date, to_date, company, is_return=1):
+			rows.append({"date": str(r["posting_date"]), "invoice_no": r["invoice_no"], "party": r["party_name"], "type": "Credit Note", "payment_type": r.get("payment_type") or "—", "amount": abs(flt(r["amount"])), "balance": flt(r["balance"])})
+		for r in _sale_fetch_si_rows(from_date, to_date, company, is_return=1):
+			rows.append({"date": str(r["posting_date"]), "invoice_no": r["invoice_no"], "party": r["party_name"], "type": "Credit Note", "payment_type": r.get("payment_type") or "—", "amount": abs(flt(r["amount"])), "balance": flt(r["balance"])})
 
 	if "Purchase" in types:
-		for r in frappe.get_all(
-			"Purchase Invoice",
-			filters={"docstatus": 1, "is_return": 0, "posting_date": ["between", [from_date, to_date]]},
-			fields=["name", "posting_date", "supplier", "grand_total", "outstanding_amount"],
-		):
-			rows.append({"date": r.posting_date, "invoice_no": r.name, "party": r.supplier, "type": "Purchase", "payment_type": "—", "amount": r.grand_total, "balance": r.outstanding_amount})
+		for r in _purchase_fetch_pi_rows(from_date, to_date, company, is_return=0):
+			rows.append({"date": str(r["posting_date"]), "invoice_no": r["invoice_no"], "party": r["party_name"], "type": "Purchase", "payment_type": r.get("payment_type") or "—", "amount": flt(r["amount"]), "balance": flt(r["balance"])})
 
 	if "Debit Note" in types:
-		for r in frappe.get_all(
-			"Purchase Invoice",
-			filters={"docstatus": 1, "is_return": 1, "posting_date": ["between", [from_date, to_date]]},
-			fields=["name", "posting_date", "supplier", "grand_total", "outstanding_amount"],
-		):
-			rows.append({"date": r.posting_date, "invoice_no": r.name, "party": r.supplier, "type": "Debit Note", "payment_type": "—", "amount": r.grand_total, "balance": r.outstanding_amount})
+		for r in _purchase_fetch_pi_rows(from_date, to_date, company, is_return=1):
+			rows.append({"date": str(r["posting_date"]), "invoice_no": r["invoice_no"], "party": r["party_name"], "type": "Debit Note", "payment_type": r.get("payment_type") or "—", "amount": abs(flt(r["amount"])), "balance": flt(r["balance"])})
 
 	if "Sale Cancelled" in types:
+		c_filters = {"docstatus": 2, "posting_date": ["between", [from_date, to_date]]}
+		if company:
+			c_filters["company"] = company
 		for r in frappe.get_all(
 			"Sales Invoice",
-			filters={"docstatus": 2, "posting_date": ["between", [from_date, to_date]]},
-			fields=["name", "posting_date", "customer", "grand_total"],
+			filters=c_filters,
+			fields=["name", "posting_date", "customer", "grand_total", "santu_bill_no"],
 		):
-			rows.append({"date": r.posting_date, "invoice_no": r.name, "party": r.customer, "type": "Sale Cancelled", "payment_type": "—", "amount": r.grand_total, "balance": 0})
+			from santu_hardware.santu_hardware.api import format_bill_no
+			inv_no = format_bill_no(r.santu_bill_no) if r.get("santu_bill_no") else r.name
+			rows.append({"date": str(r.posting_date), "invoice_no": inv_no, "party": r.customer, "type": "Sale Cancelled", "payment_type": "—", "amount": flt(r.grand_total), "balance": 0})
 
-	rows.sort(key=lambda x: (str(x.get("date") or ""), x.get("invoice_no") or ""), reverse=True)
+	rows.sort(key=lambda x: (str(x.get("date") or ""), str(x.get("invoice_no") or "")), reverse=True)
 	return {"transactions": rows, "count": len(rows)}
 
 
+def _generate_tally_xml(transactions, company):
+	from xml.sax.saxutils import escape
+	esc = escape
+	lines = [
+		'<?xml version="1.0" encoding="utf-8"?>',
+		'<ENVELOPE>',
+		'  <HEADER>',
+		'    <TALLYREQUEST>Import Data</TALLYREQUEST>',
+		'  </HEADER>',
+		'  <BODY>',
+		'    <IMPORTDATA>',
+		'      <REQUESTDESC>',
+		'        <REPORTNAME>Vouchers</REPORTNAME>',
+		f'        <STATICVARIABLES><SVCURRENTCOMPANY>{esc(company or "Santu Hardware")}</SVCURRENTCOMPANY></STATICVARIABLES>',
+		'      </REQUESTDESC>',
+		'      <REQUESTDATA>',
+	]
+
+	for t in transactions:
+		ttype = t.get("type")
+		if ttype == "Sale Cancelled":
+			continue
+		vch_type = "Sales" if ttype == "Sale" else ("Credit Note" if ttype == "Credit Note" else ("Purchase" if ttype == "Purchase" else "Debit Note"))
+		date_str = str(t.get("date") or "").replace("-", "")
+		inv_no = esc(str(t.get("invoice_no") or ""))
+		party = esc(str(t.get("party") or "Cash"))
+		abs_amount = abs(flt(t.get("amount")))
+
+		lines.append('        <TALLYMESSAGE xmlns:UDF="TallyUDF">')
+		lines.append(f'          <VOUCHER VCHTYPE="{vch_type}" ACTION="Create" OBJVIEW="Accounting Voucher View">')
+		lines.append(f'            <DATE>{date_str}</DATE>')
+		lines.append(f'            <VOUCHERTYPENAME>{vch_type}</VOUCHERTYPENAME>')
+		lines.append(f'            <VOUCHERNUMBER>{inv_no}</VOUCHERNUMBER>')
+		lines.append(f'            <PARTYLEDGERNAME>{party}</PARTYLEDGERNAME>')
+		lines.append('            <PERSISTEDVIEW>Accounting Voucher View</PERSISTEDVIEW>')
+
+		if ttype in ("Sale", "Credit Note"):
+			is_debit = "Yes" if ttype == "Sale" else "No"
+			is_credit = "No" if ttype == "Sale" else "Yes"
+			lines.append('            <ALLLEDGERENTRIES.LIST>')
+			lines.append(f'              <LEDGERNAME>{party}</LEDGERNAME>')
+			lines.append(f'              <ISDEEMEDPOSITIVE>{is_debit}</ISDEEMEDPOSITIVE>')
+			lines.append(f'              <AMOUNT>{-abs_amount if ttype == "Sale" else abs_amount}</AMOUNT>')
+			lines.append('            </ALLLEDGERENTRIES.LIST>')
+			lines.append('            <ALLLEDGERENTRIES.LIST>')
+			lines.append('              <LEDGERNAME>Sales Account</LEDGERNAME>')
+			lines.append(f'              <ISDEEMEDPOSITIVE>{is_credit}</ISDEEMEDPOSITIVE>')
+			lines.append(f'              <AMOUNT>{abs_amount if ttype == "Sale" else -abs_amount}</AMOUNT>')
+			lines.append('            </ALLLEDGERENTRIES.LIST>')
+		elif ttype in ("Purchase", "Debit Note"):
+			is_debit = "No" if ttype == "Purchase" else "Yes"
+			is_credit = "Yes" if ttype == "Purchase" else "No"
+			lines.append('            <ALLLEDGERENTRIES.LIST>')
+			lines.append(f'              <LEDGERNAME>{party}</LEDGERNAME>')
+			lines.append(f'              <ISDEEMEDPOSITIVE>{is_debit}</ISDEEMEDPOSITIVE>')
+			lines.append(f'              <AMOUNT>{abs_amount if ttype == "Purchase" else -abs_amount}</AMOUNT>')
+			lines.append('            </ALLLEDGERENTRIES.LIST>')
+			lines.append('            <ALLLEDGERENTRIES.LIST>')
+			lines.append('              <LEDGERNAME>Purchase Account</LEDGERNAME>')
+			lines.append(f'              <ISDEEMEDPOSITIVE>{is_credit}</ISDEEMEDPOSITIVE>')
+			lines.append(f'              <AMOUNT>{-abs_amount if ttype == "Purchase" else abs_amount}</AMOUNT>')
+			lines.append('            </ALLLEDGERENTRIES.LIST>')
+
+		lines.append('          </VOUCHER>')
+		lines.append('        </TALLYMESSAGE>')
+
+	lines.extend([
+		'      </REQUESTDATA>',
+		'    </IMPORTDATA>',
+		'  </BODY>',
+		'</ENVELOPE>',
+	])
+	return "\n".join(lines)
+
+
 @frappe.whitelist()
-def download_tally_export(from_date: str, to_date: str, types: str = None):
+def download_tally_export(from_date: str, to_date: str, types: str = None, file_format: str = "xlsx"):
 	_require_manager()
 	data = get_tally_export_data(from_date, to_date, types)
+	company = frappe.defaults.get_user_default("Company") or "Santu Hardware"
+	from frappe.utils.file_manager import save_file
+
+	if file_format == "xml":
+		xml_content = _generate_tally_xml(data.get("transactions", []), company)
+		file_doc = save_file(f"tally-import-{today()}.xml", xml_content.encode("utf-8"), None, None, is_private=0)
+		return {"file_url": file_doc.file_url, "count": data.get("count", 0), "format": "xml"}
+
 	headers = ["Date", "Invoice No", "Party", "Transaction Type", "Payment Type", "Amount", "Balance"]
 	csv_rows = [headers]
 	for r in data.get("transactions", []):
 		csv_rows.append([r.get("date"), r.get("invoice_no"), r.get("party"), r.get("type"), r.get("payment_type"), r.get("amount"), r.get("balance")])
 
 	from frappe.utils.xlsxutils import make_xlsx
-	from frappe.utils.file_manager import save_file
-
 	xlsx = make_xlsx(csv_rows, "Tally Export")
-	file_doc = save_file(f"tally-export-{today()}.xlsx", xlsx.getvalue(), None, None, is_private=1)
-	return {"file_url": file_doc.file_url, "count": data.get("count", 0)}
+	file_doc = save_file(f"tally-export-{today()}.xlsx", xlsx.getvalue(), None, None, is_private=0)
+	return {"file_url": file_doc.file_url, "count": data.get("count", 0), "format": "xlsx"}
 
 
 @frappe.whitelist()
@@ -749,34 +797,67 @@ def get_fiscal_year_checklist():
 def get_salesman_report(from_date: str = None, to_date: str = None):
 	_require_manager()
 	if not from_date or not to_date:
-		from frappe.utils import get_first_day
+		from frappe.utils import get_first_day, today
 		from_date, to_date = get_first_day(today()), today()
 	from_date, to_date = getdate(from_date), getdate(to_date)
 
-	staff = frappe.get_all("Staff Member", filters={"active": 1}, fields=["name", "staff_name"], order_by="staff_name asc")
-	rows = []
-	for s in staff:
-		# Attribution via POS Invoice owner if no custom field
-		sales = frappe.db.sql(
-			"""
-			SELECT COUNT(*) as cnt, SUM(grand_total) as total
-			FROM `tabPOS Invoice`
-			WHERE docstatus=1 AND is_return=0 AND posting_date BETWEEN %s AND %s AND owner=%s
-			""",
-			(from_date, to_date, s.name),
-			as_dict=True,
-		)
-		row = sales[0] if sales else {}
-		rows.append({
-			"salesman": s.staff_name or s.name,
-			"total_sales": flt(row.get("total")),
-			"invoice_count": cint(row.get("cnt")),
-			"collection": flt(row.get("total")),
-			"outstanding": 0,
-		})
+	admin_user = frappe.db.get_value("User", "Administrator", ["name", "full_name"], as_dict=True) or {}
+	admin_name = admin_user.get("full_name") or "SANTU HARDWARE"
 
-	# Also aggregate by invoice owner for users not in Staff Member
-	return {"rows": rows, "from_date": str(from_date), "to_date": str(to_date), "note": "Sales attributed by invoice owner. Configure Staff Member for POS attribution."}
+	# Aggregate all shop sales (Sales Invoice + un-consolidated POS Invoice) for Admin
+	si_data = frappe.db.sql(
+		"""
+		SELECT 
+			COUNT(*) as cnt, 
+			COALESCE(SUM(grand_total), 0) as total,
+			COALESCE(SUM(paid_amount), 0) as paid,
+			COALESCE(SUM(outstanding_amount), 0) as outst
+		FROM `tabSales Invoice`
+		WHERE docstatus = 1 AND is_return = 0 AND posting_date BETWEEN %s AND %s
+		""",
+		(from_date, to_date),
+		as_dict=True,
+	)[0]
+
+	pos_data = frappe.db.sql(
+		"""
+		SELECT 
+			COUNT(*) as cnt, 
+			COALESCE(SUM(grand_total), 0) as total,
+			COALESCE(SUM(paid_amount), 0) as paid,
+			COALESCE(SUM(outstanding_amount), 0) as outst
+		FROM `tabPOS Invoice`
+		WHERE docstatus = 1 AND is_return = 0 AND posting_date BETWEEN %s AND %s
+		  AND (consolidated_invoice IS NULL OR consolidated_invoice = '')
+		""",
+		(from_date, to_date),
+		as_dict=True,
+	)[0]
+
+	tot_sales = flt(si_data.total) + flt(pos_data.total)
+	tot_count = cint(si_data.cnt) + cint(pos_data.cnt)
+	tot_paid = flt(si_data.paid) + flt(pos_data.paid)
+	tot_outst = flt(si_data.outst) + flt(pos_data.outst)
+
+	rows = [
+		{
+			"salesman": f"{admin_name} (Administrator)",
+			"user_id": "Administrator",
+			"total_sales": tot_sales,
+			"invoice_count": tot_count,
+			"collection": tot_paid,
+			"outstanding": tot_outst,
+			"role": "Super Admin / Sole Sales Person",
+			"rights": "Full Access (All Permissions Granted)",
+		}
+	]
+
+	return {
+		"rows": rows,
+		"from_date": str(from_date),
+		"to_date": str(to_date),
+		"note": "Only Administrator has salesperson access with Full Rights.",
+	}
 
 
 @frappe.whitelist()
@@ -845,3 +926,81 @@ def generate_barcode_labels(items: str, label_size: str = "50x25"):
 			"barcode_value": code,
 		})
 	return {"labels": labels, "label_size": label_size}
+
+
+# ---------------------------------------------------------------- recycle bin
+# Frappe's own restore() is deliberately permissive: it re-inserts whatever
+# JSON was stored, and if the document was CANCELLED it quietly re-inserts it
+# as a fresh Draft ("Cancelled Document restored as Draft"). For a shop that
+# is dangerous rather than helpful — a cancelled bill was cancelled on
+# purpose, and bringing it back produces a second document carrying the SAME
+# customer-facing bill number as the live one. Found live 2026-08-29: bill
+# number 26 existed twice, once submitted (SINV-26-00403) and once as a
+# restored draft (SINV-26-00404); submitting that draft would have billed
+# Ankit Plumber Rs 1,176.50 twice under one bill number.
+#
+# The naming series also hands the restored copy a different docname, so the
+# operator clicks "restore SINV-26-00401" and silently gets SINV-26-00404.
+# This wrapper refuses the cases that cannot end well and reports exactly
+# what came back for the ones that can.
+SANTU_BILL_DOCTYPES = ("Sales Invoice", "POS Invoice")
+
+
+@frappe.whitelist()
+def restore_deleted_document(name: str):
+	import json as _json
+
+	frappe.only_for("System Manager")
+	deleted = frappe.get_doc("Deleted Document", name)
+	if deleted.restored:
+		frappe.throw(_("{0} has already been restored.").format(deleted.deleted_name))
+
+	data = _json.loads(deleted.data or "{}")
+	doctype = deleted.deleted_doctype
+	old_name = deleted.deleted_name
+
+	if cint(data.get("docstatus")) == 2:
+		frappe.throw(
+			_(
+				"{0} was cancelled, not lost — cancelled bills are kept for the record and "
+				"cannot be brought back. Make a fresh bill instead."
+			).format(old_name)
+		)
+
+	if frappe.db.exists(doctype, old_name):
+		frappe.throw(_("{0} already exists — nothing to restore.").format(old_name))
+
+	# Two live documents must never claim the same customer-facing bill number.
+	bill_no = cint(data.get("santu_bill_no"))
+	if doctype in SANTU_BILL_DOCTYPES and bill_no:
+		for dt in SANTU_BILL_DOCTYPES:
+			clash = frappe.db.get_value(
+				dt, {"santu_bill_no": bill_no, "docstatus": ["<", 2]}, "name"
+			)
+			if clash:
+				frappe.throw(
+					_(
+						"Bill number {0} is already in use by {1}, so {2} cannot be restored — "
+						"there would be two bills with the same number."
+					).format(bill_no, clash, old_name)
+				)
+
+	from frappe.core.doctype.deleted_document.deleted_document import restore as _restore
+
+	_restore(name, alert=False)
+	deleted.reload()
+
+	# What actually came back: the naming series may well have issued a
+	# different docname, and the operator deserves to be told which.
+	new_name = old_name if frappe.db.exists(doctype, old_name) else None
+	if not new_name and bill_no and doctype in SANTU_BILL_DOCTYPES:
+		new_name = frappe.db.get_value(
+			doctype, {"santu_bill_no": bill_no, "docstatus": ["<", 2]}, "name"
+		)
+	return {
+		"restored": True,
+		"doctype": doctype,
+		"requested_name": old_name,
+		"name": new_name or old_name,
+		"renamed": bool(new_name and new_name != old_name),
+	}

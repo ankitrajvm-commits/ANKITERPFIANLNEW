@@ -28,7 +28,7 @@ const SANTU_PARTIES_ADDRESS_ICON = `<svg width="16" height="16" viewBox="0 0 16 
 const SANTU_PARTIES_GSTIN_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="santu-parties-detail-icon"><path d="M1.66675 2.33333C1.66675 1.78105 2.11446 1.33333 2.66675 1.33333H10.6667C11.219 1.33333 11.6667 1.78105 11.6667 2.33333V14.6667H2.66675C2.11446 14.6667 1.66675 14.219 1.66675 13.6667V2.33333Z" fill="white" stroke="#62B1FF" stroke-width="1.5" stroke-linejoin="round"/><path d="M11.6667 8C11.6667 7.6318 11.9652 7.33333 12.3334 7.33333H13.6667C14.0349 7.33333 14.3334 7.6318 14.3334 8V13.6667C14.3334 14.219 13.8857 14.6667 13.3334 14.6667H11.6667V8Z" fill="white" stroke="#62B1FF" stroke-width="1.5" stroke-linejoin="round"/><path d="M3.5 8H8.5" stroke="#62B1FF" stroke-width="0.75" stroke-linecap="round"/><path d="M3.5 10H7.5" stroke="#62B1FF" stroke-width="0.75" stroke-linecap="round"/><path d="M3.5 12H5.5" stroke="#62B1FF" stroke-width="0.75" stroke-linecap="round"/></svg>`;
 const SANTU_PARTIES_MAIL_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="santu-parties-detail-icon"><path d="M13.1852 3.92188H2.81483C1.99663 3.92188 1.33334 4.42356 1.33334 5.04241V10.6451C1.33334 11.2639 1.99663 11.7656 2.81483 11.7656H13.1852C14.0034 11.7656 14.6667 11.2639 14.6667 10.6451V5.04241C14.6667 4.42356 14.0034 3.92188 13.1852 3.92188Z" stroke="#62B1FF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 4.57552L8.33333 7.84375L14 4.57552" stroke="#62B1FF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const SANTU_PARTIES_RUPEE_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="santu-parties-detail-icon"><path d="M12 3.26823H4.66666H6.66666C7.3739 3.26823 8.05218 3.54369 8.55227 4.03402C9.05237 4.52435 9.33332 5.18938 9.33332 5.88281C9.33332 6.57624 9.05237 7.24127 8.55227 7.7316C8.05218 8.22193 7.3739 8.4974 6.66666 8.4974H4.66666L8.66666 12.4193" stroke="#62B1FF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.66666 5.88281H12" stroke="#62B1FF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-const SANTU_PARTIES_EDIT_ICON = `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14.166 2.5a1.667 1.667 0 0 1 2.357 2.357L6.25 15.13l-3.334.834.834-3.334L14.166 2.5Z" stroke="#0075E8" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const SANTU_PARTIES_MORE_ICON = `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="4.5" r="1.5" fill="#656672"/><circle cx="10" cy="10" r="1.5" fill="#656672"/><circle cx="10" cy="15.5" r="1.5" fill="#656672"/></svg>`;
 const SANTU_PARTIES_WA_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 11.5A8.5 8.5 0 0 1 8.2 19.4L4 20.5l1.2-4A8.5 8.5 0 1 1 20 11.5Z" stroke="#08bd7c" stroke-width="1.5"/><path d="M9.2 9.1c.2-.5.3-.5.6-.5h.5c.2 0 .3.1.4.3l.6 1.4c.1.2 0 .4-.1.5l-.4.4c-.1.1-.1.3 0 .4.3.5.8 1 1.3 1.3.2.1.3.1.4 0l.4-.4c.2-.2.4-.2.5-.1l1.4.6c.2.1.3.2.3.4v.5c0 .3 0 .4-.5.6A6.2 6.2 0 0 1 9.2 9.1Z" fill="#08bd7c"/></svg>`;
 const SANTU_PARTIES_SEARCH_ICON = `<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="9" cy="9" r="6" stroke="#656672" stroke-width="1.5"/><path d="M13.5 13.5L17 17" stroke="#656672" stroke-width="1.5" stroke-linecap="round"/></svg>`;
 const SANTU_PARTIES_PRINT_ICON = `<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="5" y="2.5" width="10" height="4.5" rx="1" stroke="#656672" stroke-width="1.25"/><rect x="3.5" y="7" width="13" height="7" rx="1.5" stroke="#656672" stroke-width="1.25"/><rect x="6.5" y="12.5" width="7" height="5" rx="1" stroke="#656672" stroke-width="1.25"/></svg>`;
@@ -162,10 +162,22 @@ const santu_parties_page = {
 				{ fieldtype: "Data", fieldname: "email", label: __("Email") },
 				{ fieldtype: "Small Text", fieldname: "address_line1", label: __("Billing Address") },
 				{ fieldtype: "Select", fieldname: "state", label: __("State"), options: "Bihar", default: "Bihar" },
+				{
+					// Only customers can owe money, so this hides itself for a
+					// supplier. Without it a customer added from this screen had
+					// to be created and then edited again just to set a limit --
+					// the Sale/Estimate add-party dialog has always offered it.
+					fieldtype: "Currency",
+					fieldname: "credit_limit",
+					label: __("Udhaar Limit (Credit Limit)"),
+					description: __("Khali ya 0 = koi limit nahi."),
+					depends_on: "eval:doc.party_type != 'Supplier'",
+				},
 			],
 			primary_action_label: __("Save"),
 			primary_action: (v) => {
 				v.customer_name = (v.customer_name || "").toUpperCase().trim();
+				if (v.party_type === "Supplier") delete v.credit_limit;
 				const method =
 					v.party_type === "Supplier"
 						? "santu_hardware.santu_hardware.api.create_supplier_full"
@@ -250,7 +262,8 @@ const santu_parties_page = {
 
 	// `select_party` re-opens a specific party once the list has redrawn —
 	// used after an edit so the panel follows the party across a rename
-	// instead of being left on a name that no longer exists.
+	// instead of being left on a name that no longer exists. If not provided,
+	// selects the first party in the list.
 	async reload_list(select_party) {
 		this.show_split();
 		await load_parties(
@@ -262,7 +275,7 @@ const santu_parties_page = {
 				$row.addClass("santu-parties-row-active");
 				load_party_detail(this.$detail, row);
 			},
-			this.first_load && !select_party,
+			!select_party,
 			(meta) => {
 				if (meta.empty_all && !this.filter) this.show_landing();
 			}
@@ -270,7 +283,12 @@ const santu_parties_page = {
 		this.first_load = false;
 		if (select_party) {
 			const $row = this.$list.find(`.santu-parties-row[data-party="${CSS.escape(select_party)}"]`);
-			if ($row.length) $row.trigger("click");
+			if ($row.length) {
+				$row.trigger("click");
+			} else {
+				const $first = this.$list.find(".santu-parties-row").first();
+				if ($first.length) $first.trigger("click");
+			}
 		}
 	},
 };
@@ -305,7 +323,13 @@ async function load_parties($list, search, filter, on_select, auto_select_first,
 		// credit as a bare "-600" in green, which reads as a bigger debt
 		// rather than the opposite of one.
 		const dir = _balance_direction(row);
-		const tone = dir.settled ? "" : dir.owes_you ? "success" : "danger";
+		// Money still to be COLLECTED is the one that needs the operator's eye,
+		// so it gets the loud colour. It used to be green (money-in = good),
+		// which made a pending udhaar look like a settled account at a glance
+		// (2026-08-29 direct request: "owes wala red hona tha na"). The shop's
+		// own dues stay a distinct amber rather than sharing the red, so the
+		// two directions can never be mistaken for each other.
+		const tone = dir.settled ? "" : dir.owes_you ? "danger" : "warning";
 		const $row = $(`
 			<div class="santu-parties-row" role="button" tabindex="0" data-party="${frappe.utils.escape_html(row.party)}">
 				<span class="santu-parties-row-name">${frappe.utils.escape_html(row.party_name)}</span>
@@ -348,10 +372,19 @@ function _balance_line(row) {
 	if (settled) {
 		return `<div class="santu-parties-balance santu-parties-balance-clear">All settled — nothing pending</div>`;
 	}
+	const reminder_btn = owes_you ? `
+		<button type="button" class="santu-parties-send-reminder-btn" title="${__("Send WhatsApp Reminder")}">
+			<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M3 21.0007L4.65 17.2007C3.38766 15.4088 2.82267 13.2177 3.06104 11.0388C3.29942 8.85988 4.32479 6.84284 5.94471 5.36622C7.56463 3.8896 9.66775 3.05492 11.8594 3.0188C14.051 2.98269 16.1805 3.74763 17.8482 5.17007C19.5159 6.59252 20.6071 8.57468 20.9172 10.7446C21.2272 12.9145 20.7347 15.1229 19.5321 16.9555C18.3295 18.788 16.4994 20.1187 14.3854 20.6978C12.2713 21.2769 10.0186 21.0646 8.05 20.1007L3 21.0007"/><path d="M9 10C9 10.1326 9.05268 10.2598 9.14645 10.3536C9.24021 10.4473 9.36739 10.5 9.5 10.5C9.63261 10.5 9.75979 10.4473 9.85355 10.3536C9.94732 10.2598 10 10.1326 10 10V9C10 8.86739 9.94732 8.74021 9.85355 8.64645C9.75979 8.55268 9.63261 8.5 9.5 8.5C9.36739 8.5 9.24021 8.55268 9.14645 8.64645C9.05268 8.74021 9 8.86739 9 9V10ZM9 10C9 11.3261 9.52678 12.5979 10.4645 13.5355C11.4021 14.4732 12.6739 15 14 15H15C15.1326 15 15.2598 14.9473 15.3536 14.8536C15.4473 14.7598 15.5 14.6326 15.5 14.5C15.5 14.3674 15.4473 14.2402 15.3536 14.1464C15.2598 14.0527 15.1326 14 15 14H14C13.8674 14 13.7402 14.0527 13.6464 14.1464C13.5527 14.2402 13.5 14.3674 13.5 14.5C13.5 14.6326 13.5527 14.7598 13.6464 14.8536C13.7402 14.9473 13.8674 15 14 15"/></svg>
+			${__("Send Reminder")}
+		</button>
+	` : "";
 	return `
 		<div class="santu-parties-balance ${owes_you ? "santu-parties-balance-in" : "santu-parties-balance-out"}">
-			<span class="santu-parties-balance-label">${owes_you ? "Owes you" : "You owe"}</span>
-			<span class="santu-parties-balance-amount santu-figures">₹ ${format_currency_plain(amount)}</span>
+			<div class="santu-parties-balance-main">
+				<span class="santu-parties-balance-label">${owes_you ? "Owes you" : "You owe"}</span>
+				<span class="santu-parties-balance-amount santu-figures">₹ ${format_currency_plain(amount)}</span>
+			</div>
+			${reminder_btn}
 		</div>
 	`;
 }
@@ -362,6 +395,210 @@ function info_col(icon, label, value) {
 		<div class="santu-parties-detail-info-label">${icon} ${label}</div>
 		<div class="santu-parties-detail-info-value">${frappe.utils.escape_html(text)}</div>
 	</div>`;
+}
+
+// Customer-wise running khata dialog (2026-08-27 direct request: "har
+// customer ka ek complete running account/khata maintain karna hai...
+// generate/download/print the complete Customer Account Statement / Ledger
+// for a selected date range"). Reads get_customer_khata — Sales Invoice +
+// un-consolidated POS Invoice for sales, Payment Entry (Receive) for money
+// collected, real ERPNext documents, not a parallel ledger of its own —
+// and shows them as one running account with a balance after each row,
+// the same shape a paper khata page already has. Date range defaults to
+// the last 12 months, same window the WhatsApp statement has always used.
+function open_customer_khata_dialog(row) {
+	const state = {
+		from_date: frappe.datetime.add_months(frappe.datetime.get_today(), -12),
+		to_date: frappe.datetime.get_today(),
+	};
+
+	const d = new frappe.ui.Dialog({
+		title: __("Khata — {0}", [row.party_name]),
+		size: "extra-large",
+		fields: [
+			{ fieldtype: "Date", fieldname: "from_date", label: __("From"), default: state.from_date },
+			{ fieldtype: "Column Break" },
+			{ fieldtype: "Date", fieldname: "to_date", label: __("To"), default: state.to_date },
+			{ fieldtype: "Section Break" },
+			{ fieldtype: "HTML", fieldname: "khata_html", options: `<div class="santu-khata-loading">${__("Loading…")}</div>` },
+		],
+		primary_action_label: __("Download PDF"),
+		primary_action: () => {
+			window.open(
+				frappe.urllib.get_full_url(
+					`/api/method/santu_hardware.santu_hardware.api.download_customer_khata?customer=${encodeURIComponent(row.party)}&from_date=${encodeURIComponent(state.from_date)}&to_date=${encodeURIComponent(state.to_date)}`
+				),
+				"_blank"
+			);
+		},
+	});
+
+	// Print and WhatsApp, alongside Download PDF — a Dialog only has one
+	// built-in primary/secondary pair, so these two are appended to the
+	// footer by hand rather than forcing both into that one slot.
+	const $footer = d.$wrapper.find(".modal-footer");
+	const $print_btn = $(`<button type="button" class="btn btn-default">${__("Print")}</button>`);
+	$print_btn.on("click", async () => {
+		try {
+			frappe.dom.freeze(__("Printing Thermal Khata…"));
+			// Raced against a timeout: the server call talks to the thermal
+			// printer, and a printer that is off or busy never answers — the
+			// screen then sat frozen on "Printing Thermal Khata…" with no way
+			// out (2026-08-29). After 8s we stop waiting and fall through to
+			// the browser print below, which always works.
+			const res = await Promise.race([
+				frappe.xcall("santu_hardware.santu_hardware.print_service.print_customer_khata", {
+					customer: row.party,
+					from_date: state.from_date,
+					to_date: state.to_date,
+				}),
+				new Promise((_, reject) =>
+					setTimeout(() => reject(new Error("thermal-print-timeout")), 8000)
+				),
+			]);
+			frappe.dom.unfreeze();
+			if (res && res.method && res.method !== "PDF") {
+				frappe.show_alert({ message: __("Printed on Thermal Printer"), indicator: "green" });
+				return;
+			}
+		} catch (e) {
+			frappe.dom.unfreeze();
+		}
+
+		// Fallback to browser print with 80mm thermal layout
+		const w = window.open("", "_blank");
+		if (!w) {
+			frappe.msgprint(__("Please allow pop-ups to print."));
+			return;
+		}
+		w.document.write(`<p style="font-family:sans-serif;padding:24px;">${__("Loading…")}</p>`);
+		frappe
+			.xcall("santu_hardware.santu_hardware.api.get_customer_khata_print_html", {
+				customer: row.party,
+				from_date: state.from_date,
+				to_date: state.to_date,
+			})
+			.then((html) => {
+				w.document.open();
+				w.document.write(html);
+				w.document.close();
+				w.focus();
+				setTimeout(() => w.print(), 250);
+			})
+			.catch((err) => {
+				w.document.open();
+				w.document.write(`<p style="font-family:sans-serif;padding:24px;color:#c0392b;">${frappe.utils.escape_html(err.message || String(err))}</p>`);
+				w.document.close();
+			});
+	});
+	const $wa_btn = $(`<button type="button" class="btn btn-default">${__("Send on WhatsApp")}</button>`);
+	$wa_btn.on("click", () => {
+		frappe.require("/assets/santu_hardware/js/santu_whatsapp_connect/wa_connect_api.js", () => {
+			santu_wa_connect.api.status().then((status) => {
+				if (status.state !== "CONNECTED") {
+					frappe.set_route("santu-whatsapp-connect");
+					return;
+				}
+				frappe.dom.freeze(__("Sending…"));
+				frappe
+					.xcall("santu_hardware.santu_hardware.whatsapp_connect_api.send_customer_khata", {
+						customer: row.party,
+						from_date: state.from_date,
+						to_date: state.to_date,
+					})
+					.then((r) => {
+						frappe.dom.unfreeze();
+						if (r && r.ok === false) {
+							frappe.msgprint({ title: __("Could not send"), message: frappe.utils.escape_html(r.error || ""), indicator: "red" });
+							return;
+						}
+						frappe.show_alert({ message: __("Khata sent on WhatsApp"), indicator: "green" });
+					})
+					.catch(() => frappe.dom.unfreeze());
+			});
+		});
+	});
+	$footer.prepend($wa_btn).prepend($print_btn);
+
+	const render_khata = () => {
+		const $wrap = d.fields_dict.khata_html.$wrapper;
+		$wrap.html(`<div class="santu-khata-loading">${__("Loading…")}</div>`);
+		frappe
+			.xcall("santu_hardware.santu_hardware.api.get_customer_khata", {
+				customer: row.party,
+				from_date: state.from_date,
+				to_date: state.to_date,
+			})
+			.then((data) => {
+				const money = (v) => format_currency_plain(v || 0);
+				const rows_html = data.rows.length
+					? data.rows
+							.map(
+								(r, idx) => `
+						<tr>
+							<td>${idx + 1}</td>
+							<td>${frappe.datetime.str_to_user(r.date)}</td>
+							<td>${frappe.utils.escape_html(r.display_number)}</td>
+							<td>${frappe.utils.escape_html(r.type)}</td>
+							<td class="santu-khata-items">${
+								(r.items && r.items.length)
+									? r.items.map((it) => `<div class="santu-khata-item-line">${frappe.utils.escape_html(it.item_name)} x${frappe.utils.escape_html(String(it.qty))}</div>`).join("")
+									: frappe.utils.escape_html(r.items_summary || "")
+							}</td>
+							<td class="santu-khata-num">${r.debit ? money(r.debit) : ""}</td>
+							<td class="santu-khata-num">${r.credit ? money(r.credit) : ""}</td>
+							<td class="santu-khata-num santu-khata-balance">${money(r.balance)}</td>
+						</tr>`
+							)
+							.join("")
+					: `<tr><td colspan="8" class="santu-khata-empty">${__("Is date range me koi lena-dena nahi hai.")}</td></tr>`;
+
+				$wrap.html(`
+					<div class="santu-khata-table-wrap">
+						<table class="santu-khata-table">
+							<thead>
+								<tr>
+									<th>${__("#")}</th>
+									<th>${__("Date")}</th>
+									<th>${__("Bill No.")}</th>
+									<th>${__("Type")}</th>
+									<th>${__("Items")}</th>
+									<th class="santu-khata-num">${__("Debit (Sale)")}</th>
+									<th class="santu-khata-num">${__("Credit (Paid)")}</th>
+									<th class="santu-khata-num">${__("Balance")}</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr class="santu-khata-opening">
+									<td colspan="7">${__("Opening Balance")}</td>
+									<td class="santu-khata-num">${money(data.opening_balance)}</td>
+								</tr>
+								${rows_html}
+								<tr class="santu-khata-closing">
+									<td colspan="7">${__("Closing Balance")}</td>
+									<td class="santu-khata-num">${money(data.closing_balance)}</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
+				`);
+			})
+			.catch(() => {
+				$wrap.html(`<div class="santu-khata-empty">${__("Load nahi hua.")}</div>`);
+			});
+	};
+
+	d.fields_dict.from_date.$input.on("change", () => {
+		state.from_date = d.get_value("from_date");
+		render_khata();
+	});
+	d.fields_dict.to_date.$input.on("change", () => {
+		state.to_date = d.get_value("to_date");
+		render_khata();
+	});
+
+	d.show();
+	render_khata();
 }
 
 async function load_party_detail($detail, row) {
@@ -383,7 +620,13 @@ async function load_party_detail($detail, row) {
 			<div class="santu-parties-detail-head">
 				<div class="santu-parties-detail-name">
 					${frappe.utils.escape_html(row.party_name)}
-					<button type="button" class="santu-parties-edit-btn" title="View/Edit">${SANTU_PARTIES_EDIT_ICON}</button>
+					<div class="santu-parties-more">
+						<button type="button" class="santu-parties-more-btn" title="${__("More")}">${SANTU_PARTIES_MORE_ICON}</button>
+						<div class="santu-parties-more-menu">
+							<button type="button" class="santu-parties-more-item santu-parties-edit-btn">${__("Edit Details")}</button>
+							<button type="button" class="santu-parties-more-item santu-parties-more-danger santu-parties-delete-btn">${__("Delete Party")}</button>
+						</div>
+					</div>
 				</div>
 				<div class="santu-parties-detail-icons">
 					${contact.phone ? `<button type="button" class="santu-parties-icon-btn santu-parties-whatsapp-btn" title="Message on WhatsApp">${SANTU_PARTIES_WA_ICON}</button>` : ""}
@@ -405,34 +648,50 @@ async function load_party_detail($detail, row) {
 					<input type="text" class="santu-parties-txn-search" placeholder="Search">
 					<button type="button" class="santu-parties-icon-btn santu-parties-txn-search-btn" title="Search">${SANTU_PARTIES_SEARCH_ICON}</button>
 					<button type="button" class="santu-parties-icon-btn santu-parties-txn-print-btn" title="Print">${SANTU_PARTIES_PRINT_ICON}</button>
+					<button type="button" class="santu-parties-khata-btn" title="${__("Poora chalta khata dekho — date range chuno, download karo")}">${__("Khata")}</button>
 				</div>
 			</div>
 			<div class="santu-parties-bills"></div>
 		</div>
 	`);
 
-	// Sends through the same WhatsApp Connect (Meta bridge) integration the
-	// bills already go out on — not wa.me / web.whatsapp.com, and not a
-	// whatsapp:// deep link either (2026-08-18: tried the app-scheme link
-	// first, but WhatsApp Desktop on Mac doesn't register it at all —
-	// "bilkul kuch nahi hota" — then direct request: "ye santuhardware app
-	// me whatsapp already hai jaha pe bill jata hai, wahi map kr do").
-	$detail.find(".santu-parties-whatsapp-btn").on("click", () => {
+	const open_wa_reminder = () => {
 		const digits = (contact.phone || "").replace(/\D/g, "");
-		if (!digits) return;
+		if (!digits) {
+			frappe.prompt(
+				{
+					fieldtype: "Data",
+					fieldname: "phone",
+					label: __("WhatsApp Mobile Number"),
+					reqd: 1,
+					description: __("Enter 10-digit mobile number for {0}", [row.party_name]),
+				},
+				(v) => {
+					const clean = (v.phone || "").replace(/\D/g, "");
+					if (clean.length < 10) {
+						frappe.msgprint(__("Please enter a valid 10-digit mobile number."));
+						return;
+					}
+					frappe.xcall("santu_hardware.santu_hardware.api.update_party_phone", {
+						party_type: row.party_type,
+						party: row.party,
+						phone: clean.slice(-10),
+					}).then(() => {
+						contact.phone = clean.slice(-10);
+						open_wa_reminder();
+					});
+				},
+				__("Customer Phone Number")
+			);
+			return;
+		}
 		const num = digits.length === 10 ? "91" + digits : digits;
 		frappe.require("/assets/santu_hardware/js/santu_whatsapp_connect/wa_connect_api.js", () => {
 			santu_wa_connect.api.status().then((status) => {
 				if (status.state !== "CONNECTED") {
-					// Not linked yet — send the counter to the same connect
-					// screen the bill-sharing flow already relies on, instead
-					// of failing silently on a send that can't go anywhere.
 					frappe.set_route("santu-whatsapp-connect");
 					return;
 				}
-				// The latest bill, for the "send with bill" action below — same
-				// `bills` list already loaded for this panel's own Transactions
-				// table, just picked for its newest posting_date.
 				const latest_bill = (bills || [])
 					.slice()
 					.sort((a, b) => (a.posting_date < b.posting_date ? 1 : -1))[0];
@@ -442,32 +701,23 @@ async function load_party_detail($detail, row) {
 					.reminderPreview(row.party_type, row.party)
 					.then((r) => {
 						frappe.dom.unfreeze();
-						// A blank/undue message reads oddly — the reminder text
-						// only makes sense when something is actually owed
-						// (2026-08-18 direct request: "kitna baaki hai, ya kya
-						// bill hai" — balance due, or the bill itself).
 						const default_message =
 							(Number(row.amount) || 0) > 0
 								? r.message
-								: `Hi ${row.party_name},\n\nThank you for shopping with Santu Hardware!`;
+								: `नमस्ते ${row.party_name} जी,\n\nSantu Hardware से खरीदारी करने के लिए धन्यवाद!`;
 
 						const d = new frappe.ui.Dialog({
-							title: __("Message on WhatsApp"),
+							title: __("Send Payment Reminder on WhatsApp"),
 							fields: [
 								{ fieldtype: "Small Text", fieldname: "message", label: __("Message"), reqd: 1, default: default_message },
 								{
 									fieldtype: "Check",
 									fieldname: "attach_summary",
-									label: __("Attach full bill summary (all bills, running balance)"),
-									// On by default — a bare balance figure with nothing
-									// backing it up is what prompted this in the first
-									// place (2026-08-18: "sara bill summary v attach kr
-									// do" — the numbers should come with the bills that
-									// add up to them, not just the one latest bill).
+									label: __("Attach running statement (All bills & Ledger balance PDF)"),
 									default: 1,
 								},
 							],
-							primary_action_label: __("Send"),
+							primary_action_label: __("Send on WhatsApp"),
 							primary_action: (v) => {
 								frappe.dom.freeze(__("Sending…"));
 								const send = v.attach_summary
@@ -477,7 +727,7 @@ async function load_party_detail($detail, row) {
 									.then(() => {
 										frappe.dom.unfreeze();
 										d.hide();
-										frappe.show_alert({ message: __("Sent"), indicator: "green" });
+										frappe.show_alert({ message: __("Reminder sent successfully!"), indicator: "green" });
 									})
 									.catch(() => frappe.dom.unfreeze());
 							},
@@ -491,7 +741,7 @@ async function load_party_detail($detail, row) {
 									.then(() => {
 										frappe.dom.unfreeze();
 										d.hide();
-										frappe.show_alert({ message: __("Sent"), indicator: "green" });
+										frappe.show_alert({ message: __("Bill sent successfully!"), indicator: "green" });
 									})
 									.catch(() => frappe.dom.unfreeze());
 							});
@@ -501,7 +751,26 @@ async function load_party_detail($detail, row) {
 					.catch(() => frappe.dom.unfreeze());
 			});
 		});
+	};
+
+	$detail.find(".santu-parties-whatsapp-btn").on("click", open_wa_reminder);
+	$detail.find(".santu-parties-send-reminder-btn").on("click", open_wa_reminder);
+	// Edit/Delete live behind a kebab menu: the bare red trash sitting next to
+	// the party name read as a hazard on every single view, and it is a rarely
+	// used action.
+	$detail.find(".santu-parties-more-btn").on("click", (e) => {
+		e.stopPropagation();
+		const $menu = $detail.find(".santu-parties-more-menu");
+		const open = $menu.hasClass("open");
+		$(document).trigger("click.santu-parties-more");
+		$menu.toggleClass("open", !open);
 	});
+	$(document).off("click.santu-parties-more").on("click.santu-parties-more", () =>
+		$(".santu-parties-more-menu").removeClass("open")
+	);
+	$detail.find(".santu-parties-more-item").on("click", () =>
+		$detail.find(".santu-parties-more-menu").removeClass("open")
+	);
 	$detail.find(".santu-parties-edit-btn").on("click", () =>
 		// Reload the LIST, not just this panel: an edit can change the name
 		// shown in the list, and a rename changes the docname the panel was
@@ -512,6 +781,27 @@ async function load_party_detail($detail, row) {
 			santu_parties_page.reload_list(new_party);
 		})
 	);
+	$detail.find(".santu-parties-delete-btn").on("click", () => {
+		frappe.confirm(__("Are you sure you want to delete {0}?", [frappe.utils.escape_html(row.party_name)]), () => {
+			frappe.call({
+				method: "santu_hardware.santu_hardware.api.delete_party",
+				args: {
+					party_type: row.party_type,
+					party: row.party
+				},
+				callback: function(r) {
+					if (!r.exc) {
+						if (r.message && r.message.disabled) {
+							frappe.show_alert({ message: __("Party disabled instead of deleted because of linked transactions."), indicator: "orange" });
+						} else {
+							frappe.show_alert({ message: __("Party Deleted"), indicator: "green" });
+						}
+						santu_parties_page.reload_list();
+					}
+				}
+			});
+		});
+	});
 	$detail.find(".santu-parties-txn-search-btn").on("click", () => {
 		$detail.find(".santu-parties-txn-search").toggleClass("open").focus();
 	});
@@ -521,7 +811,25 @@ async function load_party_detail($detail, row) {
 			$(this).toggle($(this).text().toLowerCase().indexOf(q) !== -1);
 		});
 	});
-	$detail.find(".santu-parties-txn-print-btn").on("click", () => window.print());
+	$detail.find(".santu-parties-txn-print-btn").on("click", () => {
+		if (row.party_type === "Customer") {
+			open_customer_khata_dialog(row);
+		} else {
+			window.print();
+		}
+	});
+
+	// Customer-wise running khata (2026-08-27 direct request): every sale
+	// and every payment for this one customer, in date order, with a
+	// running balance after each row — same idea as a paper khata's page
+	// for one customer, not a generic accounting report. Customer only;
+	// a Supplier's own ledger is a different conversation (what THIS shop
+	// owes THEM), not asked for here.
+	if (row.party_type === "Customer") {
+		$detail.find(".santu-parties-khata-btn").on("click", () => open_customer_khata_dialog(row));
+	} else {
+		$detail.find(".santu-parties-khata-btn").hide();
+	}
 
 	const $bills = $detail.find(".santu-parties-bills");
 
@@ -543,10 +851,17 @@ async function load_party_detail($detail, row) {
 	const $tbody = $table.find("tbody");
 
 	bills.forEach((b) => {
+		// Shows the shop's own running Bill No (100, 101 ... same number
+		// printed on the thermal slip), not the document ID (SINV-26-00254) —
+		// that ID means nothing to an operator; the Bill No is what they'd
+		// actually search or ask a customer for (2026-08-23 direct request).
+		// Falls back to the document name when there's no santu_bill_no
+		// (Purchase Invoice rows, or a Sales/POS Invoice that predates the
+		// counter).
 		$(`
 			<tr class="santu-parties-bill-row">
 				<td>${frappe.utils.escape_html(b.type)}</td>
-				<td>${frappe.utils.escape_html(b.name)}</td>
+				<td>${frappe.utils.escape_html(b.display_number || b.name)}</td>
 				<td>${frappe.datetime.str_to_user(b.posting_date)}</td>
 				<td class="num">₹ ${format_currency_plain(b.grand_total)}</td>
 				<td class="num">${b.outstanding_amount > 0 ? "₹ " + format_currency_plain(b.outstanding_amount) : "-"}</td>
@@ -560,6 +875,9 @@ async function load_party_detail($detail, row) {
 }
 
 function open_edit_party_dialog(row, contact, on_saved) {
+	// One free-text Address field (2026-08-27 direct request: "district &
+	// pin ka concept hata do, only address ka rakho, it can be anything jo
+	// bhaiya dale") — no village/pincode/district split or autocomplete.
 	const d = new frappe.ui.Dialog({
 		title: __("Edit Party"),
 		fields: [
@@ -567,27 +885,49 @@ function open_edit_party_dialog(row, contact, on_saved) {
 			// could never be fixed and a duplicate got made instead.
 			{ fieldtype: "Data", fieldname: "party_name", label: __("Party Name"), reqd: 1, default: row.party_name || "" },
 			{ fieldtype: "Data", fieldname: "phone", label: __("Phone Number"), default: contact.phone || "" },
+			{ fieldtype: "Column Break" },
 			{ fieldtype: "Data", fieldname: "email", label: __("Email"), default: contact.email || "" },
 			{ fieldtype: "Data", fieldname: "gstin", label: __("GSTIN"), default: contact.gstin || "" },
+			{ fieldtype: "Section Break" },
+			{
+				fieldtype: "Currency",
+				fieldname: "credit_limit",
+				label: __("Udhaar Limit (Credit Limit)"),
+				// Only the Add Party dialog ever offered this, so an existing
+				// party's limit could never be set or changed and the feature
+				// read as dead. Blank = no limit, which is how every party in
+				// this shop already behaves.
+				description: __("Isse zyada ka udhaar nahi ho payega. Khaali chhodo = koi limit nahi."),
+				default: contact.credit_limit || 0,
+			},
+			{ fieldtype: "Section Break" },
 			{
 				fieldtype: "Small Text",
 				fieldname: "address",
-				label: __("Billing Address"),
+				label: __("Address"),
+				// contact.address IS address_line1 — the one and only
+				// address field, shown and edited from the exact same
+				// source (2026-08-28 direct report: a separately-computed
+				// display value here caused Edit and the detail panel to
+				// permanently disagree).
 				default: contact.address || "",
 			},
 		],
 		primary_action_label: __("Save"),
 		primary_action: (v) => {
+			const phone = (v.phone || "").trim();
+			const address = (v.address || "").trim();
 			frappe.dom.freeze(__("Saving…"));
 			frappe
 				.xcall("santu_hardware.santu_hardware.api.update_party_details", {
 					party_type: row.party_type,
 					party: row.party,
 					party_name: v.party_name,
-					phone: v.phone || "",
+					phone,
 					email: v.email || "",
 					gstin: v.gstin || "",
-					address: v.address || "",
+					address,
+					credit_limit: v.credit_limit || 0,
 				})
 				.then((r) => {
 					frappe.dom.unfreeze();

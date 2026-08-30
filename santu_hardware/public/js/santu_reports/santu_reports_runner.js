@@ -93,6 +93,11 @@ santu_reports.runner = {
 				"/assets/santu_hardware/js/santu_purchase/santu_purchase_transactions.js",
 				"/assets/santu_hardware/js/santu_purchase/santu_purchase_page.js",
 			],
+			utilities: [
+				"/assets/santu_hardware/js/santu_utilities/santu_utilities_utils.js",
+				"/assets/santu_hardware/js/santu_utilities/santu_utilities_api.js",
+				"/assets/santu_hardware/js/santu_utilities/santu_utilities_views.js",
+			],
 		};
 		const assets = EMBED_ASSETS[report.embed];
 		if (!assets) {
@@ -109,6 +114,10 @@ santu_reports.runner = {
 				santu_purchase.create_page().init($embed, { view: report.view || "bills", enable_view_switch: false });
 			} else if (report.embed === "stock") {
 				santu_stock.create_page().init($embed, { only_low: !!report.only_low });
+			} else if (report.embed === "utilities") {
+				if (santu_utilities && santu_utilities.views && santu_utilities.views.render_export_tally) {
+					santu_utilities.views.render_export_tally($embed);
+				}
 			}
 		} catch (e) {
 			$embed.html(`<div class="santu-reports-error">Could not load report: ${frappe.utils.escape_html(e.message || String(e))}</div>`);
@@ -128,6 +137,13 @@ santu_reports.runner = {
 				if (report.is_tree) {
 					opts.is_tree = true;
 					opts.parent_field = report.parent_field || "account";
+				}
+				if (this._filters.from_date && this._filters.to_date && !this._filters.date_range) {
+					this._filters.date_range = [this._filters.from_date, this._filters.to_date];
+				}
+				if (this._filters.date_range && Array.isArray(this._filters.date_range)) {
+					this._filters.from_date = this._filters.date_range[0];
+					this._filters.to_date = this._filters.date_range[1];
 				}
 				data = await santu_reports.api.run_erpnext(report.report_name, this._filters, opts);
 			} else {

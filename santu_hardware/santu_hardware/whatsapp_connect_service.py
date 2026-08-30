@@ -31,14 +31,49 @@ def ensure_contact(phone: str, display_name: str = None, party_type: str = None,
 	phone = normalize_indian_phone(phone)
 	if not phone:
 		return None
+
+	# If party is specified, infer display_name if not provided or currently equals phone
+	if party_type and party_name and (not display_name or display_name == phone or display_name.isdigit()):
+		if party_type == "Customer":
+			display_name = frappe.db.get_value("Customer", party_name, "customer_name") or party_name
+		elif party_type == "Supplier":
+			display_name = frappe.db.get_value("Supplier", party_name, "supplier_name") or party_name
+
+	# Try to find party by phone if party not given
+	if not party_type or not party_name:
+		last10 = phone[-10:] if len(phone) >= 10 else phone
+		cust = frappe.db.sql(
+			"SELECT name, customer_name FROM `tabCustomer` WHERE disabled=0 AND (mobile_no LIKE %s OR custom_whatsapp_number LIKE %s) LIMIT 1",
+			(f"%{last10}", f"%{last10}"),
+			as_dict=True,
+		)
+		if cust:
+			party_type, party_name = "Customer", cust[0].name
+			if not display_name or display_name == phone or display_name.isdigit():
+				display_name = cust[0].customer_name or cust[0].name
+		else:
+			sup = frappe.db.sql(
+				"SELECT name, supplier_name FROM `tabSupplier` WHERE disabled=0 AND (mobile_no LIKE %s OR custom_whatsapp_number LIKE %s) LIMIT 1",
+				(f"%{last10}", f"%{last10}"),
+				as_dict=True,
+			)
+			if sup:
+				party_type, party_name = "Supplier", sup[0].name
+				if not display_name or display_name == phone or display_name.isdigit():
+					display_name = sup[0].supplier_name or sup[0].name
+
 	name = frappe.db.exists("Santu WhatsApp Contact", phone)
 	if name:
 		doc = frappe.get_doc("Santu WhatsApp Contact", phone)
-		if display_name and not doc.display_name:
+		changed = False
+		if display_name and (not doc.display_name or doc.display_name == phone or doc.display_name.isdigit()):
 			doc.display_name = display_name
+			changed = True
 		if party_type and party_name and not doc.party_name:
 			doc.party_type = party_type
 			doc.party_name = party_name
+			changed = True
+		if changed:
 			doc.save(ignore_permissions=True)
 		return doc
 
@@ -77,10 +112,6 @@ def log_chat_message(**kwargs):
 
 def sync_contacts_from_parties():
 	"""Index customers/suppliers with phone numbers into WhatsApp contact layer."""
-	connect = frappe.get_single("Santu WhatsApp Connect Settings")
-	if not connect.sync_personal_contacts:
-		return {"synced": 0}
-
 	count = 0
 	for cust in frappe.get_all("Customer", filters={"disabled": 0}, fields=["name", "customer_name", "mobile_no", "custom_whatsapp_number"]):
 		phone = normalize_indian_phone(cust.custom_whatsapp_number or cust.mobile_no)
@@ -98,45 +129,104 @@ def sync_contacts_from_parties():
 	return {"synced": count}
 
 
+def add_new_contact(display_name: str, phone: str, party_type: str = None, create_party: bool = True) -> dict:
+	"""Add a new contact to WhatsApp Connect and optionally create ERPNext Customer/Supplier."""
+	if not display_name or not display_name.strip():
+		frappe.throw("Contact Name is required.")
+	if not phone or not phone.strip():
+		frappe.throw("Phone Number is required.")
+
+	phone_clean = normalize_indian_phone(phone)
+	if not phone_clean:
+		frappe.throw("Please enter a valid 10-digit mobile number.")
+
+	party_type = (party_type or "").strip()
+	party_name = None
+
+	if party_type in ("Customer", "Supplier"):
+		field = "mobile_no"
+		existing = frappe.db.get_value(party_type, {field: phone_clean[-10:]}, "name")
+		if not existing:
+			existing = frappe.db.get_value(party_type, {"name": display_name.strip()}, "name")
+
+		if existing:
+			party_name = existing
+		elif create_party:
+			doc = frappe.new_doc(party_type)
+			if party_type == "Customer":
+				doc.customer_name = display_name.strip()
+				doc.customer_type = "Individual"
+				doc.customer_group = "Individual"
+				doc.territory = "India"
+				doc.mobile_no = phone_clean[-10:]
+			elif party_type == "Supplier":
+				doc.supplier_name = display_name.strip()
+				doc.supplier_type = "Individual"
+				doc.supplier_group = "Local"
+				doc.mobile_no = phone_clean[-10:]
+			doc.insert(ignore_permissions=True)
+			party_name = doc.name
+
+	contact = ensure_contact(phone_clean, display_name=display_name.strip(), party_type=party_type if party_name else None, party_name=party_name)
+	frappe.db.commit()
+
+	outstanding = get_party_outstanding(contact.party_type, contact.party_name) if contact.party_type and contact.party_name else 0
+
+	return {
+		"name": contact.name,
+		"phone_number": contact.phone_number,
+		"display_name": contact.display_name,
+		"party_type": contact.party_type,
+		"party_name": contact.party_name,
+		"unread_count": 0,
+		"last_message_preview": contact.last_message_preview or "",
+		"last_message_at": contact.last_message_at,
+		"outstanding": outstanding,
+	}
+
+
 def get_chat_list(search: str = None, page: int = 1, page_size: int = 50) -> dict:
+	# Ensure all party contacts with phone numbers are available
+	sync_contacts_from_parties()
+
 	page, page_size = int(page or 1), min(int(page_size or 50), 100)
 	filters = {}
 	if search:
 		filters["display_name"] = ["like", f"%{search}%"]
 
-	# Also search parties if no direct contact match
 	contacts = frappe.get_all(
 		"Santu WhatsApp Contact",
 		filters=filters,
 		fields=["name", "phone_number", "display_name", "party_type", "party_name", "last_message_preview", "last_message_at", "unread_count"],
-		order_by="last_message_at desc",
+		order_by="last_message_at desc, modified desc",
 		limit_start=(page - 1) * page_size,
 		limit_page_length=page_size,
 	)
 
+	# If search by display_name returned fewer than page_size, also search by phone number or party name
 	if search and len(contacts) < page_size:
-		# Search ERPNext parties
-		from santu_hardware.santu_hardware.api import get_parties_list
-
-		parties = get_parties_list(search=search)
-		existing_phones = {c.phone_number for c in contacts}
-		for p in parties[:20]:
-			phone = get_party_phone(p["party_type"], p["party"], "mobile")
-			if phone and phone not in existing_phones:
-				contacts.append({
-					"name": phone,
-					"phone_number": phone,
-					"display_name": p.get("party_name") or p["party"],
-					"party_type": p["party_type"],
-					"party_name": p["party"],
-					"last_message_preview": "",
-					"last_message_at": None,
-					"unread_count": 0,
-					"outstanding": p.get("outstanding_amount", 0),
-					"is_new": True,
-				})
+		phone_search = normalize_indian_phone(search) or search
+		by_phone = frappe.get_all(
+			"Santu WhatsApp Contact",
+			filters={"phone_number": ["like", f"%{phone_search}%"]},
+			fields=["name", "phone_number", "display_name", "party_type", "party_name", "last_message_preview", "last_message_at", "unread_count"],
+			limit_page_length=page_size,
+		)
+		existing_names = {c["name"] for c in contacts}
+		for c in by_phone:
+			if c["name"] not in existing_names:
+				contacts.append(c)
+				existing_names.add(c["name"])
 
 	for c in contacts:
+		# Fix display name if it's currently phone digits
+		if (not c.get("display_name") or c.get("display_name") == c.get("phone_number") or c.get("display_name", "").isdigit()) and c.get("party_type") and c.get("party_name"):
+			field = "customer_name" if c["party_type"] == "Customer" else "supplier_name"
+			pname = frappe.db.get_value(c["party_type"], c["party_name"], field) or c["party_name"]
+			if pname:
+				c["display_name"] = pname
+				frappe.db.set_value("Santu WhatsApp Contact", c["name"], "display_name", pname)
+
 		if c.get("party_type") and c.get("party_name"):
 			c["outstanding"] = get_party_outstanding(c["party_type"], c["party_name"])
 
@@ -158,11 +248,16 @@ def get_chat_messages(phone: str, page: int = 1, page_size: int = 50) -> dict:
 	messages = frappe.get_all(
 		"Santu WhatsApp Chat Message",
 		filters={"phone_number": phone},
-		fields=["name", "direction", "message_body", "message_type", "status", "timestamp", "attachment", "reference_doctype", "reference_name", "error_message"],
-		order_by="timestamp asc",
+		fields=["name", "direction", "message_body", "message_type", "status", "timestamp", "attachment", "reference_doctype", "reference_name", "error_message", "creation"],
+		order_by="timestamp asc, creation asc",
 		limit_start=max(0, total - page * page_size),
 		limit_page_length=page_size,
 	)
+	for m in messages:
+		if not m.get("timestamp"):
+			m["timestamp"] = str(m.get("creation") or "")
+		else:
+			m["timestamp"] = str(m["timestamp"])
 	return {"messages": messages, "total": total, "phone": phone}
 
 
@@ -359,21 +454,31 @@ def generate_party_statement_pdf(party_type: str, party_name: str) -> tuple[byte
 	</body>
 	</html>
 	"""
-	pdf = frappe.utils.pdf.get_pdf(html)
+	from frappe.utils.pdf import get_pdf
+	pdf = get_pdf(html)
 	return pdf, f"statement-{frappe.scrub(party_name)}.pdf"
 
 
 def get_payment_reminder_message(party_type: str, party_name: str) -> str:
 	outstanding = get_party_outstanding(party_type, party_name)
-	party_label = party_name
-	return f"""Dear {party_label},
+	company = frappe.db.get_single_value("Global Defaults", "default_company") or "Santu Hardware"
+	display_name = party_name
+	if party_type == "Customer":
+		display_name = frappe.db.get_value("Customer", party_name, "customer_name") or party_name
+	elif party_type == "Supplier":
+		display_name = frappe.db.get_value("Supplier", party_name, "supplier_name") or party_name
 
-This is a reminder regarding your outstanding amount of ₹{outstanding:,.2f} with Santu Hardware.
+	return f"""नमस्ते {display_name} जी,
 
-Please clear the outstanding amount at your earliest convenience.
+यह {company} की तरफ से आपके बकाया खाते (Pending Balance) की जानकारी है।
 
-Thank you,
-Santu Hardware"""
+📌 *कुल बकाया राशि (Total Due):* ₹{outstanding:,.2f}
+
+कृपया सुविधानुसार जल्द से जल्द भुगतान करने की कृपा करें।
+ऑनलाइन (UPI / QR Code) या दुकान काउंटर पर भुगतान कर सकते हैं।
+
+धन्यवाद,
+*{company}*"""
 
 
 def send_transaction_from_connect(doctype: str, name: str, custom_message: str = None) -> dict:

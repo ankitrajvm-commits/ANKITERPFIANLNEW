@@ -1087,6 +1087,13 @@ body[data-route="santu-sale-invoice"] .page-content {
 	border-color: #f59e0b;
 	color: #b45309;
 }
+.santu-si2-btn-edit {
+	border-color: #f59e0b;
+	color: #b45309;
+}
+.santu-si2-btn-edit:hover {
+	background: #fffbeb;
+}
 .santu-si2-btn-primary {
 	background: #2563eb;
 	border-color: #2563eb;
@@ -1108,12 +1115,12 @@ body[data-route="santu-sale-invoice"] .page-content {
 	position: absolute;
 	bottom: calc(100% + 4px);
 	left: 0;
-	background: #fff;
-	border: 1px solid #d1d5db;
-	box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.12);
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	box-shadow: 0 -10px 15px -3px rgba(0, 0, 0, 0.1);
 	min-width: 200px;
 	z-index: 30;
-	border-radius: 10px;
+	border-radius: 12px;
 	overflow: hidden;
 }
 .santu-si2-more-menu button {
@@ -1127,7 +1134,7 @@ body[data-route="santu-sale-invoice"] .page-content {
 	cursor: pointer;
 }
 .santu-si2-more-menu button:hover {
-	background: #f3f4f6;
+	background: #f8fafc;
 }
 
 /* ---------- Calculator ---------- */
@@ -1219,7 +1226,7 @@ body[data-route="santu-sale-invoice"] .page-content {
 	border-bottom-color: var(--santu-brand-secondary, #2f6fed);
 }
 .santu-party-tab-new {
-	background: #e0393e;
+	background: var(--santu-brand, #3b82f6);
 	color: #fff;
 	font-size: 11px;
 	font-weight: 700;
@@ -1471,6 +1478,24 @@ body[data-route="santu-sale-invoice"] .page-content {
 }
 
 .santu-pay-dd-empty { color: #9ca3af; font-size: 13px; cursor: default; }
+
+/* Payment In / Payment Out toggle — Billing-shell rebuild (2026-08-28
+   direct request: "payment in ka ui billing pos ki tarah kr"). Sits in the
+   tab bar's toolbar slot the way Billing's cost-price/calculator/return
+   icons do, so it reads as a Billing-family control, not a bolt-on. */
+.santu-pay-dirtoggle { display: flex; gap: 4px; background: #232746; border-radius: 8px; padding: 3px; }
+.santu-pay-dir-btn {
+	border: none;
+	background: transparent;
+	color: #b7bbd6;
+	font-size: 13px;
+	font-weight: 600;
+	padding: 6px 14px;
+	border-radius: 6px;
+	cursor: pointer;
+}
+.santu-pay-dir-btn.is-active { background: #fff; color: #1f2340; }
+.santu-pay-dir-btn:not(.is-active):hover { color: #fff; }
 
 /* ==========================================================================
    Expense screen (santu-expense) — layered on the santu-si2-* language;

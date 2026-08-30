@@ -28,17 +28,17 @@ frappe.pages["santu-utilities"].on_page_load = function (wrapper) {
 
 			const reload = () => {
 				const v = santu_utilities.utils.get_view();
+				const m = santu_utilities.VIEWS[v] || santu_utilities.VIEWS.import_items;
+				$root.find(".santu-utilities-title").text(m.title);
 				santu_utilities.views.render($root.find(".santu-utilities-content"), v, { reload });
 			};
+			window.santu_utilities_reload = reload;
 
 			reload();
 
 			$(document)
 				.off("santu-utilities-view-change.santu-utilities")
 				.on("santu-utilities-view-change.santu-utilities", () => {
-					const v = santu_utilities.utils.get_view();
-					const m = santu_utilities.VIEWS[v] || santu_utilities.VIEWS.import_items;
-					$root.find(".santu-utilities-title").text(m.title);
 					reload();
 				});
 		}
@@ -47,4 +47,7 @@ frappe.pages["santu-utilities"].on_page_load = function (wrapper) {
 
 frappe.pages["santu-utilities"].on_page_show = function (wrapper) {
 	$(wrapper).find(".page-head").hide();
+	if (window.santu_utilities_reload) {
+		window.santu_utilities_reload();
+	}
 };

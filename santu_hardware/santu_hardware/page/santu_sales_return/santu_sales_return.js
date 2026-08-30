@@ -80,13 +80,15 @@ window.santu_sales_return_page = {
 			return_against: null,
 			return_invoices: [],
 			reason: "",
-			// "credit" (default) leaves the refund as account credit — same
-			// as before this field existed. "refund" means cash/UPI/etc was
-			// actually handed back at the counter, which needs a real
-			// Payment Entry or the customer's balance keeps showing money
-			// still owed that was already paid (2026-08-19 bug report: did
-			// a real refund, Parties still showed the old owed amount).
-			settlement: "credit",
+			// No default — the cashier must actively pick one. A silent
+			// "credit" default meant a real on-the-spot cash refund could go
+			// out the door with nothing telling the system it happened, so
+			// Parties kept showing money owed that was already paid
+			// (2026-08-26 bug report: real refund handed over, bill printed,
+			// but Previous Balance still showed the old amount because the
+			// return was saved on the unnoticed "credit" default). Forcing
+			// an explicit choice here is cheaper than a wrong balance later.
+			settlement: null,
 			refund_mode: "Cash",
 			items: [],
 			selected_row: null,
@@ -143,21 +145,23 @@ window.santu_sales_return_page = {
 						</div>
 
 						<div class="santu-bill-gridwrap">
-							<table class="santu-bill-grid">
-								<thead>
-									<tr>
-										<th class="c-idx">#</th>
-										<th class="c-code">ITEM CODE</th>
-										<th class="c-name">ITEM NAME</th>
-										<th class="c-qty">QTY</th>
-										<th class="c-unit">UNIT</th>
-										<th class="c-rate">PRICE/UNIT(₹)</th>
-										<th class="c-disc">DISCOUNT (₹)</th>
-										<th class="c-total">TOTAL(₹)</th>
-									</tr>
-								</thead>
-								<tbody></tbody>
-							</table>
+							<div class="santu-bill-gridscroll">
+								<table class="santu-bill-grid">
+									<thead>
+										<tr>
+											<th class="c-idx">#</th>
+											<th class="c-code">ITEM CODE</th>
+											<th class="c-name">ITEM NAME</th>
+											<th class="c-qty">QTY</th>
+											<th class="c-unit">UNIT</th>
+											<th class="c-rate">PRICE/UNIT(₹)</th>
+											<th class="c-disc">DISCOUNT (₹)</th>
+											<th class="c-total">TOTAL(₹)</th>
+										</tr>
+									</thead>
+									<tbody></tbody>
+								</table>
+							</div>
 							<div class="santu-bill-gridfoot"><span class="santu-bill-grandrow">₹ 0.00</span></div>
 						</div>
 					</div>
@@ -186,7 +190,8 @@ window.santu_sales_return_page = {
 						<div class="santu-bill-field">
 							<label>Paisa Kaise Settle Hoga?</label>
 							<select class="santu-bill-settlement">
-								<option value="credit" ${b.settlement !== "refund" ? "selected" : ""}>Khata me credit rahega</option>
+								<option value="" ${!b.settlement ? "selected" : ""} disabled>-- Chuno --</option>
+								<option value="credit" ${b.settlement === "credit" ? "selected" : ""}>Khata me credit rahega</option>
 								<option value="refund" ${b.settlement === "refund" ? "selected" : ""}>Abhi cash/UPI refund diya</option>
 							</select>
 						</div>
@@ -336,8 +341,9 @@ window.santu_sales_return_page = {
 		if (privacy_on) this._fetch_costs(b);
 		const $tb = this.$root.find(".santu-bill-grid tbody").empty();
 		b.items.forEach((r, i) => {
+			const is_cpvc = santu_is_cpvc_item(r.item_code, r.item_name);
 			const $tr = $(`
-				<tr class="${r.id === b.selected_row ? "is-selected" : ""}" data-row="${r.id}">
+				<tr class="${r.id === b.selected_row ? "is-selected" : ""} ${is_cpvc ? "santu-cpvc-row" : ""}" data-row="${r.id}">
 					<td class="c-idx">${i + 1}</td>
 					<td class="c-code">${frappe.utils.escape_html(r.item_code || "-")}</td>
 					<td class="c-name santu-bill-editable" title="${__("Badalne ke liye dabaiye")}">${frappe.utils.escape_html(r.item_name)}${
@@ -403,6 +409,9 @@ window.santu_sales_return_page = {
 			$tb.append($tr);
 		});
 		this._render_totals();
+		// Newly added rows land at the bottom; bring the selected one back into
+		// view so the operator sees it go in without scrolling.
+		santu_sale_invoice.utils.scroll_row_into_view(this.$root);
 	},
 
 	// Rows prefilled from a return-against bill carry max_qty — you can't
@@ -462,6 +471,7 @@ window.santu_sales_return_page = {
 			frappe
 				.xcall("santu_hardware.santu_hardware.api.get_item_cost_price", {
 					item_code: r.item_code,
+					item_name: r.item_name,
 					warehouse: this.init_data.warehouse,
 				})
 				.then((c) => {
@@ -492,9 +502,9 @@ window.santu_sales_return_page = {
 		santu_sale_invoice.api.search_items(q).then((res) => {
 			const rows = res.results || res || [];
 			$dd.empty();
-			rows.slice(0, 8).forEach((it) => {
+			rows.forEach((it) => {
 				$(`
-					<div class="santu-bill-dd-row">
+					<div class="santu-bill-dd-row ${santu_cpvc_dd_class(it.item_code, it.item_name)}">
 						<div><b>${frappe.utils.escape_html(it.item_name)}</b><span>${frappe.utils.escape_html(it.item_code)}</span></div>
 						<div class="santu-bill-dd-right">₹ ${format_number(it.price || 0, null, 2)}</div>
 					</div>
@@ -586,18 +596,14 @@ window.santu_sales_return_page = {
 		} else if (act === "unit") {
 			const r = this._selected();
 			if (!r) return;
-			const d = new frappe.ui.Dialog({
-				title: __("Change Unit"),
-				fields: [{ fieldtype: "Select", fieldname: "uom", label: __("Unit"), options: (r.uom_options || [r.uom]).join("\n"), default: r.uom }],
-				primary_action_label: __("OK"),
-				primary_action: (v) => {
-					r.uom = v.uom;
-					d.hide();
-					this._persist_soon();
-					this._render_rows();
-				},
+			// Shared dialog (santu_uom): it offers the item's full unit list
+			// and rescales qty/rate together, which this screen's own copy
+			// did not -- switching Kg to Gram here used to leave "2" and
+			// "1600" untouched, quietly turning a 2 Kg line into 2 grams.
+			santu_uom.dialog(r, () => {
+				this._persist_soon();
+				this._render_rows();
 			});
-			d.show();
 		} else if (act === "charges") {
 			this._prompt(__("Additional Charges"), __("Amount (₹)"), "Currency", b.additional_charges, (v) => (b.additional_charges = Math.max(Number(v) || 0, 0)));
 		} else if (act === "bdisc") {
@@ -731,7 +737,6 @@ window.santu_sales_return_page = {
 	_add_customer(prefill) {
 		const self = this;
 		$("#santu-bill-addcust-modal").remove();
-		const districts = (typeof santu_sale_invoice !== "undefined" && santu_sale_invoice.BIHAR_DISTRICTS) || [];
 		const $m = $(`
 			<div id="santu-bill-addcust-modal" class="santu-bill-modal-backdrop">
 				<div class="santu-bill-modal">
@@ -750,27 +755,9 @@ window.santu_sales_return_page = {
 								<input type="text" class="ac-phone" placeholder="Phone Number">
 							</div>
 						</div>
-						<div class="santu-bill-modal-field santu-bill-modal-village-wrap">
-							<label>City / Village</label>
-							<input type="text" class="ac-village" autocomplete="off" placeholder="Type to search">
-							<div class="santu-bill-modal-village-dd" style="display:none;"></div>
-						</div>
-						<div class="santu-bill-modal-grid">
-							<div class="santu-bill-modal-field">
-								<label>District</label>
-								<select class="ac-district">
-									<option value="">Auto (from pincode)</option>
-									${districts.map((dd) => `<option value="${frappe.utils.escape_html(dd)}">${frappe.utils.escape_html(dd)}</option>`).join("")}
-								</select>
-							</div>
-							<div class="santu-bill-modal-field">
-								<label>Pincode</label>
-								<input type="text" class="ac-pincode" placeholder="Pincode">
-							</div>
-						</div>
 						<div class="santu-bill-modal-field">
-							<label>Address Line</label>
-							<textarea class="ac-address" rows="3" placeholder="House no, street, landmark"></textarea>
+							<label>Address</label>
+							<textarea class="ac-address" rows="3" placeholder="Kuch bhi likh sakte hain"></textarea>
 						</div>
 					</div>
 					<div class="santu-bill-modal-foot">
@@ -784,7 +771,6 @@ window.santu_sales_return_page = {
 		const close = () => {
 			$m.remove();
 			$(document).off("keydown.santu-sr-ac");
-			$(document).off("click.santu-sr-ac-village");
 		};
 		$m.find(".santu-bill-modal-x, .santu-bill-modal-cancel").on("click", close);
 		$m.on("click", (e) => {
@@ -794,81 +780,22 @@ window.santu_sales_return_page = {
 			if (e.key === "Escape") close();
 		});
 
-		const $village = $m.find(".ac-village");
-		const $villageDD = $m.find(".santu-bill-modal-village-dd");
-		const $district = $m.find(".ac-district");
-		const $pincode = $m.find(".ac-pincode");
-		let village_seq = 0;
-		const search_village = (q) => {
-			if (!santu_sale_invoice || !santu_sale_invoice.api || !santu_sale_invoice.api.search_bihar_villages) return;
-			if ((q || "").length < 2) {
-				$villageDD.hide().empty();
-				return;
-			}
-			const ticket = ++village_seq;
-			santu_sale_invoice.api.search_bihar_villages($district.val(), q).then((rows) => {
-				if (ticket !== village_seq) return;
-				$villageDD.empty();
-				if (!rows.length) {
-					$villageDD.append(`<div class="santu-bill-modal-village-empty">${__("No matches")}</div>`);
-				}
-				rows.forEach((r) => {
-					$(`<div class="santu-bill-modal-village-row">${frappe.utils.escape_html(r.village)} <span>${r.pincode}</span></div>`)
-						.on("click", () => {
-							$village.val(r.village);
-							if (!$pincode.val()) $pincode.val(r.pincode);
-							if (r.district) $district.val(r.district);
-							$villageDD.hide();
-						})
-						.appendTo($villageDD);
-				});
-				$villageDD.show();
-			});
-		};
-		let village_timer = null;
-		$village.on("input focus", (e) => {
-			clearTimeout(village_timer);
-			village_timer = setTimeout(() => search_village((e.target.value || "").trim()), 200);
-		});
-		$district.on("change", () => $village.val(""));
-		$pincode.on(
-			"input",
-			santu_sale_invoice.utils.debounce((e) => {
-				const digits = (e.target.value || "").replace(/\D/g, "");
-				if (digits.length !== 6 || $district.val()) return;
-				santu_sale_invoice.api.district_for_pincode(digits).then((d) => {
-					if (d && !$district.val() && $pincode.val().replace(/\D/g, "") === digits) $district.val(d);
-				});
-			})
-		);
-		$(document).on("click.santu-sr-ac-village", (e) => {
-			if (!$(e.target).closest(".santu-bill-modal-village-wrap").length) $villageDD.hide();
-		});
-
 		$m.find(".santu-bill-modal-save").on("click", () => {
 			const name = ($m.find(".ac-name").val() || "").trim();
 			const phone = ($m.find(".ac-phone").val() || "").trim();
-			const district = $district.val();
-			const village = ($village.val() || "").trim();
-			const pincode = ($pincode.val() || "").trim();
 			const address = ($m.find(".ac-address").val() || "").trim();
 			if (!name) {
 				frappe.show_alert({ message: __("Enter a customer name."), indicator: "orange" });
 				return;
 			}
-			if (!phone && !address && !village && !pincode) {
-				frappe.show_alert({ message: __("Add a phone number or an address — one of the two."), indicator: "orange" });
+			if (Boolean(phone) !== Boolean(address)) {
+				frappe.show_alert({
+					message: __("Phone number aur address dono do, ya dono chhod do — sirf ek nahi."),
+					indicator: "orange",
+				});
 				return;
 			}
-			const payload = { customer_name: name, phone };
-			if (district) payload.district = district;
-			if (village) payload.city = village;
-			if (pincode) payload.pincode = pincode;
-			if (address) payload.address_line1 = address;
-			if (address || village || pincode || district) {
-				payload.state = "Bihar";
-				payload.country = "India";
-			}
+			const payload = { customer_name: name, phone, address };
 			frappe.dom.freeze(__("Saving…"));
 			santu_sale_invoice.api
 				.create_customer_full(payload)
@@ -895,6 +822,10 @@ window.santu_sales_return_page = {
 			frappe.msgprint(__("Please select or add a customer."));
 			return;
 		}
+		if (!b.settlement) {
+			frappe.msgprint(__("Paisa Kaise Settle Hoga — Khata credit ya Refund, ek chuno."));
+			return;
+		}
 
 		frappe.dom.freeze(__("Saving…"));
 		santu_sales_return.api
@@ -910,6 +841,7 @@ window.santu_sales_return_page = {
 					additional_discount_amount: b.bill_discount || 0,
 					items: b.items.map((r) => ({
 						item_code: r.item_code,
+						item_name: r.item_name,
 						qty: r.qty,
 						rate: r.rate,
 						uom: r.uom,

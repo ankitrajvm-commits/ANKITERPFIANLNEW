@@ -22,7 +22,17 @@ frappe.pages["santu-estimate"].on_page_load = function (wrapper) {
 };
 
 frappe.pages["santu-estimate"].on_page_show = function () {
-	if (window.santu_estimate_page && santu_estimate_page.page) santu_estimate_page.render();
+	if (!window.santu_estimate_page || !santu_estimate_page.page) return;
+	// Coming back from the view screen's Edit button on an already-open tab:
+	// on_page_load will not run again, so the route option has to be picked
+	// up here too or clicking Edit a second time would do nothing.
+	const edit_name = frappe.route_options && frappe.route_options.edit_quotation;
+	if (edit_name && santu_estimate_page.init_data) {
+		frappe.route_options = {};
+		santu_estimate_page._apply_edit(edit_name);
+		return;
+	}
+	santu_estimate_page.render();
 };
 
 const SANTU_EST_KEY = "santu_estimate_tabs_v2";
@@ -43,6 +53,11 @@ window.santu_estimate_page = {
 			this._load();
 			if (!this.tabs.length) this._new_est(false);
 			this.render();
+			const edit_name = frappe.route_options && frappe.route_options.edit_quotation;
+			if (edit_name) {
+				frappe.route_options = {};
+				this._apply_edit(edit_name);
+			}
 		});
 	},
 
@@ -80,8 +95,57 @@ window.santu_estimate_page = {
 			additional_charges: 0,
 			remarks: "",
 			saved: null,
+			// Set only when this tab was opened to correct an existing
+			// estimate -- carries the document being replaced so save knows
+			// to amend it instead of creating a second one.
+			editing: null,
 		};
 	},
+	// Reopen a submitted estimate on this same screen, its own items already
+	// loaded, so a wrong rate or a missing item is fixed where the estimate
+	// was made rather than on a separate form (2026-08-29 direct request).
+	_apply_edit(name) {
+		frappe.dom.freeze(__("Estimate khol rahe hain…"));
+		frappe
+			.xcall("santu_hardware.santu_hardware.api.get_document_for_edit", { doctype: "Quotation", name })
+			.then((doc) => {
+				frappe.dom.unfreeze();
+				const b = this._new_est(true);
+				b.customer = doc.party;
+				b.customer_label = doc.party_label;
+				b.posting_date = doc.posting_date || b.posting_date;
+				b.bill_discount = doc.bill_discount || 0;
+				b.remarks = doc.remarks || "";
+				b.editing = { name: doc.name, santu_bill_no: doc.santu_bill_no, original_total: doc.grand_total };
+				this._persist_soon();
+				this.render();
+
+				// Rows arrive fully formed -- unit options and stock are resolved
+				// server-side by get_document_for_edit, so reopening an estimate
+				// is one request rather than one per line, and an item retired
+				// from the catalogue since the estimate was made simply loads
+				// instead of throwing a dialog for that row.
+				(doc.items || []).forEach((r) => {
+					b.items.push({
+						id: santu_sale_invoice.utils.uid(),
+						item_code: r.item_code,
+						item_name: r.item_name,
+						item_name: r.item_name || r.item_code,
+						qty: r.qty,
+						uom: r.uom,
+						uom_options: r.uom_options && r.uom_options.length ? r.uom_options : [{ uom: r.uom, conversion_factor: 1 }],
+						rate: r.rate,
+						discount: 0,
+						available_qty: r.available_qty,
+					});
+				});
+				b.selected_row = b.items.length ? b.items[b.items.length - 1].id : null;
+				this._persist_soon();
+				this.render();
+			})
+			.catch(() => frappe.dom.unfreeze());
+	},
+
 	_new_est(focus = true) {
 		const b = this._blank_est();
 		this.tabs.push(b);
@@ -130,21 +194,23 @@ window.santu_estimate_page = {
 						</div>
 
 						<div class="santu-bill-gridwrap">
-							<table class="santu-bill-grid">
-								<thead>
-									<tr>
-										<th class="c-idx">#</th>
-										<th class="c-code">ITEM CODE</th>
-										<th class="c-name">ITEM NAME</th>
-										<th class="c-qty">QTY</th>
-										<th class="c-unit">UNIT</th>
-										<th class="c-rate">PRICE/UNIT(₹)</th>
-										<th class="c-disc">DISCOUNT (₹)</th>
-										<th class="c-total">TOTAL(₹)</th>
-									</tr>
-								</thead>
-								<tbody></tbody>
-							</table>
+							<div class="santu-bill-gridscroll">
+								<table class="santu-bill-grid">
+									<thead>
+										<tr>
+											<th class="c-idx">#</th>
+											<th class="c-code">ITEM CODE</th>
+											<th class="c-name">ITEM NAME</th>
+											<th class="c-qty">QTY</th>
+											<th class="c-unit">UNIT</th>
+											<th class="c-rate">PRICE/UNIT(₹)</th>
+											<th class="c-disc">DISCOUNT (₹)</th>
+											<th class="c-total">TOTAL(₹)</th>
+										</tr>
+									</thead>
+									<tbody></tbody>
+								</table>
+							</div>
 							<div class="santu-bill-gridfoot"><span class="santu-bill-grandrow">₹ 0.00</span></div>
 						</div>
 					</div>
@@ -191,6 +257,7 @@ window.santu_estimate_page = {
 					</div>
 					<div class="santu-bill-savecol">
 						<button type="button" class="santu-bill-save">Save &amp; Share Estimate <span class="santu-bill-kbd">Ctrl+S</span></button>
+						<button type="button" class="santu-bill-print-est" title="${__("Estimate ka thermal parcha chhapo — WhatsApp nahi bhejega")}">Save &amp; Print Estimate <span class="santu-bill-kbd">Ctrl+P</span></button>
 					</div>
 				</div>
 			</div>
@@ -299,8 +366,9 @@ window.santu_estimate_page = {
 		if (privacy_on) this._fetch_costs(b);
 		const $tb = this.$root.find(".santu-bill-grid tbody").empty();
 		b.items.forEach((r, i) => {
+			const is_cpvc = santu_is_cpvc_item(r.item_code, r.item_name);
 			const $tr = $(`
-				<tr class="${r.id === b.selected_row ? "is-selected" : ""}" data-row="${r.id}">
+				<tr class="${r.id === b.selected_row ? "is-selected" : ""} ${is_cpvc ? "santu-cpvc-row" : ""}" data-row="${r.id}">
 					<td class="c-idx">${i + 1}</td>
 					<td class="c-code">${frappe.utils.escape_html(r.item_code || "-")}</td>
 					<td class="c-name santu-bill-editable" title="${__("Badalne ke liye dabaiye")}">${frappe.utils.escape_html(r.item_name)}</td>
@@ -364,6 +432,9 @@ window.santu_estimate_page = {
 			$tb.append($tr);
 		});
 		this._render_totals();
+		// Newly added rows land at the bottom; bring the selected one back into
+		// view so the operator sees it go in without scrolling.
+		santu_sale_invoice.utils.scroll_row_into_view(this.$root);
 	},
 
 	_inline_edit($cell, type, current, apply) {
@@ -411,6 +482,7 @@ window.santu_estimate_page = {
 			frappe
 				.xcall("santu_hardware.santu_hardware.api.get_item_cost_price", {
 					item_code: r.item_code,
+					item_name: r.item_name,
 					warehouse: this.init_data.warehouse,
 				})
 				.then((c) => {
@@ -441,9 +513,9 @@ window.santu_estimate_page = {
 		santu_sale_invoice.api.search_items(q).then((res) => {
 			const rows = res.results || res || [];
 			$dd.empty();
-			rows.slice(0, 8).forEach((it) => {
+			rows.forEach((it) => {
 				$(`
-					<div class="santu-bill-dd-row">
+					<div class="santu-bill-dd-row ${santu_cpvc_dd_class(it.item_code, it.item_name)}">
 						<div><b>${frappe.utils.escape_html(it.item_name)}</b><span>${frappe.utils.escape_html(it.item_code)}</span></div>
 						<div class="santu-bill-dd-right">₹ ${format_number(it.price || 0, null, 2)}${
 							it.available_qty != null ? `<span>${format_number(it.available_qty, null, 0)} left</span>` : ""
@@ -728,18 +800,14 @@ window.santu_estimate_page = {
 		} else if (act === "unit") {
 			const r = this._selected();
 			if (!r) return;
-			const d = new frappe.ui.Dialog({
-				title: __("Change Unit"),
-				fields: [{ fieldtype: "Select", fieldname: "uom", label: __("Unit"), options: (r.uom_options || [r.uom]).join("\n"), default: r.uom }],
-				primary_action_label: __("OK"),
-				primary_action: (v) => {
-					r.uom = v.uom;
-					d.hide();
-					this._persist_soon();
-					this._render_rows();
-				},
+			// Shared dialog (santu_uom): it offers the item's full unit list
+			// and rescales qty/rate together, which this screen's own copy
+			// did not -- switching Kg to Gram here used to leave "2" and
+			// "1600" untouched, quietly turning a 2 Kg line into 2 grams.
+			santu_uom.dialog(r, () => {
+				this._persist_soon();
+				this._render_rows();
 			});
-			d.show();
 		} else if (act === "charges") {
 			this._prompt(__("Additional Charges"), __("Amount (₹)"), "Currency", b.additional_charges, (v) => (b.additional_charges = Math.max(Number(v) || 0, 0)));
 		} else if (act === "bdisc") {
@@ -824,7 +892,6 @@ window.santu_estimate_page = {
 	_add_customer(prefill) {
 		const self = this;
 		$("#santu-bill-addcust-modal").remove();
-		const districts = (typeof santu_sale_invoice !== "undefined" && santu_sale_invoice.BIHAR_DISTRICTS) || [];
 		const $m = $(`
 			<div id="santu-bill-addcust-modal" class="santu-bill-modal-backdrop">
 				<div class="santu-bill-modal">
@@ -843,27 +910,9 @@ window.santu_estimate_page = {
 								<input type="text" class="ac-phone" placeholder="Phone Number">
 							</div>
 						</div>
-						<div class="santu-bill-modal-field santu-bill-modal-village-wrap">
-							<label>City / Village</label>
-							<input type="text" class="ac-village" autocomplete="off" placeholder="Type to search">
-							<div class="santu-bill-modal-village-dd" style="display:none;"></div>
-						</div>
-						<div class="santu-bill-modal-grid">
-							<div class="santu-bill-modal-field">
-								<label>District</label>
-								<select class="ac-district">
-									<option value="">Auto (from pincode)</option>
-									${districts.map((dd) => `<option value="${frappe.utils.escape_html(dd)}">${frappe.utils.escape_html(dd)}</option>`).join("")}
-								</select>
-							</div>
-							<div class="santu-bill-modal-field">
-								<label>Pincode</label>
-								<input type="text" class="ac-pincode" placeholder="Pincode">
-							</div>
-						</div>
 						<div class="santu-bill-modal-field">
-							<label>Address Line</label>
-							<textarea class="ac-address" rows="3" placeholder="House no, street, landmark"></textarea>
+							<label>Address</label>
+							<textarea class="ac-address" rows="3" placeholder="Kuch bhi likh sakte hain"></textarea>
 						</div>
 					</div>
 					<div class="santu-bill-modal-foot">
@@ -877,7 +926,6 @@ window.santu_estimate_page = {
 		const close = () => {
 			$m.remove();
 			$(document).off("keydown.santu-est-ac");
-			$(document).off("click.santu-est-ac-village");
 		};
 		$m.find(".santu-bill-modal-x, .santu-bill-modal-cancel").on("click", close);
 		$m.on("click", (e) => {
@@ -887,84 +935,22 @@ window.santu_estimate_page = {
 			if (e.key === "Escape") close();
 		});
 
-		const $village = $m.find(".ac-village");
-		const $villageDD = $m.find(".santu-bill-modal-village-dd");
-		const $district = $m.find(".ac-district");
-		const $pincode = $m.find(".ac-pincode");
-		let village_seq = 0;
-		const search_village = (q) => {
-			if (!santu_sale_invoice || !santu_sale_invoice.api || !santu_sale_invoice.api.search_bihar_villages) return;
-			if ((q || "").length < 2) {
-				$villageDD.hide().empty();
-				return;
-			}
-			const ticket = ++village_seq;
-			santu_sale_invoice.api.search_bihar_villages($district.val(), q).then((rows) => {
-				if (ticket !== village_seq) return;
-				$villageDD.empty();
-				if (!rows.length) {
-					$villageDD.append(`<div class="santu-bill-modal-village-empty">${__("No matches")}</div>`);
-				}
-				rows.forEach((r) => {
-					$(`<div class="santu-bill-modal-village-row">${frappe.utils.escape_html(r.village)} <span>${r.pincode}</span></div>`)
-						.on("click", () => {
-							$village.val(r.village);
-							if (!$pincode.val()) $pincode.val(r.pincode);
-							if (r.district) $district.val(r.district);
-							$villageDD.hide();
-						})
-						.appendTo($villageDD);
-				});
-				$villageDD.show();
-			});
-		};
-		let village_timer = null;
-		$village.on("input focus", (e) => {
-			clearTimeout(village_timer);
-			village_timer = setTimeout(() => search_village((e.target.value || "").trim()), 200);
-		});
-		$district.on("change", () => $village.val(""));
-		$pincode.on(
-			"input",
-			santu_sale_invoice.utils.debounce((e) => {
-				const digits = (e.target.value || "").replace(/\D/g, "");
-				if (digits.length !== 6 || $district.val()) return;
-				santu_sale_invoice.api.district_for_pincode(digits).then((d) => {
-					if (d && !$district.val() && $pincode.val().replace(/\D/g, "") === digits) $district.val(d);
-				});
-			})
-		);
-		$(document).on("click.santu-est-ac-village", (e) => {
-			if (!$(e.target).closest(".santu-bill-modal-village-wrap").length) $villageDD.hide();
-		});
-
 		$m.find(".santu-bill-modal-save").on("click", () => {
 			const name = ($m.find(".ac-name").val() || "").trim();
 			const phone = ($m.find(".ac-phone").val() || "").trim();
-			const district = $district.val();
-			const village = ($village.val() || "").trim();
-			const pincode = ($pincode.val() || "").trim();
 			const address = ($m.find(".ac-address").val() || "").trim();
 			if (!name) {
 				frappe.show_alert({ message: __("Enter a customer name."), indicator: "orange" });
 				return;
 			}
-			if (!phone && !address && !village && !pincode) {
+			if (Boolean(phone) !== Boolean(address)) {
 				frappe.show_alert({
-					message: __("Add a phone number or an address — one of the two."),
+					message: __("Phone number aur address dono do, ya dono chhod do — sirf ek nahi."),
 					indicator: "orange",
 				});
 				return;
 			}
-			const payload = { customer_name: name, phone };
-			if (district) payload.district = district;
-			if (village) payload.city = village;
-			if (pincode) payload.pincode = pincode;
-			if (address) payload.address_line1 = address;
-			if (address || village || pincode || district) {
-				payload.state = "Bihar";
-				payload.country = "India";
-			}
+			const payload = { customer_name: name, phone, address };
 			frappe.dom.freeze(__("Saving…"));
 			santu_sale_invoice.api
 				.create_customer_full(payload)
@@ -981,7 +967,12 @@ window.santu_estimate_page = {
 	},
 
 	// ---------- save ----------
-	_save() {
+	// `opts.print` — Estimate ka thermal parcha chhapo aur WhatsApp mat
+	// poocho (2026-08-27 direct request: "quotation ka thermal print OPTION
+	// de do"). Do alag button hain, ek hi save ka raasta — jaise Billing me
+	// hai. Grahak kabhi parcha maangta hai, kabhi WhatsApp; dono ek saath
+	// thopna counter pe ek fazool step ban jaata.
+	_save(opts = {}) {
 		const b = this._bill();
 		if (!b.items.length) {
 			frappe.msgprint(__("Add at least one item."));
@@ -993,9 +984,7 @@ window.santu_estimate_page = {
 		}
 
 		frappe.dom.freeze(__("Saving…"));
-		santu_estimate.api
-			.save(
-				{
+		const payload = {
 					customer: b.customer,
 					company: this.init_data.company,
 					posting_date: b.posting_date,
@@ -1004,18 +993,33 @@ window.santu_estimate_page = {
 					description: b.remarks || null,
 					items: b.items.map((r) => ({
 						item_code: r.item_code,
+						item_name: r.item_name,
 						qty: r.qty,
 						rate: r.rate,
 						uom: r.uom,
 						discount_amount: r.discount || 0,
 					})),
-				},
-				1
-			)
+		};
+		// Correcting an existing estimate goes through the amend path -- the
+		// original is cancelled and chained to the correction, keeping the
+		// estimate number the customer already has. A brand-new estimate takes
+		// the plain create path exactly as before.
+		const request = b.editing
+			? frappe.xcall("santu_hardware.santu_hardware.api.edit_submitted_document", {
+					doctype: "Quotation",
+					name: b.editing.name,
+					payload_json: JSON.stringify(payload),
+			  })
+			: santu_estimate.api.save(payload, 1);
+		request
 			.then((r) => {
 				frappe.dom.unfreeze();
 				frappe.show_alert({ message: __("Saved {0}", [r.name]), indicator: "green" });
-				if (window.santu_whatsapp_share) {
+				if (opts.print) {
+					if (typeof santu_print_thermal_bill === "function") {
+						santu_print_thermal_bill("Quotation", r.name);
+					}
+				} else if (window.santu_whatsapp_share) {
 					window.santu_whatsapp_share.send_transaction("Quotation", r.name);
 				}
 				this.tabs = this.tabs.filter((x) => x.id !== b.id);
@@ -1046,6 +1050,7 @@ window.santu_estimate_page = {
 		$r.find(".santu-bill-breakup").on("click", () => this._breakup());
 		$r.find(".santu-bill-fkeys button").on("click", (e) => this._action($(e.currentTarget).data("act")));
 		$r.find(".santu-bill-save").on("click", () => this._save());
+		$r.find(".santu-bill-print-est").on("click", () => this._save({ print: true }));
 
 		$(document).off("click.santu-est").on("click.santu-est", (e) => {
 			if (!$(e.target).closest(".santu-bill-searchwrap").length) $r.find(".santu-bill-dropdown").hide();
@@ -1078,6 +1083,9 @@ window.santu_estimate_page = {
 				} else if (ev.key === "s") {
 					ev.preventDefault();
 					this._save();
+				} else if (ev.key === "p") {
+					ev.preventDefault();
+					this._save({ print: true });
 				} else if (ev.key === "f") {
 					ev.preventDefault();
 					this._breakup();

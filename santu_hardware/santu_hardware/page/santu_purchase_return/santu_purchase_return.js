@@ -13,6 +13,12 @@
 frappe.pages["santu-purchase-return"].on_page_load = function (wrapper) {
 	frappe.require(
 		[
+			// _render_rows() calls santu_sale_invoice.utils.scroll_row_into_view,
+			// so that bundle has to be loaded here too. Without it the screen
+			// threw on its first render and showed an EMPTY item table whenever
+			// Purchase Return was opened directly rather than after a sale screen
+			// had happened to define the global (found 2026-08-30).
+			"/assets/santu_hardware/js/santu_sale_invoice/santu_sale_invoice_api.js",
 			"/assets/santu_hardware/js/santu_purchase_invoice/santu_purchase_invoice_api.js",
 			"/assets/santu_hardware/js/santu_purchase_return/santu_purchase_return_api.js",
 		],
@@ -81,11 +87,11 @@ window.santu_purchase_return_page = {
 			return_against: null,
 			return_invoices: [],
 			reason: "",
-			// "credit" (default) leaves the refund as account credit against
-			// the supplier. "refund" means the supplier actually paid cash
-			// back, which needs a real Payment Entry (2026-08-19, matching
-			// the same fix on Sales Return).
-			settlement: "credit",
+			// No default — the operator must actively pick one, matching
+			// the same 2026-08-26 fix on Sales Return: a silent "credit"
+			// default let a real cash-back-from-supplier go unrecorded,
+			// leaving a phantom balance nobody told the system about.
+			settlement: null,
 			refund_mode: "Cash",
 			items: [],
 			selected_row: null,
@@ -141,21 +147,23 @@ window.santu_purchase_return_page = {
 						</div>
 
 						<div class="santu-bill-gridwrap">
-							<table class="santu-bill-grid">
-								<thead>
-									<tr>
-										<th class="c-idx">#</th>
-										<th class="c-code">ITEM CODE</th>
-										<th class="c-name">ITEM NAME</th>
-										<th class="c-qty">QTY</th>
-										<th class="c-unit">UNIT</th>
-										<th class="c-rate">PRICE/UNIT(₹)</th>
-										<th class="c-disc">DISCOUNT (₹)</th>
-										<th class="c-total">TOTAL(₹)</th>
-									</tr>
-								</thead>
-								<tbody></tbody>
-							</table>
+							<div class="santu-bill-gridscroll">
+								<table class="santu-bill-grid">
+									<thead>
+										<tr>
+											<th class="c-idx">#</th>
+											<th class="c-code">ITEM CODE</th>
+											<th class="c-name">ITEM NAME</th>
+											<th class="c-qty">QTY</th>
+											<th class="c-unit">UNIT</th>
+											<th class="c-rate">PRICE/UNIT(₹)</th>
+											<th class="c-disc">DISCOUNT (₹)</th>
+											<th class="c-total">TOTAL(₹)</th>
+										</tr>
+									</thead>
+									<tbody></tbody>
+								</table>
+							</div>
 							<div class="santu-bill-gridfoot"><span class="santu-bill-grandrow">₹ 0.00</span></div>
 						</div>
 					</div>
@@ -184,7 +192,8 @@ window.santu_purchase_return_page = {
 						<div class="santu-bill-field">
 							<label>Paisa Kaise Settle Hoga?</label>
 							<select class="santu-bill-settlement">
-								<option value="credit" ${b.settlement !== "refund" ? "selected" : ""}>Khata me credit rahega</option>
+								<option value="" ${!b.settlement ? "selected" : ""} disabled>-- Chuno --</option>
+								<option value="credit" ${b.settlement === "credit" ? "selected" : ""}>Khata me credit rahega</option>
 								<option value="refund" ${b.settlement === "refund" ? "selected" : ""}>Supplier ne abhi cash/UPI refund diya</option>
 							</select>
 						</div>
@@ -318,8 +327,9 @@ window.santu_purchase_return_page = {
 		const privacy_on = typeof santu_is_privacy_mode_active === "function" && santu_is_privacy_mode_active();
 		const $tb = this.$root.find(".santu-bill-grid tbody").empty();
 		b.items.forEach((r, i) => {
+			const is_cpvc = santu_is_cpvc_item(r.item_code, r.item_name);
 			const $tr = $(`
-				<tr class="${r.id === b.selected_row ? "is-selected" : ""}" data-row="${r.id}">
+				<tr class="${r.id === b.selected_row ? "is-selected" : ""} ${is_cpvc ? "santu-cpvc-row" : ""}" data-row="${r.id}">
 					<td class="c-idx">${i + 1}</td>
 					<td class="c-code">${frappe.utils.escape_html(r.item_code || "-")}</td>
 					<td class="c-name santu-bill-editable" title="${__("Badalne ke liye dabaiye")}">${frappe.utils.escape_html(r.item_name)}${
@@ -381,6 +391,9 @@ window.santu_purchase_return_page = {
 			$tb.append($tr);
 		});
 		this._render_totals();
+		// Newly added rows land at the bottom; bring the selected one back into
+		// view so the operator sees it go in without scrolling.
+		santu_sale_invoice.utils.scroll_row_into_view(this.$root);
 	},
 
 	_clamp_qty(r, v) {
@@ -445,9 +458,9 @@ window.santu_purchase_return_page = {
 		santu_purchase_invoice.api.search_items(q).then((res) => {
 			const rows = res.results || res || [];
 			$dd.empty();
-			rows.slice(0, 8).forEach((it) => {
+			rows.forEach((it) => {
 				$(`
-					<div class="santu-bill-dd-row">
+					<div class="santu-bill-dd-row ${santu_cpvc_dd_class(it.item_code, it.item_name)}">
 						<div><b>${frappe.utils.escape_html(it.item_name)}</b><span>${frappe.utils.escape_html(it.item_code)}</span></div>
 						<div class="santu-bill-dd-right">₹ ${format_number(it.price || 0, null, 2)}</div>
 					</div>
@@ -539,18 +552,14 @@ window.santu_purchase_return_page = {
 		} else if (act === "unit") {
 			const r = this._selected();
 			if (!r) return;
-			const d = new frappe.ui.Dialog({
-				title: __("Change Unit"),
-				fields: [{ fieldtype: "Select", fieldname: "uom", label: __("Unit"), options: (r.uom_options || [r.uom]).join("\n"), default: r.uom }],
-				primary_action_label: __("OK"),
-				primary_action: (v) => {
-					r.uom = v.uom;
-					d.hide();
-					this._persist_soon();
-					this._render_rows();
-				},
+			// Shared dialog (santu_uom): it offers the item's full unit list
+			// and rescales qty/rate together, which this screen's own copy
+			// did not -- switching Kg to Gram here used to leave "2" and
+			// "1600" untouched, quietly turning a 2 Kg line into 2 grams.
+			santu_uom.dialog(r, () => {
+				this._persist_soon();
+				this._render_rows();
 			});
-			d.show();
 		} else if (act === "charges") {
 			this._prompt(__("Additional Charges"), __("Amount (₹)"), "Currency", b.additional_charges, (v) => (b.additional_charges = Math.max(Number(v) || 0, 0)));
 		} else if (act === "bdisc") {
@@ -747,6 +756,10 @@ window.santu_purchase_return_page = {
 			frappe.msgprint(__("Please select or add a supplier."));
 			return;
 		}
+		if (!b.settlement) {
+			frappe.msgprint(__("Paisa Kaise Settle Hoga — Khata credit ya Refund, ek chuno."));
+			return;
+		}
 
 		frappe.dom.freeze(__("Saving…"));
 		santu_purchase_return.api
@@ -762,6 +775,7 @@ window.santu_purchase_return_page = {
 					additional_discount_amount: b.bill_discount || 0,
 					items: b.items.map((r) => ({
 						item_code: r.item_code,
+						item_name: r.item_name,
 						qty: r.qty,
 						rate: r.rate,
 						uom: r.uom,

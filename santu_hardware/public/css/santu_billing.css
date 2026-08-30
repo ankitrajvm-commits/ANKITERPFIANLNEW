@@ -2,8 +2,8 @@
  * Counter billing — laid out from Vyapar's billing screen (2026-08-15
  * screenshots). Replaces ERPNext's POS.
  */
-.santu-bill-page-main { background: #f2f5f9; }
-.santu-bill-loading { padding: 40px; text-align: center; color: #71748e; }
+.santu-bill-page-main { background: #f1f5f9; }
+.santu-bill-loading { padding: 40px; text-align: center; color: #64748b; }
 
 .santu-bill {
 	display: flex;
@@ -16,49 +16,90 @@
 .santu-bill-tabbar {
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	padding: 8px 10px 0;
+	gap: 12px;
+	padding: 12px 16px 0;
 	flex-shrink: 0;
+	background: #f1f5f9;
 }
-.santu-bill-tabs { display: flex; gap: 2px; overflow-x: auto; }
+/* Correction mode banner */
+.santu-bill-edit-banner {
+	flex-shrink: 0;
+	margin: 8px 16px 0;
+	padding: 12px 16px;
+	background: #fffbeb;
+	border: 1px solid #fde68a;
+	border-radius: 8px;
+	color: #92400e;
+	font-size: 14px;
+	font-weight: 600;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+.santu-bill-tabs { display: flex; gap: 4px; overflow-x: auto; }
 .santu-bill-tab {
 	display: inline-flex;
 	align-items: center;
-	gap: 10px;
+	gap: 12px;
 	border: none;
 	background: transparent;
-	padding: 8px 14px;
+	padding: 10px 16px;
 	font-size: 14px;
-	color: #3f4155;
+	color: #64748b;
 	white-space: nowrap;
 	cursor: pointer;
 	border-bottom: 2px solid transparent;
+	border-radius: 8px 8px 0 0;
+	transition: all 0.2s;
 }
-.santu-bill-tab.is-active { background: #fff; border-radius: 6px 6px 0 0; font-weight: 500; }
-.santu-bill-tab-x { color: #9ca3af; font-size: 16px; }
-.santu-bill-tab-x:hover { color: #ed1a3b; }
+.santu-bill-tab:hover:not(.is-active) {
+	background: #e2e8f0;
+	color: #0f172a;
+}
+.santu-bill-tab.is-active { background: #ffffff; color: #0f172a; font-weight: 600; }
+.santu-bill-tab-x { color: #94a3b8; font-size: 16px; transition: color 0.15s; }
+.santu-bill-tab-x:hover { color: #e11d48; }
 .santu-bill-newtab {
-	border: 1px solid #d0d5dd;
-	background: #fff;
-	border-radius: 6px;
-	padding: 7px 14px;
+	border: 1px solid #e2e8f0;
+	background: #ffffff;
+	border-radius: 8px;
+	padding: 8px 16px;
 	font-size: 14px;
-	font-weight: 500;
+	font-weight: 600;
 	color: #2563eb;
 	cursor: pointer;
 	white-space: nowrap;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+	transition: all 0.2s;
 }
-.santu-bill-kbd { color: #9ca3af; font-size: 11px; margin-left: 4px; }
+.santu-bill-newtab:hover {
+	background: #f8fafc;
+	border-color: #cbd5e1;
+	color: #1d4ed8;
+}
+.santu-bill-kbd { color: #94a3b8; font-size: 11px; margin-left: 6px; }
 .santu-bill-kbd-inline { font-size: 11px; }
 
 /* ---- main split ---- */
-.santu-bill-main { display: flex; gap: 8px; flex: 1 1 auto; min-height: 0; padding: 0 10px; }
-.santu-bill-left { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.santu-bill-right {
-	flex: 0 0 330px;
+.santu-bill-main { display: flex; gap: 16px; flex: 1 1 auto; min-height: 0; padding: 12px 16px; }
+/* min-height: 0 is load-bearing, not tidiness. A flex item defaults to
+   min-height: auto, which refuses to shrink below its content -- so with a
+   long item list this column grew to the height of every row (measured 1933px
+   inside a 447px area, 30-08-2026) instead of letting the grid scroll inside
+   it. The overflowing rows then rendered straight over the Save / F-key bar.
+   `.santu-bill-right` already had it; this one did not. Shared by Billing,
+   Estimate, Sales Return and Purchase Return, so all four were affected. */
+.santu-bill-left {
+	flex: 1 1 auto;
+	min-width: 0;
+	min-height: 0;
 	display: flex;
 	flex-direction: column;
-	gap: 10px;
+	gap: 12px;
+}
+.santu-bill-right {
+	flex: 0 0 340px;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
 	min-height: 0;
 }
 
@@ -66,312 +107,362 @@
 .santu-bill-searchwrap { position: relative; }
 .santu-bill-search {
 	width: 100%;
-	height: 48px;
-	border: 2px solid #2563eb;
-	border-radius: 6px;
-	padding: 0 44px 0 14px;
-	font-size: 15px;
-	background: #fff;
+	height: 52px;
+	border: 2px solid #3b82f6;
+	border-radius: 8px;
+	padding: 0 44px 0 16px;
+	font-size: 16px;
+	background: #ffffff;
 	box-sizing: border-box;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+	transition: all 0.2s;
 }
-.santu-bill-search:focus { outline: none; }
-.santu-bill-search-icon { position: absolute; right: 14px; top: 13px; opacity: 0.6; }
+.santu-bill-search:focus { outline: none; border-color: #2563eb; box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.1); }
+.santu-bill-search-icon { position: absolute; right: 16px; top: 15px; opacity: 0.6; color: #3b82f6; }
 .santu-bill-dropdown,
 .santu-bill-cust-dropdown {
 	position: absolute;
-	top: 52px;
+	top: 56px;
 	left: 0;
 	right: 0;
-	background: #fff;
-	border: 1px solid #eaeaef;
-	border-radius: 6px;
-	box-shadow: 0 8px 24px rgba(16, 24, 40, 0.14);
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 	z-index: 60;
 	max-height: 320px;
 	overflow-y: auto;
 }
-.santu-bill-cust-dropdown { top: 44px; }
+.santu-bill-cust-dropdown { top: 48px; }
 .santu-bill-dd-row {
 	display: flex;
 	justify-content: space-between;
 	gap: 12px;
-	padding: 9px 12px;
+	padding: 10px 16px;
 	cursor: pointer;
-	border-bottom: 1px solid #f3f4f8;
-	font-size: 13px;
+	border-bottom: 1px solid #f1f5f9;
+	font-size: 14px;
+	transition: background 0.15s;
 }
-.santu-bill-dd-row:hover { background: #f3f7ff; }
-.santu-bill-dd-row b { display: block; color: #1f2340; }
-.santu-bill-dd-row span { color: #71748e; font-size: 12px; }
-.santu-bill-dd-right { text-align: right; white-space: nowrap; color: #1f2340; font-weight: 500; }
-/* "Quick-create" row — same blue-link treatment used everywhere else this
-   pattern already exists (.santu-si2-dd-add). */
+.santu-bill-dd-row:hover { background: #f8fafc; }
+.santu-bill-dd-row b { display: block; color: #0f172a; }
+.santu-bill-dd-row span { color: #64748b; font-size: 12px; }
+.santu-bill-dd-right { text-align: right; white-space: nowrap; color: #0f172a; font-weight: 500; }
+.santu-bill-dd-right span { margin-left: 10px; color: #64748b; font-weight: 400; }
 .santu-bill-dd-add {
 	color: #2563eb;
 	font-weight: 600;
 }
 
-/* Cells that open an edit prompt on click — clicking anywhere else on the
-   row just selects it. */
+/* Cells that open an edit prompt on click */
 .santu-bill-editable {
 	cursor: pointer;
+	transition: background 0.15s;
 }
 .santu-bill-editable:hover {
-	background: #f3f7ff;
+	background: #f8fafc;
 }
 
 .santu-bill-inline-input {
 	width: 100%;
 	min-width: 40px;
-	border: 1px solid #2563eb;
-	border-radius: 4px;
-	padding: 2px 6px;
-	font-size: 13px;
+	border: 1px solid #3b82f6;
+	border-radius: 6px;
+	padding: 4px 8px;
+	font-size: 14px;
 	font-family: inherit;
 	color: inherit;
-	background: #fff;
+	background: #ffffff;
 }
 .santu-bill-inline-input:focus {
 	outline: none;
-	box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+	box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .santu-bill-qty-stepper {
 	display: inline-flex;
 	align-items: center;
-	gap: 6px;
+	gap: 8px;
 }
 .santu-bill-qty-btn {
-	width: 22px;
-	height: 22px;
-	border: 1px solid #dbe3ee;
-	border-radius: 5px;
-	background: #f7f9fc;
-	color: #1f2340;
-	font-size: 15px;
+	width: 24px;
+	height: 24px;
+	border: 1px solid #e2e8f0;
+	border-radius: 6px;
+	background: #f8fafc;
+	color: #0f172a;
+	font-size: 16px;
 	line-height: 1;
 	font-weight: 600;
 	cursor: pointer;
 	padding: 0;
+	transition: all 0.15s;
 }
 .santu-bill-qty-btn:hover {
-	background: #eaf0fb;
-	border-color: #2563eb;
+	background: #eff6ff;
+	border-color: #3b82f6;
 	color: #2563eb;
 }
 .santu-bill-qty-val {
-	min-width: 34px;
+	min-width: 36px;
 	text-align: center;
 	display: inline-block;
+	font-weight: 500;
 }
 
 /* ---- grid ---- */
 .santu-bill-gridwrap {
 	flex: 1 1 auto;
 	min-height: 0;
-	background: #fff;
-	border: 1px solid #dbe3ee;
-	border-radius: 6px;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+	position: relative;
 }
+.santu-bill-gridscroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .santu-bill-grid { width: 100%; border-collapse: collapse; font-size: 14px; }
 .santu-bill-grid thead th {
 	position: sticky;
 	top: 0;
-	background: #fff;
+	background: #f8fafc;
 	text-align: left;
-	padding: 10px 10px;
-	font-size: 12px;
+	padding: 12px 16px;
+	font-size: 13px;
 	font-weight: 600;
-	color: #6b7280;
+	color: #475569;
 	letter-spacing: 0.02em;
-	border-bottom: 1px solid #dbe3ee;
-	border-right: 1px solid #eef2f7;
+	border-bottom: 1px solid #e2e8f0;
+	border-right: 1px solid #e2e8f0;
 	white-space: nowrap;
+	z-index: 5;
 }
-.santu-bill-grid thead th span { display: block; font-weight: 400; color: #9ca3af; margin-top: 2px; }
+.santu-bill-grid thead th span { display: block; font-weight: 500; color: #94a3b8; margin-top: 2px; }
+.santu-bill-grid tbody { display: table-row-group; }
 .santu-bill-grid tbody td {
-	padding: 9px 10px;
-	border-bottom: 1px solid #f0f3f8;
-	border-right: 1px solid #f5f7fa;
-	color: #1f2340;
+	padding: 12px 16px;
+	border-bottom: 1px solid #f1f5f9;
+	border-right: 1px solid #f1f5f9;
+	color: #0f172a;
 	white-space: nowrap;
+	font-weight: 500;
 }
-.santu-bill-grid tbody tr { cursor: pointer; }
-.santu-bill-grid tbody tr:hover { background: #f8fafd; }
-.santu-bill-grid tbody tr.is-selected { background: #eaf2fd; }
+.santu-bill-grid tbody tr { cursor: pointer; transition: background 0.15s; }
+.santu-bill-grid tbody tr:hover { background: #f8fafc; }
+.santu-bill-grid tbody tr.is-selected { background: #eff6ff; }
+/* CPVC rows ka pila rang santu_cpvc_highlight.css me hai — sab screens ek saath */
 .c-idx { width: 46px; }
 .c-code { width: 130px; }
 .c-qty, .c-unit { width: 90px; }
 .c-rate, .c-disc, .c-tax, .c-total { width: 130px; }
-.santu-bill-gridwrap { position: relative; }
-.santu-bill-grid tbody { display: table-row-group; }
+.c-del { width: 52px; text-align: center; }
+.santu-bill-del-btn {
+	border: none;
+	background: transparent;
+	color: #e11d48;
+	font-size: 18px;
+	line-height: 1;
+	cursor: pointer;
+	padding: 6px 10px;
+	border-radius: 6px;
+	transition: background 0.15s;
+}
+.santu-bill-del-btn:hover { background: #ffe4e6; }
 .santu-bill-gridfoot {
 	margin-top: auto;
-	border-top: 1px solid #dbe3ee;
-	padding: 10px 12px;
+	border-top: 1px solid #e2e8f0;
+	background: #f8fafc;
+	padding: 12px 16px;
 	text-align: right;
 	font-weight: 600;
-	color: #1f2340;
+	color: #0f172a;
 }
 
 /* ---- right rail ---- */
 .santu-bill-right input,
 .santu-bill-right select {
 	width: 100%;
-	height: 42px;
-	border: 1px solid #d7dfea;
-	border-radius: 6px;
+	height: 48px;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
 	padding: 0 12px;
 	font-size: 14px;
-	background: #fff;
+	background: #ffffff;
 	box-sizing: border-box;
+	transition: all 0.2s;
 }
+.santu-bill-right input:focus,
+.santu-bill-right select:focus {
+	outline: none;
+	border-color: #3b82f6;
+	box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
 .santu-bill-custwrap { position: relative; }
 .santu-bill-totalcard {
-	background: #fff;
-	border: 1px solid #d7dfea;
-	border-radius: 8px;
-	padding: 12px 14px;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	padding: 16px 20px;
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 10px;
+	gap: 12px;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
 }
-.santu-bill-totalcard-left { display: flex; align-items: center; gap: 10px; }
-.santu-bill-receipt { font-size: 20px; }
-.santu-bill-total-big { font-size: 17px; font-weight: 600; color: #1f2340; }
-.santu-bill-total-sub { font-size: 12px; color: #71748e; margin-top: 2px; }
+.santu-bill-totalcard-left { display: flex; align-items: center; gap: 12px; }
+.santu-bill-receipt { font-size: 24px; color: #10b981; }
+.santu-bill-total-big { font-size: 20px; font-weight: 700; color: #0f172a; letter-spacing: -0.5px; }
+.santu-bill-total-sub { font-size: 13px; font-weight: 500; color: #64748b; margin-top: 2px; }
 .santu-bill-breakup {
 	border: none;
 	background: transparent;
 	color: #2563eb;
-	font-size: 13px;
-	font-weight: 500;
+	font-size: 14px;
+	font-weight: 600;
 	cursor: pointer;
 	text-align: right;
 	line-height: 1.3;
+	transition: color 0.15s;
 }
+.santu-bill-breakup:hover { color: #1d4ed8; }
 
 .santu-bill-payrow { display: flex; gap: 12px; }
 .santu-bill-field { flex: 1 1 0; min-width: 0; }
-.santu-bill-field label { display: block; font-size: 12px; color: #6b7280; margin-bottom: 5px; }
+.santu-bill-field label { display: block; font-size: 13px; font-weight: 500; color: #475569; margin-bottom: 6px; }
 .santu-bill-amt-wrap { position: relative; }
-.santu-bill-rs { position: absolute; left: 12px; top: 11px; color: #6b7280; font-size: 14px; }
-.santu-bill-received { padding-left: 28px !important; text-align: right; }
+.santu-bill-rs { position: absolute; left: 14px; top: 14px; color: #64748b; font-size: 14px; font-weight: 500; }
+.santu-bill-received { padding-left: 32px !important; text-align: right; font-weight: 600; color: #0f172a; }
 
 .santu-bill-spacer { flex: 1 1 auto; min-height: 0; }
-/* Estimate screen only — shows the saved Quotation's name once an estimate
-   has been saved once, in the same rail spot Billing has no need for. */
+/* Estimate screen only */
 .santu-bill-inv-row {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	border-top: 1px solid #d7dfea;
+	border-top: 1px solid #e2e8f0;
 	padding-top: 12px;
-	font-size: 13px;
-	color: #6b7280;
+	font-size: 14px;
+	font-weight: 500;
+	color: #64748b;
 }
-.santu-bill-inv-row span:last-child { color: #1f2340; font-weight: 600; }
+.santu-bill-inv-row span:last-child { color: #0f172a; font-weight: 600; }
 .santu-bill-changerow {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	border-top: 1px solid #d7dfea;
+	border-top: 1px solid #e2e8f0;
 	padding-top: 12px;
 	font-size: 16px;
-	font-weight: 600;
-	color: #1f2340;
+	font-weight: 700;
+	color: #0f172a;
 }
-/* Baaki (remaining) amount — same shape as Change to Return, red instead of
-   the shop's usual dark ink since this is money still owed, not money back. */
+/* Baaki (remaining) amount */
 .santu-bill-baakirow {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	border-top: 1px solid #d7dfea;
+	border-top: 1px solid #e2e8f0;
 	padding-top: 12px;
 	font-size: 16px;
-	font-weight: 600;
-	color: #b91c1c;
+	font-weight: 700;
+	color: #e11d48;
 }
 .santu-bill-baaki-note {
-	font-size: 12px;
-	color: #6b7280;
+	font-size: 13px;
+	font-weight: 500;
+	color: #64748b;
 	margin-top: 4px;
 }
 
-/* The toolbar (cost-price privacy, calculator) sits inline in the tab bar —
-   Billing has no separate dark header strip like Sale Invoice, so these
-   self-contained dark buttons (.santu-si2-icon-btn already carries its own
-   background) just need spacing to not crowd the tabs/New Bill button. */
 .santu-bill-tabbar .santu-si2-toolbar {
 	margin-left: auto;
-	margin-right: 8px;
+	margin-right: 12px;
 }
 
 /* ---- action bar ---- */
 .santu-bill-actions {
 	display: flex;
-	gap: 8px;
-	padding: 10px;
+	gap: 12px;
+	padding: 12px 16px;
 	flex-shrink: 0;
+	background: #f1f5f9;
 }
 .santu-bill-fkeys {
 	flex: 1 1 auto;
 	display: grid;
 	grid-template-columns: repeat(4, 1fr);
-	gap: 8px;
+	gap: 12px;
 }
 .santu-bill-fkeys button {
-	background: #e8f1fe;
-	border: 1px solid #cfe1fc;
-	border-radius: 6px;
-	padding: 11px 8px;
+	background: #eff6ff;
+	border: 1px solid #bfdbfe;
+	border-radius: 8px;
+	padding: 14px 12px;
 	font-size: 14px;
-	font-weight: 500;
-	color: #1f4fa8;
+	font-weight: 600;
+	color: #1d4ed8;
 	cursor: pointer;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+	transition: all 0.2s;
 }
-.santu-bill-fkeys button:hover { background: #dbeafe; }
-.santu-bill-savecol { flex: 0 0 330px; display: flex; flex-direction: column; gap: 8px; }
+.santu-bill-fkeys button:hover { background: #dbeafe; border-color: #93c5fd; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+.santu-bill-savecol { flex: 0 0 340px; display: flex; flex-direction: column; gap: 12px; }
 .santu-bill-save {
-	background: #c8ecd6;
-	border: 1px solid #9fdcb8;
-	border-radius: 6px;
-	padding: 12px;
+	background: #10b981;
+	border: 1px solid #059669;
+	border-radius: 8px;
+	padding: 16px;
+	font-size: 16px;
+	font-weight: 700;
+	color: #ffffff;
+	cursor: pointer;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+	transition: all 0.2s;
+}
+.santu-bill-save:hover { background: #059669; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+.santu-bill-credit {
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 14px;
 	font-size: 15px;
 	font-weight: 600;
-	color: #11663a;
+	color: #3b82f6;
 	cursor: pointer;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+	transition: all 0.2s;
 }
-.santu-bill-save:hover { background: #b7e6ca; }
-/* Same save flow as .santu-bill-save, just without the WhatsApp offer
-   (2026-08-19 direct request) — kept visually close to Save so it still
-   reads as a save action, not a third unrelated thing on this bar. */
-.santu-bill-save-only {
-	background: #eaf6ef;
-	border: 1px solid #b9e2c8;
-	border-radius: 6px;
-	padding: 10px 12px;
-	font-size: 13px;
-	font-weight: 500;
-	color: #11663a;
-	cursor: pointer;
-}
-.santu-bill-save-only:hover { background: #ddf0e4; }
-.santu-bill-credit {
-	background: #fff;
-	border: 1px solid #cfe1fc;
-	border-radius: 6px;
-	padding: 12px;
+.santu-bill-credit:hover { background: #f8fafc; border-color: #cbd5e1; }
+.santu-bill-print-est {
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 14px;
 	font-size: 15px;
-	font-weight: 500;
-	color: #1f4fa8;
+	font-weight: 600;
+	color: #475569;
 	cursor: pointer;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+	transition: all 0.2s;
 }
+.santu-bill-print-est:hover { background: #f8fafc; border-color: #cbd5e1; color: #0f172a; }
+.santu-bill-chalan {
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 14px;
+	font-size: 15px;
+	font-weight: 600;
+	color: #475569;
+	cursor: pointer;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+	transition: all 0.2s;
+}
+.santu-bill-chalan:hover { background: #f8fafc; border-color: #cbd5e1; color: #0f172a; }
 
 /* ---- breakup modal ---- */
 .santu-bill-bk-row {
@@ -444,56 +535,62 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	backdrop-filter: blur(2px);
 }
 .santu-bill-modal {
-	background: #fff;
-	border-radius: 10px;
+	background: #ffffff;
+	border-radius: 12px;
 	width: 700px;
 	max-width: calc(100vw - 32px);
-	box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
+	box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
 }
 .santu-bill-modal-head {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 20px 24px 10px;
-	font-size: 19px;
-	font-weight: 600;
-	color: #1f2340;
+	padding: 24px 24px 12px;
+	font-size: 20px;
+	font-weight: 700;
+	color: #0f172a;
+	letter-spacing: -0.5px;
 }
 .santu-bill-modal-x {
 	border: none;
 	background: transparent;
-	color: #6b7280;
-	font-size: 15px;
+	color: #64748b;
+	font-size: 16px;
 	cursor: pointer;
+	transition: color 0.15s;
 }
-.santu-bill-modal-x small { font-size: 13px; }
-.santu-bill-modal-body { padding: 8px 24px 4px; }
-.santu-bill-modal-grid { display: flex; gap: 36px; }
-.santu-bill-modal-field { flex: 1 1 0; min-width: 0; margin-bottom: 18px; }
+.santu-bill-modal-x:hover { color: #e11d48; }
+.santu-bill-modal-x small { font-size: 13px; font-weight: 500; }
+.santu-bill-modal-body { padding: 8px 24px 12px; }
+.santu-bill-modal-grid { display: flex; gap: 24px; }
+.santu-bill-modal-field { flex: 1 1 0; min-width: 0; margin-bottom: 20px; }
 .santu-bill-modal-field label {
 	display: block;
-	font-size: 13px;
-	color: #6b7280;
+	font-size: 14px;
+	font-weight: 500;
+	color: #475569;
 	margin-bottom: 6px;
 }
-.santu-bill-modal-field em { color: #ed1a3b; font-style: normal; }
+.santu-bill-modal-field em { color: #e11d48; font-style: normal; }
 .santu-bill-modal-field input,
 .santu-bill-modal-field select,
 .santu-bill-modal-field textarea {
 	width: 100%;
-	border: 1px solid #d0d5dd;
-	border-radius: 6px;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
 	padding: 10px 12px;
 	font-size: 14px;
 	box-sizing: border-box;
 	font-family: inherit;
-	background: #fff;
+	background: #ffffff;
+	transition: all 0.2s;
 }
 .santu-bill-modal-field input:focus,
 .santu-bill-modal-field select:focus,
-.santu-bill-modal-field textarea:focus { border-color: #2563eb; outline: none; }
+.santu-bill-modal-field textarea:focus { border-color: #3b82f6; outline: none; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
 .santu-bill-modal-field textarea { resize: vertical; }
 .santu-bill-modal-village-wrap { position: relative; }
 .santu-bill-modal-village-dd {
@@ -502,110 +599,118 @@
 	left: 0;
 	right: 0;
 	z-index: 20;
-	background: #fff;
-	border: 1px solid #d0d5dd;
-	border-radius: 6px;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
 	max-height: 220px;
 	overflow-y: auto;
-	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+	box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+	margin-top: 4px;
 }
 .santu-bill-modal-village-row {
-	padding: 8px 12px;
-	font-size: 13px;
+	padding: 10px 12px;
+	font-size: 14px;
 	display: flex;
 	justify-content: space-between;
 	cursor: pointer;
+	transition: background 0.15s;
 }
-.santu-bill-modal-village-row:hover { background: #f3f7ff; }
-.santu-bill-modal-village-row span { color: #71748e; }
+.santu-bill-modal-village-row:hover { background: #f8fafc; }
+.santu-bill-modal-village-row span { color: #64748b; font-size: 13px; }
 .santu-bill-modal-village-empty {
-	padding: 8px 12px;
-	font-size: 13px;
-	color: #9aa0ac;
+	padding: 12px;
+	font-size: 14px;
+	color: #64748b;
 }
 /* ---- sale return ---- */
-.santu-bill-return-modal { width: 520px; max-width: 92vw; }
+.santu-bill-return-modal { width: 560px; max-width: 92vw; }
 .santu-bill-return-list {
 	max-height: 320px;
 	overflow-y: auto;
-	border: 1px solid #e5e8ef;
+	border: 1px solid #e2e8f0;
 	border-radius: 8px;
-	margin-top: 6px;
+	margin-top: 12px;
 }
 .santu-bill-return-row {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	padding: 10px 14px;
-	border-bottom: 1px solid #f0f2f6;
+	padding: 12px 16px;
+	border-bottom: 1px solid #f1f5f9;
 	cursor: pointer;
+	transition: background 0.15s;
 }
 .santu-bill-return-row:last-child { border-bottom: none; }
-.santu-bill-return-row:hover { background: #f3f7ff; }
-.santu-bill-return-row b { display: block; color: #1f2340; }
-.santu-bill-return-row-cust { font-size: 12px; color: #71748e; }
+.santu-bill-return-row:hover { background: #f8fafc; }
+.santu-bill-return-row b { display: block; color: #0f172a; font-weight: 600; font-size: 14px; }
+.santu-bill-return-row-cust { font-size: 13px; color: #64748b; margin-top: 2px; }
 .santu-bill-return-row-right { text-align: right; }
-.santu-bill-return-row-right span { display: block; }
-.santu-bill-return-row-date { font-size: 12px; color: #9aa0ac; }
-.santu-bill-return-loading { padding: 30px; text-align: center; color: #9aa0ac; }
+.santu-bill-return-row-right span { display: block; font-weight: 500; color: #0f172a; }
+.santu-bill-return-row-date { font-size: 13px; color: #64748b; font-weight: 400; margin-top: 2px; }
+.santu-bill-return-loading { padding: 40px; text-align: center; color: #64748b; font-size: 14px; }
 .santu-bill-return-invoice-head {
 	display: flex;
 	justify-content: space-between;
 	align-items: baseline;
-	margin-bottom: 10px;
-	padding-bottom: 10px;
-	border-bottom: 1px solid #f0f2f6;
-}
-.santu-bill-return-invoice-head b { color: #1f2340; }
-.santu-bill-return-invoice-head span { color: #71748e; font-size: 13px; }
-.santu-bill-return-items {
-	max-height: 260px;
-	overflow-y: auto;
 	margin-bottom: 12px;
+	padding-bottom: 12px;
+	border-bottom: 1px solid #e2e8f0;
+}
+.santu-bill-return-invoice-head b { color: #0f172a; font-size: 15px; }
+.santu-bill-return-invoice-head span { color: #64748b; font-size: 14px; font-weight: 500; }
+.santu-bill-return-items {
+	max-height: 300px;
+	overflow-y: auto;
+	margin-bottom: 16px;
 }
 .santu-bill-return-item-row {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	gap: 12px;
-	padding: 8px 0;
-	border-bottom: 1px solid #f5f6f9;
+	gap: 16px;
+	padding: 10px 0;
+	border-bottom: 1px solid #f1f5f9;
 }
-.santu-bill-return-item-name { font-size: 13px; color: #1f2340; }
-.santu-bill-return-item-name span { display: block; font-size: 12px; color: #9aa0ac; }
+.santu-bill-return-item-name { font-size: 14px; color: #0f172a; font-weight: 500; }
+.santu-bill-return-item-name span { display: block; font-size: 13px; color: #64748b; margin-top: 2px; }
 .ret-qty-input {
-	width: 70px;
-	border: 1px solid #d0d5dd;
-	border-radius: 6px;
-	padding: 6px 8px;
+	width: 80px;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 8px 10px;
 	font-size: 14px;
 	text-align: center;
+	transition: all 0.2s;
 }
+.ret-qty-input:focus { border-color: #3b82f6; outline: none; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
 .santu-bill-return-total {
 	text-align: right;
-	font-size: 15px;
-	color: #1f2340;
-	padding: 4px 0 10px;
+	font-size: 16px;
+	font-weight: 600;
+	color: #0f172a;
+	padding: 8px 0 16px;
 }
 
-.santu-bill-modal-foot { display: flex; gap: 20px; padding: 8px 24px 24px; }
+.santu-bill-modal-foot { display: flex; gap: 16px; padding: 12px 24px 24px; }
 .santu-bill-modal-save,
 .santu-bill-modal-cancel {
 	flex: 1 1 0;
 	padding: 12px;
-	border-radius: 6px;
+	border-radius: 8px;
 	font-size: 15px;
 	font-weight: 600;
 	cursor: pointer;
 	border: 1px solid transparent;
+	transition: all 0.2s;
+	text-align: center;
 }
-.santu-bill-modal-hint { font-weight: 400; color: #9aa0ac; margin-left: 6px; }
+.santu-bill-modal-hint { font-weight: 500; color: #64748b; margin-left: 8px; font-size: 13px; }
 .santu-bill-modal-field .ni-same-name-warning:empty { display: none; }
 .santu-bill-modal-field .ni-same-name-warning { margin-top: 8px; }
-.santu-bill-modal-save { background: #a8e6c4; color: #11663a; }
-.santu-bill-modal-save:hover { background: #96dfb6; }
-.santu-bill-modal-cancel { background: #f1f3f6; color: #3f4155; }
-.santu-bill-modal-cancel:hover { background: #e7eaef; }
+.santu-bill-modal-save { background: #10b981; color: #ffffff; border-color: #10b981; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); }
+.santu-bill-modal-save:hover { background: #059669; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+.santu-bill-modal-cancel { background: #ffffff; color: #475569; border-color: #e2e8f0; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); }
+.santu-bill-modal-cancel:hover { background: #f8fafc; border-color: #cbd5e1; color: #0f172a; }
 
 /* Cost price, shown only while the reveal is unlocked. Deliberately small and
    grey: it sits under the selling rate for the operator's benefit, not as a
@@ -624,45 +729,234 @@
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	padding: 10px 12px;
-	border: 1px solid #e5e8ef;
+	padding: 12px 16px;
+	border: 1px solid #e2e8f0;
 	border-radius: 8px;
 	margin-bottom: 8px;
 	cursor: pointer;
+	transition: all 0.2s;
 }
 .santu-bill-batch-row:last-child { margin-bottom: 0; }
-.santu-bill-batch-row:hover { background: #f3f7ff; border-color: #2563eb; }
-.santu-bill-batch-row b { display: block; color: #1f2340; }
-.santu-bill-batch-sub { display: block; font-size: 11.5px; color: #71748e; }
+.santu-bill-batch-row:hover { background: #f8fafc; border-color: #cbd5e1; }
+.santu-bill-batch-row b { display: block; color: #0f172a; font-size: 14px; font-weight: 600; }
+.santu-bill-batch-sub { display: block; font-size: 12px; color: #64748b; margin-top: 2px; }
 .santu-bill-batch-right { text-align: right; }
-.santu-bill-batch-right > span:first-child { font-weight: 600; color: #1f2340; }
+.santu-bill-batch-right > span:first-child { font-weight: 600; color: #0f172a; }
 .santu-bill-batch-tag {
 	display: inline-block;
-	margin-left: 6px;
-	padding: 1px 6px;
+	margin-left: 8px;
+	padding: 2px 8px;
 	border-radius: 4px;
 	background: #eef2ff;
-	color: #3730a3;
-	font-size: 10.5px;
+	color: #4338ca;
+	font-size: 11px;
 	font-weight: 600;
 }
 
-/* How much of this item is actually on the shelf, shown right under its
-   name on the bill row — the same "Available: N Unit" indicator the Sale
-   Invoices screen already has, added here too since this is the screen
-   cashiers actually bill from (2026-08-20). */
+/* How much of this item is actually on the shelf */
 .santu-bill-stock-note {
 	display: block;
-	font-size: 11px;
-	margin-top: 2px;
+	font-size: 12px;
+	margin-top: 4px;
+	font-weight: 500;
 }
 .santu-bill-stock-ok {
-	color: #16a34a;
+	color: #10b981;
 }
 .santu-bill-stock-low {
-	color: #d97706;
+	color: #f59e0b;
 }
 .santu-bill-stock-out {
-	color: #dc2626;
+	color: #ef4444;
 	font-weight: 700;
+}
+
+/* Bill Sudhaar Payment Options Dialog */
+.santu-edit-pay-dialog {
+	padding: 8px 0;
+	font-family: inherit;
+}
+.santu-edit-pay-summary {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 12px;
+	margin-bottom: 20px;
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	padding: 16px;
+}
+.santu-edit-pay-card {
+	text-align: center;
+}
+.santu-edit-pay-card .label {
+	font-size: 12px;
+	text-transform: uppercase;
+	color: #64748b;
+	font-weight: 600;
+	margin-bottom: 4px;
+}
+.santu-edit-pay-card .val {
+	font-size: 16px;
+	font-weight: 700;
+	color: #0f172a;
+}
+.santu-edit-pay-card.highlight .val {
+	color: #2563eb;
+}
+.santu-edit-pay-card.danger .val {
+	color: #e11d48;
+}
+.santu-edit-pay-card.success .val {
+	color: #10b981;
+}
+.santu-edit-pay-prompt {
+	font-size: 14px;
+	font-weight: 600;
+	color: #0f172a;
+	margin-bottom: 12px;
+}
+.santu-edit-pay-options {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	margin-bottom: 20px;
+}
+.santu-edit-pay-opt {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding: 14px 16px;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	background: #ffffff;
+}
+.santu-edit-pay-opt:hover {
+	border-color: #cbd5e1;
+	background: #f8fafc;
+}
+.santu-edit-pay-opt.is-selected {
+	border-color: #3b82f6;
+	background: #eff6ff;
+	box-shadow: 0 0 0 1px #3b82f6;
+}
+.santu-edit-pay-opt input[type="radio"] {
+	margin: 0;
+	width: 18px;
+	height: 18px;
+	accent-color: #2563eb;
+	cursor: pointer;
+}
+.santu-edit-pay-opt-info {
+	flex: 1;
+}
+.santu-edit-pay-opt-title {
+	font-size: 14px;
+	font-weight: 600;
+	color: #0f172a;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+.santu-edit-pay-opt-desc {
+	font-size: 13px;
+	color: #64748b;
+	margin-top: 4px;
+	line-height: 1.4;
+}
+.santu-edit-pay-custom-wrap {
+	margin-top: 12px;
+	padding: 12px 16px;
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	display: flex;
+	gap: 12px;
+	align-items: center;
+}
+
+/* ---- ported from the retired Sale Invoice screen (2026-08-30) ---------- */
+
+/* Bills whose print never came out. Loud on purpose: a bill the customer
+   walked away without is worth interrupting for. */
+.santu-bill-print-alert {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+	margin: 6px 10px 0;
+	padding: 7px 12px;
+	border: 1px solid #f0c36d;
+	border-radius: 7px;
+	background: #fff8e6;
+	color: #7a5600;
+	font-size: 13px;
+}
+
+.santu-bill-print-alert-btn {
+	border: 1px solid #d9a441;
+	border-radius: 6px;
+	padding: 3px 12px;
+	background: #fff;
+	color: #7a5600;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.santu-bill-print-alert-btn:hover {
+	background: #ffefc9;
+}
+
+/* The "More" menu next to Save. Opens UPWARD: Save sits at the bottom of the
+   screen, so a downward menu would fall off the edge. */
+.santu-bill-morewrap {
+	position: relative;
+}
+
+.santu-bill-more {
+	width: 100%;
+	padding: 8px 10px;
+	border: 1px solid #d6d9e3;
+	border-radius: 7px;
+	background: #fff;
+	font-size: 13px;
+	font-weight: 600;
+	color: #3b3f4c;
+	cursor: pointer;
+}
+
+.santu-bill-more:hover {
+	background: #f4f5f9;
+}
+
+.santu-bill-more-menu {
+	position: absolute;
+	bottom: calc(100% + 6px);
+	right: 0;
+	min-width: 230px;
+	z-index: 40;
+	padding: 5px;
+	border: 1px solid #e1e3ec;
+	border-radius: 9px;
+	background: #fff;
+	box-shadow: 0 10px 26px rgba(0, 0, 0, 0.16);
+}
+
+.santu-bill-more-menu button {
+	display: block;
+	width: 100%;
+	padding: 8px 11px;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	text-align: left;
+	font-size: 13px;
+	color: #33374a;
+	cursor: pointer;
+}
+
+.santu-bill-more-menu button:hover {
+	background: #f2f4fa;
 }

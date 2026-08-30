@@ -628,14 +628,16 @@ santu_utilities.views = {
 	/* ── 5. Bulk Update Items ────────────────────────────────── */
 	async render_bulk_update($wrap) {
 		const state = { mode: "pricing", search: "", page: 1, selected: new Set(), edits: {} };
+		const PAGE_SIZE = 500;
 		const render = async () => {
 			$wrap.html(`<div class="santu-utilities-loading">Loading items…</div>`);
-			const data = await santu_utilities.api.getBulkItems(state.mode, state.search, state.page, 50);
+			const data = await santu_utilities.api.getBulkItems(state.mode, state.search, state.page, PAGE_SIZE);
 			const cols = state.mode === "pricing"
-				? ["item_name", "item_group", "gst_hsn_code", "valuation_rate", "standard_rate"]
+				? ["item_name", "item_group", "gst_hsn_code", "valuation_rate", "standard_rate", "custom_min_selling_price", "custom_mrp"]
 				: state.mode === "stock"
 					? ["item_name", "warehouse", "actual_qty", "stock_uom"]
-					: ["item_name", "item_group", "brand", "gst_hsn_code", "barcode", "description"];
+					: ["item_name", "item_group", "brand", "gst_hsn_code", "barcode", "description", "custom_sub_category", "custom_rack_number", "custom_shelf_number", "custom_bin_location"];
+
 
 			let html = `
 				<div class="santu-utilities-toolbar">
@@ -654,12 +656,13 @@ santu_utilities.views = {
 				</div>
 				<div class="santu-utilities-table-wrap"><table class="santu-utilities-table santu-bulk-table"><thead><tr>
 					<th><input type="checkbox" class="santu-bulk-all"></th><th>#</th>`;
-			const col_labels = { item_name: "Item Name", item_group: "Group", gst_hsn_code: "HSN", valuation_rate: "Kharid Daam (CP)", standard_rate: "Bechne ka Daam (SP)", warehouse: "Godown", actual_qty: "Stock", stock_uom: "Unit", brand: "Brand", barcode: "Barcode", description: "Description" };
+			const col_labels = { item_name: "Item Name", item_group: "Group", gst_hsn_code: "HSN", valuation_rate: "Kharid Daam (CP)", standard_rate: "Bechne ka Daam (SP)", warehouse: "Godown", actual_qty: "Stock", stock_uom: "Unit", brand: "Brand", barcode: "Barcode", description: "Description", custom_min_selling_price: "Min Selling Price", custom_mrp: "MRP", custom_sub_category: "Sub Category", custom_rack_number: "Rack Number", custom_shelf_number: "Shelf Number", custom_bin_location: "Bin Location" };
 			cols.forEach((c) => { html += `<th>${col_labels[c] || c.replace(/_/g, " ")}</th>`; });
 			html += `</tr></thead><tbody>`;
 			data.items.forEach((it, idx) => {
 				const checked = state.selected.has(it.name) ? "checked" : "";
-				html += `<tr data-name="${frappe.utils.escape_html(it.name)}"><td><input type="checkbox" class="santu-bulk-chk" ${checked}></td><td>${(state.page - 1) * 50 + idx + 1}</td>`;
+				const is_cpvc = santu_is_cpvc_item(it.name, it.item_name);
+				html += `<tr data-name="${frappe.utils.escape_html(it.name)}" class="${is_cpvc ? "santu-cpvc-row" : ""}"><td><input type="checkbox" class="santu-bulk-chk" ${checked}></td><td>${(state.page - 1) * PAGE_SIZE + idx + 1}</td>`;
 				cols.forEach((c) => {
 					// A field staged in state.edits (typed by hand, or filled in by
 					// the barcode-scan / PDF-import actions below) always wins over
@@ -668,7 +671,7 @@ santu_utilities.views = {
 					// an unsaved edit the moment the row scrolls out of view.
 					const staged = state.edits[it.name];
 					const val = (staged && staged[c] !== undefined) ? staged[c] : (it[c] ?? "");
-					const editable = ["valuation_rate", "standard_rate", "brand", "description", "gst_hsn_code", "barcode"].includes(c);
+					const editable = ["valuation_rate", "standard_rate", "brand", "description", "gst_hsn_code", "barcode", "custom_min_selling_price", "custom_mrp", "custom_sub_category", "custom_rack_number", "custom_shelf_number", "custom_bin_location"].includes(c);
 					html += editable
 						? `<td><input class="form-control input-sm santu-bulk-edit" data-field="${c}" value="${frappe.utils.escape_html(String(val))}"></td>`
 						: `<td>${frappe.utils.escape_html(String(val))}</td>`;
@@ -678,8 +681,8 @@ santu_utilities.views = {
 			html += `</tbody></table></div>
 				<div class="santu-utilities-pagination">
 					<button class="btn btn-default btn-sm santu-page-prev" ${state.page <= 1 ? "disabled" : ""}>Prev</button>
-					<span>Page ${state.page} of ${Math.ceil(data.total / 50) || 1} (${data.total} items)</span>
-					<button class="btn btn-default btn-sm santu-page-next" ${state.page * 50 >= data.total ? "disabled" : ""}>Next</button>
+					<span>Page ${state.page} of ${Math.ceil(data.total / PAGE_SIZE) || 1} (${data.total} items)</span>
+					<button class="btn btn-default btn-sm santu-page-next" ${state.page * PAGE_SIZE >= data.total ? "disabled" : ""}>Next</button>
 				</div>`;
 			$wrap.html(html);
 
@@ -868,11 +871,33 @@ santu_utilities.views = {
 		const load = async () => {
 			$wrap.find(".santu-sm-results").html(`<div class="santu-utilities-loading">Loading…</div>`);
 			const r = await santu_utilities.api.getSalesmanReport($wrap.find(".santu-sm-from").val(), $wrap.find(".santu-sm-to").val());
-			let html = `<p class="santu-utilities-muted">${frappe.utils.escape_html(r.note || "")}</p>
-				<table class="santu-utilities-table"><thead><tr><th>Salesman</th><th>Total Sales</th><th>Invoices</th><th>Collection</th><th>Outstanding</th></tr></thead><tbody>`;
+			let html = `
+				<div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+					<span class="badge" style="background:#059669;color:#fff;font-weight:600;padding:4px 10px;border-radius:6px;">🔒 Admin Sole Access</span>
+					<span class="santu-utilities-muted">${frappe.utils.escape_html(r.note || "")}</span>
+				</div>
+				<table class="santu-utilities-table">
+					<thead>
+						<tr>
+							<th>Sales Person</th>
+							<th>Access & Permissions</th>
+							<th>Total Sales</th>
+							<th>Invoices</th>
+							<th>Collection</th>
+							<th>Outstanding</th>
+						</tr>
+					</thead>
+					<tbody>`;
 			(r.rows || []).forEach((row) => {
-				html += `<tr><td>${frappe.utils.escape_html(row.salesman)}</td><td>${santu_utilities.utils.format_currency(row.total_sales)}</td>
-					<td>${row.invoice_count}</td><td>${santu_utilities.utils.format_currency(row.collection)}</td><td>${santu_utilities.utils.format_currency(row.outstanding)}</td></tr>`;
+				html += `
+					<tr>
+						<td><b>${frappe.utils.escape_html(row.salesman)}</b></td>
+						<td><span class="badge" style="background:#dbeafe;color:#1e40af;font-weight:600;padding:2px 8px;border-radius:4px;">${frappe.utils.escape_html(row.rights || "Full Rights")}</span></td>
+						<td><b>${santu_utilities.utils.format_currency(row.total_sales)}</b></td>
+						<td>${row.invoice_count}</td>
+						<td>${santu_utilities.utils.format_currency(row.collection)}</td>
+						<td>${santu_utilities.utils.format_currency(row.outstanding)}</td>
+					</tr>`;
 			});
 			html += `</tbody></table>`;
 			$wrap.find(".santu-sm-results").html(html);
@@ -891,7 +916,8 @@ santu_utilities.views = {
 				<label>From <input type="date" class="form-control santu-tally-from" value="${from}"></label>
 				<label>To <input type="date" class="form-control santu-tally-to" value="${to}"></label>
 				<button class="btn btn-primary santu-tally-load">Load Transactions</button>
-				<button class="btn btn-danger santu-tally-export">Export To Tally</button>
+				<button class="btn btn-danger santu-tally-export-xml" title="Download TallyPrime / ERP9 XML format"><span style="margin-right:4px;">📥</span> Export To Tally (XML)</button>
+				<button class="btn btn-default santu-tally-export-xlsx" title="Download Excel format"><span style="margin-right:4px;">📗</span> Export To Excel</button>
 			</div>
 			<div class="santu-tally-type-filters">TRANSACTIONS: ${types.map((t) => `<label><input type="checkbox" class="santu-tally-type" value="${t}" checked> ${t}</label>`).join(" ")}</div>
 			<div class="santu-tally-table-wrap"></div>
@@ -901,22 +927,72 @@ santu_utilities.views = {
 			$wrap.find(".santu-tally-type:checked").each(function () { selected.push($(this).val()); });
 			$wrap.find(".santu-tally-table-wrap").html(`<div class="santu-utilities-loading">Loading…</div>`);
 			const r = await santu_utilities.api.getTallyData($wrap.find(".santu-tally-from").val(), $wrap.find(".santu-tally-to").val(), selected);
-			let html = `<table class="santu-utilities-table"><thead><tr><th>Date</th><th>Invoice No</th><th>Party</th><th>Type</th><th>Payment</th><th>Amount</th><th>Balance</th></tr></thead><tbody>`;
+			let total_sum = 0;
+			let html = `
+				<div style="margin-bottom:10px;display:flex;gap:12px;align-items:center;">
+					<span class="badge" style="background:#059669;color:#fff;padding:5px 12px;font-size:13px;border-radius:6px;">Total Records: ${r.count}</span>
+				</div>
+				<table class="santu-utilities-table">
+					<thead>
+						<tr>
+							<th>Date</th>
+							<th>Invoice No</th>
+							<th>Party</th>
+							<th>Type</th>
+							<th>Payment</th>
+							<th>Amount</th>
+							<th>Balance</th>
+						</tr>
+					</thead>
+					<tbody>`;
 			(r.transactions || []).forEach((row) => {
-				html += `<tr><td>${row.date}</td><td>${frappe.utils.escape_html(row.invoice_no)}</td><td>${frappe.utils.escape_html(row.party)}</td>
-					<td>${row.type}</td><td>${row.payment_type}</td><td>${santu_utilities.utils.format_currency(row.amount)}</td><td>${santu_utilities.utils.format_currency(row.balance)}</td></tr>`;
+				total_sum += (Number(row.amount) || 0);
+				html += `<tr>
+					<td>${row.date}</td>
+					<td><b>${frappe.utils.escape_html(row.invoice_no)}</b></td>
+					<td>${frappe.utils.escape_html(row.party)}</td>
+					<td><span class="badge" style="background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:4px;">${row.type}</span></td>
+					<td>${row.payment_type}</td>
+					<td><b>${santu_utilities.utils.format_currency(row.amount)}</b></td>
+					<td>${santu_utilities.utils.format_currency(row.balance)}</td>
+				</tr>`;
 			});
-			html += `</tbody></table><p class="santu-utilities-muted">${r.count} transactions</p>`;
+			html += `</tbody></table>`;
 			$wrap.find(".santu-tally-table-wrap").html(html);
 		};
 		$wrap.find(".santu-tally-load").on("click", load);
-		$wrap.find(".santu-tally-export").on("click", async () => {
+		$wrap.find(".santu-tally-type").on("change", load);
+
+		$wrap.find(".santu-tally-export-xml").on("click", async () => {
 			const selected = [];
 			$wrap.find(".santu-tally-type:checked").each(function () { selected.push($(this).val()); });
-			const r = await santu_utilities.api.downloadTally($wrap.find(".santu-tally-from").val(), $wrap.find(".santu-tally-to").val(), selected);
-			window.open(r.file_url, "_blank");
-			frappe.show_alert({ message: `Exported ${r.count} transactions`, indicator: "green" });
+			frappe.dom.freeze(__("Generating Tally XML…"));
+			try {
+				const r = await santu_utilities.api.downloadTally($wrap.find(".santu-tally-from").val(), $wrap.find(".santu-tally-to").val(), selected, "xml");
+				frappe.dom.unfreeze();
+				window.open(r.file_url, "_blank");
+				frappe.show_alert({ message: `Exported ${r.count} transactions to Tally XML`, indicator: "green" });
+			} catch (e) {
+				frappe.dom.unfreeze();
+				frappe.msgprint(__("Failed to generate Tally XML: ") + (e.message || e));
+			}
 		});
+
+		$wrap.find(".santu-tally-export-xlsx").on("click", async () => {
+			const selected = [];
+			$wrap.find(".santu-tally-type:checked").each(function () { selected.push($(this).val()); });
+			frappe.dom.freeze(__("Generating Excel Export…"));
+			try {
+				const r = await santu_utilities.api.downloadTally($wrap.find(".santu-tally-from").val(), $wrap.find(".santu-tally-to").val(), selected, "xlsx");
+				frappe.dom.unfreeze();
+				window.open(r.file_url, "_blank");
+				frappe.show_alert({ message: `Exported ${r.count} transactions to Excel`, indicator: "green" });
+			} catch (e) {
+				frappe.dom.unfreeze();
+				frappe.msgprint(__("Failed to generate Excel: ") + (e.message || e));
+			}
+		});
+
 		load();
 	},
 
@@ -976,6 +1052,7 @@ santu_utilities.views = {
 						</div>
 					</div>
 				</div>
+				<div class="santu-inv-library-wrap"></div>
 			</div>
 		`);
 
@@ -990,6 +1067,12 @@ santu_utilities.views = {
 				})
 				.catch(() => frappe.dom.unfreeze());
 		});
+
+		// Thermal Invoice Library + WhatsApp/A4 Library moved here from Printer
+		// Settings (2026-08-29 direct request) -- which layout a bill prints as
+		// is bill CONTENT, not printer hardware, so it belongs next to UPI ID
+		// rather than next to the printer/density settings.
+		window.santu_render_invoice_library($wrap.find(".santu-inv-library-wrap"));
 	},
 
 	async render_verify_data($wrap) {

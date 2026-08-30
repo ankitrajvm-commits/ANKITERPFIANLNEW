@@ -10,8 +10,9 @@
 }
 
 .santu-txn-msg-sidebar {
-	width: 200px;
-	background: #1e293b;
+	width: 240px;
+	background: #ffffff;
+	border-right: 1px solid #e2e8f0;
 	padding: 16px 0;
 	flex-shrink: 0;
 }
@@ -23,24 +24,23 @@
 	padding: 12px 20px;
 	border: none;
 	background: transparent;
-	color: #94a3b8;
-	font-size: 12px;
-	font-weight: 700;
-	letter-spacing: 0.05em;
+	color: #64748b;
+	font-size: 13px;
+	font-weight: 600;
 	cursor: pointer;
 }
 
-.santu-txn-msg-nav-item:hover { color: #e2e8f0; background: rgba(255,255,255,0.05); }
+.santu-txn-msg-nav-item:hover { color: #0f172a; background: #f8fafc; }
 .santu-txn-msg-nav-item.active {
-	color: #fff;
-	background: rgba(225, 29, 72, 0.25);
-	border-left: 3px solid #e11d48;
+	color: #1e40af;
+	background: #eff6ff;
+	border-left: 3px solid #3b82f6;
 }
 
 .santu-txn-msg-main {
 	flex: 1;
-	padding: 16px 24px 32px;
-	background: #f8fafc;
+	padding: 24px 32px 32px;
+	background: #f1f5f9;
 	overflow: auto;
 }
 
@@ -61,9 +61,10 @@
 .santu-txn-msg-card {
 	background: #fff;
 	border: 1px solid #e2e8f0;
-	border-radius: 8px;
-	padding: 16px 20px;
-	margin-bottom: 16px;
+	border-radius: 12px;
+	padding: 24px 28px;
+	margin-bottom: 20px;
+	box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
 }
 
 .santu-txn-msg-card h3 {
@@ -106,22 +107,40 @@
 }
 
 .santu-txn-msg-footer .btn-primary {
-	background: #e11d48;
-	border-color: #e11d48;
+	background: #3b82f6;
+	border-color: #3b82f6;
+	border-radius: 8px;
+	font-weight: 600;
+}
+.santu-txn-msg-footer .btn-primary:hover {
+	background: #2563eb;
+	border-color: #2563eb;
+}
+
+.santu-txn-msg-preview-col {
+	background-color: #efeae2;
+	background-image: url("/assets/santu_hardware/images/items/wabackground.webp");
+	background-repeat: repeat;
+	background-size: 380px;
+	border-radius: 10px;
+	padding: 16px;
+	border: 1px solid #d1d7db;
+	box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 
 .santu-txn-msg-preview-col h3 {
 	font-size: 15px;
 	font-weight: 700;
 	margin-bottom: 12px;
+	color: #111b21;
 }
 
 .santu-wa-preview-bubble {
-	background: #dcf8c6;
+	background: #d9fdd3;
 	border-radius: 8px 8px 8px 0;
 	padding: 12px 14px;
 	max-width: 100%;
-	box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+	box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 	position: relative;
 }
 
@@ -186,8 +205,10 @@
 	border-collapse: collapse;
 	background: #fff;
 	border: 1px solid #e2e8f0;
-	border-radius: 8px;
+	border-radius: 12px;
 	font-size: 14px;
+	box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+	overflow: hidden;
 }
 
 .santu-txn-msg-table th {

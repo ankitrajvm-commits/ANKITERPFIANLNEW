@@ -21,7 +21,7 @@ santu_reports.api = {
 			args: {
 				report_name,
 				filters,
-				ignore_prepared_report: false,
+				ignore_prepared_report: true,
 				are_default_filters: false,
 				...options,
 			},

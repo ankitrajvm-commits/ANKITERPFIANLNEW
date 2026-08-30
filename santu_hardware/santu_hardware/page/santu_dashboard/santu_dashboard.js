@@ -295,7 +295,7 @@ function draw_sale_chart($chart_el, points) {
 		},
 		type: "line",
 		height: chart_h,
-		colors: ["#0075e8"],
+		colors: ["#3b82f6"],
 		axisOptions: { xIsSeries: true },
 		lineOptions: { regionFill: 1, hideDots: 0 },
 		tooltipOptions: {

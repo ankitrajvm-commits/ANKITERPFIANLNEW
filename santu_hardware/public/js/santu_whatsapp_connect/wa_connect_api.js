@@ -26,5 +26,6 @@ santu_wa_connect.api = {
 	previewTxn(doctype, name) { return frappe.xcall(`${WA_CONNECT_API}.preview_transaction`, { doctype, name }); },
 	sendTxn(doctype, name, custom_message) { return frappe.xcall(`${WA_CONNECT_API}.send_transaction`, { doctype, name, custom_message }); },
 	linkParty(phone, party_type, party_name) { return frappe.xcall(`${WA_CONNECT_API}.link_party`, { phone, party_type, party_name }); },
+	createContact(display_name, phone, party_type, create_party) { return frappe.xcall(`${WA_CONNECT_API}.create_contact`, { display_name, phone, party_type, create_party }); },
 	syncContacts() { return frappe.xcall(`${WA_CONNECT_API}.sync_contacts`); },
 };

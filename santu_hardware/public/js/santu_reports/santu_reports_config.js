@@ -57,10 +57,30 @@ santu_reports.REPORTS = [
 	// GST
 	{ id: "gstr1", label: "GSTR 1", category: "gst", type: "erpnext", report_name: "GSTR-1" },
 	{ id: "gstr2", label: "GSTR 2", category: "gst", type: "erpnext", report_name: "GST Purchase Register" },
-	{ id: "gstr3b", label: "GSTR 3B", category: "gst", type: "erpnext", report_name: "GSTR-3B Details" },
+	{
+		id: "gstr3b",
+		label: "GSTR 3B",
+		category: "gst",
+		type: "erpnext",
+		report_name: "GSTR-3B Details",
+		extra_filters: (init) => {
+			const today = frappe.datetime.get_today();
+			const d = new Date(today);
+			const month_names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+			return {
+				company_gstin: init.company_gstin || "",
+				year: String(d.getFullYear()),
+				month_or_quarter: month_names[d.getMonth()],
+				filter_by: "ITC Claim Period",
+				sub_section: "4",
+			};
+		},
+	},
 	{ id: "gstr9", label: "GSTR 9", category: "gst", type: "config", config_message: "GSTR-9 annual return is not available as a standard report in india_compliance. Please file GSTR-9 through the GST portal or consult your CA.", less_used: true },
 	{ id: "sale_summary_hsn", label: "Sale Summary By HSN", category: "gst", type: "erpnext", report_name: "HSN-wise-summary of outward supplies" },
 	{ id: "sac_report", label: "SAC Report", category: "gst", type: "erpnext", report_name: "HSN-wise-summary of outward supplies" },
+	{ id: "export_tally", label: "Exports To Tally (XML / Excel)", category: "transaction", type: "embed", embed: "utilities", view: "export_tally" },
+	{ id: "gst_export_tally", label: "Exports To Tally (XML / Excel)", category: "gst", type: "embed", embed: "utilities", view: "export_tally" },
 
 	// Stock
 	// Low Stock Summary merged into this one (2026-08-17: "stock and low
@@ -83,12 +103,46 @@ santu_reports.REPORTS = [
 	{ id: "item_wise_discount", label: "Item Wise Discount", category: "stock", type: "custom", method: "discount_report" },
 
 	// Business
-	{ id: "bank_statement", label: "Bank Statement", category: "business", type: "erpnext", report_name: "Bank Reconciliation Statement", less_used: true },
+	{
+		id: "bank_statement",
+		label: "Bank Statement",
+		category: "business",
+		type: "erpnext",
+		report_name: "Bank Reconciliation Statement",
+		extra_filters: (init) => ({ bank_account: init.bank_account || "" }),
+		less_used: true,
+	},
 	{ id: "discount_report", label: "Discount Report", category: "business", type: "custom", method: "discount_report" },
 
 	// Taxes
-	{ id: "gst_report", label: "GST Report", category: "taxes", type: "erpnext", report_name: "GST Account-wise Summary" },
-	{ id: "gst_rate_report", label: "GST Rate Report", category: "taxes", type: "erpnext", report_name: "GST Tax Rate-wise Summary" },
+	{
+		id: "gst_report",
+		label: "GST Report",
+		category: "taxes",
+		type: "erpnext",
+		report_name: "GST Account-wise Summary",
+		extra_filters: (init) => {
+			const d = santu_reports.utils.default_dates();
+			return {
+				date_range: [d.from_date, d.to_date],
+				voucher_type: "Sales",
+			};
+		},
+	},
+	{
+		id: "gst_rate_report",
+		label: "GST Rate Report",
+		category: "taxes",
+		type: "erpnext",
+		report_name: "GST Tax Rate-wise Summary",
+		extra_filters: (init) => {
+			const d = santu_reports.utils.default_dates();
+			return {
+				date_range: [d.from_date, d.to_date],
+				voucher_type: "Sales Invoice",
+			};
+		},
+	},
 	{ id: "form_27eq", label: "Form No. 27EQ", category: "taxes", type: "erpnext", report_name: "TDS Computation Summary-India", less_used: true },
 	{ id: "tcs_receivable", label: "TCS Receivable", category: "taxes", type: "erpnext", report_name: "Tax Withholding Details-India", extra_filters: { party_type: "Customer" }, less_used: true },
 	{ id: "tds_payable", label: "TDS Payable", category: "taxes", type: "erpnext", report_name: "Tax Withholding Details-India", extra_filters: { party_type: "Supplier" }, less_used: true },

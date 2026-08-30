@@ -2,28 +2,31 @@
 
 .santu-utilities-page-main {
 	padding: 0 !important;
+	background: #f1f5f9;
 }
 
 .santu-utilities {
-	padding: 12px 20px 32px;
+	padding: 16px 24px 40px;
 	max-width: 100%;
 }
 
 .santu-utilities-header {
-	margin-bottom: 16px;
+	margin-bottom: 20px;
 }
 
 .santu-utilities-title {
 	font-size: 24px;
 	font-weight: 700;
 	margin: 0;
-	color: #1a1a2e;
+	color: #0f172a;
+	letter-spacing: -0.5px;
 }
 
 .santu-utilities-subtitle {
 	font-size: 19px;
 	font-weight: 600;
 	margin: 0 0 20px;
+	color: #334155;
 }
 
 .santu-utilities-section {
@@ -31,12 +34,12 @@
 }
 
 .santu-utilities-card {
-	background: #fff;
-	border: 1px solid #e5e7eb;
-	border-radius: 8px;
-	padding: 20px;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	padding: 24px;
 	margin-bottom: 16px;
-	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
 }
 
 .santu-utilities-card h3 {
@@ -72,18 +75,24 @@
 
 .santu-utilities-method-card {
 	display: block;
-	border: 2px solid #e5e7eb;
-	border-radius: 10px;
+	border: 2px solid #e2e8f0;
+	border-radius: 12px;
 	padding: 24px 20px;
 	cursor: pointer;
 	position: relative;
-	transition: border-color 0.15s, box-shadow 0.15s;
+	transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+	background: #ffffff;
 }
 
-.santu-utilities-method-card:hover,
+.santu-utilities-method-card:hover {
+	transform: translateY(-2px);
+	border-color: #cbd5e1;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
 .santu-utilities-method-card.selected {
 	border-color: #3b82f6;
-	box-shadow: 0 0 0 1px #3b82f6;
+	box-shadow: 0 0 0 2px #3b82f6;
 }
 
 .santu-utilities-method-card.wide {
@@ -143,9 +152,16 @@
 .santu-utilities-footer-bar .btn-primary {
 	background: #e11d48;
 	border-color: #e11d48;
-	padding: 10px 32px;
-	border-radius: 24px;
+	padding: 12px 32px;
+	border-radius: 8px;
 	font-weight: 600;
+	font-size: 15px;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+	transition: all 0.2s;
+}
+.santu-utilities-footer-bar .btn-primary:hover {
+	background: #be123c;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
 /* Toolbar */
@@ -165,34 +181,39 @@
 .santu-utilities-table-wrap {
 	overflow: auto;
 	max-height: calc(100vh - 280px);
-	border: 1px solid #e5e7eb;
-	border-radius: 8px;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
 }
 
 .santu-utilities-table {
 	width: 100%;
 	border-collapse: collapse;
 	font-size: 14px;
+	background: #ffffff;
 }
 
 .santu-utilities-table thead th {
-	background: #f0f9ff;
-	padding: 10px 12px;
+	background: #f8fafc;
+	padding: 12px 16px;
 	text-align: left;
 	font-weight: 600;
-	border-bottom: 1px solid #e5e7eb;
+	border-bottom: 1px solid #e2e8f0;
 	position: sticky;
 	top: 0;
 	z-index: 1;
+	color: #64748b;
 }
 
 .santu-utilities-table tbody td {
-	padding: 8px 12px;
-	border-bottom: 1px solid #f3f4f6;
+	padding: 12px 16px;
+	border-bottom: 1px solid #f1f5f9;
+	color: #0f172a;
 }
 
+.santu-utilities-table tbody tr { transition: background 0.15s; }
 .santu-utilities-table tbody tr:hover {
-	background: #f9fafb;
+	background: #f8fafc;
 }
 
 .santu-utilities-table .form-control.input-sm {
@@ -209,32 +230,38 @@
 .santu-utilities-summary-cards {
 	display: flex;
 	gap: 16px;
-	margin-bottom: 20px;
+	margin-bottom: 24px;
 }
 
 .summary-card {
 	flex: 1;
-	background: #fff;
-	border: 1px solid #e5e7eb;
-	border-radius: 8px;
-	padding: 16px;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	padding: 20px;
 	text-align: center;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
 }
 
 .summary-card b {
 	display: block;
-	font-size: 28px;
+	font-size: 32px;
 	font-weight: 700;
+	color: #0f172a;
+	letter-spacing: -0.5px;
 }
 
 .summary-card span {
 	font-size: 14px;
-	color: #6b7280;
+	color: #64748b;
+	font-weight: 500;
+	margin-top: 4px;
+	display: block;
 }
 
-.summary-card.valid b { color: #15803d; }
-.summary-card.warning b { color: #b45309; }
-.summary-card.error b { color: #b91c1c; }
+.summary-card.valid b { color: #10b981; }
+.summary-card.warning b { color: #f59e0b; }
+.summary-card.error b { color: #e11d48; }
 
 /* Wizard */
 .santu-utilities-wizard-steps {
@@ -313,10 +340,10 @@
 }
 
 .santu-barcode-preview {
-	border: 1px dashed #d1d5db;
-	border-radius: 8px;
+	border: 1px dashed #cbd5e1;
+	border-radius: 12px;
 	padding: 16px;
-	background: #fafafa;
+	background: #f8fafc;
 }
 
 .santu-barcode-preview img {
@@ -366,10 +393,11 @@
 }
 
 .role-group {
-	background: #f9fafb;
-	padding: 10px;
-	border-radius: 6px;
+	background: #f8fafc;
+	padding: 12px;
+	border-radius: 12px;
 	font-size: 13px;
+	border: 1px solid #e2e8f0;
 }
 
 /* Bulk modes */
@@ -406,12 +434,13 @@
 
 /* Warning */
 .santu-utilities-warning {
-	background: #fef3c7;
-	border: 1px solid #fbbf24;
-	border-radius: 8px;
-	padding: 14px 16px;
-	margin-bottom: 16px;
+	background: #fffbeb;
+	border: 1px solid #fde68a;
+	border-radius: 12px;
+	padding: 16px 20px;
+	margin-bottom: 20px;
 	font-size: 14px;
+	color: #92400e;
 }
 
 .fy-check {
@@ -475,8 +504,8 @@
 	color: #b06a1f;
 	background: #fff7ec;
 	border: 1px solid #f3ddbe;
-	border-radius: 6px;
-	padding: 8px 10px;
+	border-radius: 8px;
+	padding: 12px 14px;
 }
 
 .santu-privacy-manage p {
@@ -509,47 +538,183 @@
 }
 
 /* ---- Printer Settings ---- */
+.santu-prn-modern {
+	display: flex;
+	gap: 20px;
+	align-items: flex-start;
+}
+.santu-prn-left {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+.santu-prn-right {
+	flex: 0 0 420px;
+	position: sticky;
+	top: 10px;
+}
+
+.santu-prn-card {
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	padding: 20px;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.santu-prn-section-title {
+	font-size: 15px;
+	font-weight: 600;
+	margin-bottom: 8px;
+	color: #1f2233;
+}
+
+.santu-prn-help {
+	font-size: 13px;
+	color: #6b6e7d;
+	line-height: 1.5;
+	margin: 0 0 14px;
+}
+
 .santu-prn-row {
 	display: flex;
 	align-items: center;
 	gap: 10px;
-	margin-bottom: 14px;
-}
-
-.santu-prn-row label {
-	flex: 0 0 90px;
-	margin: 0;
-	font-size: 13px;
-	color: #4a4d5e;
 }
 
 .santu-prn-row select {
-	flex: 1 1 auto;
-	height: 34px;
-	border: 1px solid #d8dbe3;
-	border-radius: 6px;
-	padding: 0 8px;
+	flex: 1;
+	height: 40px;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 0 12px;
 	font-size: 13px;
 }
 
-.santu-prn-section {
-	border-top: 1px solid #eceef3;
-	padding-top: 14px;
-}
-
-.santu-prn-section-title {
-	font-size: 14px;
-	font-weight: 600;
+.santu-prn-check {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 13px;
+	color: #2a2d3a;
+	cursor: pointer;
 	margin-bottom: 4px;
 }
 
-.santu-prn-help {
-	font-size: 12.5px;
-	color: #6b6e7d;
-	line-height: 1.5;
-	margin: 0 0 12px;
+.santu-prn-check input[type="checkbox"] {
+	width: 16px;
+	height: 16px;
+	margin: 0;
+	cursor: pointer;
 }
 
+/* Invoice Library Grid */
+.santu-prn-templates-grid {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 12px;
+	margin-bottom: 16px;
+}
+
+.santu-prn-template-card {
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	padding: 16px;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	position: relative;
+	background: #f8fafc;
+}
+
+.santu-prn-template-card:hover {
+	border-color: #cbd5e1;
+	background: #f1f5f9;
+}
+
+.santu-prn-template-card.active {
+	border-color: #3b5bdb;
+	background: #edf1fe;
+	box-shadow: 0 0 0 1px #3b5bdb;
+}
+
+.santu-prn-template-name {
+	font-weight: 600;
+	font-size: 13.5px;
+	color: #1f2233;
+	margin-bottom: 4px;
+}
+
+.santu-prn-template-desc {
+	font-size: 12px;
+	color: #6b6e7d;
+	line-height: 1.4;
+}
+
+.santu-prn-template-default {
+	position: absolute;
+	top: 10px;
+	right: 10px;
+	font-size: 11px;
+	background: #20c997;
+	color: #fff;
+	padding: 2px 6px;
+	border-radius: 4px;
+	font-weight: 600;
+}
+
+.santu-prn-template-actions {
+	display: flex;
+	gap: 8px;
+}
+
+/* Preview Panel */
+.santu-prn-preview-panel {
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	background: #f1f5f9;
+	overflow: hidden;
+}
+
+.santu-prn-preview-header {
+	background: #e1e4eb;
+	padding: 8px 12px;
+	font-size: 13px;
+	font-weight: 600;
+	color: #4a4d5e;
+	text-align: center;
+	border-bottom: 1px solid #d8dbe3;
+}
+
+.santu-prn-preview-content {
+	padding: 16px;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	min-height: 400px;
+}
+
+.santu-prn-preview-frame {
+	width: 320px; /* Thermal paper width approx */
+	height: 600px;
+	border: none;
+	background: #fff;
+	box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+	transition: width 0.3s ease;
+}
+
+.santu-prn-preview-panel.is-a4 .santu-prn-preview-frame {
+	width: 420px; /* A4 aspect ratio scaled down */
+	height: 594px;
+}
+
+.santu-prn-no-preview {
+	color: #8b8e9c;
+	font-size: 13px;
+	text-align: center;
+}
+
+/* Print Density */
 .santu-prn-slider-wrap {
 	display: flex;
 	align-items: center;
@@ -566,8 +731,6 @@
 	white-space: nowrap;
 }
 
-/* Seven stops, not a free 0-100%: the printer only has seven real levels,
-   and a slider that moved between them would be lying. */
 .santu-prn-ticks {
 	display: flex;
 	justify-content: space-between;
@@ -599,9 +762,8 @@
 }
 
 .santu-prn-diag {
-	margin-top: 18px;
-	border-top: 1px solid #eceef3;
-	padding-top: 10px;
+	margin-top: 16px;
+	padding: 0 16px;
 }
 
 .santu-prn-diag summary {
@@ -648,10 +810,10 @@
 
 .santu-prn-blocked {
 	margin-top: 12px;
-	padding: 10px 12px;
+	padding: 12px 16px;
 	border: 1px solid #f3ddbe;
 	background: #fff7ec;
-	border-radius: 6px;
+	border-radius: 8px;
 	font-size: 12.5px;
 	color: #7a5a2a;
 	line-height: 1.5;
@@ -664,7 +826,7 @@
 /* Shop Profile — Vyapar company details page (replaces Frappe Dialog) */
 .santu-utilities:has(.santu-shop-profile) {
 	padding: 0;
-	background: #f3f4f8;
+	background: #f1f5f9;
 	min-height: calc(100vh - 56px);
 }
 .santu-utilities:has(.santu-shop-profile) .santu-utilities-header {
@@ -673,16 +835,17 @@
 .santu-shop-profile-loading {
 	padding: 48px;
 	text-align: center;
-	color: #71748e;
+	color: #64748b;
 }
 .santu-shop-profile {
-	padding: 12px 16px 24px;
+	padding: 16px 24px 32px;
 	box-sizing: border-box;
 }
 .santu-shop-card {
-	background: #fff;
-	border-radius: 4px;
-	box-shadow: 0 1px 3px rgba(63, 65, 85, 0.08);
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
 	max-width: 920px;
 }
 .santu-shop-head {
@@ -699,17 +862,19 @@
 	line-height: 26px;
 }
 .santu-shop-save {
-	background: #ed1a3b !important;
+	background: #3b82f6 !important;
 	border: none;
 	color: #fff;
-	height: 32px;
-	padding: 0 18px;
-	border-radius: 4px;
+	height: 36px;
+	padding: 0 20px;
+	border-radius: 8px;
 	font-size: 14px;
 	font-weight: 600;
 	cursor: pointer;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+	transition: all 0.2s;
 }
-.santu-shop-save:hover { background: #d41634 !important; }
+.santu-shop-save:hover { background: #2563eb !important; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
 .santu-shop-body {
 	display: flex;
 	gap: 28px;
@@ -783,19 +948,24 @@
 .santu-shop-field textarea {
 	width: 100%;
 	box-sizing: border-box;
-	border: 1px solid #eaeaef;
-	border-radius: 4px;
-	padding: 8px 12px;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 10px 14px;
 	font-size: 14px;
-	color: #3f4155;
-	background: #fff;
+	color: #0f172a;
+	background: #ffffff;
 	font-family: inherit;
+	height: 40px;
+}
+.santu-shop-field textarea {
+	height: auto;
 }
 .santu-shop-field input:focus,
 .santu-shop-field select:focus,
 .santu-shop-field textarea:focus {
 	outline: none;
-	border-color: #0075e8;
+	border-color: #3b82f6;
+	box-shadow: 0 0 0 3px #eff6ff;
 }
 .santu-shop-field textarea { resize: vertical; min-height: 64px; }
 
@@ -807,21 +977,37 @@
 
 /* Bug Report view */
 .santu-bug-report-card { max-width: 600px; }
-.santu-bug-input-row { display: flex; gap: 8px; align-items: flex-start; }
-.santu-bug-textarea { flex: 1; resize: vertical; min-height: 90px; font-size: 15px; }
+.santu-bug-input-row { display: flex; gap: 12px; align-items: flex-start; }
+.santu-bug-textarea {
+	flex: 1;
+	resize: vertical;
+	min-height: 100px;
+	font-size: 15px;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 12px;
+}
+.santu-bug-textarea:focus {
+	outline: none;
+	border-color: #3b82f6;
+	box-shadow: 0 0 0 3px #eff6ff;
+}
 .santu-bug-mic {
 	flex-shrink: 0;
-	width: 44px; height: 44px;
-	font-size: 22px;
+	width: 48px; height: 48px;
+	font-size: 24px;
 	padding: 0;
 	border-radius: 50%;
-	background: #f0f4ff;
-	border: 1px solid #c5d0e6;
-	transition: background .15s;
+	background: #eff6ff;
+	border: 1px solid #bfdbfe;
+	transition: all 0.2s;
+}
+.santu-bug-mic:hover {
+	background: #dbeafe;
 }
 .santu-bug-mic.is-listening { background: #fee2e2; border-color: #ef4444; animation: santu-pulse .8s infinite; }
 @keyframes santu-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.1); } }
 .santu-bug-status { font-size: 12px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
 .santu-bug-status-new { background: #fef3c7; color: #92400e; }
-.santu-bug-status-acknowledged { background: #dbeafe; color: #1e40af; }
-.santu-bug-status-resolved { background: #d1fae5; color: #065f46; }
+.santu-bug-status-resolved,
+.santu-bug-status-fixed { background: #d1fae5; color: #065f46; }

@@ -6,6 +6,7 @@ import frappe
 from frappe.utils import now_datetime
 
 from santu_hardware.santu_hardware.whatsapp_connect_service import (
+	add_new_contact,
 	generate_party_statement_pdf,
 	get_chat_list,
 	get_chat_messages,
@@ -107,7 +108,7 @@ def get_qr_status():
 
 @frappe.whitelist()
 def disconnect():
-	frappe.only_for("System Manager")
+	_require_access()
 	return disconnect_whatsapp()
 
 
@@ -119,7 +120,7 @@ def refresh():
 
 @frappe.whitelist()
 def get_connect_settings():
-	frappe.only_for("System Manager")
+	_require_access()
 	connect = frappe.get_single("Santu WhatsApp Connect Settings")
 	status = get_connection_state()
 	return {
@@ -133,7 +134,7 @@ def get_connect_settings():
 
 @frappe.whitelist()
 def save_connect_settings(settings: str = None):
-	frappe.only_for("System Manager")
+	_require_access()
 	settings = frappe.parse_json(settings) if isinstance(settings, str) else (settings or {})
 	connect = frappe.get_single("Santu WhatsApp Connect Settings")
 	for field in ("sync_personal_contacts", "passcode_enabled"):
@@ -204,6 +205,39 @@ def send_statement(party_type: str, party_name: str, custom_message: str = None)
 
 
 @frappe.whitelist()
+def send_customer_khata(customer: str, from_date: str = None, to_date: str = None, custom_message: str = None):
+	"""WhatsApp the date-ranged running khata (2026-08-27 direct request:
+	"WhatsApp/share option where the existing application already supports
+	WhatsApp") — the same PDF Download PDF produces, sent through the same
+	provider/logging path every other WhatsApp document in this app uses
+	(send_chat_message), not a separate channel.
+	"""
+	_require_access()
+	from santu_hardware.santu_hardware.api import _customer_khata_pdf_bytes
+	from santu_hardware.santu_hardware.transaction_message_service import get_party_phone
+
+	phone = get_party_phone("Customer", customer)
+	if not phone:
+		frappe.throw("No WhatsApp number for this customer.")
+	pdf_bytes, filename, data = _customer_khata_pdf_bytes(customer, from_date, to_date)
+	body = custom_message or (
+		f"Khata Statement — {data['customer_name']}\n"
+		f"{data['from_date']} to {data['to_date']}\n"
+		f"Opening: Rs. {data['opening_balance']:.2f}  |  Closing: Rs. {data['closing_balance']:.2f}\n\n"
+		f"Santu Hardware"
+	)
+	return send_chat_message(
+		phone,
+		body,
+		party_type="Customer",
+		party_name=customer,
+		message_type="Statement",
+		attachment_bytes=pdf_bytes,
+		attachment_filename=filename,
+	)
+
+
+@frappe.whitelist()
 def get_reminder_preview(party_type: str, party_name: str):
 	_require_access()
 	return {"message": get_payment_reminder_message(party_type, party_name)}
@@ -248,6 +282,12 @@ def preview_transaction(doctype: str, name: str):
 def link_party(phone: str, party_type: str, party_name: str):
 	_require_access()
 	return link_contact_to_party(phone, party_type, party_name)
+
+
+@frappe.whitelist()
+def create_contact(display_name: str, phone: str, party_type: str = None, create_party: int = 1):
+	_require_access()
+	return add_new_contact(display_name=display_name, phone=phone, party_type=party_type, create_party=bool(int(create_party or 0)))
 
 
 @frappe.whitelist()

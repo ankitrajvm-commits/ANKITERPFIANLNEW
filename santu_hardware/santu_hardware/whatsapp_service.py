@@ -154,6 +154,22 @@ def send_chat_message(
 		sent_by=frappe.session.user,
 	)
 
+	if attachment_bytes and attachment_filename:
+		try:
+			_file = frappe.get_doc({
+				"doctype": "File",
+				"file_name": attachment_filename,
+				"content": attachment_bytes,
+				"is_private": 0,
+				"attached_to_doctype": "Santu WhatsApp Chat Message",
+				"attached_to_name": chat.name,
+			})
+			_file.insert(ignore_permissions=True)
+			chat.attachment = _file.file_url
+			chat.save(ignore_permissions=True)
+		except Exception:
+			pass
+
 	try:
 		from santu_hardware.santu_hardware.smart_connect_bridge import _resolve_send_phone
 

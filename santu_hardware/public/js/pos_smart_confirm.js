@@ -116,7 +116,7 @@ function santu_show_meaningful_confirm(doc, risk, ifyes, ifno) {
 	const message = `
 		<span class="santu-confirm-summary">
 			<span class="santu-confirm-amount">Complete sale for ₹${format_currency_plain(doc.grand_total)}?</span>
-			<span class="santu-confirm-row"><span>Customer</span><strong>${frappe.utils.escape_html(doc.customer || "Walk-in Customer")}</strong></span>
+			<span class="santu-confirm-row"><span>Customer</span><strong>${frappe.utils.escape_html(doc.customer || "")}</strong></span>
 			<span class="santu-confirm-row"><span>Items</span><strong>${flt(doc.total_qty)}</strong></span>
 			<span class="santu-confirm-row"><span>Payment</span><strong>${frappe.utils.escape_html(payment_summary)}</strong></span>
 			${risk_html}

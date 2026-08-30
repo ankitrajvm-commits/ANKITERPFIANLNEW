@@ -38,4 +38,5 @@ This app can use GitHub Actions for CI. The following workflows are configured:
 
 ### License
 
-mit
+Proprietary & Confidential — All Rights Reserved (Santu Hardware).
+Unauthorized copying, sharing, transfer, distribution, or commercial use is strictly prohibited.

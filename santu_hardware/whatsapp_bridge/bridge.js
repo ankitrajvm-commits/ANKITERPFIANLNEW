@@ -2,7 +2,12 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import makeWASocket, {
+// Baileys 6.17 exports makeWASocket as a NAMED export; the default export
+// became a namespace object. Importing it as the default made
+// `makeWASocket({...})` a call on an object — the bridge would have crashed
+// on connect. Named import works on both 6.7 and 6.17.
+import {
+	makeWASocket,
 	useMultiFileAuthState,
 	DisconnectReason,
 	fetchLatestBaileysVersion,

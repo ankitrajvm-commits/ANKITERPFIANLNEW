@@ -14,19 +14,25 @@
  */
 
 :root {
-	--santu-brand: #e0393e;
-	--santu-brand-dark: #c22a2e;
-	--santu-brand-soft: #fdeceb;
+	--santu-brand: #3b82f6;
+	--santu-brand-dark: #2563eb;
+	--santu-brand-soft: #eff6ff;
 
 	--santu-brand-secondary: #2f6fed;
+	/* Form buttons match the app's brand, not Frappe blue */
+	--primary-color: var(--santu-brand);
+	--btn-primary-bg: var(--santu-brand);
+
+	/* Used by our custom fixed sidebar for the active state */
+	--santu-sidebar-text-active: #3b82f6;
+
 	--santu-brand-secondary-dark: #2559c4;
 	--santu-brand-secondary-soft: #eaf1fe;
 
 	--santu-sidebar-bg: #ffffff;
-	--santu-sidebar-bg-hover: #f3f4f6;
-	--santu-sidebar-bg-active: #fdeceb;
-	--santu-sidebar-text: #4b5563;
-	--santu-sidebar-text-active: #e0393e;
+	--santu-sidebar-bg-hover: #f8fafc;
+	--santu-sidebar-bg-active: #eff6ff;
+	--santu-sidebar-text: #64748b;
 }
 
 /* ---------- Sidebar (workspace/module nav) ----------------------------

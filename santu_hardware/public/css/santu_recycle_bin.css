@@ -1,0 +1,182 @@
+/* Recycle Bin UI */
+
+.santu-rb-main {
+	padding: 24px;
+	background: #f1f5f9;
+	min-height: calc(100vh - 60px);
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.santu-rb-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 24px;
+}
+
+.santu-rb-title {
+	font-size: 24px;
+	font-weight: 700;
+	color: #0f172a;
+	margin: 0;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.santu-rb-controls {
+	display: flex;
+	gap: 12px;
+	background: #ffffff;
+	padding: 12px;
+	border-radius: 12px;
+	box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+	margin-bottom: 24px;
+	border: 1px solid #e2e8f0;
+}
+
+.santu-rb-search {
+	flex: 1;
+	padding: 8px 12px;
+	border: 1px solid #cbd5e1;
+	border-radius: 8px;
+	font-size: 14px;
+}
+.santu-rb-search:focus {
+	outline: none;
+	border-color: #3b82f6;
+	box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.santu-rb-filter {
+	padding: 8px 12px;
+	border: 1px solid #cbd5e1;
+	border-radius: 8px;
+	font-size: 14px;
+	background: #f8fafc;
+	color: #475569;
+	min-width: 200px;
+}
+
+.santu-rb-card {
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+	overflow: hidden;
+}
+
+.santu-rb-table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.santu-rb-table th {
+	text-align: left;
+	padding: 12px 16px;
+	background: #f8fafc;
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: #64748b;
+	border-bottom: 1px solid #e2e8f0;
+}
+
+.santu-rb-table td {
+	padding: 16px;
+	border-bottom: 1px solid #e2e8f0;
+	vertical-align: middle;
+}
+
+.santu-rb-table tr:last-child td {
+	border-bottom: none;
+}
+
+.santu-rb-table tr:hover td {
+	background: #f8fafc;
+}
+
+.santu-rb-docname {
+	font-weight: 600;
+	color: #1e293b;
+	font-size: 14px;
+}
+.santu-rb-doctype {
+	display: inline-block;
+	padding: 4px 10px;
+	background: #eff6ff;
+	color: #1d4ed8;
+	border-radius: 99px;
+	font-size: 12px;
+	font-weight: 600;
+}
+.santu-rb-date {
+	color: #64748b;
+	font-size: 13px;
+}
+.santu-rb-user {
+	color: #475569;
+	font-size: 13px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.santu-rb-btn-restore {
+	padding: 6px 16px;
+	background: #10b981;
+	color: #ffffff;
+	border: none;
+	border-radius: 6px;
+	font-size: 13px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: background 0.2s;
+}
+.santu-rb-btn-restore:hover {
+	background: #059669;
+}
+.santu-rb-btn-restore:disabled {
+	background: #94a3b8;
+	cursor: not-allowed;
+}
+
+.santu-rb-empty {
+	padding: 48px;
+	text-align: center;
+	color: #64748b;
+}
+.santu-rb-empty-icon {
+	font-size: 48px;
+	margin-bottom: 16px;
+	opacity: 0.5;
+}
+.santu-rb-empty-text {
+	font-size: 16px;
+	font-weight: 500;
+}
+
+/* Sub-heading under the title, and the "Show more" pager — both added
+   2026-08-29 when the list moved to server-side filtering with paging. */
+.santu-rb-sub {
+	font-size: 13px;
+	color: #6b7280;
+	margin-top: 4px;
+}
+.santu-rb-morewrap {
+	padding: 12px;
+	text-align: center;
+	border-top: 1px solid #e9edf3;
+}
+.santu-rb-more {
+	border: 1px solid #d7dfea;
+	background: #fff;
+	color: #1f2340;
+	font-size: 13px;
+	font-weight: 600;
+	padding: 7px 18px;
+	border-radius: 6px;
+	cursor: pointer;
+}
+.santu-rb-more:hover { background: #f5f8fc; }

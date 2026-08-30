@@ -102,7 +102,7 @@ santu_party_inline.render_info = function (ctx) {
 			<div class="santu-si2-cust-name">${frappe.utils.escape_html(d[cfg.nameField] || tab[cfg.partyKey])}
 				<button type="button" class="santu-si2-cust-clear" title="Change ${cfg.label}">×</button>
 			</div>
-			${d.village ? `<div class="santu-si2-cust-sub">${frappe.utils.escape_html(d.village)}</div>` : ""}
+			${d.address ? `<div class="santu-si2-cust-sub">${frappe.utils.escape_html(d.address)}</div>` : ""}
 			${stats}
 		</div>
 	`);
@@ -132,37 +132,10 @@ santu_party_inline.select_party = function (ctx, name, opts = {}) {
 	$root.find(".santu-si2-customer-dropdown").hide().empty();
 	return api.details(name).then((d) => {
 		tab[cfg.detailsKey] = d;
-		if (opts.walkinCreditSwitch && cfg.partyType === "Customer") {
-			let mode_changed = false;
-			if ((d.customer_name || "").trim().toLowerCase() === "walk-in customer" && tab.payment_mode === "credit") {
-				tab.payment_mode = "cash";
-				mode_changed = true;
-				frappe.show_alert({ message: __("Walk-in Customer must pay in full — switched to Cash."), indicator: "orange" });
-			}
-			saveDebounced();
-			if (mode_changed && renderBody) renderBody();
-			else if (renderInfo) renderInfo();
-			return;
-		}
 		saveDebounced();
 		if (opts.onSelected) opts.onSelected(d);
 		else if (onSelected) onSelected(d);
 		else if (renderInfo) renderInfo();
-	});
-};
-
-santu_party_inline.use_walkin = function (ctx) {
-	const { api, cfg } = ctx;
-	if (cfg.partyType !== "Customer") return;
-	api.search("Walk-in").then((rows) => {
-		const walkin = rows.find((r) => r.customer_name === "Walk-in Customer");
-		if (walkin) {
-			santu_party_inline.select_party(ctx, walkin.name, { walkinCreditSwitch: true });
-		} else {
-			santu_sale_invoice.api.create_customer("Walk-in Customer", null, null).then((customer_name) => {
-				santu_party_inline.select_party(ctx, customer_name, { walkinCreditSwitch: true });
-			});
-		}
 	});
 };
 
@@ -183,19 +156,8 @@ santu_party_inline.run_search = function (ctx, q) {
 		$dd.hide().empty();
 		return;
 	}
-	api.search(q).then((raw_rows) => {
+	api.search(q).then((rows) => {
 		$dd.empty();
-		let rows = raw_rows;
-		if (cfg.partyType === "Customer") {
-			const seen_walkin = new Set();
-			rows = raw_rows.filter((c) => {
-				const key = (c.customer_name || "").trim().toLowerCase();
-				if (key !== "walk-in customer") return true;
-				if (seen_walkin.has(key)) return false;
-				seen_walkin.add(key);
-				return true;
-			});
-		}
 		const exact_match = rows.some(
 			(r) => (r[cfg.nameField] || "").trim().toLowerCase() === q.trim().toLowerCase()
 		);
@@ -214,7 +176,7 @@ santu_party_inline.run_search = function (ctx, q) {
 					<div class="santu-si2-dd-row-info" style="display:none;">
 						${
 							cfg.partyType === "Customer"
-								? `<div class="santu-si2-dd-row-village">${r.santu_village ? `📍 ${frappe.utils.escape_html(r.santu_village)}` : __("No village on file")}</div>`
+								? `<div class="santu-si2-dd-row-village">${r.santu_village ? `📍 ${frappe.utils.escape_html(r.santu_village)}` : __("No address on file")}</div>`
 								: ""
 						}
 						<textarea class="santu-si2-dd-row-note" placeholder="${__("Add a note to identify this {0}", [cfg.label])}">${frappe.utils.escape_html(r[noteField] || "")}</textarea>
@@ -237,15 +199,6 @@ santu_party_inline.run_search = function (ctx, q) {
 				});
 			});
 		});
-
-		if (cfg.partyType === "Customer" && ctx.walkin !== false) {
-			const has_walkin = rows.some((c) => (c.customer_name || "").trim().toLowerCase() === "walk-in customer");
-			if (!has_walkin) {
-				$(`<div class="santu-si2-dd-row santu-si2-dd-walkin" data-walkin="1">${__("Walk-in Customer")}</div>`)
-					.on("click", () => santu_party_inline.use_walkin(ctx))
-					.appendTo($dd);
-			}
-		}
 
 		if (!exact_match) {
 			const addLabel =
@@ -391,7 +344,6 @@ santu_party_inline.make_ctx = function (page, cfg, opts = {}) {
 		saveDebounced: () => page._save_debounced(),
 		renderBody: () => page._render_body(),
 		renderInfo: () => page._render_customer_info(),
-		walkin: opts.walkin,
 		ddNamespace: opts.ddNamespace || "santu-party-dd",
 	};
 };

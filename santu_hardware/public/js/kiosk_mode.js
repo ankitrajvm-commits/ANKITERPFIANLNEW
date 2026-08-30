@@ -32,32 +32,94 @@ function santu_set_current_staff(staff_name) {
 // direct from the user: reveals item cost price (for judging how much
 // discount still leaves a profit, without leaving it visible to
 // customers by default) — PIN-gated to turn ON, no PIN needed to turn
-// back OFF (tap again, or auto-off after 10s either way). Kept as an
-// in-memory flag, not localStorage — this should never survive a page
-// reload/new session by accident.
+// back OFF (tap again). Kept as an in-memory flag, not localStorage —
+// this should never survive a page reload/new session by accident.
+//
+// Originally also had a 10-second auto-off timer, on the same 2026-08-01
+// spec. Dropped 2026-08-23 (direct report: "kahi v touch krne se disable
+// ho jaa raha hai") — cost price is only visible while actively working
+// a bill, on the operator's side of the counter, so there was never a
+// real "left it exposed and walked away" risk the timer was guarding
+// against; what it actually did was expire mid-conversation, and the
+// next tap on the bill just made the now-hidden price visible again,
 let santu_privacy_mode_active = false;
-let santu_privacy_mode_timer = null;
-const SANTU_PRIVACY_MODE_TIMEOUT_MS = 10000;
+let santu_privacy_auto_lock_timer = null;
+const SANTU_PRIVACY_IDLE_TIMEOUT_MS = 60000; // 60s idle timeout before auto-locking
 
 function santu_is_privacy_mode_active() {
 	return santu_privacy_mode_active;
 }
 
-function santu_set_privacy_mode(active) {
-	santu_privacy_mode_active = active;
-	clearTimeout(santu_privacy_mode_timer);
-	if (active) {
-		santu_privacy_mode_timer = setTimeout(() => santu_set_privacy_mode(false), SANTU_PRIVACY_MODE_TIMEOUT_MS);
+function santu_reset_privacy_timer() {
+	if (santu_privacy_auto_lock_timer) {
+		clearTimeout(santu_privacy_auto_lock_timer);
+		santu_privacy_auto_lock_timer = null;
 	}
-	document.body.classList.toggle("santu-privacy-mode-active", active);
-	santu_render_status_bar();
-	// Screens that print cost price into their own markup have to repaint when
-	// this flips, or the flag goes off while the figures stay on screen — which
-	// is exactly what happened: privacy expired on its timer and the Sale
-	// screen kept showing "Cost: ₹…" until something else happened to
-	// re-render it (2026-08-17 bug report). One event, every screen listens.
-	document.dispatchEvent(new CustomEvent("santu-privacy-mode-change", { detail: { active } }));
+	if (santu_privacy_mode_active) {
+		santu_privacy_auto_lock_timer = setTimeout(() => {
+			if (santu_privacy_mode_active) {
+				santu_set_privacy_mode(false);
+			}
+		}, SANTU_PRIVACY_IDLE_TIMEOUT_MS);
+	}
 }
+
+let santu_privacy_activity_bound = false;
+function santu_on_privacy_activity() {
+	if (santu_privacy_mode_active) {
+		santu_reset_privacy_timer();
+	}
+}
+
+function santu_attach_privacy_listeners() {
+	if (santu_privacy_activity_bound) return;
+	santu_privacy_activity_bound = true;
+	["mousemove", "mousedown", "keydown", "touchstart", "scroll"].forEach((evt) => {
+		window.addEventListener(evt, santu_on_privacy_activity, { passive: true });
+	});
+}
+
+function santu_detach_privacy_listeners() {
+	if (!santu_privacy_activity_bound) return;
+	santu_privacy_activity_bound = false;
+	["mousemove", "mousedown", "keydown", "touchstart", "scroll"].forEach((evt) => {
+		window.removeEventListener(evt, santu_on_privacy_activity);
+	});
+}
+
+function santu_set_privacy_mode(active) {
+	santu_privacy_mode_active = !!active;
+	document.body.classList.toggle("santu-privacy-mode-active", santu_privacy_mode_active);
+	santu_render_status_bar();
+
+	if (santu_privacy_mode_active) {
+		santu_reset_privacy_timer();
+		santu_attach_privacy_listeners();
+	} else {
+		if (santu_privacy_auto_lock_timer) {
+			clearTimeout(santu_privacy_auto_lock_timer);
+			santu_privacy_auto_lock_timer = null;
+		}
+		santu_detach_privacy_listeners();
+	}
+
+	// Screens that print cost price into their own markup have to repaint when
+	// this flips, or the flag goes off while the figures stay on screen.
+	document.dispatchEvent(new CustomEvent("santu-privacy-mode-change", { detail: { active: santu_privacy_mode_active } }));
+}
+
+// Auto-lock when navigating away or switching tabs / minimizing window
+$(window).on("hashchange", () => {
+	if (santu_is_privacy_mode_active()) {
+		santu_set_privacy_mode(false);
+	}
+});
+
+document.addEventListener("visibilitychange", () => {
+	if (document.hidden && santu_is_privacy_mode_active()) {
+		santu_set_privacy_mode(false);
+	}
+});
 
 // santu_toggle_privacy_mode now lives in santu_privacy.js, which owns the
 // whole unlock flow (Touch ID, then PIN, then offering to set one). It used
@@ -119,9 +181,17 @@ function santu_redirect_cashier_to_billing() {
 function santu_add_navbar_brand_text() {
 	const brand = document.querySelector(".navbar-brand.navbar-home");
 	if (!brand || brand.querySelector(".santu-navbar-brand-text")) return;
+	// Two spans, not one string: "Hardware" carries the logo's own red, so
+	// the name in the topbar and the name on the logo read as one mark.
 	const span = document.createElement("span");
 	span.className = "santu-navbar-brand-text";
-	span.textContent = "Santu Hardware";
+	const first = document.createElement("span");
+	first.className = "santu-brand-word-1";
+	first.textContent = "Santu";
+	const second = document.createElement("span");
+	second.className = "santu-brand-word-2";
+	second.textContent = "Hardware";
+	span.append(first, second);
 	brand.appendChild(span);
 }
 

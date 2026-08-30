@@ -115,7 +115,7 @@ function santu_wire_customer_name_suggestions(d) {
 				selected_customer_name = row.customer_name;
 				d.fields_dict.customer_name.set_value(row.customer_name);
 				if (row.mobile_no) d.fields_dict.phone.set_value(row.mobile_no);
-				if (row.santu_village) d.fields_dict.village.set_value(row.santu_village);
+				if (row.santu_village) d.fields_dict.address.set_value(row.santu_village);
 				hide_dropdown();
 			});
 			$dropdown.append($row);
@@ -169,6 +169,7 @@ function santu_prompt_customer_for_new_sale(frm) {
 				fieldname: "customer_name",
 				fieldtype: "Data",
 				label: __("Name"),
+				reqd: 1,
 			},
 			{
 				fieldname: "phone",
@@ -177,46 +178,55 @@ function santu_prompt_customer_for_new_sale(frm) {
 				description: __("If this number is already a customer, we'll use their existing account."),
 			},
 			{
-				fieldname: "village",
+				fieldname: "address",
 				fieldtype: "Data",
-				label: __("Village"),
+				label: __("Address"),
 			},
 		],
 		primary_action_label: __("Continue"),
 		primary_action: async (values) => {
+			const name = (values.customer_name || "").trim();
+			if (!name) {
+				frappe.msgprint(__("Party Name is required."));
+				return;
+			}
+			const phone = (values.phone || "").trim();
+			const address = (values.address || "").trim();
+			if (Boolean(phone) !== Boolean(address)) {
+				frappe.msgprint(__("Phone number aur address dono do, ya dono chhod do — sirf ek nahi."));
+				return;
+			}
 			d.disable_primary_action();
-			if (values.customer_name || values.phone) {
-				try {
-					// If the cashier picked a suggestion and hasn't since edited
-					// the name away from it, `get_selected_customer()` is the
-					// actual Customer doc name — use it directly rather than
-					// going back through phone-based create-or-match, which
-					// has no way to know "this exact record was already chosen".
-					const picked = get_selected_customer();
-					const customer =
-						picked ||
-						(await frappe.xcall(
-							"santu_hardware.santu_hardware.api.get_or_create_customer_by_phone",
-							{
-								customer_name: values.customer_name || values.phone,
-								phone: values.phone,
-								village: values.village,
-							}
-						));
-					await santu_apply_customer_to_pos(frm, customer);
-				} catch (err) {
-					frappe.msgprint({
-						title: __("Couldn't Set Customer"),
-						message: err.message || String(err),
-						indicator: "red",
-					});
-				}
+			try {
+				// If the cashier picked a suggestion and hasn't since edited
+				// the name away from it, `get_selected_customer()` is the
+				// actual Customer doc name — use it directly rather than
+				// going back through phone-based create-or-match, which
+				// has no way to know "this exact record was already chosen".
+				const picked = get_selected_customer();
+				const customer =
+					picked ||
+					(await frappe.xcall(
+						"santu_hardware.santu_hardware.api.get_or_create_customer_by_phone",
+						{
+							customer_name: name,
+							phone: phone || undefined,
+							address: address || undefined,
+						}
+					));
+				await santu_apply_customer_to_pos(frm, customer);
+			} catch (err) {
+				d.enable_primary_action();
+				frappe.msgprint({
+					title: __("Couldn't Set Customer"),
+					message: err.message || String(err),
+					indicator: "red",
+				});
+				return;
 			}
 			d.hide();
 		},
 	});
-	d.set_secondary_action_label(__("Walk-in Customer"));
-	d.set_secondary_action(() => d.hide());
 	const get_selected_customer = santu_wire_customer_name_suggestions(d);
 	d.show();
 	d.fields_dict.customer_name.$input.trigger("focus");

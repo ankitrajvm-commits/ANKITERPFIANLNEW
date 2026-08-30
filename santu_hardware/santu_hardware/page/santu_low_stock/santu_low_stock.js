@@ -147,9 +147,10 @@ function build_row(row, show_code) {
 		? `${esc(row.item_name)} <span class="santu-lowstock-code">${esc(row.item_code)}</span>`
 		: esc(row.item_name);
 	const order = row.suggested_reorder_qty > 0 ? row.suggested_reorder_qty : "—";
+	const is_cpvc = santu_is_cpvc_item(row.item_code, row.item_name);
 
 	return $(`
-		<tr class="santu-lowstock-row">
+		<tr class="santu-lowstock-row ${is_cpvc ? "santu-cpvc-row" : ""}">
 			<td>
 				<div class="santu-lowstock-name">${name}</div>
 			</td>

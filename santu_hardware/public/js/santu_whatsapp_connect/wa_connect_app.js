@@ -23,6 +23,63 @@ santu_wa_connect.render = async function () {
 	santu_wa_connect.renderConnectScreen(status);
 };
 
+santu_wa_connect.openQrModal = async function () {
+	const d = new frappe.ui.Dialog({
+		title: __("Link WhatsApp with QR Code"),
+		fields: [
+			{ fieldtype: "HTML", fieldname: "qr_html" },
+		],
+	});
+	d.$wrapper.find(".modal-dialog").css({ "max-width": "460px" });
+	const $wrap = d.fields_dict.qr_html.$wrapper;
+	$wrap.html(`
+		<div class="santu-psc-qr-wrap" style="padding:10px 0;">
+			<div class="santu-psc-qr-card" style="box-shadow:none;border:none;padding:0;max-width:100%;">
+				<div class="santu-psc-qr-title" style="font-size:16px;">Scan QR code</div>
+				<div class="santu-psc-qr-box"><div class="santu-psc-qr-wait">QR aa raha hai…</div></div>
+				<p class="santu-psc-qr-help" style="font-size:12px;margin-top:12px;">Phone: <b>WhatsApp → Linked devices → Link a device</b>. QR aate hi turant scan karein.</p>
+			</div>
+		</div>
+	`);
+	d.show();
+
+	try {
+		await santu_wa_connect.api.acceptTerms();
+		const st = await santu_wa_connect.api.startSmartConnect();
+		applyModalQr(st);
+	} catch (e) {}
+
+	function applyModalQr(st) {
+		st = st || {};
+		const state = (st.state || "").toUpperCase();
+		if (state === "CONNECTED") {
+			clearInterval(santu_wa_connect._qrModalTimer);
+			d.hide();
+			frappe.show_alert({ message: __("WhatsApp Connected!"), indicator: "green" });
+			santu_wa_connect.render();
+			return;
+		}
+		const $box = $wrap.find(".santu-psc-qr-box");
+		if (st.qr) {
+			$box.html(`<img src="${st.qr}" alt="WhatsApp QR" style="max-width:240px;height:auto;display:block;margin:0 auto;">`);
+		} else if (state === "CONNECTING" || state === "RECONNECTING") {
+			$box.html(`<div class="santu-psc-qr-wait">Linking phone… Please wait.</div>`);
+		}
+	}
+
+	clearInterval(santu_wa_connect._qrModalTimer);
+	santu_wa_connect._qrModalTimer = setInterval(async () => {
+		try {
+			const st = await santu_wa_connect.api.qrStatus();
+			applyModalQr(st);
+		} catch (e) {}
+	}, 1000);
+
+	d.onhide = () => {
+		clearInterval(santu_wa_connect._qrModalTimer);
+	};
+};
+
 santu_wa_connect.renderConnectScreen = function (status) {
 	const viewed = sessionStorage.getItem("santu_wa_intro_seen") === "1";
 	if (!viewed) {
@@ -176,25 +233,54 @@ santu_wa_connect.renderQrScreen = function (status) {
 };
 
 santu_wa_connect.renderWorkspace = function (status) {
+	const is_connected = (status.state || "").toUpperCase() === "CONNECTED";
+	const status_badge = is_connected
+		? `<span class="santu-wa-state-badge connected">🟢 WhatsApp Connected${status.display_phone ? ` — +${frappe.utils.escape_html(status.display_phone)}` : ""}</span>`
+		: `<span class="santu-wa-state-badge disconnected" style="background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;cursor:pointer;" title="Click to Connect WhatsApp">🔴 Disconnected — <b style="text-decoration:underline;">Click to Connect</b></span>`;
+
+	const reconnect_banner = !is_connected ? `
+		<div class="santu-wa-reconnect-banner" style="background:#fffbeb;border-bottom:1px solid #fde68a;padding:8px 16px;display:flex;align-items:center;justify-content:space-between;color:#92400e;font-size:13px;">
+			<div style="display:flex;align-items:center;gap:8px;">
+				<span style="font-size:16px;">⚠️</span>
+				<span><b>WhatsApp Disconnected.</b> Scan QR code to send and receive real-time messages.</span>
+			</div>
+			<button class="btn btn-xs btn-primary wa-banner-connect-btn" style="background:#25d366;border:none;font-weight:600;padding:4px 14px;color:#fff;">⚡ Scan QR & Connect</button>
+		</div>
+	` : "";
+
 	santu_wa_connect.$root.html(`
 		<div class="santu-wa-connect-header">
 			<h1>WhatsApp Connect</h1>
-			<span class="santu-wa-state-badge connected">🟢 WhatsApp Connected${status.display_phone ? ` — +${frappe.utils.escape_html(status.display_phone)}` : ""}</span>
+			${status_badge}
 			<button class="btn btn-sm btn-default santu-wa-settings-btn" title="Settings">⚙</button>
 		</div>
+		${reconnect_banner}
 		<div class="santu-wa-workspace">
 			<div class="santu-wa-chat-list-panel">
-				<input class="form-control santu-wa-search" placeholder="Search or start a new chat">
+				<div class="santu-wa-chat-list-header">
+					<input class="form-control santu-wa-search" placeholder="Search contacts or phone...">
+				</div>
 				<div class="santu-wa-chat-list"></div>
 			</div>
 			<div class="santu-wa-chat-panel">
-				<div class="santu-wa-chat-empty">Select a chat to start messaging</div>
+				<div class="santu-wa-chat-empty">
+					<div class="santu-wa-empty-art">
+						<svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#25d366" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21.0007L4.65 17.2007C3.38766 15.4088 2.82267 13.2177 3.06104 11.0388C3.29942 8.85988 4.32479 6.84284 5.94471 5.36622C7.56463 3.8896 9.66775 3.05492 11.8594 3.0188C14.051 2.98269 16.1805 3.74763 17.8482 5.17007C19.5159 6.59252 20.6071 8.57468 20.9172 10.7446C21.2272 12.9145 20.7347 15.1229 19.5321 16.9555C18.3295 18.788 16.4994 20.1187 14.3854 20.6978C12.2713 21.2769 10.0186 21.0646 8.05 20.1007L3 21.0007"/><path d="M9 10C9 10.1326 9.05268 10.2598 9.14645 10.3536C9.24021 10.4473 9.36739 10.5 9.5 10.5C9.63261 10.5 9.75979 10.4473 9.85355 10.3536C9.94732 10.2598 10 10.1326 10 10V9C10 8.86739 9.94732 8.74021 9.85355 8.64645C9.75979 8.55268 9.63261 8.5 9.5 8.5C9.36739 8.5 9.24021 8.55268 9.14645 8.64645C9.05268 8.74021 9 8.86739 9 9V10ZM9 10C9 11.3261 9.52678 12.5979 10.4645 13.5355C11.4021 14.4732 12.6739 15 14 15H15C15.1326 15 15.2598 14.9473 15.3536 14.8536C15.4473 14.7608 15.5 14.6336 15.5 14.5C15.5 14.3684 15.4473 14.2412 15.3536 14.1474C15.2598 14.0537 15.1326 14.001 15 14.001H14C13.8674 14.001 13.7402 14.0537 13.6464 14.1474C13.5527 14.2412 13.5 14.3684 13.5 14.5C13.5 14.6326 13.5527 14.7598 13.6464 14.8536C13.7402 14.9473 13.8674 15 14 15"/></svg>
+					</div>
+					<h2>WhatsApp for Santu Hardware</h2>
+					<p>Send and receive customer messages, invoices, payment receipts, and balance reminders seamlessly.</p>
+					<div class="santu-wa-empty-footer">
+						<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+						End-to-end encrypted
+					</div>
+				</div>
 			</div>
 		</div>
 		<div class="santu-wa-settings-drawer" style="display:none"></div>
 	`);
 
 	santu_wa_connect.$root.find(".santu-wa-settings-btn").on("click", () => santu_wa_connect.openSettingsDrawer());
+	santu_wa_connect.$root.find(".wa-banner-connect-btn, .santu-wa-state-badge.disconnected").on("click", () => santu_wa_connect.openQrModal());
 	santu_wa_connect.loadChatList();
 	let debounce;
 	santu_wa_connect.$root.find(".santu-wa-search").on("input", function () {
@@ -203,27 +289,116 @@ santu_wa_connect.renderWorkspace = function (status) {
 	});
 };
 
+santu_wa_connect.getAvatarColor = function (name) {
+	const colors = [
+		"#2563eb", "#7c3aed", "#db2777", "#d97706",
+		"#059669", "#0891b2", "#4f46e5", "#ea580c",
+		"#0284c7", "#16a34a", "#9333ea", "#0d9488"
+	];
+	let hash = 0;
+	const str = name || "?";
+	for (let i = 0; i < str.length; i++) {
+		hash = str.charCodeAt(i) + ((hash << 5) - hash);
+	}
+	const idx = Math.abs(hash) % colors.length;
+	return colors[idx];
+};
+
+santu_wa_connect.parseDate = function (ts) {
+	if (!ts) return null;
+	if (ts instanceof Date) return isNaN(ts.getTime()) ? null : ts;
+	let s = String(ts).trim();
+	if (s.includes(" ") && !s.includes("T")) {
+		s = s.replace(" ", "T");
+	}
+	let d = new Date(s);
+	if (!isNaN(d.getTime())) return d;
+	if (window.frappe && frappe.datetime && frappe.datetime.str_to_obj) {
+		try {
+			const fd = frappe.datetime.str_to_obj(ts);
+			if (fd && !isNaN(fd.getTime())) return fd;
+		} catch (e) {}
+	}
+	return null;
+};
+
+santu_wa_connect.formatListTime = function (ts) {
+	const d = santu_wa_connect.parseDate(ts);
+	if (!d) return "";
+	const now = new Date();
+	if (d.toDateString() === now.toDateString()) {
+		return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
+	}
+	const yesterday = new Date(now);
+	yesterday.setDate(yesterday.getDate() - 1);
+	if (d.toDateString() === yesterday.toDateString()) {
+		return "Yesterday";
+	}
+	const diffDays = Math.floor((now - d) / (1000 * 60 * 60 * 24));
+	if (diffDays >= 0 && diffDays < 7) {
+		return d.toLocaleDateString([], { weekday: "short" });
+	}
+	return d.toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "2-digit" });
+};
+
+santu_wa_connect.formatMsgTime = function (ts) {
+	const d = santu_wa_connect.parseDate(ts);
+	if (!d) return "";
+	return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
+};
+
+santu_wa_connect.formatDateDivider = function (d) {
+	if (!d) return "TODAY";
+	const now = new Date();
+	if (d.toDateString() === now.toDateString()) {
+		return "TODAY";
+	}
+	const yesterday = new Date(now);
+	yesterday.setDate(yesterday.getDate() - 1);
+	if (d.toDateString() === yesterday.toDateString()) {
+		return "YESTERDAY";
+	}
+	return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }).toUpperCase();
+};
+
 santu_wa_connect.loadChatList = async function (search) {
 	const $list = santu_wa_connect.$root.find(".santu-wa-chat-list");
-	$list.html(`<div class="santu-wa-loading">Loading…</div>`);
+	$list.html(`<div class="santu-wa-loading">Loading contacts…</div>`);
 	const data = await santu_wa_connect.api.chats(search || "");
 	$list.empty();
 	if (!data.chats.length) {
-		$list.html(`<div class="santu-wa-empty">No chats yet. Search for a customer to start.</div>`);
+		$list.html(`<div class="santu-wa-empty">No contacts found.</div>`);
 		return;
 	}
 	data.chats.forEach((c) => {
-		const time = c.last_message_at ? frappe.datetime.str_to_user(c.last_message_at).slice(-8) : "";
+		const time = santu_wa_connect.formatListTime(c.last_message_at);
+		const party_tag = c.party_type ? `<span class="santu-wa-party-tag ${c.party_type.toLowerCase()}">${c.party_type}</span>` : "";
+		const phone_display = c.phone_number ? `+${c.phone_number}` : "";
+		const initial = (c.display_name || "?")[0].toUpperCase();
+		const avatar_color = santu_wa_connect.getAvatarColor(c.display_name || c.phone_number);
+		let preview_raw = c.last_message_preview ? c.last_message_preview.replace(/\*/g, "") : (c.outstanding ? `Balance: ₹${c.outstanding}` : "Tap to open chat");
+		const preview = frappe.utils.escape_html(preview_raw);
 		const $item = $(`
 			<div class="santu-wa-chat-item" data-phone="${frappe.utils.escape_html(c.phone_number)}">
-				<div class="santu-wa-avatar">${(c.display_name || "?")[0].toUpperCase()}</div>
+				<div class="santu-wa-avatar" style="background:${avatar_color};color:#ffffff;">${initial}</div>
 				<div class="santu-wa-chat-meta">
-					<div class="santu-wa-chat-top"><b>${frappe.utils.escape_html(c.display_name || c.phone_number)}</b><span>${time}</span></div>
-					<div class="santu-wa-chat-preview">${frappe.utils.escape_html(c.last_message_preview || "")}</div>
+					<div class="santu-wa-chat-top">
+						<b>${frappe.utils.escape_html(c.display_name || c.phone_number)}</b>
+						<span>${time}</span>
+					</div>
+					<div class="santu-wa-chat-sub">
+						<span class="santu-wa-chat-phone">${phone_display}</span>
+						${party_tag}
+					</div>
+					<div class="santu-wa-chat-preview">${preview}</div>
 				</div>
 				${c.unread_count ? `<span class="santu-wa-unread">${c.unread_count}</span>` : ""}
 			</div>
 		`);
+		// The row was being built and then dropped on the floor -- created, never
+		// appended -- so the panel stayed blank however many contacts came back
+		// from get_chats. The click handler below reads the chat off the element,
+		// so the object has to ride along on it too.
 		$item.data("chat", c);
 		$list.append($item);
 	});
@@ -237,12 +412,14 @@ santu_wa_connect.loadChatList = async function (search) {
 santu_wa_connect.openChat = async function (chat) {
 	santu_wa_connect.state.activeChat = chat;
 	santu_wa_connect.state.activePhone = chat.phone_number;
+	const avatar_color = santu_wa_connect.getAvatarColor(chat.display_name || chat.phone_number);
+	const initial = (chat.display_name || "?")[0].toUpperCase();
 	const $panel = santu_wa_connect.$root.find(".santu-wa-chat-panel");
 	$panel.html(`
 		<div class="santu-wa-chat-header">
-			<div class="santu-wa-avatar">${(chat.display_name || "?")[0].toUpperCase()}</div>
+			<div class="santu-wa-avatar" style="background:${avatar_color};color:#ffffff;">${initial}</div>
 			<div><b>${frappe.utils.escape_html(chat.display_name || chat.phone_number)}</b><br><small>+${frappe.utils.escape_html(chat.phone_number)}</small></div>
-			${!chat.party_name ? `<button class="btn btn-xs btn-default wa-link-party">Link to Customer</button>` : ""}
+			<button class="btn btn-xs btn-default wa-link-party">${chat.party_name ? "Change Customer" : "Link to Customer"}</button>
 		</div>
 		<div class="santu-wa-messages"></div>
 		<div class="santu-wa-quick-actions"></div>
@@ -254,16 +431,18 @@ santu_wa_connect.openChat = async function (chat) {
 		</div>
 	`);
 
-	if (!chat.party_name) {
-		$panel.find(".wa-link-party").on("click", () => {
-			frappe.prompt({ fieldtype: "Link", options: "Customer", fieldname: "customer", label: "Customer", reqd: 1 }, (v) => {
+	$panel.find(".wa-link-party").on("click", () => {
+		frappe.prompt(
+			{ fieldtype: "Link", options: "Customer", fieldname: "customer", label: "Customer", reqd: 1, default: chat.party_name || undefined },
+			(v) => {
 				santu_wa_connect.api.linkParty(chat.phone_number, "Customer", v.customer).then(() => {
-					chat.party_type = "Customer"; chat.party_name = v.customer;
+					chat.party_type = "Customer"; chat.party_name = v.customer; chat.display_name = v.customer;
 					santu_wa_connect.openChat(chat);
 				});
-			}, "Link to Customer");
-		});
-	}
+			},
+			chat.party_name ? "Change Customer" : "Link to Customer"
+		);
+	});
 
 	santu_wa_connect.renderQuickActions(chat);
 	santu_wa_connect.loadSuggestions(chat);
@@ -274,6 +453,48 @@ santu_wa_connect.openChat = async function (chat) {
 	$panel.find(".wa-attach-btn").on("click", () => santu_wa_connect.showAttachMenu(chat));
 };
 
+santu_wa_connect.previewDocument = function (url, title, download_url) {
+	const d = new frappe.ui.Dialog({
+		title: `<div style="display:flex;align-items:center;gap:8px;"><span style="background:#fee2e2;color:#dc2626;font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;">PDF</span> <b>${frappe.utils.escape_html(title || "Document Preview")}</b></div>`,
+		size: "large",
+		fields: [
+			{
+				fieldtype: "HTML",
+				fieldname: "preview_html",
+			},
+		],
+	});
+	d.$wrapper.find(".modal-dialog").css({ "max-width": "920px", "width": "92vw" });
+	d.$wrapper.find(".modal-body").css({ "padding": "0", "background": "#525659" });
+	
+	const $wrap = d.fields_dict.preview_html.$wrapper;
+	$wrap.html(`
+		<div class="santu-wa-modal-preview-bar" style="background:#202124;padding:8px 16px;display:flex;align-items:center;justify-content:space-between;color:#fff;">
+			<span style="font-size:13px;color:#e8eaed;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:50%;">${frappe.utils.escape_html(title || "Document Preview")}</span>
+			<div style="display:flex;align-items:center;gap:8px;">
+				<button type="button" class="btn btn-xs btn-default wa-preview-print-btn" style="background:#3c4043;color:#fff;border:none;">🖨 Print</button>
+				<button type="button" class="btn btn-xs btn-default wa-preview-tab-btn" style="background:#3c4043;color:#fff;border:none;">↗ Open in Tab</button>
+				${download_url ? `<a class="btn btn-xs btn-primary wa-preview-dl-btn" href="${download_url}" target="_blank" download style="background:#25d366;border:none;color:#fff;text-decoration:none;">📥 Download</a>` : ""}
+			</div>
+		</div>
+		<iframe id="santu_wa_doc_iframe" src="${url}" style="width:100%;height:75vh;border:none;background:#fff;display:block;"></iframe>
+	`);
+
+	$wrap.find(".wa-preview-print-btn").on("click", () => {
+		const iframe = document.getElementById("santu_wa_doc_iframe");
+		if (iframe && iframe.contentWindow) {
+			iframe.contentWindow.focus();
+			iframe.contentWindow.print();
+		}
+	});
+
+	$wrap.find(".wa-preview-tab-btn").on("click", () => {
+		window.open(url, "_blank");
+	});
+
+	d.show();
+};
+
 santu_wa_connect.loadMessages = async function (phone) {
 	const $msgs = santu_wa_connect.$root.find(".santu-wa-messages");
 	const data = await santu_wa_connect.api.messages(phone);
@@ -282,14 +503,82 @@ santu_wa_connect.loadMessages = async function (phone) {
 		$msgs.html(`<div class="santu-wa-date-divider">TODAY</div><div class="santu-wa-empty-chat">No messages yet. Say hello!</div>`);
 		return;
 	}
-	$msgs.append(`<div class="santu-wa-date-divider">TODAY</div>`);
+	let lastDateKey = null;
 	data.messages.forEach((m) => {
+		const rawTs = m.timestamp || m.creation;
+		const d = santu_wa_connect.parseDate(rawTs) || new Date();
+		const dateKey = d.toDateString();
+
+		if (dateKey !== lastDateKey) {
+			const dividerText = santu_wa_connect.formatDateDivider(d);
+			$msgs.append(`<div class="santu-wa-date-divider">${dividerText}</div>`);
+			lastDateKey = dateKey;
+		}
+
 		const cls = m.direction === "Outgoing" ? "outgoing" : "incoming";
-		const time = m.timestamp ? frappe.datetime.str_to_user(m.timestamp).slice(-8) : "";
+		const time = santu_wa_connect.formatMsgTime(rawTs);
 		const ticks = m.direction === "Outgoing" ? santu_wa_connect.statusTicks(m.status) : "";
-		const $bubble = $(`<div class="santu-wa-bubble ${cls}"><div class="santu-wa-bubble-body">${frappe.utils.escape_html(m.message_body || "")}</div><div class="santu-wa-bubble-meta">${time} ${ticks}${m.status === "Failed" ? ` <button class="btn btn-xs btn-danger wa-retry" data-chat="${m.name}">Retry</button>` : ""}</div></div>`);
+
+		let attachment_html = "";
+		if (m.attachment) {
+			const is_img = m.attachment.toLowerCase().match(/\.(png|jpe?g|webp|gif)$/);
+			const fname = m.attachment.split("/").pop() || "Document.pdf";
+			if (is_img) {
+				attachment_html = `<div class="santu-wa-img-preview"><a href="${m.attachment}" target="_blank"><img src="${m.attachment}" alt="Attachment"></a></div>`;
+			} else {
+				attachment_html = `
+					<div class="santu-wa-pdf-card" data-url="${m.attachment}" data-title="${frappe.utils.escape_html(fname)}" data-download="${m.attachment}">
+						<div class="santu-wa-pdf-card-icon">PDF</div>
+						<div class="santu-wa-pdf-card-details">
+							<div class="santu-wa-pdf-card-title">${frappe.utils.escape_html(fname)}</div>
+							<div class="santu-wa-pdf-card-sub">PDF Document • Tap to view directly</div>
+						</div>
+						<a class="santu-wa-pdf-card-dl" href="${m.attachment}" target="_blank" download="${fname}" title="Download file">📥</a>
+					</div>
+				`;
+			}
+		} else if (m.reference_doctype && m.reference_name) {
+			const doctype_label = m.reference_doctype === "Sales Invoice" ? "Bill" : m.reference_doctype;
+			const preview_url = `/printview?doctype=${encodeURIComponent(m.reference_doctype)}&name=${encodeURIComponent(m.reference_name)}&no_letterhead=0`;
+			const dl_url = `/api/method/frappe.utils.print_format.download_pdf?doctype=${encodeURIComponent(m.reference_doctype)}&name=${encodeURIComponent(m.reference_name)}&no_letterhead=0`;
+			const card_title = `${m.reference_name} (${doctype_label})`;
+			attachment_html = `
+				<div class="santu-wa-pdf-card" data-url="${preview_url}" data-title="${frappe.utils.escape_html(card_title)}" data-download="${dl_url}">
+					<div class="santu-wa-pdf-card-icon">PDF</div>
+					<div class="santu-wa-pdf-card-details">
+						<div class="santu-wa-pdf-card-title">${frappe.utils.escape_html(card_title)}</div>
+						<div class="santu-wa-pdf-card-sub">PDF Document • Tap to view directly</div>
+					</div>
+					<a class="santu-wa-pdf-card-dl" href="${dl_url}" target="_blank" download="${m.reference_name}.pdf" title="Download file">📥</a>
+				</div>
+			`;
+		}
+
+		const body_html = m.message_body ? `<div class="santu-wa-bubble-body">${frappe.utils.escape_html(m.message_body)}</div>` : "";
+		const $bubble = $(`
+			<div class="santu-wa-bubble ${cls}">
+				${attachment_html}
+				${body_html}
+				<div class="santu-wa-bubble-meta">
+					<span class="santu-wa-msg-time">${time}</span>
+					${ticks}
+					${m.status === "Failed" ? ` <button class="btn btn-xs btn-danger wa-retry" data-chat="${m.name}">Retry</button>` : ""}
+				</div>
+			</div>
+		`);
 		$msgs.append($bubble);
 	});
+
+	$msgs.find(".santu-wa-pdf-card").on("click", function (e) {
+		if ($(e.target).closest(".santu-wa-pdf-card-dl").length) return; // allow explicit download link
+		const url = $(this).data("url");
+		const title = $(this).data("title");
+		const download_url = $(this).data("download");
+		if (url) {
+			santu_wa_connect.previewDocument(url, title, download_url);
+		}
+	});
+
 	$msgs.scrollTop($msgs[0].scrollHeight);
 	$msgs.find(".wa-retry").on("click", function () {
 		santu_wa_connect.api.retry($(this).data("chat")).then(() => santu_wa_connect.loadMessages(phone));
@@ -451,8 +740,46 @@ santu_wa_connect.openSettingsDrawer = async function () {
 			$(this).prop("disabled", false).text("🔄 Sync Contacts Now");
 		}
 	});
-	$drawer.find(".wa-refresh").on("click", async () => { await santu_wa_connect.api.refresh(); frappe.show_alert({ message: "Refreshed", indicator: "green" }); santu_wa_connect.render(); });
+	$drawer.find(".wa-refresh").on("click", async () => {
+		frappe.dom.freeze(__("Refreshing WhatsApp…"));
+		try {
+			await santu_wa_connect.api.refresh();
+			frappe.dom.unfreeze();
+			frappe.show_alert({ message: __("Refreshed"), indicator: "green" });
+			santu_wa_connect.render();
+		} catch (e) {
+			frappe.dom.unfreeze();
+			frappe.msgprint((e && e.message) || __("Could not refresh WhatsApp."));
+		}
+	});
+	$drawer.find(".wa-disable").on("click", async () => {
+		frappe.confirm(__("Disable WhatsApp Smart Connect? WhatsApp connection will be disconnected and stopped."), async () => {
+			frappe.dom.freeze(__("Disabling WhatsApp Connect…"));
+			try {
+				await santu_wa_connect.api.disconnect();
+				$drawer.hide();
+				frappe.dom.unfreeze();
+				frappe.show_alert({ message: __("WhatsApp Connect has been disabled"), indicator: "orange" });
+				santu_wa_connect.render();
+			} catch (e) {
+				frappe.dom.unfreeze();
+				frappe.msgprint((e && e.message) || __("Could not disconnect WhatsApp."));
+			}
+		});
+	});
 	$drawer.find(".wa-logout").on("click", async () => {
-		frappe.confirm("Logout from WhatsApp?", async () => { await santu_wa_connect.api.disconnect(); $drawer.hide(); santu_wa_connect.render(); });
+		frappe.confirm(__("Logout from WhatsApp? You will need to scan QR code again to reconnect."), async () => {
+			frappe.dom.freeze(__("Logging out from WhatsApp…"));
+			try {
+				await santu_wa_connect.api.disconnect();
+				$drawer.hide();
+				frappe.dom.unfreeze();
+				frappe.show_alert({ message: __("Logged out from WhatsApp"), indicator: "orange" });
+				santu_wa_connect.render();
+			} catch (e) {
+				frappe.dom.unfreeze();
+				frappe.msgprint((e && e.message) || __("Could not logout from WhatsApp."));
+			}
+		});
 	});
 };

@@ -14,3 +14,4 @@ __pycache__
 # This blocks that class of mistake from ever being committed.
 santu_hardware/whatsapp_bridge/site1.local/
 santu_hardware/whatsapp_bridge/*/private/
+santu_hardware/tests/tmp_*

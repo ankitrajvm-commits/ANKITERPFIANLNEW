@@ -1,7 +1,7 @@
 /* global frappe */
 frappe.provide("santu_purchase_invoice");
 
-// Mirrors santu_sale_invoice_api.js's INDIAN_STATES/BIHAR_DISTRICTS — kept
+// Mirrors santu_sale_invoice_api.js's INDIAN_STATES — kept
 // as its own copy rather than a cross-file reference since this page's JS
 // is lazy-loaded independently of the Sale Invoice screen's.
 santu_purchase_invoice.INDIAN_STATES = [
@@ -13,13 +13,6 @@ santu_purchase_invoice.INDIAN_STATES = [
 	"Tamil Nadu", "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
 ];
 
-santu_purchase_invoice.BIHAR_DISTRICTS = [
-	"Araria", "Arwal", "Aurangabad", "Banka", "Begusarai", "Bhagalpur", "Bhojpur", "Buxar",
-	"Darbhanga", "East Champaran", "Gaya", "Gopalganj", "Jamui", "Jehanabad", "Kaimur", "Katihar",
-	"Khagaria", "Kishanganj", "Lakhisarai", "Madhepura", "Madhubani", "Munger", "Muzaffarpur",
-	"Nalanda", "Nawada", "Patna", "Purnia", "Rohtas", "Saharsa", "Samastipur", "Saran", "Sheikhpura",
-	"Sheohar", "Sitamarhi", "Siwan", "Supaul", "Vaishali", "West Champaran",
-];
 
 santu_purchase_invoice.utils = {
 	format_money(v) {
@@ -123,38 +116,8 @@ santu_purchase_invoice.utils = {
 					</div>
 				</div>
 				<div class="santu-party-col santu-party-col-billing">
-					<label class="control-label">${__("Billing Address")}</label>
-					<textarea class="form-control santu-party-billing-simple" placeholder="${__("Billing Address")}" rows="3"></textarea>
-					<a href="#" class="santu-party-show-detailed">${__("Show Detailed Address")}</a>
-					<div class="santu-party-detailed" style="display:none;">
-						<div class="frappe-control">
-							<label class="control-label">${__("District")}</label>
-							<select class="form-control santu-party-district">
-								<option value="">${__("Auto (from pincode)")}</option>${santu_purchase_invoice.BIHAR_DISTRICTS.map((dd) => `<option value="${frappe.utils.escape_html(dd)}">${frappe.utils.escape_html(dd)}</option>`).join("")}
-							</select>
-						</div>
-						<div class="frappe-control">
-							<label class="control-label">${__("Address Line 1")}</label>
-							<input type="text" class="form-control santu-party-addr1">
-						</div>
-						<div class="frappe-control">
-							<label class="control-label">${__("Address Line 2")}</label>
-							<input type="text" class="form-control santu-party-addr2">
-						</div>
-						<div class="frappe-control santu-party-village-wrap">
-							<label class="control-label">${__("City / Village")}</label>
-							<input type="text" class="form-control santu-party-village" autocomplete="off">
-							<div class="santu-party-village-dropdown" style="display:none;"></div>
-						</div>
-						<div class="frappe-control">
-							<label class="control-label">${__("Pincode")}</label>
-							<input type="text" class="form-control santu-party-pincode">
-						</div>
-						<div class="frappe-control">
-							<label class="control-label">${__("Country")}</label>
-							<input type="text" class="form-control santu-party-country" value="India">
-						</div>
-					</div>
+					<label class="control-label">${__("Address")}</label>
+					<textarea class="form-control santu-party-billing-simple" placeholder="${__("Address — kuch bhi likh sakte hain")}" rows="4"></textarea>
 				</div>
 				<div class="santu-party-col santu-party-col-shipping">
 					<label class="control-label">${__("Shipping Address")}</label>
@@ -168,58 +131,12 @@ santu_purchase_invoice.utils = {
 
 		const $html = $gstAddressPanel;
 
-		$html.find(".santu-party-show-detailed").on("click", (e) => {
-			e.preventDefault();
-			state.detailed_open = !state.detailed_open;
-			$html.find(".santu-party-detailed").toggle(state.detailed_open);
-			$(e.currentTarget).text(state.detailed_open ? __("Hide Detailed Address") : __("Show Detailed Address"));
-		});
-
 		$html.find(".santu-party-enable-shipping").on("click", (e) => {
 			e.preventDefault();
 			state.shipping_open = !state.shipping_open;
 			$html.find(".santu-party-shipping-block").toggle(state.shipping_open);
 			$(e.currentTarget).text(state.shipping_open ? "− " + __("Disable Shipping Address") : "+ " + __("Enable Shipping Address"));
 		});
-
-		const $village = $html.find(".santu-party-village");
-		const $villageDD = $html.find(".santu-party-village-dropdown");
-		const $district = $html.find(".santu-party-district");
-		const $pincode = $html.find(".santu-party-pincode");
-
-		const search_village = santu_purchase_invoice.utils.debounce((q) => {
-			santu_purchase_invoice.api.search_bihar_villages($district.val(), q).then((rows) => {
-				$villageDD.empty();
-				if (!rows.length) {
-					$villageDD.append(`<div class="santu-party-village-empty">${__("No matches")}</div>`);
-				}
-				rows.forEach((r) => {
-					$(`<div class="santu-party-village-row">${frappe.utils.escape_html(r.village)} <span>${r.pincode}</span></div>`)
-						.on("click", () => {
-							state.village = r.village;
-							$village.val(r.village);
-							if (!$pincode.val()) $pincode.val(r.pincode);
-							$villageDD.hide();
-						})
-						.appendTo($villageDD);
-				});
-				$villageDD.show();
-			});
-		});
-		$village.on("input", (e) => {
-			state.village = null;
-			search_village(e.target.value.trim());
-		});
-		$village.on("focus", (e) => search_village(e.target.value.trim()));
-		$district.on("change", () => {
-			$village.val("");
-			state.village = null;
-		});
-		$(document)
-			.off("click.santu-party-village-purchase")
-			.on("click.santu-party-village-purchase", (e) => {
-				if (!$(e.target).closest(".santu-party-village-wrap").length) $villageDD.hide();
-			});
 
 		d.show();
 		return d;
@@ -234,32 +151,22 @@ santu_purchase_invoice.utils = {
 			return;
 		}
 
+		const phone = (d.get_value("phone") || "").trim();
+		const address = ($html.find(".santu-party-billing-simple").val() || "").trim();
+		if (Boolean(phone) !== Boolean(address)) {
+			frappe.msgprint(__("Phone number aur address dono do, ya dono chhod do — sirf ek nahi."));
+			return;
+		}
+
 		const payload = {
 			customer_name: supplier_name,
 			gstin: d.get_value("gstin"),
-			phone: d.get_value("phone"),
+			phone,
 			gst_category: $html.find(".santu-party-gst-type").val(),
 			state: $html.find(".santu-party-state").val(),
 			email: $html.find(".santu-party-email").val(),
+			address,
 		};
-
-		if (state.detailed_open) {
-			payload.district = $html.find(".santu-party-district").val();
-			payload.address_line1 = $html.find(".santu-party-addr1").val();
-			payload.address_line2 = $html.find(".santu-party-addr2").val();
-			payload.city = $html.find(".santu-party-village").val();
-			payload.pincode = $html.find(".santu-party-pincode").val();
-			payload.country = $html.find(".santu-party-country").val() || "India";
-		} else {
-			const simple = $html.find(".santu-party-billing-simple").val();
-			if (simple && simple.trim()) {
-				payload.address_line1 = simple.trim();
-				// City/village deliberately not sent: stuffing the district into
-				// the City field is what wrote "Saran" onto every party. The
-				// server fills City from the village, else the pincode's district.
-				payload.country = "India";
-			}
-		}
 
 		if (state.shipping_open) {
 			payload.shipping_address = $html.find(".santu-party-shipping-simple").val();
@@ -290,9 +197,6 @@ santu_purchase_invoice.api = {
 	},
 	create_supplier_full(party) {
 		return frappe.xcall("santu_hardware.santu_hardware.api.create_supplier_full", { party });
-	},
-	search_bihar_villages(district, search) {
-		return frappe.xcall("santu_hardware.santu_hardware.api.search_bihar_villages", { district, search });
 	},
 	update_supplier_note(supplier, note) {
 		return frappe.xcall("santu_hardware.santu_hardware.api.update_supplier_note", { supplier, note });

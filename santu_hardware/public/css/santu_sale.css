@@ -14,9 +14,9 @@
 	height: calc(100vh - 56px);
 	display: flex;
 	flex-direction: column;
-	background: #f3f4f8;
+	background: #f1f5f9;
 	font-family: inherit;
-	color: #3f4155;
+	color: #0f172a;
 	box-sizing: border-box;
 }
 
@@ -25,45 +25,50 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: 12px;
-	padding: 12px 16px;
-	background: #fff;
+	padding: 16px 20px;
+	background: #ffffff;
 	flex-shrink: 0;
-	min-height: 56px;
+	min-height: 64px;
 	box-sizing: border-box;
+	border-bottom: 1px solid #e2e8f0;
+	box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+	z-index: 10;
 }
 
 .santu-sale-page-title {
 	display: flex;
 	align-items: center;
-	gap: 4px;
+	gap: 8px;
 	position: relative;
 	cursor: pointer;
 	user-select: none;
 }
 
 .santu-sale-title-text {
-	font-size: 20px;
-	font-weight: 600;
-	line-height: 26px;
-	color: #3f4155;
+	font-size: 22px;
+	font-weight: 700;
+	line-height: 28px;
+	color: #0f172a;
+	letter-spacing: -0.5px;
 }
 
 .santu-sale-title-chevron {
-	font-size: 12px;
-	color: #71748e;
+	font-size: 14px;
+	color: #64748b;
 	line-height: 1;
 }
 
 .santu-sale-title-menu {
 	display: none;
 	position: absolute;
-	top: 32px;
+	top: 36px;
 	left: 0;
-	background: #fff;
-	border-radius: 4px;
-	box-shadow: 0 5px 39px 9px rgba(63, 65, 85, 0.18);
+	background: #ffffff;
+	border-radius: 8px;
+	box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+	border: 1px solid #e2e8f0;
 	z-index: 30;
-	padding: 4px 0;
+	padding: 8px 0;
 	min-width: 240px;
 }
 .santu-sale-title-menu.open { display: block; }
@@ -71,44 +76,47 @@
 	display: block;
 	width: calc(100% - 16px);
 	margin: 4px 8px;
-	padding: 6px 12px;
+	padding: 8px 12px;
 	border: none;
 	background: transparent;
-	color: #3f4155;
+	color: #334155;
 	font-size: 14px;
-	font-weight: 400;
+	font-weight: 500;
 	line-height: 21px;
 	text-align: left;
 	cursor: pointer;
-	border-radius: 4px;
+	border-radius: 6px;
+	transition: background 0.15s, color 0.15s;
 }
 .santu-sale-title-menu button:hover,
 .santu-sale-title-menu button.is-active {
-	font-weight: 500;
-	background: #f3f4f8;
+	font-weight: 600;
+	background: #f8fafc;
+	color: #0f172a;
 }
 
 .santu-sale-add-btn {
 	display: inline-flex !important;
 	align-items: center !important;
-	gap: 4px !important;
-	height: 32px !important;
-	padding: 5px 16px !important;
+	gap: 6px !important;
+	height: 36px !important;
+	padding: 6px 18px !important;
 	line-height: 1 !important;
 	font-size: 14px !important;
-	font-weight: 500 !important;
-	border-radius: 4px !important;
-	background: #ed1a3b !important;
-	border-color: #ed1a3b !important;
-	color: #fff !important;
-	box-shadow: none !important;
+	font-weight: 600 !important;
+	border-radius: 8px !important;
+	background: #2563eb !important;
+	border-color: #2563eb !important;
+	color: #ffffff !important;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
 	white-space: nowrap;
+	transition: all 0.2s !important;
 }
 .santu-sale-add-btn:hover,
 .santu-sale-add-btn:focus {
-	background: #d01632 !important;
-	border-color: #d01632 !important;
-	color: #fff !important;
+	background: #1d4ed8 !important;
+	border-color: #1d4ed8 !important;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
 }
 
 .santu-sale-body {
@@ -116,8 +124,8 @@
 	min-height: 0;
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
-	padding: 4px;
+	gap: 12px;
+	padding: 12px;
 }
 
 .santu-sale-filter-bar {
@@ -125,18 +133,19 @@
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 12px;
-	padding: 12px 16px;
+	padding: 16px;
 	margin-bottom: 0;
-	background: #fff;
-	border: none;
-	border-radius: 4px;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
 	flex-shrink: 0;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
 }
 
 .santu-sale-filter-label {
 	font-size: 14px;
-	font-weight: 400;
-	color: #71748e;
+	font-weight: 500;
+	color: #64748b;
 	white-space: nowrap;
 }
 
@@ -144,25 +153,26 @@
 	appearance: none;
 	-webkit-appearance: none;
 	font-size: 14px;
-	font-weight: 400;
-	color: #3f4155;
-	background: #fff;
-	border: 1px solid #eaeaef;
-	border-radius: 4px;
-	padding: 6px 28px 6px 12px;
-	height: 32px;
+	font-weight: 500;
+	color: #0f172a;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 8px 28px 8px 12px;
+	height: 36px;
 	line-height: 1.2;
 	cursor: pointer;
 	outline: none;
+	transition: all 0.2s;
 }
-.santu-sale-pill:hover { background: #f8f8f8; }
+.santu-sale-pill:hover { background: #f8fafc; border-color: #cbd5e1; }
 .santu-sale-pill:focus {
-	border-color: #0075e8;
-	box-shadow: 0 0 0 2px #c5e3fe;
+	border-color: #3b82f6;
+	box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 select.santu-sale-pill {
-	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%2371748e' d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%2364748b' d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
 	background-repeat: no-repeat;
 	background-position: right 10px center;
 	min-width: 120px;
@@ -171,26 +181,32 @@ select.santu-sale-pill {
 .santu-sale-date-range {
 	display: flex;
 	align-items: center;
-	gap: 6px;
+	gap: 8px;
 	flex-wrap: wrap;
-	background: #fff;
-	border: 1px solid #eaeaef;
-	border-radius: 4px;
-	padding: 0 10px;
-	height: 32px;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 0 12px;
+	height: 36px;
 	box-sizing: border-box;
+	transition: all 0.2s;
+}
+.santu-sale-date-range:hover { border-color: #cbd5e1; }
+.santu-sale-date-range:focus-within {
+	border-color: #3b82f6;
+	box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .santu-sale-cal-icon {
-	font-size: 13px;
+	font-size: 14px;
 	line-height: 1;
-	color: #71748e;
+	color: #64748b;
 }
 
 .santu-sale-date-to {
-	font-size: 12px;
-	font-weight: 400;
-	color: #71748e;
+	font-size: 13px;
+	font-weight: 500;
+	color: #64748b;
 }
 
 input.santu-sale-pill[type="date"] {
@@ -200,8 +216,11 @@ input.santu-sale-pill[type="date"] {
 	background: transparent;
 	border: none;
 	cursor: text;
-	color: #3f4155;
-	font-size: 13px;
+	color: #0f172a;
+	font-size: 14px;
+}
+input.santu-sale-pill[type="date"]:focus {
+	box-shadow: none;
 }
 
 .santu-sale-company { min-width: 140px; max-width: 220px; }
@@ -211,21 +230,23 @@ input.santu-sale-pill[type="date"] {
 .santu-sale-header-actions {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 12px;
 }
 .santu-sale-settings-btn {
-	width: 32px;
-	height: 32px;
-	border: none;
-	border-radius: 4px;
-	background: transparent;
+	width: 36px;
+	height: 36px;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	background: #ffffff;
 	cursor: pointer;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	padding: 0;
+	color: #64748b;
+	transition: all 0.2s;
 }
-.santu-sale-settings-btn:hover { background: #f3f4f8; }
+.santu-sale-settings-btn:hover { background: #f8fafc; color: #0f172a; }
 
 .santu-sale-period-strong {
 	font-weight: 600 !important;
@@ -233,26 +254,28 @@ input.santu-sale-pill[type="date"] {
 }
 
 .santu-sale-summary-card {
-	background: #fff;
-	border: 1px solid #d9d4f0;
-	border-radius: 4px;
-	padding: 16px 20px;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	padding: 20px;
 	display: block;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
 }
 
 .santu-sale-summary-headline {
 	display: flex;
 	align-items: baseline;
-	gap: 10px;
+	gap: 12px;
 	flex-wrap: wrap;
 }
 
 .santu-sale-summary-amount {
-	font-size: 20px;
+	font-size: 24px;
 	font-weight: 700;
-	color: #3f4155;
+	color: #0f172a;
 	line-height: normal;
 	margin-bottom: 0;
+	letter-spacing: -0.5px;
 }
 
 .santu-sale-summary-top {
@@ -260,13 +283,13 @@ input.santu-sale-pill[type="date"] {
 	align-items: flex-start;
 	justify-content: space-between;
 	gap: 16px;
-	margin-bottom: 4px;
+	margin-bottom: 8px;
 }
 
 .santu-sale-summary-label {
 	font-size: 14px;
-	font-weight: 400;
-	color: #71748e;
+	font-weight: 600;
+	color: #64748b;
 }
 
 .santu-sale-summary-pct-wrap {
@@ -277,46 +300,47 @@ input.santu-sale-pill[type="date"] {
 }
 
 .santu-sale-summary-badge {
-	font-size: 12px;
-	font-weight: 500;
+	font-size: 13px;
+	font-weight: 600;
 	padding: 2px 0;
 	border-radius: 0;
 	white-space: nowrap;
 	background: transparent;
 }
-.santu-sale-pct-up { color: #08bd7c; background: transparent; }
-.santu-sale-pct-down { color: #f45972; background: transparent; }
+.santu-sale-pct-up { color: #059669; background: transparent; }
+.santu-sale-pct-down { color: #e11d48; background: transparent; }
 
 .santu-sale-summary-pct-caption {
 	font-size: 12px;
-	color: #9b9eb8;
+	color: #94a3b8;
 	white-space: nowrap;
 }
 
 .santu-sale-summary-sub {
 	font-size: 14px;
-	color: #71748e;
-	font-weight: 400;
+	color: #64748b;
+	font-weight: 500;
 }
 .santu-sale-summary-sub b {
 	font-weight: 600;
-	color: #3f4155;
+	color: #0f172a;
 }
 .santu-sale-summary-sep {
 	margin: 0 8px;
-	color: #eaeaef;
+	color: #e2e8f0;
 }
-.santu-sale-balance-due { color: #f45972 !important; }
+.santu-sale-balance-due { color: #e11d48 !important; }
 
 .santu-sale-txn-wrap {
-	background: #fff;
-	border: none;
-	border-radius: 4px;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
 	overflow: hidden;
 	flex: 1 1 auto;
 	min-height: 0;
 	display: flex;
 	flex-direction: column;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
 }
 
 .santu-sale-txn-card-inner {
@@ -331,19 +355,20 @@ input.santu-sale-pill[type="date"] {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 8px;
-	height: 56px;
-	padding: 16px 12px;
-	border-bottom: 1px solid #eaeaef;
+	gap: 12px;
+	height: 64px;
+	padding: 16px 20px;
+	border-bottom: 1px solid #e2e8f0;
 	box-sizing: border-box;
 	flex-shrink: 0;
+	background: #ffffff;
 }
 
 .santu-sale-txn-title {
-	font-size: 14px;
-	font-weight: 500;
-	line-height: 18px;
-	color: #3f4155;
+	font-size: 16px;
+	font-weight: 600;
+	line-height: 20px;
+	color: #0f172a;
 }
 
 .santu-sale-txn-toolbar {
@@ -356,18 +381,19 @@ input.santu-sale-pill[type="date"] {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 20px;
-	height: 20px;
+	width: 24px;
+	height: 24px;
 	padding: 0;
 	border: none;
-	border-radius: 0;
+	border-radius: 4px;
 	background: transparent;
 	font-size: 16px;
 	cursor: pointer;
 	line-height: 1;
-	color: #656672;
+	color: #64748b;
+	transition: all 0.2s;
 }
-.santu-sale-icon-btn:hover { opacity: 0.75; background: transparent; }
+.santu-sale-icon-btn:hover { color: #0f172a; background: transparent; }
 
 .santu-sale-xls-badge {
 	display: inline-flex;
@@ -375,26 +401,32 @@ input.santu-sale-pill[type="date"] {
 	justify-content: center;
 	width: 22px;
 	height: 16px;
-	border-radius: 2px;
-	background: #08bd7c;
+	border-radius: 4px;
+	background: #059669;
 	color: #fff;
-	font-size: 9px;
+	font-size: 10px;
 	font-weight: 700;
 }
 
 .santu-sale-txn-search-panel {
-	padding: 0 12px 12px;
-	border-bottom: 1px solid #eaeaef;
+	padding: 0 16px 16px;
+	border-bottom: 1px solid #e2e8f0;
 	flex-shrink: 0;
+	background: #ffffff;
 }
 .santu-sale-txn-search-panel .form-control {
 	font-size: 14px;
 	height: 36px;
-	padding: 5px 10px 5px 36px;
-	border-radius: 4px;
-	border-color: #eaeaef;
-	background: #fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%239b9eb8' stroke-width='1.5'><circle cx='7' cy='7' r='5'/><path d='M11 11l3 3'/></svg>") no-repeat 12px center;
-	color: #3f4155;
+	padding: 6px 12px 6px 36px;
+	border-radius: 8px;
+	border: 1px solid #e2e8f0;
+	background: #fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2394a3b8' stroke-width='1.5'><circle cx='7' cy='7' r='5'/><path d='M11 11l3 3'/></svg>") no-repeat 12px center;
+	color: #0f172a;
+}
+.santu-sale-txn-search-panel .form-control:focus {
+	border-color: #3b82f6;
+	outline: none;
+	box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .santu-sale-txn-table-wrap {
@@ -411,39 +443,43 @@ input.santu-sale-pill[type="date"] {
 
 .santu-sale-txn-table thead th {
 	text-align: left;
-	padding: 8px 12px;
-	font-size: 12px;
-	font-weight: 500;
-	color: #9b9eb8;
-	background: #fff;
-	border-bottom: 1px solid #eaeaef;
+	padding: 12px 16px;
+	font-size: 13px;
+	font-weight: 600;
+	color: #64748b;
+	background: #f8fafc;
+	border-bottom: 1px solid #e2e8f0;
 	white-space: nowrap;
+	position: sticky;
+	top: 0;
+	z-index: 5;
 }
 .santu-sale-txn-table thead th.num { text-align: right; }
 
 .santu-sale-th-filter {
 	display: inline-block;
 	margin-left: 4px;
-	font-size: 9px;
-	color: #cbccde;
+	font-size: 10px;
+	color: #94a3b8;
 }
 
 .santu-sale-txn-table tbody td {
-	padding: 0 12px;
-	height: 52px;
-	border-bottom: 1px solid #eaeaef;
-	color: #3f4155;
+	padding: 0 16px;
+	height: 56px;
+	border-bottom: 1px solid #e2e8f0;
+	color: #334155;
 	vertical-align: middle;
-	line-height: 52px;
+	line-height: 56px;
+	font-weight: 500;
 }
-.santu-sale-txn-table tbody td.num { text-align: right; }
+.santu-sale-txn-table tbody td.num { text-align: right; font-weight: 600; color: #0f172a; }
 
-.santu-sale-txn-row { cursor: pointer; }
-.santu-sale-txn-row:hover { background: #f8f8f8; }
+.santu-sale-txn-row { cursor: pointer; transition: background 0.15s; }
+.santu-sale-txn-row:hover { background: #f8fafc; }
 
 .santu-sale-inv-no {
-	font-weight: 500;
-	color: #3f4155;
+	font-weight: 600;
+	color: #0f172a;
 }
 
 .santu-sale-row-actions { white-space: nowrap; }
@@ -452,124 +488,131 @@ input.santu-sale-pill[type="date"] {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 24px;
-	height: 24px;
+	width: 28px;
+	height: 28px;
 	padding: 0;
-	margin-left: 4px;
+	margin-left: 6px;
 	border: none;
-	border-radius: 4px;
+	border-radius: 6px;
 	background: transparent;
-	font-size: 14px;
+	font-size: 16px;
 	cursor: pointer;
-	color: #656672;
+	color: #64748b;
 	opacity: 1;
+	transition: background 0.15s, color 0.15s;
 }
-.santu-sale-row-btn:hover { background: #f3f4f8; }
+.santu-sale-row-btn:hover { background: #e2e8f0; color: #0f172a; }
 
 .santu-sale-row-menu {
 	display: flex;
 	flex-direction: column;
 	gap: 0;
+	padding: 4px;
 }
 .santu-sale-row-menu-item {
 	display: block;
 	width: 100%;
 	text-align: left;
-	padding: 6px 12px;
+	padding: 8px 12px;
 	border: none;
-	border-radius: 4px;
+	border-radius: 6px;
 	background: transparent;
 	font-size: 14px;
-	font-weight: 400;
-	color: #3f4155;
+	font-weight: 500;
+	color: #334155;
 	cursor: pointer;
+	transition: background 0.15s;
 }
-.santu-sale-row-menu-item:hover { background: #f3f4f8; }
+.santu-sale-row-menu-item:hover { background: #f8fafc; color: #0f172a; }
 
 .santu-sale-status-pill {
-	font-size: 13px;
-	font-weight: 500;
-	padding: 2px 8px;
-	border-radius: 4px;
+	font-size: 12px;
+	font-weight: 600;
+	padding: 4px 10px;
+	border-radius: 6px;
 	white-space: nowrap;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
-.santu-sale-status-open { color: #ff8a00; background: #fff1dc; }
-.santu-sale-status-ordered { color: #08bd7c; background: #def7ee; }
-.santu-sale-status-lost { color: #f45972; background: #ffe5e8; }
-.santu-sale-status-draft { color: #71748e; background: #f3f3f3; }
+.santu-sale-status-open { color: #d97706; background: #fffbeb; border: 1px solid #fde68a; }
+.santu-sale-status-ordered { color: #059669; background: #ecfdf5; border: 1px solid #a7f3d0; }
+.santu-sale-status-lost { color: #e11d48; background: #fff1f2; border: 1px solid #fecdd3; }
+.santu-sale-status-draft { color: #475569; background: #f8fafc; border: 1px solid #e2e8f0; }
+
+.santu-sale-amount-received { color: #059669; font-weight: 700; }
 
 .santu-sale-convert-btn {
 	border: none;
 	background: transparent;
-	color: #0075e8;
+	color: #2563eb;
 	font-size: 14px;
-	font-weight: 500;
+	font-weight: 600;
 	cursor: pointer;
-	padding: 0 7px 0 0;
+	padding: 0 8px 0 0;
+	transition: color 0.15s;
 }
-.santu-sale-convert-btn:hover { text-decoration: none; background: transparent; }
+.santu-sale-convert-btn:hover { text-decoration: none; background: transparent; color: #1d4ed8; }
 
 .santu-sale-converted-label {
 	font-size: 13px;
-	color: #9b9eb8;
-	font-weight: 400;
+	color: #94a3b8;
+	font-weight: 500;
 	padding: 4px 6px;
 }
 
 .santu-sale-loading {
-	padding: 24px;
+	padding: 32px;
 	text-align: center;
 	font-size: 14px;
-	color: #9b9eb8;
+	color: #94a3b8;
 }
 
 .santu-sale-empty {
 	text-align: center;
-	padding: 48px 20px;
+	padding: 64px 20px;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	gap: 8px;
+	gap: 12px;
 	flex: 1;
 }
 
 .santu-sale-empty-title {
-	font-size: 14px;
-	font-weight: 500;
-	color: #3f4155;
+	font-size: 16px;
+	font-weight: 600;
+	color: #0f172a;
 	margin-bottom: 0;
 }
 
 .santu-sale-empty-sub,
 .santu-sale-empty-text {
 	font-size: 14px;
-	font-weight: 400;
-	color: #71748e;
-	margin-bottom: 16px;
+	font-weight: 500;
+	color: #64748b;
+	margin-bottom: 24px;
 	max-width: 420px;
-	line-height: 20px;
+	line-height: 22px;
 }
 
 .santu-sale-empty-illustration {
 	width: auto;
 	height: auto;
-	margin: 0 auto 16px;
+	margin: 0 auto 20px;
 	border-radius: 0;
 	background: none;
 	display: block;
 }
 .santu-sale-empty-illustration img {
-	width: 180px;
+	width: 200px;
 	height: auto;
 }
 .santu-sale-empty-illustration::before,
 .santu-sale-empty-illustration::after { display: none; }
 
 .santu-sale-empty-btn-so {
-	background: #ed1a3b !important;
-	border-color: #ed1a3b !important;
-	color: #fff !important;
+	background: #2563eb !important;
+	border-color: #2563eb !important;
+	color: #ffffff !important;
 }
 
 @media print {

@@ -7,6 +7,19 @@
 // straight to Form/<doctype>/<name>). Reuses the same santu-si2-* CSS
 // already shipped for the Sale/Purchase quick-entry screens, so this reads
 // as one continuous visual language rather than a bolted-on extra screen.
+// Which document types can be reopened and corrected, and which screen each
+// one reopens on. Kept beside the view rather than inside it because the
+// buttons and the click handler both read it, and they must never disagree
+// about what is editable. Sales Invoice is deliberately absent -- it has its
+// own older, payment-aware edit path through Billing (edit-bill below).
+const SANTU_EDITABLE_DOCS = {
+	Quotation: { label: "Estimate", route: "santu-estimate", option: "edit_quotation" },
+	"Sales Order": { label: "Order", route: "santu-sales-order", option: "edit_order" },
+	"Delivery Note": { label: "Challan", route: "santu-delivery-challan", option: "edit_challan" },
+	"Purchase Invoice": { label: "Purchase Bill", route: "santu-purchase-invoice", option: "edit_purchase" },
+	"Purchase Order": { label: "Purchase Order", route: "santu-purchase-order", option: "edit_purchase_order" },
+};
+
 frappe.pages["santu-view-invoice"].on_page_load = function (wrapper) {
 	const page = frappe.ui.make_app_page({ parent: wrapper, title: "Invoice", single_column: true });
 	$(page.wrapper).find(".page-head").hide();
@@ -329,7 +342,7 @@ window.santu_view_invoice_page = {
 				<div class="santu-si2-tabbar">
 					<div class="santu-si2-tabs">
 						<button type="button" class="santu-si2-tab is-active" disabled>
-							<span class="santu-si2-tab-label">${frappe.utils.escape_html(d.name)}</span>
+							<span class="santu-si2-tab-label">${frappe.utils.escape_html(d.display_number || d.name)}</span>
 						</button>
 					</div>
 				</div>
@@ -347,11 +360,11 @@ window.santu_view_invoice_page = {
 						<div class="santu-si2-customer-info"></div>
 						<div class="santu-si2-invoice-info">
 							<div class="santu-si2-inv-row">
-								<span class="santu-si2-inv-label">Invoice Number</span>
-								<span class="santu-si2-inv-value">${frappe.utils.escape_html(d.name)}</span>
+								<span class="santu-si2-inv-label">${doc_label} Number</span>
+								<span class="santu-si2-inv-value">${frappe.utils.escape_html(d.display_number || d.name)}</span>
 							</div>
 							<div class="santu-si2-inv-row">
-								<span class="santu-si2-inv-label">Invoice Date</span>
+								<span class="santu-si2-inv-label">${doc_label} Date</span>
 								<span class="santu-si2-inv-value">${frappe.utils.escape_html(frappe.datetime.str_to_user(d.posting_date) || "")}</span>
 							</div>
 							${d.place_of_supply ? `
@@ -423,6 +436,33 @@ window.santu_view_invoice_page = {
 					<div class="santu-si2-actionbar">
 						<div class="santu-si2-actionbar-left">
 							<button type="button" class="santu-si2-btn" data-action="back">← Back</button>
+							${
+								(d.doctype === "Sales Invoice" && d.docstatus === 1)
+									? `<button type="button" class="santu-si2-btn santu-si2-btn-edit" data-action="edit-bill" title="${__("Rate ya quantity galat hai? Yahan se sudhaar kar aur nayi bill submit ho jayegi.")}">${__("Edit Bill")}</button>
+									   <button type="button" class="santu-si2-btn" data-action="delete-doc" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;font-weight:600;" title="${__("Delete this Bill")}">${__("Delete Bill")}</button>`
+									: ""
+							}
+							${
+								// Every document type that can be rebuilt through its own
+								// save path gets the same correction route Sales Invoice
+								// has had -- an estimate typed at the wrong rate or a
+								// challan missing an item used to be re-keyable only by
+								// deleting and starting over, losing the number the
+								// customer was already quoting (2026-08-29 request).
+								(SANTU_EDITABLE_DOCS[d.doctype] && d.docstatus === 1)
+									? `<button type="button" class="santu-si2-btn santu-si2-btn-edit" data-action="edit-doc" title="${__("Saman, rate ya quantity sudhaarna hai? Yahan se badal kar dobara submit ho jayega.")}">${__("Edit {0}", [SANTU_EDITABLE_DOCS[d.doctype].label])}</button>`
+									: ""
+							}
+							${
+								(d.doctype === "Quotation")
+									? `<button type="button" class="santu-si2-btn" data-action="delete-doc" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;font-weight:600;" title="${__("Delete this Estimate")}">${__("Delete Estimate")}</button>`
+									: ""
+							}
+							${
+								(d.doctype === "Delivery Note" || d.doctype === "Sales Order")
+									? `<button type="button" class="santu-si2-btn" data-action="delete-doc" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;font-weight:600;" title="${__("Delete this Document")}">${__("Delete")}</button>`
+									: ""
+							}
 						</div>
 						<div class="santu-si2-actionbar-right">
 							<button type="button" class="santu-si2-btn" data-action="whatsapp">Send on WhatsApp</button>
@@ -435,6 +475,43 @@ window.santu_view_invoice_page = {
 		`);
 
 		this._render_actionbar($body, d);
+		// Sirf submitted Sales Invoice pe (2026-08-27 direct request: "Reopen
+		// the Sales Invoice... Edit item quantity/rate... Update the
+		// invoice"). Billing (POS) is where Sales Invoice is actually built
+		// — this reopens the same screen with the bill's own items already
+		// in it, rather than a second edit form nobody has seen before.
+		$body.find('[data-action="edit-bill"]').on("click", () => {
+			frappe.route_options = { edit_invoice: d.name };
+			frappe.set_route("santu-billing");
+		});
+		// Same idea for every other editable type: reopen the document on the
+		// screen it was created on, with its own items already loaded, rather
+		// than a separate edit form nobody has seen before.
+		$body.find('[data-action="edit-doc"]').on("click", () => {
+			const cfg = SANTU_EDITABLE_DOCS[d.doctype];
+			if (!cfg) return;
+			frappe.route_options = { [cfg.option]: d.name };
+			frappe.set_route(cfg.route);
+		});
+		$body.find('[data-action="delete-doc"]').on("click", () => {
+			const display_no = d.display_number || d.name;
+			const label = d.doctype === "Quotation" ? "Estimate" : (d.doctype === "Delivery Note" ? "Challan" : (d.doctype === "Sales Order" ? "Order" : "Bill"));
+			frappe.confirm(
+				__("Kya aap sach me {0} <b>{1}</b> ko delete karna chahte hain? Isse iska poora record delete ho jayega.", [label, display_no]),
+				async () => {
+					frappe.dom.freeze(__("Deleting…"));
+					try {
+						await frappe.xcall("santu_hardware.santu_hardware.api.delete_sale_invoice", { doctype: d.doctype, name: d.name });
+						frappe.dom.unfreeze();
+						frappe.show_alert({ message: __("{0} {1} deleted.", [label, display_no]), indicator: "green" });
+						frappe.set_route("santu-sale");
+					} catch (e) {
+						frappe.dom.unfreeze();
+						frappe.msgprint((e && e.message) || __("Could not delete."));
+					}
+				}
+			);
+		});
 	},
 
 	_send_whatsapp() {

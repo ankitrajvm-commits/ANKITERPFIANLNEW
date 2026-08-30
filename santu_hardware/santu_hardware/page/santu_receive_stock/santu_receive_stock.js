@@ -134,6 +134,7 @@ function render_receive_stock(page) {
 						open_form({
 							item_code: r.item_code,
 							item_name: r.item_name,
+							item_name: r.item_name,
 							stock_uom: r.stock_uom,
 							available_qty: r.available_qty,
 						});

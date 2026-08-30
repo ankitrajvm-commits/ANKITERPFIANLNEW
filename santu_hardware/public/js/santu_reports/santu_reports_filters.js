@@ -78,7 +78,14 @@ santu_reports.filters = {
 
 	build_defaults(filter_defs, init) {
 		const dates = santu_reports.utils.default_dates();
-		const values = { company: init.company, from_date: dates.from_date, to_date: dates.to_date };
+		const values = {
+			company: init.company,
+			company_gstin: init.company_gstin || "",
+			bank_account: init.bank_account || "",
+			from_date: dates.from_date,
+			to_date: dates.to_date,
+			date_range: [dates.from_date, dates.to_date],
+		};
 		(filter_defs || []).forEach((f) => {
 			if (f.default !== undefined && f.default !== null && f.default !== "") {
 				values[f.fieldname] = f.default;

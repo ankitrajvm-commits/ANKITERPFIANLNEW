@@ -10,7 +10,7 @@
 
 .santu-reports {
 	height: 100%;
-	background: #fff;
+	background: #f1f5f9;
 }
 
 .santu-reports-layout {
@@ -23,8 +23,8 @@
 .santu-reports-nav-panel {
 	width: 260px;
 	flex-shrink: 0;
-	border-right: 1px solid #e5e7eb;
-	background: #fafafa;
+	border-right: 1px solid #e2e8f0;
+	background: #ffffff;
 	display: flex;
 	flex-direction: column;
 	min-height: 0;
@@ -66,10 +66,10 @@
 	background: #f3f4f6;
 }
 .santu-reports-nav-item.is-active {
-	background: #e8eaed;
+	background: #eff6ff;
 	font-weight: 600;
-	color: #111827;
-	border-left: 3px solid var(--santu-brand, #e0393e);
+	color: #1e40af;
+	border-left: 3px solid var(--santu-brand, #3b82f6);
 	padding-left: 15px;
 }
 
@@ -197,8 +197,9 @@
 .santu-reports-run-btn {
 	margin-left: auto;
 	font-weight: 600 !important;
-	background: var(--santu-brand, #e0393e) !important;
-	border-color: var(--santu-brand, #e0393e) !important;
+	background: var(--santu-brand, #3b82f6) !important;
+	border-color: var(--santu-brand, #3b82f6) !important;
+	border-radius: 8px !important;
 }
 
 /* ---------- Table area ---------- */
@@ -228,8 +229,10 @@
 
 .santu-reports-table-wrap {
 	overflow-x: auto;
-	border: 1px solid #e8eaed;
-	border-radius: 8px;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	background: #ffffff;
+	box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
 }
 
 .santu-reports-table {

@@ -1,0 +1,27 @@
+/* The hover bubble from santu_tooltips.js. Fixed-positioned so it is never
+   clipped by a scrolling panel, and pointer-events:none so it can never sit
+   between the cursor and the button it is describing. */
+.santu-tip {
+	position: fixed;
+	z-index: 2000;
+	max-width: 260px;
+	padding: 5px 9px;
+	border-radius: 6px;
+	background: #23252e;
+	color: #fff;
+	font-size: 12px;
+	line-height: 1.35;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+	opacity: 0;
+	visibility: hidden;
+	transition: opacity 0.12s ease;
+	pointer-events: none;
+}
+
+.santu-tip.is-on {
+	opacity: 1;
+	visibility: visible;
+}

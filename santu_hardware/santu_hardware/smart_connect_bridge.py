@@ -320,6 +320,14 @@ def stop_bridge(logout: bool = False) -> dict:
 			except Exception:
 				pass
 		_wait_port_free(BRIDGE_PORT, 2.0)
+	if logout:
+		try:
+			_status_file().write_text(json.dumps({"state": "DISCONNECTED", "qr": "", "phone": "", "error": ""}))
+			auth = _site_dir() / "auth"
+			shutil.rmtree(auth, ignore_errors=True)
+			auth.mkdir(parents=True, exist_ok=True)
+		except Exception:
+			pass
 	time.sleep(0.2)
 	return {"ok": True, "state": "LOGGED_OUT" if logout else "DISCONNECTED"}
 

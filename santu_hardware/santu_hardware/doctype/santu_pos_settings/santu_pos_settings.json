@@ -16,10 +16,19 @@
   "printer_name",
   "paper_width",
   "column_break_printer",
+  "bill_header_section",
+  "show_logo_on_bill",
+  "print_quality_section",
+  "printer_densities",
+  "invoice_library_section",
+  "invoice_template_style",
+  "document_templates",
+  "print_options_section",
   "print_copies",
   "auto_print",
   "open_cash_drawer",
-  "printer_densities",
+  "diagnostics_section",
+  "diagnostics_dummy",
   "payments_section",
   "upi_id",
   "privacy_mode_section",
@@ -95,6 +104,53 @@
    "fieldtype": "Column Break"
   },
   {
+   "fieldname": "bill_header_section",
+   "fieldtype": "Section Break",
+   "label": "Bill Header"
+  },
+  {
+   "default": "1",
+   "description": "On = the logo image prints at the top of the thermal bill. Off = the shop name prints as plain bold text instead, exactly as it always used to. Flip this to fall back instantly if the logo ever prints badly on the actual thermal roll (thermal printers are black/white only, no grey).",
+   "fieldname": "show_logo_on_bill",
+   "fieldtype": "Check",
+   "label": "Show Logo on Bill"
+  },
+  {
+   "fieldname": "print_quality_section",
+   "fieldtype": "Section Break",
+   "label": "Print Quality"
+  },
+  {
+   "description": "Epson print density (levels 1-7 = 85%-115%). Written to the printer's own memory via ESC/POS, not applied to the bill image.",
+   "fieldname": "printer_densities",
+   "fieldtype": "Table",
+   "label": "Print Density Per Printer",
+   "options": "Santu Printer Density"
+  },
+  {
+   "fieldname": "invoice_library_section",
+   "fieldtype": "Section Break",
+   "label": "Invoice Library"
+  },
+  {
+   "default": "Standard Bill",
+   "fieldname": "invoice_template_style",
+   "fieldtype": "Select",
+   "label": "Invoice Template",
+   "options": "Standard Bill\nCompact Bill\nDetailed Bill\nSimple Cash Bill\nCustomer Copy\nDuplicate / Office Copy\nBill + Payment Receipt\nDelivery Slip (No Rates)\nLarge Print Bill\nUdhaar / Balance Bill\nMinimal Slip"
+  },
+  {
+   "fieldname": "document_templates",
+   "fieldtype": "Table",
+   "label": "Document Templates",
+   "options": "Santu Document Template Settings"
+  },
+  {
+   "fieldname": "print_options_section",
+   "fieldtype": "Section Break",
+   "label": "Print Options"
+  },
+  {
    "default": "1",
    "fieldname": "print_copies",
    "fieldtype": "Int",
@@ -113,6 +169,16 @@
    "fieldname": "open_cash_drawer",
    "fieldtype": "Check",
    "label": "Open Cash Drawer"
+  },
+  {
+   "fieldname": "diagnostics_section",
+   "fieldtype": "Section Break",
+   "label": "Diagnostics"
+  },
+  {
+   "fieldname": "diagnostics_dummy",
+   "fieldtype": "HTML",
+   "label": "Diagnostics"
   },
   {
    "fieldname": "payments_section",
@@ -154,20 +220,13 @@
    "hidden": 1,
    "label": "Registered Touch ID devices",
    "read_only": 1
-  },
-  {
-   "description": "Epson print density (levels 1-7 = 85%-115%). Written to the printer's own memory via ESC/POS, not applied to the bill image.",
-   "fieldname": "printer_densities",
-   "fieldtype": "Table",
-   "label": "Print Density Per Printer",
-   "options": "Santu Printer Density"
   }
  ],
  "icon": "fa fa-shield",
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-07-30 00:00:00.000000",
+ "modified": "2026-08-29 13:32:39.143789",
  "modified_by": "Administrator",
  "module": "Santu Hardware",
  "name": "Santu POS Settings",

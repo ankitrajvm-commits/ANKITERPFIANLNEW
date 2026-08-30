@@ -403,7 +403,7 @@
 				rows.forEach((r) => {
 					$(`
 						<div class="santu-topbar-dd-row">
-							<span>${frappe.utils.escape_html(r.name)}</span>
+							<span>${frappe.utils.escape_html(r.display_number || r.name)}</span>
 							<span class="santu-topbar-dd-sub">${frappe.utils.escape_html(r.doctype)} · ${frappe.utils.escape_html(r.party || "")}</span>
 						</div>
 					`)
@@ -423,9 +423,113 @@
 		const $container = $(".navbar .container").first();
 		if (!$container.length) return;
 
+		// ERPNext's own awesombar ("Open Anything") is hidden: it only ever
+		// opened raw doctypes and reports — "Sales Taxes and Charges
+		// Template" — which is jargon no one at the counter needs, and the
+		// shop's own "Search Transactions" box sits right beside it. Its
+		// slot now carries the day/date/time, which is worth showing: bills
+		// take their date from this Mac, so a wrong system date silently
+		// dates every bill wrong, and here it is caught at a glance.
 		const $searchForm = $container.find("form.form-inline").first();
 		const $navInput = $container.find("#navbar-search");
-		if ($navInput.length) $navInput.attr("placeholder", "Open Anything (⌘ + G)");
+		if ($navInput.length) $navInput.closest(".form-inline, .navbar-form").addBack("form").hide();
+		$searchForm.hide();
+
+		// The bell moves next to the logo, where the stretch beside it sat
+		// empty; the live analog dial goes beside the back/forward/reload
+		// group on the right. The dial is worth the space — bills take their
+		// date from this Mac, so a wrong system clock silently mis-dates
+		// every bill, and a stopped or wrong dial is noticed at a glance.
+		// The bell itself is out of the topbar: it now lives as a
+		// "Notifications" row inside the logo (avatar) menu, alongside My
+		// Profile / My Settings. The element stays in the DOM — hidden but
+		// still laid out — because ERPNext's notification panel anchors
+		// itself to that button; the menu row just toggles it.
+		const $bell = $(".navbar .navbar-nav .dropdown-notifications");
+		$bell.addClass("santu-bell-hidden");
+
+		const $userMenu = $("#toolbar-user");
+		if ($userMenu.length && !$userMenu.find(".santu-notif-item").length) {
+			const $item = $(
+				`<a class="dropdown-item santu-notif-item" href="#">${__("Notifications")}<span class="santu-notif-dot" style="display:none;"></span></a>`
+			);
+			$userMenu.prepend($item);
+			$item.on("click", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				$userMenu.removeClass("show").parent().removeClass("show");
+				const $toggle = $bell.find("[data-toggle='dropdown']").first();
+				if ($toggle.length && $toggle.dropdown) $toggle.dropdown("toggle");
+				else $toggle.trigger("click");
+			});
+			// Red dot mirrors ERPNext's own unseen state, so the menu says
+			// there is something to read without opening it.
+			const sync_dot = () =>
+				$item
+					.find(".santu-notif-dot")
+					.toggle($bell.find(".notifications-unseen").is(":visible"));
+			sync_dot();
+			setInterval(sync_dot, 10000);
+		}
+
+		const $analog = $(`
+					<div class="santu-topbar-analog" title="${__("Ghadi — click karke aaj ki date dekho")}">
+						<svg viewBox="0 0 40 40" width="30" height="30" aria-hidden="true">
+							<circle cx="20" cy="20" r="18" fill="#fff" stroke="#d7d9e3" stroke-width="1.5"/>
+							<circle cx="20" cy="6.5" r="1" fill="#c3c6d4"/>
+							<circle cx="33.5" cy="20" r="1" fill="#c3c6d4"/>
+							<circle cx="20" cy="33.5" r="1" fill="#c3c6d4"/>
+							<circle cx="6.5" cy="20" r="1" fill="#c3c6d4"/>
+							<line class="santu-hand-h" x1="20" y1="20" x2="20" y2="12" stroke="#3f4155" stroke-width="2.4" stroke-linecap="round"/>
+							<line class="santu-hand-m" x1="20" y1="20" x2="20" y2="8"  stroke="#3f4155" stroke-width="1.8" stroke-linecap="round"/>
+							<line class="santu-hand-s" x1="20" y1="22" x2="20" y2="7"  stroke="#e0393e" stroke-width="1" stroke-linecap="round"/>
+							<circle cx="20" cy="20" r="1.6" fill="#3f4155"/>
+						</svg>
+						<div class="santu-topbar-analog-pop" style="display:none;">
+							<div class="santu-topbar-analog-day"></div>
+							<div class="santu-topbar-analog-time"></div>
+						</div>
+					</div>
+			`);
+		{
+			const $dial = $analog;
+			const $pop = $analog.find(".santu-topbar-analog-pop");
+			const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+			const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+			function tick() {
+				const n = new Date();
+				const sec = n.getSeconds();
+				const min = n.getMinutes() + sec / 60;
+				const hr = (n.getHours() % 12) + min / 60;
+				$dial.find(".santu-hand-h").attr("transform", `rotate(${hr * 30} 20 20)`);
+				$dial.find(".santu-hand-m").attr("transform", `rotate(${min * 6} 20 20)`);
+				$dial.find(".santu-hand-s").attr("transform", `rotate(${sec * 6} 20 20)`);
+				if ($pop.is(":visible")) paint_pop(n);
+				setTimeout(tick, 1000 - n.getMilliseconds());
+			}
+			function paint_pop(n) {
+				let h = n.getHours();
+				const ampm = h >= 12 ? "PM" : "AM";
+				h = h % 12 || 12;
+				$pop.find(".santu-topbar-analog-day").text(
+					`${DAYS[n.getDay()]}, ${n.getDate()} ${MONTHS[n.getMonth()]} ${n.getFullYear()}`
+				);
+				$pop.find(".santu-topbar-analog-time").text(
+					`${h}:${String(n.getMinutes()).padStart(2, "0")}:${String(n.getSeconds()).padStart(2, "0")} ${ampm}`
+				);
+			}
+			$dial.on("click", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				const showing = $pop.is(":visible");
+				if (!showing) paint_pop(new Date());
+				$pop.toggle(!showing);
+			});
+			$(document)
+				.off("click.santu-analog")
+				.on("click.santu-analog", () => $pop.hide());
+			tick();
+		}
 
 		const $extra = $(`
 			<div class="santu-topbar-extra">
@@ -437,8 +541,15 @@
 				<button type="button" class="santu-topbar-btn santu-topbar-btn-purchase">+ Receive Stock</button>
 				<button type="button" class="santu-topbar-icon-btn santu-topbar-quick" title="Quick Add">+</button>
 				<button type="button" class="santu-topbar-icon-btn santu-topbar-more" title="More">⋮</button>
+				<div class="santu-topbar-nav-group">
+					<button type="button" class="santu-topbar-icon-btn santu-topbar-nav-back" title="Back">‹</button>
+					<button type="button" class="santu-topbar-icon-btn santu-topbar-nav-forward" title="Forward">›</button>
+					<button type="button" class="santu-topbar-icon-btn santu-topbar-nav-reload" title="Reload">↻</button>
+				</div>
 			</div>
 		`);
+
+		$analog.insertBefore($extra.find(".santu-topbar-nav-group"));
 
 		if ($searchForm.length) $extra.insertAfter($searchForm);
 		else $container.append($extra);
@@ -447,6 +558,17 @@
 			"input",
 			frappe.utils.debounce((e) => search_transactions(e.target.value.trim()), 250)
 		);
+
+		// Plain browser Back/Forward/Reload, made explicit in the app's own
+		// topbar (2026-08-20 direct request) — this is a desk SPA with no
+		// visible browser chrome in kiosk-style use, and "reload" in
+		// particular is also the day-to-day fix for the known SPA-blank-
+		// screen class of bug (see [[desk_spa_global_collisions]]), so
+		// giving the counter operator a button for it beats "ask Ankit to
+		// hit Cmd+R".
+		$extra.find(".santu-topbar-nav-back").on("click", () => window.history.back());
+		$extra.find(".santu-topbar-nav-forward").on("click", () => window.history.forward());
+		$extra.find(".santu-topbar-nav-reload").on("click", () => window.location.reload());
 		$(document)
 			.off("click.santu-topbar-search")
 			.on("click.santu-topbar-search", (e) => {
@@ -475,6 +597,15 @@
 
 	function build_privacy_overlay() {
 		if ($("#santu-dash-privacy-overlay").length) return;
+		// No click-to-dismiss on the overlay itself. It covers the whole
+		// dashboard area, so a click anywhere on the blurred screen landed on
+		// it and switched Privacy straight back off — which is exactly what
+		// the overlay's own text tells you NOT to do ("toggle the Privacy
+		// button to view your Dashboard"). Reported 2026-08-23: "screen pe
+		// kahi v touch krne se disable ho jaa raha hai". The More > Privacy
+		// toggle is now the only way off, which is the whole point of a
+		// privacy screen — an accidental brush of the mouse shouldn't
+		// uncover the shop's takings to whoever is standing at the counter.
 		$(`
 			<div id="santu-dash-privacy-overlay">
 				<div class="santu-dash-privacy-icon">👁️‍🗨️</div>
@@ -482,9 +613,7 @@
 					Privacy Mode enabled.<br>Please toggle the Privacy button to view your Dashboard.
 				</div>
 			</div>
-		`)
-			.on("click", toggle_dashboard_privacy)
-			.appendTo("body");
+		`).appendTo("body");
 	}
 
 	function toggle_topbar() {
@@ -581,6 +710,11 @@
 		const original_render_page = frappe.router.render_page.bind(frappe.router);
 		frappe.router.render_page = function () {
 			const route = this.current_route;
+			// Reset every navigation — see santu_fixed_sidebar.css's
+			// opacity-hide rule for why this class exists. Cleared up front so
+			// a route that SHOULD redirect never inherits it from the
+			// previous page.
+			document.body.classList.remove("santu-native-ok");
 			// "new-sales-invoice-xxxxx" etc. — Frappe's placeholder name for an
 			// unsaved document being created. These can't go to the view screen
 			// (get_invoice_view_data only loads documents that already exist,
@@ -663,6 +797,13 @@
 				setTimeout(SANTU_LIST_VIEW_REDIRECTS[route[1]], 0);
 				return;
 			}
+			// Nothing above claimed this route — it's a plain admin doctype
+			// with no Vyapar replacement (Letter Head, Print Format, etc.),
+			// genuinely meant to fall through to ERPNext's own native page.
+			// Marks the body so santu_fixed_sidebar.css's opacity-hide rule
+			// (meant only for the brief instant before a redirect decision is
+			// made) lets this one actually paint.
+			document.body.classList.add("santu-native-ok");
 			return original_render_page();
 		};
 		frappe.router.render_page._santu_patched = true;

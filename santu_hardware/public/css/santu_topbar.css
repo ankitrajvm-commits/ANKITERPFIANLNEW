@@ -26,7 +26,7 @@
 }
 .santu-topbar-search:focus {
 	outline: none;
-	border-color: var(--santu-brand, #e0393e);
+	border-color: var(--santu-brand, #3b82f6);
 	background: #fff;
 }
 
@@ -74,11 +74,11 @@
 	background: #fff;
 }
 .santu-topbar-btn-sale {
-	border: 1.5px solid var(--santu-brand, #e0393e);
-	color: var(--santu-brand, #e0393e);
+	border: 1.5px solid var(--santu-brand, #3b82f6);
+	color: var(--santu-brand, #3b82f6);
 }
 .santu-topbar-btn-sale:hover {
-	background: #fdeceb;
+	background: #eff6ff;
 }
 .santu-topbar-btn-purchase {
 	border: 1.5px solid var(--santu-brand-secondary, #2f6fed);
@@ -104,8 +104,25 @@
 	background: #f3f4f6;
 }
 .santu-topbar-quick {
-	color: var(--santu-brand, #e0393e);
-	border-color: var(--santu-brand, #e0393e);
+	color: var(--santu-brand, #3b82f6);
+	border-color: var(--santu-brand, #3b82f6);
+}
+
+.santu-topbar-nav-group {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	margin-left: 4px;
+	padding-left: 10px;
+	border-left: 1px solid #e5e7eb;
+}
+.santu-topbar-nav-back,
+.santu-topbar-nav-forward {
+	font-size: 22px;
+	font-weight: 700;
+}
+.santu-topbar-nav-reload {
+	font-size: 16px;
 }
 
 .santu-topbar-menu {
@@ -135,10 +152,10 @@
 /* ---------- "+Add More" mega-menu ---------- */
 .santu-topbar-mega {
 	position: fixed;
-	background: #fff;
-	border: 1px solid #e5e7eb;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
 	border-radius: 12px;
-	box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+	box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
 	z-index: 1200;
 	overflow: hidden;
 	min-width: 640px;
@@ -223,7 +240,11 @@ body.santu-dash-privacy-active #santu-dash-privacy-overlay {
 	position: fixed;
 	inset: 56px 0 0 var(--santu-sidebar-width, 240px);
 	z-index: 1050;
-	cursor: pointer;
+	/* Not clickable: dismissing is the More > Privacy toggle's job only (see
+	   build_privacy_overlay in santu_topbar.js). `pointer-events` stays auto
+	   so the overlay still blocks clicks reaching the blurred dashboard
+	   underneath — it just doesn't act on them itself. */
+	cursor: default;
 	pointer-events: auto;
 }
 .santu-dash-privacy-icon {
@@ -279,4 +300,62 @@ body.santu-dash-privacy-active #santu-dash-privacy-overlay {
    and the Navbar Settings rows are already the durable half of this. */
 .navbar .dropdown-help {
 	display: none !important;
+}
+
+/* Logo-side group: the notification bell plus a live analog dial, in the
+   slot ERPNext's "Open Anything" box used to hold. */
+/* Bell hidden but still laid out — ERPNext anchors the notification panel
+   to this button, so it cannot be display:none. */
+.dropdown-notifications.santu-bell-hidden > .notifications-icon {
+	width: 0;
+	padding: 0;
+	opacity: 0;
+	pointer-events: none;
+}
+.santu-notif-item {
+	display: flex !important;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+.santu-notif-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: #ef4444;
+	flex: 0 0 auto;
+}
+.santu-topbar-analog {
+	position: relative;
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	cursor: pointer;
+	padding: 2px;
+	border-radius: 50%;
+	user-select: none;
+}
+.santu-topbar-analog:hover { background: #f1f3f8; }
+.santu-topbar-analog-pop {
+	position: absolute;
+	top: calc(100% + 8px);
+	right: -8px;
+	background: #fff;
+	border: 1px solid #e6e8ef;
+	border-radius: 10px;
+	box-shadow: 0 8px 22px rgba(21, 23, 40, 0.14);
+	padding: 8px 12px;
+	white-space: nowrap;
+	z-index: 1050;
+	cursor: default;
+}
+.santu-topbar-analog-day {
+	font-size: 13px;
+	font-weight: 600;
+	color: #3f4155;
+}
+.santu-topbar-analog-time {
+	font-size: 12px;
+	color: #8a8d9f;
+	font-variant-numeric: tabular-nums;
 }

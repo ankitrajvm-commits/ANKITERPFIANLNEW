@@ -68,18 +68,35 @@ async function santu_qz_list_printers() {
 
 const SANTU_PRINT_API = "santu_hardware.santu_hardware.print_service";
 
+// Last rung: show the bill on screen so there is always something to hand
+// over. This used to be `window.open(blobUrl, "_blank")` — a bare PDF tab.
+// On the shop PC that tab has no toolbar and no tab strip (kiosk), so when
+// printing failed the operator was left staring at a black screen with the
+// bill on it and no way back: "ye kat bhi nahi raha aur kuch ho bhi nahi
+// raha" (2026-08-23 report). An in-app dialog with a Band Karein button can
+// always be closed, and never navigates away from the billing screen.
 async function santu_print_open_pdf(doctype, docname) {
-	const print_format =
-		doctype === "POS Invoice" ? "Santu Hardware Thermal Bill" : "Santu Hardware Thermal Bill (Sales Invoice)";
-	const b64 = await frappe.xcall("santu_hardware.santu_hardware.api.get_invoice_pdf_base64", {
-		doctype,
-		name: docname,
-		print_format,
+	const print_format = SANTU_THERMAL_FORMATS[doctype];
+	const r = await frappe.call({
+		method: "frappe.www.printview.get_html_and_style",
+		args: { doc: doctype, name: docname, print_format, no_letterhead: 0 },
 	});
-	const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-	const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
-	window.open(url, "_blank");
-	setTimeout(() => URL.revokeObjectURL(url), 60000);
+	const { html, style } = r.message || {};
+	if (!html) throw new Error(__("Bill screen par bhi nahi khul paya."));
+
+	const d = new frappe.ui.Dialog({
+		title: __("Print nahi hua — bill screen par"),
+		size: "large",
+		fields: [{ fieldtype: "HTML", fieldname: "bill", options: `<div class="santu-pdf-preview-wrap"></div>` }],
+		primary_action_label: __("Band Karein"),
+		primary_action: () => d.hide(),
+	});
+	d.show();
+
+	const iframe = document.createElement("iframe");
+	iframe.style.cssText = "width:100%;height:70vh;border:1px solid var(--gray-300);background:#fff;";
+	d.fields_dict.bill.$wrapper.find(".santu-pdf-preview-wrap").append(iframe);
+	iframe.srcdoc = `<html><head><style>${style || ""}</style></head><body><div class="print-format print-format-preview">${html}</div></body></html>`;
 	return "PDF";
 }
 
@@ -111,11 +128,24 @@ async function santu_print_bill_ladder(doctype, docname, opts = {}) {
 			.catch(() => {});
 	};
 
+	// `silent: true` matters here. Each rung fails by throwing server-side —
+	// that is how the ladder learns to try the next one — but frappe.xcall
+	// also pops the raw server error on screen as it goes. With the printer
+	// unplugged the operator got "The printer is not connected." stacked on
+	// top of the bill dialog, an error about a rung the ladder had already
+	// moved past. The ladder reports the outcome once, at the end; the
+	// intermediate stumbles belong in the attempt log, not in a popup.
+	const rung_call = async (method, args) => {
+		const r = await frappe.call({ method, args, silent: true });
+		if (r && r.exc) throw r;
+		return r ? r.message : null;
+	};
+
 	const rungs = [
-		["Printer", () => frappe.xcall(`${SANTU_PRINT_API}.print_via_cups`, {
+		["Printer", () => rung_call(`${SANTU_PRINT_API}.print_via_cups`, {
 			invoice_doctype: doctype, invoice_name: docname, is_duplicate,
 		})],
-		["Direct USB", () => frappe.xcall(`${SANTU_PRINT_API}.print_via_usb`, {
+		["Direct USB", () => rung_call(`${SANTU_PRINT_API}.print_via_usb`, {
 			invoice_doctype: doctype, invoice_name: docname, is_duplicate,
 		})],
 		["PDF", () => santu_print_open_pdf(doctype, docname)],
@@ -164,9 +194,24 @@ async function santu_print_bill_ladder(doctype, docname, opts = {}) {
 	throw failure;
 }
 
-// Only these two have a thermal bill designed for them. Kept in step with
-// SANTU_THERMAL_DOCTYPES in print_service.py.
-const SANTU_THERMAL_DOCTYPES = ["Sales Invoice", "POS Invoice"];
+// Kis doctype ka kaunsa thermal design — is file me sirf YAHI ek jagah.
+// Baaki doctypes seedhe aam print view pe chale jaate hain (neeche).
+//
+// YE MAP print_service.py ki SANTU_THERMAL_DOCTYPES ki NAKAL hai — dono
+// jagah ek saath badalni padti hai. Naya doctype jodo to dono jagah jodna.
+//
+// Pehle yahi baat is file me DO jagah likhi thi: ek list "kiska thermal hai"
+// ki, aur ek alag ternary PDF wale rung me "kaunsa format" ka. 2026-08-27 ko
+// Quotation list me to jud gaya par ternary me nahi, to Quotation ka parcha
+// Sales Invoice ke format se banne laga aur "Argument 'amount' should be of
+// type 'float'" dekar phat gaya (Quotation me paid_amount hota hi nahi).
+// Ab ek hi map, dono kaam usi se.
+const SANTU_THERMAL_FORMATS = {
+	"Sales Invoice": "Santu Hardware Thermal Bill (Sales Invoice)",
+	"POS Invoice": "Santu Hardware Thermal Bill",
+	"Quotation": "Santu Hardware Thermal Estimate (Quotation)",
+};
+const SANTU_THERMAL_DOCTYPES = Object.keys(SANTU_THERMAL_FORMATS);
 
 // What every screen calls. Runs the ladder above and gives the shop owner
 // one readable answer instead of a raw JS exception.
@@ -182,8 +227,21 @@ async function santu_print_thermal_bill(doctype, docname, opts = {}) {
 		return true;
 	}
 	try {
-		await santu_print_bill_ladder(doctype, docname, opts);
-		frappe.show_alert({ message: __("Printed"), indicator: "green" });
+		// Which rung answered decides what the operator is told. This used to
+		// say "Printed" in green whenever the ladder resolved — including the
+		// PDF rung, which prints nothing and only puts the bill on screen. So
+		// with the printer unplugged the shop got a green "Printed" tick over
+		// a bill that never existed on paper. That is the same lie QZ Tray was
+		// removed for on 2026-08-17, rebuilt one level higher up.
+		const { method } = await santu_print_bill_ladder(doctype, docname, opts);
+		if (method === "PDF") {
+			frappe.show_alert({
+				message: __("Chhapa NAHI — bill sirf screen par hai"),
+				indicator: "orange",
+			}, 10);
+		} else {
+			frappe.show_alert({ message: __("Printed"), indicator: "green" });
+		}
 		return true;
 	} catch (err) {
 		frappe.msgprint({

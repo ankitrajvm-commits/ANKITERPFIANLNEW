@@ -343,5 +343,15 @@ def main():
 	return 0 if report.failed == 0 else 1
 
 
+def run_all():
+	import frappe
+	report = TestReport(started=datetime.now().isoformat())
+	run_sale_tests(frappe, report)
+	report.ended = datetime.now().isoformat()
+	print_report(report)
+	return {"passed": report.passed, "failed": report.failed, "errors": report.errors}
+
+
 if __name__ == "__main__":
 	sys.exit(main())
+

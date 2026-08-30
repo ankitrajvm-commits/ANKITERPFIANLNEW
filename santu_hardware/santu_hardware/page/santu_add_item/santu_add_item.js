@@ -56,6 +56,7 @@ window.santu_add_item_page = {
 			item_group: this.init_data.default_group || "",
 			sub_category: "",
 			brand: "",
+			brand_type: "",
 			uom: this.init_data.default_uom,
 			description: "",
 			is_active: true,
@@ -117,13 +118,12 @@ window.santu_add_item_page = {
 
 					<div class="santu-ai-sections">
 						${this._section_basic(s)}
-						${this._section_barcode(s)}
-						${this._section_pricing(s)}
-						${s.is_service ? "" : this._section_stock(s)}
-						${this._section_supplier(s)}
-						<button type="button" class="santu-ai-advanced-toggle">${this.show_advanced ? "− Hide Advanced (GST, Batch Tracking)" : "+ Advanced (GST, Batch Tracking)"}</button>
-						${this.show_advanced ? this._section_gst(s) : ""}
-						${this.show_advanced && !s.is_service ? this._section_batch(s) : ""}
+						${this._section_pricing_stock(s)}
+						
+						<div class="santu-ai-adv-wrap">
+							<button type="button" class="santu-ai-advanced-toggle">${this.show_advanced ? "▾ Hide Extra Details (GST, Batches, Wholesale, Supplier)" : "▸ + Extra Details (GST, Batches, Wholesale, Supplier)"}</button>
+							${this.show_advanced ? this._section_advanced(s) : ""}
+						</div>
 					</div>
 				</div>
 
@@ -138,12 +138,11 @@ window.santu_add_item_page = {
 		this._refresh_save();
 	},
 
-	_sec(key, title, body, hint) {
+	_sec(key, title, body) {
 		return `
 			<div class="santu-ai-sec" data-sec="${key}">
 				<div class="santu-ai-sec-head">
 					<span class="santu-ai-sec-title">${title}</span>
-					${hint ? `<span class="santu-ai-sec-hint">${hint}</span>` : ""}
 				</div>
 				<div class="santu-ai-sec-body">${body}</div>
 			</div>`;
@@ -153,29 +152,28 @@ window.santu_add_item_page = {
 		const groups = this.init_data.item_groups || [];
 		const opts = (list, sel) =>
 			list.map((g) => `<option value="${frappe.utils.escape_html(g)}" ${g === sel ? "selected" : ""}>${frappe.utils.escape_html(g)}</option>`).join("");
+		const brands = this.init_data.brands || [];
+		const is_other = s.brand_type === "Other" || s.brand === "Other" || (s.brand && !brands.includes(s.brand));
+		const sel_brand_val = is_other ? "Other" : (brands.includes(s.brand) ? s.brand : "");
+		const other_text = (is_other && s.brand !== "Other") ? s.brand : "";
+
+		const brand_opts = [
+			`<option value="">Choose brand</option>`,
+			...brands.map((b) => `<option value="${frappe.utils.escape_html(b)}" ${b === sel_brand_val ? "selected" : ""}>${frappe.utils.escape_html(b)}</option>`),
+			`<option value="Other" ${sel_brand_val === "Other" ? "selected" : ""}>Other</option>`,
+			`<option value="__new__">+ Add New Brand...</option>`,
+		].join("");
+
 		return this._sec(
 			"basic",
-			"Basic Information",
+			"Item Details",
 			`
-			<div class="santu-ai-grid3">
-				<div class="santu-ai-cell">
+			<div class="santu-ai-grid4">
+				<div class="santu-ai-cell santu-ai-cell-span2">
 					<label>Item Name <span class="santu-ai-req">*</span></label>
-					<input type="text" class="santu-ai-input santu-ai-item-name" value="${frappe.utils.escape_html(s.item_name)}" autocomplete="off" placeholder="e.g. 12mm Washer">
+					<input type="text" class="santu-ai-input santu-ai-item-name" value="${frappe.utils.escape_html(s.item_name)}" autocomplete="off" placeholder="e.g. Asian Paints Apex 20L / 12mm Washer">
 					<div class="santu-ai-dupname"></div>
 				</div>
-				<div class="santu-ai-cell">
-					<label>Item Code / SKU</label>
-					<div class="santu-ai-code-wrap">
-						<input type="text" class="santu-ai-input santu-ai-item-code" placeholder="Khaali chhodo — apne aap ban jayega" value="${frappe.utils.escape_html(s.item_code)}" autocomplete="off">
-						<button type="button" class="santu-ai-assign-btn" title="Naam se chhota code bana do">Naam se</button>
-					</div>
-				</div>
-				<div class="santu-ai-cell">
-					<label>Unit <span class="santu-ai-req">*</span></label>
-					<select class="santu-ai-input santu-ai-uom">${opts(this.init_data.uoms || [], s.uom)}</select>
-				</div>
-			</div>
-			<div class="santu-ai-grid3">
 				<div class="santu-ai-cell">
 					<label>Category <span class="santu-ai-req">*</span></label>
 					<select class="santu-ai-input santu-ai-category">
@@ -184,163 +182,33 @@ window.santu_add_item_page = {
 					</select>
 				</div>
 				<div class="santu-ai-cell">
-					<label>Brand</label>
-					<input type="text" class="santu-ai-input santu-ai-brand" list="santu-ai-brandlist" value="${frappe.utils.escape_html(s.brand)}" placeholder="e.g. Pidilite" autocomplete="off">
-					<datalist id="santu-ai-brandlist">
-						${(this.init_data.brands || []).map((b) => `<option value="${frappe.utils.escape_html(b)}"></option>`).join("")}
-					</datalist>
+					<label>Unit <span class="santu-ai-req">*</span></label>
+					<select class="santu-ai-input santu-ai-uom">${opts(this.init_data.uoms || [], s.uom)}</select>
 				</div>
 			</div>
-			<div class="santu-ai-grid2">
+			<div class="santu-ai-grid4">
 				<div class="santu-ai-cell">
-					<label>Description</label>
-					<textarea class="santu-ai-input santu-ai-description" rows="2" placeholder="Size, model, any detail worth remembering">${frappe.utils.escape_html(s.description)}</textarea>
-				</div>
-				<div class="santu-ai-cell">
-					<label>Item Photo</label>
-					<div class="santu-ai-image-row">
-						<button type="button" class="santu-ai-image-btn">${s.image ? "Change Photo" : "Choose Photo"}</button>
-						${s.image ? `<img class="santu-ai-image-preview" src="${frappe.utils.escape_html(s.image)}" alt=""><button type="button" class="santu-ai-image-clear" title="Remove">✕</button>` : ""}
+					<div class="santu-ai-cell-head-inline">
+						<label>Brand</label>
+						<button type="button" class="santu-ai-link-btn santu-ai-add-brand-btn">+ Add</button>
+					</div>
+					<select class="santu-ai-input santu-ai-brand-select">
+						${brand_opts}
+					</select>
+					<div class="santu-ai-other-brand-wrap" style="${is_other ? '' : 'display:none;'}">
+						<input type="text" class="santu-ai-input santu-ai-brand-other-input" placeholder="Specify brand name" value="${frappe.utils.escape_html(other_text)}" autocomplete="off">
 					</div>
 				</div>
-			</div>`
-		);
-	},
-
-	_section_barcode(s) {
-		const alt = s.alternate_barcodes
-			.map(
-				(b, i) => `
-			<div class="santu-ai-altbar-row" data-idx="${i}">
-				<input type="text" class="santu-ai-input santu-ai-altbar" value="${frappe.utils.escape_html(b.barcode || "")}" placeholder="Alternate barcode">
-				<button type="button" class="santu-ai-altbar-remove" title="Remove">✕</button>
-			</div>`
-			)
-			.join("");
-		return this._sec(
-			"barcode",
-			"Barcode",
-			`
-			<div class="santu-ai-grid3">
 				<div class="santu-ai-cell">
-					<label>Primary Barcode</label>
-					<input type="text" class="santu-ai-input santu-ai-barcode" value="${frappe.utils.escape_html(s.barcode)}" placeholder="Scan or type" autocomplete="off">
-				</div>
-				<div class="santu-ai-cell">
-					<label>Barcode Type</label>
-					<select class="santu-ai-input santu-ai-barcode-type">
-						${["", "EAN", "UPC-A", "CODE-39", "EAN-12", "EAN-8", "ISBN", "ISBN-10", "ISBN-13", "GS1", "GTIN"]
-							.map((t) => `<option value="${t}" ${t === s.barcode_type ? "selected" : ""}>${t || "Auto"}</option>`)
-							.join("")}
-					</select>
-				</div>
-				<div class="santu-ai-cell">
-					<label>&nbsp;</label>
-					<button type="button" class="santu-ai-link santu-ai-add-altbar">+ Add another barcode</button>
-				</div>
-			</div>
-			<div class="santu-ai-altbars">${alt}</div>`,
-			"Barcode sirf saman pehchanne ke liye — HSN se alag cheez hai."
-		);
-	},
-
-	_section_pricing(s) {
-		return this._sec(
-			"pricing",
-			"Pricing",
-			`
-			<div class="santu-ai-grid3">
-				<div class="santu-ai-cell">
-					<label>Purchase Rate</label>
-					<input type="number" min="0" step="any" class="santu-ai-input santu-ai-purchase-price" value="${s.purchase_price}" placeholder="0.00">
-				</div>
-				<div class="santu-ai-cell">
-					<label>Selling Rate</label>
-					<input type="number" min="0" step="any" class="santu-ai-input santu-ai-sale-price" value="${s.sale_price}" placeholder="0.00">
-				</div>
-				<div class="santu-ai-cell">
-					<label>MRP</label>
-					<input type="number" min="0" step="any" class="santu-ai-input santu-ai-mrp" value="${s.mrp}" placeholder="0.00">
-				</div>
-			</div>
-			<div class="santu-ai-grid3">
-				<div class="santu-ai-cell">
-					<label>Wholesale Rate</label>
-					<input type="number" min="0" step="any" class="santu-ai-input santu-ai-wholesale-price" value="${s.wholesale_price}" placeholder="0.00">
-				</div>
-				<div class="santu-ai-cell">
-					<label>Minimum Selling Price</label>
-					<input type="number" min="0" step="any" class="santu-ai-input santu-ai-min-selling" value="${s.min_selling_price}" placeholder="0.00">
-				</div>
-				<div class="santu-ai-cell santu-ai-margin-cell">
-					<label>Margin</label>
-					<div class="santu-ai-margin">—</div>
-				</div>
-			</div>`,
-			"Batch chalu karoge to har batch apna alag rate rakh sakta hai."
-		);
-	},
-
-	_section_gst(s) {
-		return this._sec(
-			"gst",
-			"GST / Tax",
-			`
-			<div class="santu-ai-grid3">
-				<div class="santu-ai-cell">
-					<label>GST Applicable</label>
-					<label class="santu-ai-check"><input type="checkbox" class="santu-ai-gst-applicable" ${s.gst_applicable ? "checked" : ""}> Yes, GST lagta hai</label>
-				</div>
-				${
-					s.gst_applicable
-						? `
-				<div class="santu-ai-cell">
-					<label>GST Rate (%)</label>
-					<select class="santu-ai-input santu-ai-gst-rate">
-						<option value="">Select</option>
-						${(this.init_data.gst_rates || []).map((r) => `<option value="${r}" ${r === s.gst_rate ? "selected" : ""}>${r}%</option>`).join("")}
-					</select>
-				</div>
-				<div class="santu-ai-cell">
-					<label>HSN / SAC</label>
-					<div class="santu-ai-search-wrap">
-						<input type="text" class="santu-ai-input santu-ai-hsn" placeholder="Search HSN" value="${frappe.utils.escape_html(s.gst_hsn_code)}" autocomplete="off">
-						<div class="santu-ai-hsn-dropdown" style="display:none;"></div>
+					<label>Item Code / SKU</label>
+					<div class="santu-ai-code-wrap">
+						<input type="text" class="santu-ai-input santu-ai-item-code" placeholder="Auto-generated" value="${frappe.utils.escape_html(s.item_code)}" autocomplete="off">
+						<button type="button" class="santu-ai-assign-btn" title="Naam se chhota code bana do">Naam se</button>
 					</div>
-				</div>`
-						: `<div class="santu-ai-cell santu-ai-cell-wide"><div class="santu-ai-note">Non-GST item — HSN ki zaroorat nahi, bill me GST nahi lagega.</div></div>`
-				}
-			</div>`
-		);
-	},
-
-	_section_stock(s) {
-		return this._sec(
-			"stock",
-			"Stock",
-			`
-			<div class="santu-ai-grid3">
-				<div class="santu-ai-cell">
-					<label>Opening Stock</label>
-					<input type="number" min="0" step="any" class="santu-ai-input santu-ai-opening-qty" value="${s.opening_qty}" placeholder="0">
 				</div>
 				<div class="santu-ai-cell">
-					<label>As Of Date</label>
-					<input type="date" class="santu-ai-input santu-ai-as-of" value="${s.as_of_date}">
-				</div>
-			</div>
-			<div class="santu-ai-grid3">
-				<div class="santu-ai-cell">
-					<label>Minimum Stock / Reorder Level</label>
-					<input type="number" min="0" step="any" class="santu-ai-input santu-ai-min-stock" value="${s.min_stock}" placeholder="0">
-				</div>
-				<div class="santu-ai-cell">
-					<label>Warehouse</label>
-					<select class="santu-ai-input santu-ai-warehouse">
-						${(this.init_data.warehouses || [])
-							.map((w) => `<option value="${frappe.utils.escape_html(w)}" ${w === s.warehouse ? "selected" : ""}>${frappe.utils.escape_html(w)}</option>`)
-							.join("")}
-					</select>
+					<label>Barcode</label>
+					<input type="text" class="santu-ai-input santu-ai-barcode" value="${frappe.utils.escape_html(s.barcode)}" placeholder="Scan or type barcode" autocomplete="off">
 				</div>
 				<div class="santu-ai-cell">
 					<label>Rack / Shelf Location</label>
@@ -350,72 +218,154 @@ window.santu_add_item_page = {
 		);
 	},
 
-	_section_batch(s) {
+	_section_pricing_stock(s) {
 		return this._sec(
-			"batch",
-			"Batch Tracking",
+			"pricing-stock",
+			"Pricing & Stock",
 			`
-			<div class="santu-ai-grid3">
-				<div class="santu-ai-cell santu-ai-cell-wide">
-					<label class="santu-ai-check"><input type="checkbox" class="santu-ai-track-batches" ${s.track_batches ? "checked" : ""}> Track batches for this item</label>
-					<div class="santu-ai-note">Alag-alag purchase pe alag rate/MRP rakhne ke liye. Purana batch ka rate kabhi overwrite nahi hoga.</div>
+			<div class="santu-ai-grid4">
+				<div class="santu-ai-cell">
+					<label>Purchase Rate (CP)</label>
+					<input type="number" min="0" step="any" class="santu-ai-input santu-ai-purchase-price" value="${s.purchase_price}" placeholder="0.00">
+				</div>
+				<div class="santu-ai-cell">
+					<label>Selling Rate (SP)</label>
+					<input type="number" min="0" step="any" class="santu-ai-input santu-ai-sale-price" value="${s.sale_price}" placeholder="0.00">
+				</div>
+				<div class="santu-ai-cell">
+					<label>MRP</label>
+					<input type="number" min="0" step="any" class="santu-ai-input santu-ai-mrp" value="${s.mrp}" placeholder="0.00">
+				</div>
+				<div class="santu-ai-cell santu-ai-margin-cell">
+					<label>Live Margin</label>
+					<div class="santu-ai-margin">—</div>
 				</div>
 			</div>
-			${
-				s.track_batches
-					? `
-			<div class="santu-ai-grid3">
+			<div class="santu-ai-grid4">
 				<div class="santu-ai-cell">
-					<label>Batch Number</label>
-					<input type="text" class="santu-ai-input santu-ai-batch-no" value="${frappe.utils.escape_html(s.batch_no)}" placeholder="Khaali chhodo to apne aap">
+					<label>Opening Stock</label>
+					<input type="number" min="0" step="any" class="santu-ai-input santu-ai-opening-qty" value="${s.opening_qty}" placeholder="0">
 				</div>
 				<div class="santu-ai-cell">
-					<label>Batch Purchase Rate</label>
-					<input type="number" min="0" step="any" class="santu-ai-input santu-ai-batch-purchase" value="${s.batch_purchase_rate}" placeholder="Purchase rate">
+					<label>Min Stock Alert</label>
+					<input type="number" min="0" step="any" class="santu-ai-input santu-ai-min-stock" value="${s.min_stock}" placeholder="0">
 				</div>
 				<div class="santu-ai-cell">
-					<label>Batch MRP</label>
-					<input type="number" min="0" step="any" class="santu-ai-input santu-ai-batch-mrp" value="${s.batch_mrp}" placeholder="MRP">
-				</div>
-			</div>
-			<div class="santu-ai-grid3">
-				<div class="santu-ai-cell">
-					<label>Batch Selling Rate</label>
-					<input type="number" min="0" step="any" class="santu-ai-input santu-ai-batch-selling" value="${s.batch_selling_rate}" placeholder="Selling rate">
+					<label>Description</label>
+					<input type="text" class="santu-ai-input santu-ai-description" value="${frappe.utils.escape_html(s.description)}" placeholder="Size, model, notes (optional)">
 				</div>
 				<div class="santu-ai-cell">
-					<label>Expiry Date</label>
-					<input type="date" class="santu-ai-input santu-ai-batch-expiry" value="${s.batch_expiry}">
-				</div>
-				<div class="santu-ai-cell">
-					<div class="santu-ai-note">Batch ki quantity upar "Opening Stock" se aayegi.</div>
+					<label>Item Photo</label>
+					<div class="santu-ai-image-row">
+						<button type="button" class="santu-ai-image-btn">${s.image ? "Change Photo" : "📷 Choose Photo"}</button>
+						${s.image ? `<img class="santu-ai-image-preview" src="${frappe.utils.escape_html(s.image)}" alt=""><button type="button" class="santu-ai-image-clear" title="Remove">✕</button>` : ""}
+					</div>
 				</div>
 			</div>`
-					: ""
-			}`
 		);
 	},
 
-	_section_supplier(s) {
-		return this._sec(
-			"supplier",
-			"Supplier",
-			`
-			<div class="santu-ai-grid3">
-				<div class="santu-ai-cell">
-					<label>Default Supplier</label>
-					<input type="text" class="santu-ai-input santu-ai-supplier" list="santu-ai-supplierlist" value="${frappe.utils.escape_html(s.default_supplier)}" placeholder="Pehle se bana supplier chuno" autocomplete="off">
-					<datalist id="santu-ai-supplierlist">
-						${(this.init_data.suppliers || []).map((x) => `<option value="${frappe.utils.escape_html(x)}"></option>`).join("")}
-					</datalist>
+	_section_advanced(s) {
+		return `
+			<div class="santu-ai-sec santu-ai-sec-adv" data-sec="advanced">
+				<div class="santu-ai-sec-body">
+					<div class="santu-ai-grid3">
+						<div class="santu-ai-cell">
+							<label>GST Applicable</label>
+							<label class="santu-ai-check" style="height:36px;"><input type="checkbox" class="santu-ai-gst-applicable" ${s.gst_applicable ? "checked" : ""}> Yes, GST lagta hai</label>
+						</div>
+						${
+							s.gst_applicable
+								? `
+						<div class="santu-ai-cell">
+							<label>GST Rate (%)</label>
+							<select class="santu-ai-input santu-ai-gst-rate">
+								<option value="">Select</option>
+								${(this.init_data.gst_rates || []).map((r) => `<option value="${r}" ${r === s.gst_rate ? "selected" : ""}>${r}%</option>`).join("")}
+							</select>
+						</div>
+						<div class="santu-ai-cell">
+							<label>HSN / SAC</label>
+							<div class="santu-ai-search-wrap">
+								<input type="text" class="santu-ai-input santu-ai-hsn" placeholder="Search HSN" value="${frappe.utils.escape_html(s.gst_hsn_code)}" autocomplete="off">
+								<div class="santu-ai-hsn-dropdown" style="display:none;"></div>
+							</div>
+						</div>`
+								: `<div class="santu-ai-cell santu-ai-cell-span2"><div class="santu-ai-note">Non-GST item — bill me GST nahi lagega.</div></div>`
+						}
+					</div>
+					<div class="santu-ai-grid3">
+						<div class="santu-ai-cell">
+							<label>Wholesale Rate</label>
+							<input type="number" min="0" step="any" class="santu-ai-input santu-ai-wholesale-price" value="${s.wholesale_price}" placeholder="0.00">
+						</div>
+						<div class="santu-ai-cell">
+							<label>Minimum Selling Price</label>
+							<input type="number" min="0" step="any" class="santu-ai-input santu-ai-min-selling" value="${s.min_selling_price}" placeholder="0.00">
+						</div>
+						<div class="santu-ai-cell">
+							<label>Warehouse</label>
+							<select class="santu-ai-input santu-ai-warehouse">
+								${(this.init_data.warehouses || [])
+									.map((w) => `<option value="${frappe.utils.escape_html(w)}" ${w === s.warehouse ? "selected" : ""}>${frappe.utils.escape_html(w)}</option>`)
+									.join("")}
+							</select>
+						</div>
+					</div>
+					<div class="santu-ai-grid3">
+						<div class="santu-ai-cell">
+							<label>Default Supplier</label>
+							<input type="text" class="santu-ai-input santu-ai-supplier" list="santu-ai-supplierlist" value="${frappe.utils.escape_html(s.default_supplier)}" placeholder="Supplier name" autocomplete="off">
+							<datalist id="santu-ai-supplierlist">
+								${(this.init_data.suppliers || []).map((x) => `<option value="${frappe.utils.escape_html(x)}"></option>`).join("")}
+							</datalist>
+						</div>
+						<div class="santu-ai-cell">
+							<label>Supplier Item Code</label>
+							<input type="text" class="santu-ai-input santu-ai-supplier-code" value="${frappe.utils.escape_html(s.supplier_item_code)}" placeholder="Optional">
+						</div>
+						<div class="santu-ai-cell">
+							<label>Stock As Of Date</label>
+							<input type="date" class="santu-ai-input santu-ai-as-of" value="${s.as_of_date}">
+						</div>
+					</div>
+					<div class="santu-ai-grid3">
+						<div class="santu-ai-cell santu-ai-cell-wide">
+							<label class="santu-ai-check"><input type="checkbox" class="santu-ai-track-batches" ${s.track_batches ? "checked" : ""}> Track batches for this item</label>
+						</div>
+					</div>
+					${
+						s.track_batches
+							? `
+					<div class="santu-ai-grid3">
+						<div class="santu-ai-cell">
+							<label>Batch Number</label>
+							<input type="text" class="santu-ai-input santu-ai-batch-no" value="${frappe.utils.escape_html(s.batch_no)}" placeholder="Auto">
+						</div>
+						<div class="santu-ai-cell">
+							<label>Batch Purchase Rate</label>
+							<input type="number" min="0" step="any" class="santu-ai-input santu-ai-batch-purchase" value="${s.batch_purchase_rate}" placeholder="Purchase rate">
+						</div>
+						<div class="santu-ai-cell">
+							<label>Batch MRP</label>
+							<input type="number" min="0" step="any" class="santu-ai-input santu-ai-batch-mrp" value="${s.batch_mrp}" placeholder="MRP">
+						</div>
+					</div>
+					<div class="santu-ai-grid3">
+						<div class="santu-ai-cell">
+							<label>Batch Selling Rate</label>
+							<input type="number" min="0" step="any" class="santu-ai-input santu-ai-batch-selling" value="${s.batch_selling_rate}" placeholder="Selling rate">
+						</div>
+						<div class="santu-ai-cell">
+							<label>Expiry Date</label>
+							<input type="date" class="santu-ai-input santu-ai-batch-expiry" value="${s.batch_expiry}">
+						</div>
+						<div class="santu-ai-cell"></div>
+					</div>`
+							: ""
+					}
 				</div>
-				<div class="santu-ai-cell">
-					<label>Supplier Item Code</label>
-					<input type="text" class="santu-ai-input santu-ai-supplier-code" value="${frappe.utils.escape_html(s.supplier_item_code)}" placeholder="Optional">
-				</div>
-				<div class="santu-ai-cell"></div>
-			</div>`
-		);
+			</div>`;
 	},
 
 	_refresh_save() {
@@ -466,7 +416,35 @@ window.santu_add_item_page = {
 		});
 		bind(".santu-ai-item-code", "item_code");
 		bind(".santu-ai-category", "item_group", () => this._refresh_save());
-		bind(".santu-ai-brand", "brand");
+
+		$r.find(".santu-ai-brand-select").on("change", (e) => {
+			const val = e.target.value;
+			if (val === "__new__") {
+				$(e.target).val(s.brand_type === "Other" ? "Other" : (s.brand || ""));
+				this._prompt_new_brand();
+			} else if (val === "Other") {
+				s.brand_type = "Other";
+				const custom = ($r.find(".santu-ai-brand-other-input").val() || "").trim();
+				s.brand = custom || "Other";
+				$r.find(".santu-ai-other-brand-wrap").slideDown(150, () => {
+					$r.find(".santu-ai-brand-other-input").trigger("focus");
+				});
+			} else {
+				s.brand_type = "";
+				s.brand = val;
+				$r.find(".santu-ai-other-brand-wrap").slideUp(150);
+			}
+		});
+
+		$r.find(".santu-ai-brand-other-input").on("input change", (e) => {
+			const val = (e.target.value || "").trim();
+			s.brand = val || "Other";
+		});
+
+		$r.find(".santu-ai-add-brand-btn").on("click", () => {
+			this._prompt_new_brand();
+		});
+
 		bind(".santu-ai-uom", "uom", () => this._refresh_save());
 		bind(".santu-ai-description", "description");
 		bind(".santu-ai-barcode", "barcode");
@@ -617,6 +595,42 @@ window.santu_add_item_page = {
 				}
 				$dd.show();
 			});
+	},
+
+	_prompt_new_brand() {
+		frappe.prompt(
+			[
+				{
+					label: __("Brand Name"),
+					fieldname: "brand_name",
+					fieldtype: "Data",
+					reqd: 1,
+					placeholder: "e.g. Pidilite / Astral / Supreme",
+				},
+			],
+			(values) => {
+				const name = (values.brand_name || "").trim();
+				if (!name) return;
+				frappe
+					.xcall("santu_hardware.santu_hardware.api.create_brand", { brand_name: name })
+					.then((r) => {
+						const bname = (r && r.brand) || name;
+						if (!this.init_data.brands.includes(bname)) {
+							this.init_data.brands.push(bname);
+							this.init_data.brands.sort((a, b) => a.localeCompare(b));
+						}
+						this.state.brand_type = "";
+						this.state.brand = bname;
+						this.render();
+						frappe.show_alert({ message: __("Brand '{0}' added", [bname]), indicator: "green" });
+					})
+					.catch(() => {
+						frappe.msgprint(__("Could not add brand."));
+					});
+			},
+			__("Add New Brand"),
+			__("Add Brand")
+		);
 	},
 
 	_assign_code() {

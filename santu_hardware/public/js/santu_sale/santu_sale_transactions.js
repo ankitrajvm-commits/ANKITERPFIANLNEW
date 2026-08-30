@@ -88,6 +88,7 @@ santu_sale.transactions = {
 
 		const f = `<span class="santu-sale-th-filter">▽</span>`;
 		const is_quotation = view === "quotation";
+		const is_payment_in = view === "payment_in";
 		const $table_wrap = $(`
 			<div class="santu-sale-txn-table-wrap">
 				<table class="santu-sale-txn-table">
@@ -102,6 +103,15 @@ santu_sale.transactions = {
 								<th class="num">Amount ${f}</th>
 								<th class="num">Balance ${f}</th>
 								<th>Status ${f}</th>
+								<th class="num">Actions</th>
+							`
+									: is_payment_in
+									? `
+								<th>Date ${f}</th>
+								<th>Receipt no ${f}</th>
+								<th>Party Name ${f}</th>
+								<th>Mode ${f}</th>
+								<th class="num">Amount Received ${f}</th>
 								<th class="num">Actions</th>
 							`
 									: `
@@ -127,7 +137,11 @@ santu_sale.transactions = {
 
 		transactions.forEach((t) => {
 			const bal = t.balance ? u.format_money(t.balance) : "—";
-			const $row = is_quotation ? this._build_quotation_row(t, u) : $(`
+			const $row = is_quotation
+				? this._build_quotation_row(t, u)
+				: is_payment_in
+				? this._build_payment_in_row(t, u)
+				: $(`
 				<tr class="santu-sale-txn-row">
 					<td>${frappe.datetime.str_to_user(t.posting_date)}</td>
 					<td class="santu-sale-inv-no">${frappe.utils.escape_html(t.invoice_no)}</td>
@@ -148,13 +162,13 @@ santu_sale.transactions = {
 				</tr>
 			`);
 
-			if (!is_quotation) {
+			if (!is_quotation && !is_payment_in) {
 				$row.find(".santu-sale-row-btn").on("click", (e) => {
 					e.stopPropagation();
 					const action = $(e.currentTarget).data("action");
 					this._row_action(action, t);
 				});
-				$row.on("click", () => window.santu_open_invoice_view(t.doctype, t.invoice_no));
+				$row.on("click", () => window.santu_open_invoice_view(t.doctype, t.name || t.invoice_no));
 			}
 			$row.appendTo($tbody);
 		});
@@ -191,24 +205,54 @@ santu_sale.transactions = {
 			</tr>
 		`);
 
-		// One direct action, no dropdown (2026-08-20). Once every conversion
-		// started landing on Billing, "Convert to Sales Order" and "Convert to
-		// Sales Invoice" both just opened a prefilled bill — two menu entries
-		// doing the identical thing. Neither creates a Sales Order any more,
-		// so the honest label is simply "Convert to Bill", and a one-item
-		// dropdown is a click for nothing.
 		$row.find("[data-action='convert']").on("click", (e) => {
 			e.stopPropagation();
 			this._convert_via_mapped_doc(
 				"erpnext.selling.doctype.quotation.quotation.make_sales_invoice",
-				t.invoice_no
+				t.name || t.invoice_no
 			);
 		});
 		$row.find("[data-action='more']").on("click", (e) => {
 			e.stopPropagation();
 			this._row_action("more", t);
 		});
-		$row.on("click", () => window.santu_open_invoice_view(t.doctype, t.invoice_no));
+		$row.on("click", () => window.santu_open_invoice_view(t.doctype, t.name || t.invoice_no));
+		return $row;
+	},
+
+	// Billing (POS)-inspired row (2026-08-20 direct request: "payment in ka
+	// sab vyapaar type kro, billing pos se inspired") — the generic
+	// invoice-table row this used to reuse had a "Transaction" column that
+	// only ever said "Payment In" (the page title already says that), a
+	// "Balance" column that was always "—" (a receipt has no balance of
+	// its own), and a Print icon that fell through to ERPNext's raw
+	// "PAYMENT ENTRY" print view — Payment Order Status, Paid To Account
+	// Type, Exchange Gain/Loss — accounting jargon no counter operator
+	// should ever have to look at (confirmed live 2026-08-20). This row
+	// drops all three: a Mode-of-Payment pill (styled like the quotation
+	// status pill) stands in for the dead Transaction column, and the only
+	// actions left are Share (WhatsApp receipt) and the clean
+	// santu-view-invoice detail page already used elsewhere.
+	_build_payment_in_row(t, u) {
+		const $row = $(`
+			<tr class="santu-sale-txn-row">
+				<td>${frappe.datetime.str_to_user(t.posting_date)}</td>
+				<td class="santu-sale-inv-no">${frappe.utils.escape_html(t.invoice_no)}</td>
+				<td>${frappe.utils.escape_html(t.party_name || "—")}</td>
+				<td><span class="santu-sale-status-pill santu-sale-status-ordered">${frappe.utils.escape_html(t.payment_type || "—")}</span></td>
+				<td class="num santu-figures santu-sale-amount-received">${u.format_money(t.amount)}</td>
+				<td class="num santu-sale-row-actions">
+					<button type="button" class="santu-sale-row-btn" title="Share" data-action="share">
+						<img src="/assets/santu_hardware/images/items/shareOnlineStoreItem.svg" alt="" width="16" height="16">
+					</button>
+				</td>
+			</tr>
+		`);
+		$row.find("[data-action='share']").on("click", (e) => {
+			e.stopPropagation();
+			this._row_action("share", t);
+		});
+		$row.on("click", () => window.santu_open_invoice_view(t.doctype, t.name || t.invoice_no));
 		return $row;
 	},
 
@@ -257,22 +301,23 @@ santu_sale.transactions = {
 	},
 
 	_row_action(action, t) {
+		const doc_name = t.name || t.invoice_no;
 		if (action === "open") {
-			window.santu_open_invoice_view(t.doctype, t.invoice_no);
+			window.santu_open_invoice_view(t.doctype, doc_name);
 			return;
 		}
 		if (action === "print") {
 			if (typeof santu_print_thermal_bill === "function") {
-				santu_print_thermal_bill(t.doctype, t.invoice_no);
+				santu_print_thermal_bill(t.doctype, doc_name);
 			} else {
-				frappe.set_route("print", t.doctype, t.invoice_no);
+				frappe.set_route("print", t.doctype, doc_name);
 			}
 			return;
 		}
 		if (action === "share") {
-			if (!t.doctype || !t.invoice_no) return;
+			if (!t.doctype || !doc_name) return;
 			if (window.santu_whatsapp_share) {
-				window.santu_whatsapp_share.send_transaction(t.doctype, t.invoice_no);
+				window.santu_whatsapp_share.send_transaction(t.doctype, doc_name);
 			} else {
 				frappe.msgprint(__("WhatsApp share is loading — please try again."));
 			}
@@ -280,22 +325,66 @@ santu_sale.transactions = {
 		}
 		if (action === "more") {
 			const items = [
-				{ label: __("Open"), action: () => window.santu_open_invoice_view(t.doctype, t.invoice_no) },
+				{ label: __("Open"), action: () => window.santu_open_invoice_view(t.doctype, doc_name) },
 				{ label: __("Print"), action: () => this._row_action("print", t) },
+				{ label: __("Send on WhatsApp"), action: () => this._row_action("share", t) },
 			];
 			if (t.doctype === "Sales Order") {
-				items.push({
+				items.splice(2, 0, {
 					label: __("Create Sales Invoice"),
 					action: () => {
 						this._convert_via_mapped_doc(
 							"erpnext.selling.doctype.sales_order.sales_order.make_sales_invoice",
-							t.invoice_no
+							doc_name
 						);
 					},
 				});
 			}
-			items.push({ label: __("Send on WhatsApp"), action: () => this._row_action("share", t) });
-			const d = new frappe.ui.Dialog({ title: t.invoice_no, fields: [{ fieldtype: "HTML", fieldname: "menu" }] });
+
+			const delete_label =
+				t.doctype === "Quotation"
+					? __("Delete Estimate")
+					: t.doctype === "Delivery Note"
+					? __("Delete Challan")
+					: t.doctype === "Sales Order"
+					? __("Delete Order")
+					: __("Delete Bill / Sale");
+
+			items.push({
+				label: `<span style="color:#dc2626;font-weight:600;">🗑️ ${delete_label}</span>`,
+				action: () => {
+					const display_name = t.invoice_no || doc_name;
+					frappe.confirm(
+						__(
+							"Kya aap sach me {0} <b>{1}</b> ko delete karna chahte hain? Isse iska poora record delete ho jayega.",
+							[delete_label.replace("Delete ", ""), display_name]
+						),
+						async () => {
+							frappe.dom.freeze(__("Deleting…"));
+							try {
+								await frappe.xcall("santu_hardware.santu_hardware.api.delete_sale_invoice", {
+									doctype: t.doctype,
+									name: doc_name,
+								});
+								frappe.dom.unfreeze();
+								frappe.show_alert({
+									message: __("{0} {1} deleted.", [delete_label.replace("Delete ", ""), display_name]),
+									indicator: "green",
+								});
+								$(document).trigger("santu-sale-view-change");
+							} catch (e) {
+								frappe.dom.unfreeze();
+								frappe.msgprint((e && e.message) || __("Could not delete record."));
+							}
+						}
+					);
+				},
+			});
+
+			const d = new frappe.ui.Dialog({
+				title: t.invoice_no || doc_name,
+				fields: [{ fieldtype: "HTML", fieldname: "menu" }],
+			});
 			const $menu = $(`<div class="santu-sale-row-menu"></div>`);
 			items.forEach((item) => {
 				$menu.append(`<button type="button" class="santu-sale-row-menu-item">${item.label}</button>`);

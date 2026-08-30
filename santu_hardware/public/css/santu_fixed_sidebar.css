@@ -9,21 +9,30 @@
 
 :root {
 	--santu-sidebar-width: 260px;
-	--santu-sidebar-bg: #1b2338;
-	--santu-sidebar-bg-hover: #262f47;
-	--santu-sidebar-bg-active: #3a1b22;
-	--santu-sidebar-text: #b7bdcc;
-	--santu-sidebar-text-dim: #7d8499;
-	--santu-sidebar-text-active: #ff6b6f;
-	--santu-sidebar-border: #2a3450;
+	--santu-sidebar-bg: #141a29;
+	--santu-sidebar-bg-hover: #1e2638;
+	--santu-sidebar-bg-active: linear-gradient(90deg, rgba(239, 68, 68, 0.14) 0%, rgba(239, 68, 68, 0.03) 100%);
+	--santu-sidebar-text: #94a3b8;
+	--santu-sidebar-text-dim: #64748b;
+	--santu-sidebar-text-active: #f87171;
+	--santu-sidebar-border: #1e293b;
 }
 
 #santu-app-sidebar {
 	position: fixed;
-	top: 56px;
+	/* Starts where the top chrome actually ends, not at a hardcoded 56px.
+	   The old fixed value assumed the navbar sat flush at y=0; once the shop
+	   status bar (.santu-status-bar, 41px) was added above it, the rail began
+	   41px too high and covered the navbar's bottom half -- eating the left
+	   48px of the logo, so "Santu Hardware" read as "antu Hardware" whenever
+	   the sidebar was collapsed (2026-08-23 report: "ye kat raha hai yaha se").
+	   The status bar is not on every screen, so this cannot be a second
+	   hardcoded number; santu_fixed_sidebar.js measures the navbar and sets
+	   the variable, with 56px kept as the fallback for the no-status-bar case. */
+	top: var(--santu-sidebar-top, 56px);
 	left: 0;
 	width: var(--santu-sidebar-width);
-	height: calc(100vh - 56px);
+	height: calc(100vh - var(--santu-sidebar-top, 56px));
 	background: var(--santu-sidebar-bg);
 	border-right: 1px solid var(--santu-sidebar-border);
 	z-index: 1020;
@@ -41,7 +50,9 @@
 }
 
 .santu-app-sidebar-list {
-	padding: 8px 0 12px;
+	/* 34px on top reserves the strip the collapse toggle sits in -- without
+	   it the toggle lands on the "Home" row (measured 2026-08-30). */
+	padding: 34px 0 12px;
 	flex: 1;
 }
 
@@ -59,28 +70,34 @@
 	align-items: center;
 	gap: 12px;
 	width: 100%;
-	padding: 11px 16px;
+	padding: 10px 16px;
 	border: none;
 	background: transparent;
 	text-align: left;
-	font-size: 16px;
-	font-weight: 600;
-	color: var(--santu-sidebar-text);
+	font-size: 15px;
+	font-weight: 500;
+	color: #e2e8f0;
 	cursor: pointer;
 	border-left: 3px solid transparent;
+	transition: background 0.15s ease, color 0.15s ease, border-left-color 0.15s ease;
 }
 .santu-app-sidebar-item:hover {
 	background: var(--santu-sidebar-bg-hover);
+	color: #ffffff;
 }
 .santu-app-sidebar-item.is-active {
 	background: var(--santu-sidebar-bg-active);
-	border-left-color: var(--santu-brand, #e0393e);
-	color: var(--santu-sidebar-text-active);
+	border-left: 3px solid #ef4444;
+	color: #ffffff;
 	font-weight: 600;
 }
 
 .santu-app-sidebar-icon {
-	width: 18px;
+	width: 20px;
+	height: 20px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 	text-align: center;
 	flex-shrink: 0;
 	font-size: 16px;
@@ -93,7 +110,8 @@
    be invisible against one of the two sidebar palettes the stylesheets carry.
    The mask makes the icon behave exactly like the label text beside it. */
 .santu-app-sidebar-icon-img {
-	height: 18px;
+	width: 20px;
+	height: 20px;
 	background-color: currentColor;
 	-webkit-mask-image: var(--santu-nav-ico);
 	mask-image: var(--santu-nav-ico);
@@ -111,6 +129,7 @@
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+	letter-spacing: 0.01em;
 }
 
 .santu-app-sidebar-quickadd {
@@ -121,25 +140,32 @@
 	align-items: center;
 	justify-content: center;
 	border-radius: 4px;
-	color: var(--santu-sidebar-text-dim);
-	font-size: 15px;
+	background: rgba(255, 255, 255, 0.06);
+	color: #94a3b8;
+	font-size: 14px;
+	font-weight: 700;
 	line-height: 1;
+	transition: background 0.15s ease, color 0.15s ease;
 }
 .santu-app-sidebar-quickadd:hover {
-	background: rgba(255, 255, 255, 0.1);
-	color: #fff;
+	background: rgba(255, 255, 255, 0.18);
+	color: #ffffff;
 }
 
 .santu-app-sidebar-chevron {
-	font-size: 11px;
-	opacity: 0.6;
+	font-size: 10px;
+	opacity: 0.7;
 	flex-shrink: 0;
-	color: var(--santu-sidebar-text-dim);
+	color: #64748b;
 }
 
 .santu-app-sidebar-children {
 	display: none;
 	background: rgba(0, 0, 0, 0.15);
+	margin-left: 18px;
+	padding: 4px 0 4px 6px;
+	border-left: 1.5px solid rgba(255, 255, 255, 0.1);
+	border-radius: 0 0 6px 0;
 }
 /* Direct child combinator, not descendant — a nested group (Purchase &
    Expense, inside More) has its own .santu-app-sidebar-children too, and a
@@ -153,34 +179,54 @@
    inside More) — its own parent row and grandchild rows both need the same
    indent a plain leaf child already gets, so the nesting reads as nesting. */
 .santu-app-sidebar-children > .santu-app-sidebar-group > .santu-app-sidebar-parent {
-	padding-left: 40px;
-	font-size: 14.5px;
+	padding-left: 16px;
+	font-size: 13.5px;
 }
 .santu-app-sidebar-children > .santu-app-sidebar-group .santu-app-sidebar-child {
-	padding-left: 56px !important;
+	padding-left: 28px !important;
 }
 
 .santu-app-sidebar-child {
-	padding-left: 40px !important;
-	font-size: 14.5px;
-	border-left: 3px solid transparent;
+	padding-left: 16px !important;
+	padding-top: 7px !important;
+	padding-bottom: 7px !important;
+	margin: 2px 6px 2px 0;
+	border-radius: 6px;
+	font-size: 13.5px;
+	color: #94a3b8;
+	border-left: none !important;
+	position: relative;
+	transition: background 0.15s ease, color 0.15s ease;
+}
+.santu-app-sidebar-child:hover {
+	color: #f8fafc;
+	background: rgba(255, 255, 255, 0.05);
 }
 .santu-app-sidebar-child .santu-app-sidebar-icon {
-	font-size: 9px;
-	opacity: 0.6;
+	font-size: 7px;
+	opacity: 0.5;
+	color: #64748b;
+	margin-right: 6px;
 }
 .santu-app-sidebar-child.is-active {
-	background: var(--santu-sidebar-bg-active) !important;
-	border-left-color: var(--santu-brand, #e0393e) !important;
-	color: var(--santu-sidebar-text-active) !important;
+	background: rgba(239, 68, 68, 0.18) !important;
+	color: #ffffff !important;
 	font-weight: 600;
 }
 .santu-app-sidebar-child.is-active .santu-app-sidebar-icon {
-	opacity: 0.9;
-	color: var(--santu-sidebar-text-active);
+	opacity: 1;
+	color: #ef4444;
 }
 .santu-app-sidebar-group.is-active > .santu-app-sidebar-parent {
-	color: #fff;
+	/* Expandable parents (Sale, Return, WhatsApp, Utilities, Settings...) used
+	   to get a much weaker "active" treatment than a plain item like Home --
+	   a faint 4% white tint with no border, while Home got the full red
+	   gradient + left accent bar. Same class combo, same visual weight now
+	   (2026-08-29 report: "ye wala jo feature h wo sare sidebar k parents pe
+	   apply nh h kya" -- it should be, and now is). */
+	background: var(--santu-sidebar-bg-active);
+	border-left: 3px solid #ef4444;
+	color: #ffffff;
 	font-weight: 600;
 }
 
@@ -189,46 +235,64 @@
 .santu-app-sidebar-company {
 	display: flex;
 	align-items: center;
-	gap: 10px;
-	padding: 14px 16px;
-	border-top: 1px solid var(--santu-sidebar-border);
-	color: #fff;
-	font-size: 14px;
-	font-weight: 700;
-	letter-spacing: 0.02em;
+	gap: 12px;
+	padding: 13px 16px;
+	border-top: 1px solid rgba(255, 255, 255, 0.08);
+	background: rgba(0, 0, 0, 0.12);
+	color: #f8fafc;
+	font-size: 14.5px;
+	font-weight: 600;
+	letter-spacing: -0.01em;
 	cursor: pointer;
+	transition: background 0.15s ease, color 0.15s ease;
 }
 .santu-app-sidebar-company:hover {
-	background: var(--santu-sidebar-bg-hover);
+	background: rgba(255, 255, 255, 0.06);
+	color: #ffffff;
 }
 .santu-app-sidebar-company-badge {
-	width: 26px;
-	height: 26px;
-	border-radius: 6px;
+	width: 28px;
+	height: 28px;
+	border-radius: 7px;
 	flex-shrink: 0;
 	display: block;
 	object-fit: contain;
+	box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25);
 }
 
 /* ---------- Collapse/expand toggle ---------- */
+/* Sat half-outside the rail (right: -12px) for the classic collapse-handle
+   look. It could not work there: the rail scrolls, so it has `overflow:
+   hidden auto`, and a clipping ancestor cuts off the overhanging half no
+   matter what z-index the button asks for. Measured 2026-08-30: only 1 of 5
+   points across the button actually hit it -- the rest landed on the sidebar
+   or the page behind -- and its left half covered the "Home" row.
+   Now fully inside the rail, in a strip of its own: the rail has no header,
+   so the menu list is given matching top padding rather than letting the
+   button sit on top of the "Home" row. */
 .santu-app-sidebar-collapse-toggle {
 	position: absolute;
-	top: 10px;
-	right: -12px;
+	top: 5px;
+	right: 6px;
 	width: 24px;
 	height: 24px;
 	border-radius: 50%;
-	border: 1px solid var(--santu-sidebar-border);
-	background: var(--santu-sidebar-bg-hover);
+	/* Inside the dark rail now, so it needs its own contrast: the old
+	   sidebar-hover fill was the same navy as the rail and the button simply
+	   vanished (it only ever read as a button because half of it used to
+	   overhang the light page). */
+	border: 1px solid rgba(255, 255, 255, 0.32);
+	background: rgba(255, 255, 255, 0.14);
 	color: #fff;
 	font-size: 15px;
 	line-height: 1;
 	cursor: pointer;
-	z-index: 5;
+	z-index: 1030;
 }
 .santu-app-sidebar-collapse-toggle:hover {
 	background: var(--santu-brand, #e0393e);
 	border-color: var(--santu-brand, #e0393e);
+	color: #fff;
 }
 
 body.santu-sidebar-collapsed #santu-app-sidebar {
@@ -251,60 +315,61 @@ body.santu-sidebar-collapsed .santu-app-sidebar-company {
 	padding: 14px 0;
 }
 /* Icons carry the whole row's meaning once the label text is hidden — sized
-   up so they read at a glance instead of looking like leftover crumbs
-   (2026-08-18: "isko thoda bada kro jab iska name hide kiya jata hai"). */
+   up so they read at a glance with clean balanced proportions. */
 body.santu-sidebar-collapsed .santu-app-sidebar-icon {
-	width: 26px;
-	font-size: 22px;
+	width: 24px;
+	height: 24px;
+	font-size: 20px;
 }
 body.santu-sidebar-collapsed .santu-app-sidebar-icon-img {
-	height: 26px;
+	width: 22px;
+	height: 22px;
 }
-/* Each top-level icon gets its own colour once the labels are hidden — an
-   all-grey icon rail is hard to tell apart at a glance; colour does the job
-   the text was doing (2026-08-18: "ise colourful bana", collapsed-sidebar
-   screenshot). Matched by icon filename since that's the only per-row hook
-   available on the rendered mask span. Scoped to collapsed + top-level only
-   — expanded rows keep the existing text-led Vyapar palette untouched. */
-body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="home.svg"],
-body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-group > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="home.svg"] {
-	background-color: #4f8ef7;
+/* Modern harmonious 2026 SaaS color palette for all sidebar navigation icons (expanded & collapsed) */
+.santu-app-sidebar-list .santu-app-sidebar-icon-img[style*="home.svg"] {
+	background-color: #38bdf8;
 }
-body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="Parties.svg"],
-body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-group > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="Parties.svg"] {
-	background-color: #a663e3;
+.santu-app-sidebar-list .santu-app-sidebar-icon-img[style*="Parties.svg"] {
+	background-color: #a78bfa;
 }
-body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="Items.svg"],
-body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-group > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="Items.svg"] {
-	background-color: #f5a623;
+.santu-app-sidebar-list .santu-app-sidebar-icon-img[style*="Items.svg"] {
+	background-color: #fbbf24;
 }
-body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-group > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="Sale.svg"] {
-	background-color: #2ecc71;
+.santu-app-sidebar-list .santu-app-sidebar-icon-img[style*="Sale.svg"] {
+	background-color: #34d399;
 }
-body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-group > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="whatsappLeftNav.svg"] {
+.santu-app-sidebar-list .santu-app-sidebar-icon-img[style*="return.svg"] {
+	background-color: #22d3ee;
+}
+.santu-app-sidebar-list .santu-app-sidebar-icon-img[style*="whatsappLeftNav.svg"],
+.santu-app-sidebar-list .santu-app-sidebar-icon-img[style*="chatWhatsapp.svg"],
+.santu-app-sidebar-list .santu-app-sidebar-icon-img[style*="whatsapp.svg"] {
 	background-color: #25d366;
 }
-body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-group > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="backup.svg"] {
-	background-color: #17a2b8;
+.santu-app-sidebar-list .santu-app-sidebar-icon-img[style*="backup.svg"] {
+	background-color: #818cf8;
 }
-body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-group > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="Utilities.svg"] {
-	background-color: #5c9df1;
+.santu-app-sidebar-list .santu-app-sidebar-icon-img[style*="Utilities.svg"] {
+	background-color: #60a5fa;
 }
-body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="Settings.svg"] {
-	background-color: #8a94a6;
+.santu-app-sidebar-list .santu-app-sidebar-icon-img[style*="Settings.svg"] {
+	background-color: #94a3b8;
 }
-body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-group > .santu-app-sidebar-item .santu-app-sidebar-icon-img[style*="plus.svg"] {
-	background-color: #e0393e;
+.santu-app-sidebar-list .santu-app-sidebar-icon-img[style*="plus.svg"] {
+	background-color: #f43f5e;
 }
-/* The two "Return" and "Sale" groups both ship the same Sale.svg icon —
-   Return keeps the plain grey/active colour instead of also going green so
-   the two rows are still visually distinguishable from one another. */
-body.santu-sidebar-collapsed .santu-app-sidebar-list > .santu-app-sidebar-group[data-group="return"] > .santu-app-sidebar-item .santu-app-sidebar-icon-img {
-	background-color: currentColor;
+.santu-app-sidebar-list .santu-app-sidebar-icon-img[style*="Purchase.svg"] {
+	background-color: #fb923c;
+}
+
+body.santu-sidebar-collapsed .santu-app-sidebar-item.is-active,
+body.santu-sidebar-collapsed .santu-app-sidebar-group.is-active > .santu-app-sidebar-item {
+	background: rgba(239, 68, 68, 0.14) !important;
+	border-left: 3px solid #ef4444 !important;
 }
 body.santu-sidebar-collapsed .santu-app-sidebar-item.is-active .santu-app-sidebar-icon-img,
 body.santu-sidebar-collapsed .santu-app-sidebar-group.is-active > .santu-app-sidebar-item .santu-app-sidebar-icon-img {
-	background-color: var(--santu-sidebar-text-active) !important;
+	background-color: #f87171 !important;
 }
 
 /* Push all main content to the right of fixed sidebar */
@@ -444,12 +509,40 @@ body.santu-fixed-sidebar:not(.santu-kiosk-mode) .desk-sidebar {
 	display: none !important;
 }
 
-body[data-route^="Workspaces"] .page-container,
-body[data-route^="List/"] .page-container,
-body[data-route^="Form/"] .page-container,
-body[data-route^="query-report"] .page-container,
-body[data-route^="dashboard-view"] .page-container,
-body[data-route="Tree"] .page-container {
+/* santu_topbar.js's patched render_page() redirects every doctype that has
+   a Vyapar-style replacement screen; anything else (Letter Head, Print
+   Format, and other plain admin doctypes with no custom screen) falls
+   through to ERPNext's own native page ON PURPOSE. This CSS used to hide
+   that fallthrough unconditionally, on the wrong assumption that JS always
+   redirects — so a doctype like Letter Head, which was never given a
+   redirect, rendered with opacity:0 forever and no reload ever brought it
+   back (confirmed live 2026-08-20: /app/letter-head/new-letter-head stuck
+   permanently blank). render_page() now adds body.santu-native-ok right
+   before calling the real ERPNext render for exactly this fallthrough
+   case, so the hide rule below only applies in the brief window before
+   that decision is made. */
+body[data-route^="Workspaces"]:not(.santu-native-ok) .page-container,
+body[data-route^="List/"]:not(.santu-native-ok) .page-container,
+body[data-route^="Form/"]:not(.santu-native-ok) .page-container,
+body[data-route^="query-report"]:not(.santu-native-ok) .page-container,
+body[data-route^="dashboard-view"]:not(.santu-native-ok) .page-container,
+body[data-route="Tree"]:not(.santu-native-ok) .page-container {
 	opacity: 0 !important;
 	pointer-events: none !important;
+}
+
+/* Instant name label for the collapsed icons-only sidebar. */
+.santu-sb-tip {
+	position: fixed;
+	transform: translateY(-50%);
+	z-index: 2000;
+	background: #2b2d3e;
+	color: #fff;
+	font-size: 12.5px;
+	line-height: 1;
+	padding: 6px 9px;
+	border-radius: 6px;
+	white-space: nowrap;
+	pointer-events: none;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }

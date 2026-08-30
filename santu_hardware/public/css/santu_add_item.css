@@ -1,14 +1,12 @@
 /*
- * Add Item — laid out from Vyapar's own Add Item screen (2026-08-15
- * screenshot). Full page, not a dialog: the Product/Service toggle, HSN
- * search, unit picker and Pricing/Stock tabs only read right at page scale.
+ * Santu Hardware — Add Item (Compact & Fast)
  */
 .santu-ai-page-main { background: #eef1f6; }
 .santu-ai {
 	display: flex;
 	flex-direction: column;
 	min-height: calc(100vh - 56px);
-	padding: 12px;
+	padding: 10px 14px;
 	box-sizing: border-box;
 }
 .santu-ai-loading { padding: 40px; text-align: center; color: #71748e; }
@@ -17,7 +15,7 @@
 	background: #fff;
 	border-radius: 8px;
 	flex: 1 1 auto;
-	padding: 0 0 8px;
+	padding: 0 0 6px;
 	box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06);
 }
 
@@ -25,106 +23,60 @@
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 18px 24px 14px;
+	padding: 12px 18px 10px;
+	border-bottom: 1px solid #f1f3f7;
 }
-.santu-ai-head-left { display: flex; align-items: center; gap: 28px; }
-.santu-ai-title { font-size: 20px; font-weight: 600; color: #1f2340; }
+.santu-ai-head-left { display: flex; align-items: center; gap: 20px; }
+.santu-ai-title { font-size: 18px; font-weight: 700; color: #1f2340; }
 
-.santu-ai-toggle-wrap { display: flex; align-items: center; gap: 10px; }
-.santu-ai-toggle-label { font-size: 14px; color: #8a8fa3; }
-.santu-ai-toggle-label.is-on { color: #2563eb; font-weight: 500; }
-.santu-ai-toggle {
-	width: 40px;
-	height: 22px;
-	border-radius: 999px;
-	border: none;
-	background: #2563eb;
-	position: relative;
-	cursor: pointer;
-	padding: 0;
-}
-.santu-ai-toggle-knob {
-	position: absolute;
-	top: 3px;
-	left: 3px;
-	width: 16px;
-	height: 16px;
-	border-radius: 50%;
-	background: #fff;
-	transition: left 0.15s ease;
-}
-.santu-ai-toggle.is-service .santu-ai-toggle-knob { left: 21px; }
-
+.santu-ai-head-right { display: flex; align-items: center; gap: 14px; }
 .santu-ai-icon-btn {
 	border: none;
 	background: transparent;
-	font-size: 18px;
+	font-size: 16px;
 	color: #71748e;
 	cursor: pointer;
 	padding: 4px 8px;
 }
 .santu-ai-icon-btn:hover { color: #1f2340; }
 
-/* ---------- top fields ---------- */
-.santu-ai-fields { padding: 4px 24px 8px; }
-.santu-ai-row {
-	display: flex;
-	align-items: flex-start;
-	gap: 16px;
-	margin-bottom: 16px;
-	flex-wrap: wrap;
-}
-.santu-ai-field { position: relative; flex: 0 0 auto; }
-.santu-ai-field-name { flex: 0 0 268px; }
-.santu-ai-field-unit,
-.santu-ai-field-image { display: flex; align-items: center; height: 44px; }
-
+/* ---------- inputs & controls ---------- */
 .santu-ai-input {
-	height: 44px;
-	width: 268px;
+	height: 36px;
+	width: 100%;
 	border: 1px solid #d0d5dd;
-	border-radius: 4px;
-	padding: 0 12px;
-	font-size: 14px;
+	border-radius: 5px;
+	padding: 0 10px;
+	font-size: 13px;
 	color: #1f2340;
 	background: #fff;
 	box-sizing: border-box;
+	transition: border-color 0.15s, box-shadow 0.15s;
 }
 .santu-ai-input:focus {
 	border-color: #2563eb;
 	outline: none;
-	box-shadow: none;
+	box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
 }
-select.santu-ai-input { padding-right: 28px; }
+select.santu-ai-input {
+	padding-right: 24px;
+	cursor: pointer;
+}
+textarea.santu-ai-input {
+	height: 36px;
+	padding: 7px 10px;
+	resize: vertical;
+}
 
-.santu-ai-float-label {
-	position: absolute;
-	top: -8px;
-	left: 10px;
-	background: #fff;
-	padding: 0 5px;
-	font-size: 12px;
-	color: #2563eb;
-	z-index: 1;
-	margin: 0;
-}
-.santu-ai-req { color: #ed1a3b; }
+.santu-ai-req { color: #ed1a3b; font-weight: 700; }
 
 .santu-ai-search-wrap { position: relative; }
-.santu-ai-search-icon {
-	position: absolute;
-	right: 12px;
-	top: 12px;
-	font-size: 14px;
-	opacity: 0.5;
-	pointer-events: none;
-}
 .santu-ai-hsn-dropdown {
 	position: absolute;
-	top: 46px;
+	top: 38px;
 	left: 0;
-	width: 340px;
-	max-height: 260px;
+	width: 320px;
+	max-height: 220px;
 	overflow-y: auto;
 	background: #fff;
 	border: 1px solid #eaeaef;
@@ -133,278 +85,53 @@ select.santu-ai-input { padding-right: 28px; }
 	z-index: 40;
 }
 .santu-ai-dd-row {
-	padding: 8px 12px;
+	padding: 6px 10px;
 	cursor: pointer;
 	border-bottom: 1px solid #f3f4f8;
-	font-size: 13px;
+	font-size: 12.5px;
 }
 .santu-ai-dd-row:hover { background: #f3f7ff; }
 .santu-ai-dd-row b { display: block; color: #1f2340; }
-.santu-ai-dd-row span { color: #71748e; font-size: 12px; }
+.santu-ai-dd-row span { color: #71748e; font-size: 11.5px; }
 .santu-ai-dd-empty { color: #9ca3af; cursor: default; }
-
-.santu-ai-unit-btn {
-	height: 44px;
-	min-width: 146px;
-	border: none;
-	border-radius: 4px;
-	background: #ddebfd;
-	color: #2563eb;
-	font-size: 15px;
-	font-weight: 600;
-	cursor: pointer;
-}
-.santu-ai-unit-btn:hover { background: #cfe1fc; }
-
-.santu-ai-image-btn {
-	border: none;
-	background: transparent;
-	color: #2563eb;
-	font-size: 15px;
-	cursor: pointer;
-	display: inline-flex;
-	align-items: center;
-	gap: 8px;
-	padding: 0;
-}
 
 .santu-ai-code-wrap { position: relative; display: flex; align-items: center; }
 .santu-ai-assign-btn {
 	position: absolute;
-	right: 6px;
+	right: 4px;
 	border: none;
 	border-radius: 4px;
 	background: #ddebfd;
 	color: #2563eb;
-	font-size: 13px;
+	font-size: 11px;
 	font-weight: 600;
-	padding: 7px 12px;
+	padding: 4px 8px;
 	cursor: pointer;
 }
 .santu-ai-assign-btn:hover { background: #cfe1fc; }
 
-/* ---------- tabs ---------- */
-.santu-ai-tabs {
-	display: flex;
-	gap: 26px;
-	padding: 6px 24px 0;
-	border-bottom: 1px solid #eaeaef;
-}
-.santu-ai-tab {
-	border: none;
-	background: transparent;
-	padding: 10px 2px 12px;
-	font-size: 15px;
-	color: #71748e;
-	cursor: pointer;
-	border-bottom: 2px solid transparent;
-	margin-bottom: -1px;
-}
-.santu-ai-tab.is-active { color: #ed1a3b; font-weight: 500; border-bottom-color: #ed1a3b; }
-.santu-ai-tab:disabled { color: #cbccde; cursor: not-allowed; }
-
-.santu-ai-panel { padding: 22px 24px; }
-.santu-ai-section {
-	background: #f8f9fb;
-	border-radius: 8px;
-	padding: 18px 20px;
-	margin-bottom: 18px;
-}
-.santu-ai-section-title {
-	font-size: 15px;
-	font-weight: 600;
-	color: #1f2340;
-	margin-bottom: 16px;
-}
-.santu-ai-inline { display: flex; gap: 28px; flex-wrap: wrap; align-items: center; }
-.santu-ai-pair { display: flex; align-items: center; }
-.santu-ai-pair .santu-ai-input:first-child {
-	width: 136px;
-	border-radius: 4px 0 0 4px;
-	border-right: none;
-}
-.santu-ai-pair .santu-ai-input:last-child {
-	width: 140px;
-	border-radius: 0 4px 4px 0;
-	background: #fff;
-}
-.santu-ai-pair .santu-ai-input:only-child { width: 200px; border-radius: 4px; border-right: 1px solid #d0d5dd; }
-
-.santu-ai-link {
-	border: none;
-	background: transparent;
+.santu-ai-image-row { display: flex; align-items: center; gap: 8px; height: 36px; }
+.santu-ai-image-btn {
+	border: 1px solid #d0d5dd;
+	background: #f9fafb;
 	color: #2563eb;
-	font-size: 15px;
-	font-weight: 500;
-	cursor: pointer;
-	padding: 14px 0 0;
-}
-.santu-ai-wholesale { margin-top: 14px; }
-
-.santu-ai-two-col { display: flex; gap: 18px; align-items: stretch; flex-wrap: wrap; }
-.santu-ai-two-col .santu-ai-section { flex: 1 1 340px; margin-bottom: 0; }
-
-.santu-ai-grid { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 16px; }
-.santu-ai-grid:last-child { margin-bottom: 0; }
-.santu-ai-cell { display: flex; flex-direction: column; gap: 6px; }
-.santu-ai-cell label { font-size: 12px; color: #71748e; margin: 0; }
-.santu-ai-cell .santu-ai-input { width: 210px; }
-
-/* ---------- footer ---------- */
-.santu-ai-footer {
-	display: flex;
-	justify-content: flex-end;
-	gap: 14px;
-	background: #fff;
-	border-radius: 8px;
-	margin-top: 10px;
-	padding: 14px 24px;
-	box-shadow: 0 -1px 3px rgba(16, 24, 40, 0.04);
-}
-.santu-ai-btn {
-	height: 40px;
-	min-width: 116px;
-	border-radius: 4px;
-	font-size: 15px;
-	font-weight: 500;
-	cursor: pointer;
-	border: 1px solid transparent;
-}
-.santu-ai-btn-ghost { background: #fff; border-color: #d0d5dd; color: #3f4155; }
-.santu-ai-btn-ghost:hover { background: #f6f7f9; }
-.santu-ai-btn-primary { background: #2563eb; color: #fff; }
-.santu-ai-btn-primary:hover { background: #1d4fd7; }
-.santu-ai-btn-primary:disabled { background: #e6e8ed; color: #a6abbd; cursor: not-allowed; }
-
-@media (max-width: 1100px) {
-	.santu-ai-input, .santu-ai-field-name { width: 100%; flex-basis: 100%; }
-	.santu-ai-row { gap: 20px; }
-}
-
-/* ---------- sectioned layout (2026-08-18 rebuild) ----------
-   The form grew from ~12 fields to everything billing/purchase/stock/GST/
-   batch/reporting needs later, and a single flat form at that size is
-   unusable. Each concern gets its own titled card, and the sections that
-   don't apply (GST fields when GST is off, batch fields when tracking is
-   off, stock/batch entirely for a Service) are not rendered at all rather
-   than shown disabled. */
-.santu-ai-sections { padding: 4px 24px 12px; }
-
-/* GST and Batch Tracking are real settings but not needed for most items
-   (2026-08-19: "kaafi cheezein unnecessary hai, ease it") — collapsed
-   behind this toggle rather than shown by default. */
-.santu-ai-advanced-toggle {
-	display: block;
-	border: none;
-	background: transparent;
-	color: #2563eb;
-	font-size: 13px;
-	font-weight: 600;
-	cursor: pointer;
-	padding: 8px 4px 14px;
-}
-.santu-ai-advanced-toggle:hover { text-decoration: underline; }
-
-.santu-ai-sec {
-	border: 1px solid #e5e8ef;
-	border-radius: 8px;
-	margin-bottom: 14px;
-	background: #fff;
-}
-.santu-ai-sec-head {
-	display: flex;
-	align-items: baseline;
-	gap: 12px;
-	padding: 12px 16px;
-	border-bottom: 1px solid #f0f2f6;
-	background: #fafbfc;
-	border-radius: 8px 8px 0 0;
-}
-.santu-ai-sec-title {
 	font-size: 12px;
-	font-weight: 700;
-	letter-spacing: 0.05em;
-	text-transform: uppercase;
-	color: #3730a3;
-}
-.santu-ai-sec-hint { font-size: 11.5px; color: #9aa0ac; }
-.santu-ai-sec-body { padding: 16px; }
-
-.santu-ai-grid2,
-.santu-ai-grid3 {
-	display: grid;
-	gap: 16px;
-	margin-bottom: 14px;
-}
-.santu-ai-grid3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.santu-ai-grid2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.santu-ai-grid2:last-child,
-.santu-ai-grid3:last-child { margin-bottom: 0; }
-.santu-ai-cell-wide { grid-column: 1 / -1; }
-
-/* Full-width inputs inside the grid — the old fixed 210px/268px widths
-   left ragged gaps once fields sat in real columns. */
-.santu-ai-sec .santu-ai-cell .santu-ai-input,
-.santu-ai-sec .santu-ai-input { width: 100%; }
-.santu-ai-sec textarea.santu-ai-input { height: auto; padding: 10px 12px; }
-.santu-ai-sec .santu-ai-code-wrap .santu-ai-input { padding-right: 92px; }
-
-.santu-ai-check {
+	font-weight: 600;
+	border-radius: 5px;
+	height: 36px;
+	padding: 0 12px;
+	cursor: pointer;
 	display: inline-flex;
 	align-items: center;
-	gap: 8px;
-	font-size: 13px;
-	color: #3f4155;
-	margin: 0;
-	cursor: pointer;
+	gap: 6px;
+	white-space: nowrap;
 }
-.santu-ai-check input { margin: 0; }
-
-.santu-ai-note {
-	font-size: 12px;
-	color: #71748e;
-	background: #f7f8fa;
-	border-radius: 6px;
-	padding: 8px 10px;
-}
-.santu-ai-warn { font-size: 12px; color: #b45309; }
-.santu-ai-dupname:not(:empty) { margin-top: 2px; }
-
-.santu-ai-margin-cell .santu-ai-margin {
-	height: 44px;
-	display: flex;
-	align-items: center;
-	font-size: 14px;
-	font-weight: 600;
-	color: #15803d;
-}
-.santu-ai-margin.is-loss { color: #b91c1c; }
-
-.santu-ai-altbar-row {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	margin-bottom: 8px;
-}
-.santu-ai-altbar-row:last-child { margin-bottom: 0; }
-.santu-ai-altbar-remove {
-	border: 1px solid #d0d5dd;
-	background: #fff;
-	border-radius: 6px;
+.santu-ai-image-btn:hover { background: #f3f4f6; border-color: #9ca3af; }
+.santu-ai-image-preview {
 	width: 34px;
 	height: 34px;
-	cursor: pointer;
-	color: #71748e;
-	flex: 0 0 auto;
-}
-.santu-ai-altbar-remove:hover { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
-
-.santu-ai-image-row { display: flex; align-items: center; gap: 10px; }
-.santu-ai-image-preview {
-	width: 44px;
-	height: 44px;
 	object-fit: cover;
-	border-radius: 6px;
+	border-radius: 4px;
 	border: 1px solid #e5e8ef;
 }
 .santu-ai-image-clear {
@@ -412,11 +139,182 @@ select.santu-ai-input { padding-right: 28px; }
 	background: transparent;
 	color: #71748e;
 	cursor: pointer;
-	font-size: 14px;
+	font-size: 13px;
+	padding: 4px;
 }
-.santu-ai-head-right { display: flex; align-items: center; gap: 14px; }
+.santu-ai-image-clear:hover { color: #dc2626; }
 
-@media (max-width: 900px) {
-	.santu-ai-grid2,
-	.santu-ai-grid3 { grid-template-columns: 1fr; }
+/* ---------- sections layout ---------- */
+.santu-ai-sections { padding: 10px 18px 6px; }
+
+.santu-ai-sec {
+	border: 1px solid #e5e8ef;
+	border-radius: 7px;
+	margin-bottom: 10px;
+	background: #fff;
+}
+.santu-ai-sec-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 7px 12px;
+	border-bottom: 1px solid #f1f3f7;
+	background: #fafbfc;
+	border-radius: 7px 7px 0 0;
+}
+.santu-ai-sec-title {
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: #3730a3;
+}
+.santu-ai-sec-body { padding: 10px 12px; }
+
+.santu-ai-grid4,
+.santu-ai-grid3,
+.santu-ai-grid2 {
+	display: grid;
+	gap: 10px;
+	margin-bottom: 8px;
+}
+.santu-ai-grid4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.santu-ai-grid3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.santu-ai-grid2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.santu-ai-grid4:last-child,
+.santu-ai-grid3:last-child,
+.santu-ai-grid2:last-child { margin-bottom: 0; }
+
+.santu-ai-cell { display: flex; flex-direction: column; gap: 3px; }
+.santu-ai-cell label {
+	font-size: 11.5px;
+	font-weight: 600;
+	color: #4b5563;
+	margin: 0;
+	line-height: 1.2;
+}
+.santu-ai-cell-span2 { grid-column: span 2; }
+.santu-ai-cell-wide { grid-column: 1 / -1; }
+
+.santu-ai-cell-head-inline {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+.santu-ai-link-btn {
+	border: none;
+	background: transparent;
+	color: #2563eb;
+	font-size: 11px;
+	font-weight: 600;
+	cursor: pointer;
+	padding: 0;
+	margin: 0;
+}
+.santu-ai-link-btn:hover { text-decoration: underline; }
+.santu-ai-other-brand-wrap { margin-top: 3px; }
+
+.santu-ai-margin-cell .santu-ai-margin {
+	height: 36px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 12.5px;
+	font-weight: 700;
+	color: #166534;
+	background: #f0fdf4;
+	border: 1px solid #bbf7d0;
+	border-radius: 5px;
+	box-sizing: border-box;
+}
+.santu-ai-margin.is-loss {
+	color: #991b1b;
+	background: #fef2f2;
+	border-color: #fecaca;
+}
+
+.santu-ai-check {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12.5px;
+	font-weight: 500;
+	color: #374151;
+	margin: 0;
+	cursor: pointer;
+}
+.santu-ai-check input { margin: 0; }
+
+.santu-ai-note {
+	font-size: 11.5px;
+	color: #6b7280;
+	background: #f9fafb;
+	border-radius: 4px;
+	padding: 6px 8px;
+	border: 1px solid #f3f4f6;
+}
+.santu-ai-warn { font-size: 11.5px; color: #b45309; }
+.santu-ai-dupname:not(:empty) { margin-top: 2px; }
+
+/* ---------- advanced section toggle ---------- */
+.santu-ai-adv-wrap { margin-top: 4px; margin-bottom: 6px; }
+.santu-ai-advanced-toggle {
+	display: inline-flex;
+	align-items: center;
+	border: 1px solid #d0d5dd;
+	background: #f9fafb;
+	color: #3730a3;
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+	padding: 6px 12px;
+	border-radius: 6px;
+	transition: background 0.15s, border-color 0.15s;
+}
+.santu-ai-advanced-toggle:hover {
+	background: #f3f4f8;
+	border-color: #3730a3;
+}
+.santu-ai-sec-adv {
+	margin-top: 8px;
+	border-color: #e0e7ff;
+	background: #fafbff;
+}
+
+/* ---------- footer ---------- */
+.santu-ai-footer {
+	display: flex;
+	justify-content: flex-end;
+	gap: 12px;
+	background: #fff;
+	border-radius: 8px;
+	margin-top: 6px;
+	padding: 8px 18px;
+	box-shadow: 0 -1px 3px rgba(16, 24, 40, 0.04);
+}
+.santu-ai-btn {
+	height: 36px;
+	min-width: 100px;
+	border-radius: 5px;
+	font-size: 13.5px;
+	font-weight: 600;
+	cursor: pointer;
+	border: 1px solid transparent;
+	padding: 0 14px;
+}
+.santu-ai-btn-ghost { background: #fff; border-color: #d0d5dd; color: #374151; }
+.santu-ai-btn-ghost:hover { background: #f9fafb; }
+.santu-ai-btn-primary { background: #2563eb; color: #fff; }
+.santu-ai-btn-primary:hover { background: #1d4fd7; }
+.santu-ai-btn-primary:disabled { background: #e5e7eb; color: #9ca3af; cursor: not-allowed; }
+
+@media (max-width: 1024px) {
+	.santu-ai-grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	.santu-ai-cell-span2 { grid-column: span 2; }
+}
+@media (max-width: 640px) {
+	.santu-ai-grid4,
+	.santu-ai-grid3,
+	.santu-ai-grid2 { grid-template-columns: 1fr; }
+	.santu-ai-cell-span2 { grid-column: 1 / -1; }
 }

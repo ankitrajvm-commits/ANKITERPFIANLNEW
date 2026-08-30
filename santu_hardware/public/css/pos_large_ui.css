@@ -34,23 +34,62 @@ body[data-route="point-of-sale"] {
 	--margin-md: 18px;
 }
 
+/* ---------- Global Dashboard Theme Overrides for POS ---------- */
+body[data-route="point-of-sale"] {
+	background-color: #f1f5f9 !important;
+}
+
+body[data-route="point-of-sale"] .page-head {
+	background-color: #ffffff !important;
+	border-bottom: 1px solid #e2e8f0 !important;
+	box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
+}
+
+body[data-route="point-of-sale"] .pos-bill-wrapper,
+body[data-route="point-of-sale"] .items-selector,
+body[data-route="point-of-sale"] .item-details,
+body[data-route="point-of-sale"] .payment-wrapper {
+	background-color: #ffffff !important;
+	border-radius: 12px !important;
+	border: 1px solid #e2e8f0 !important;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
+	overflow: hidden;
+}
+
 /* Numpad buttons (1-9, Quantity/Discount/Rate, Checkout) — bigger tap
    targets, not just bigger text, since these are pressed all day. */
 body[data-route="point-of-sale"] .numpad-btn {
 	min-height: 52px !important;
 	font-size: var(--text-lg) !important;
 	font-weight: 600;
+	border-radius: 8px !important;
+	background: #f8fafc !important;
+	border: 1px solid #e2e8f0 !important;
+	color: #0f172a !important;
+	transition: all 0.2s !important;
 }
+body[data-route="point-of-sale"] .numpad-btn:hover { background: #e2e8f0 !important; }
 
 body[data-route="point-of-sale"] .numpad-section .checkout-btn {
 	min-height: 56px !important;
 	font-size: var(--text-xl) !important;
+	border-radius: 8px !important;
+	background: #2563eb !important;
+	border-color: #2563eb !important;
+	color: #ffffff !important;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+	transition: all 0.2s !important;
+}
+body[data-route="point-of-sale"] .numpad-section .checkout-btn:hover {
+	background: #1d4ed8 !important;
+	border-color: #1d4ed8 !important;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
 }
 
 /* Item picker rows (pos_item_list.css already restyles these into a list —
    enlarging on top of that, not replacing it). */
 body[data-route="point-of-sale"] .item-wrapper {
-	padding: 14px 12px !important;
+	padding: 14px 16px !important;
 }
 body[data-route="point-of-sale"] .item-display.abbr {
 	width: 48px !important;
@@ -59,20 +98,30 @@ body[data-route="point-of-sale"] .item-display.abbr {
 	min-height: 48px !important;
 	max-height: 48px !important;
 	font-size: var(--text-md) !important;
+	background: #e2e8f0 !important;
+	color: #0f172a !important;
 }
 body[data-route="point-of-sale"] .item-name {
 	font-size: var(--text-md) !important;
+	font-weight: 600 !important;
+	color: #0f172a !important;
 }
 body[data-route="point-of-sale"] .item-rate {
 	font-size: var(--text-md) !important;
+	font-weight: 600 !important;
 }
 
 /* Cart line items */
 body[data-route="point-of-sale"] .cart-item-wrapper {
-	padding: 14px 12px !important;
+	padding: 14px 16px !important;
+	border-bottom: 1px solid #e2e8f0 !important;
+}
+body[data-route="point-of-sale"] .cart-item-wrapper:hover {
+	background: #f8fafc !important;
 }
 body[data-route="point-of-sale"] .cart-item-wrapper .item-name {
 	font-size: var(--text-lg) !important;
+	color: #0f172a !important;
 }
 body[data-route="point-of-sale"] .cart-item-wrapper .item-rate {
 	font-size: var(--text-lg) !important;
@@ -83,9 +132,7 @@ body[data-route="point-of-sale"] .cart-item-wrapper .item-rate {
    bigger avatar and font-size above, that squeeze got tight enough to
    truncate the name to 4-5 characters ("Fevi...") in the cart, confirmed
    live. Letting it wrap to 2 lines instead, and shrinking the avatar back
-   down just in the cart (it's a plain 2-letter placeholder here — this
-   shop has no item photos, so the picker list is where a bigger tap
-   target actually helps, not a row you've already filled). */
+   down just in the cart. */
 body[data-route="point-of-sale"] .cart-item-wrapper .item-name-desc,
 body[data-route="point-of-sale"] .cart-item-wrapper .item-name,
 body[data-route="point-of-sale"] .cart-item-wrapper .item-desc {
@@ -101,45 +148,46 @@ body[data-route="point-of-sale"] .cart-item-wrapper .item-display.abbr {
 	min-height: 32px !important;
 	max-height: 32px !important;
 	font-size: var(--text-sm) !important;
-	margin-right: 10px !important;
+	margin-right: 12px !important;
+	background: #e2e8f0 !important;
+	color: #0f172a !important;
 }
 
-/* Payment method cards on the checkout screen — all rendered as identical
-   plain white/outline boxes by core, differentiated only by their text
-   label. Colored left-borders + an icon per method (matching the
-   colored-shortcut-card pattern already used in Buying/Selling/Settings)
-   make the right card scannable at a glance instead of having to read
-   every label. */
+/* Payment method cards on the checkout screen */
 body[data-route="point-of-sale"] .mode-of-payment {
-	border-left: 4px solid var(--gray-300) !important;
+	border-left: 4px solid #cbd5e1 !important;
+	border-radius: 8px !important;
+	background: #ffffff !important;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+	border: 1px solid #e2e8f0 !important;
 }
 body[data-route="point-of-sale"] .mode-of-payment[data-mode="cash"] {
-	border-left-color: var(--dark-green-500, #2d9d5f) !important;
+	border-left-color: #059669 !important;
 }
 body[data-route="point-of-sale"] .mode-of-payment[data-mode="cash"]::before {
 	content: "\1F4B5  ";
 }
 body[data-route="point-of-sale"] .mode-of-payment[data-mode="upi"] {
-	border-left-color: var(--santu-brand, #3730a3) !important;
+	border-left-color: #4f46e5 !important;
 }
 body[data-route="point-of-sale"] .mode-of-payment[data-mode="upi"]::before {
 	content: "\1F4F1  ";
 }
 body[data-route="point-of-sale"] .mode-of-payment[data-mode="card"] {
-	border-left-color: var(--blue-500, #2490ef) !important;
+	border-left-color: #3b82f6 !important;
 }
 body[data-route="point-of-sale"] .mode-of-payment[data-mode="card"]::before {
 	content: "\1F4B3  ";
 }
 body[data-route="point-of-sale"] .mode-of-payment[data-mode="bank_transfer"] {
-	border-left-color: var(--purple-500, #7c3aed) !important;
+	border-left-color: #9333ea !important;
 }
 body[data-route="point-of-sale"] .mode-of-payment[data-mode="bank_transfer"]::before {
 	content: "\1F3E6  ";
 }
 body[data-route="point-of-sale"] .mode-of-payment[data-mode="cheque"],
 body[data-route="point-of-sale"] .mode-of-payment[data-mode="bank_draft"] {
-	border-left-color: var(--orange-500, #f2994a) !important;
+	border-left-color: #d97706 !important;
 }
 body[data-route="point-of-sale"] .mode-of-payment[data-mode="cheque"]::before,
 body[data-route="point-of-sale"] .mode-of-payment[data-mode="bank_draft"]::before {
@@ -151,27 +199,36 @@ body[data-route="point-of-sale"] .search-field input,
 body[data-route="point-of-sale"] .item-group-field input {
 	font-size: var(--text-base) !important;
 	min-height: 44px !important;
+	border-radius: 8px !important;
+	border: 1px solid #e2e8f0 !important;
 }
 
-/* Item Details panel's photo box defaults to 11rem (176px) square — this
-   shop has no item photos, so it's always just a blank gray box with a
-   2-letter abbreviation, eating close to half the panel's height for
-   zero information. Shrinking it to a small badge gives that space back
-   to the actual Qty/Rate/Discount fields below. */
+/* Item Details panel's photo box */
 body[data-route="point-of-sale"] .item-details .item-display .item-image {
 	width: 3rem !important;
 	height: 3rem !important;
 	min-width: 3rem !important;
+	border-radius: 8px !important;
+	background: #e2e8f0 !important;
 }
 body[data-route="point-of-sale"] .item-details .item-display .item-image .item-abbr {
 	font-size: var(--text-lg) !important;
+	color: #0f172a !important;
 }
 
-/* Item Details panel form fields (Quantity/Rate/Discount/Warehouse/Cost Price) */
+/* Item Details panel form fields */
+body[data-route="point-of-sale"] .item-details .form-container label {
+	font-weight: 600 !important;
+	color: #475569 !important;
+}
 body[data-route="point-of-sale"] .item-details .form-container label,
 body[data-route="point-of-sale"] .item-details .form-container .control-value,
 body[data-route="point-of-sale"] .item-details .form-container input {
 	font-size: var(--text-base) !important;
+}
+body[data-route="point-of-sale"] .item-details .form-container input {
+	border-radius: 8px !important;
+	border: 1px solid #e2e8f0 !important;
 }
 
 /* Pencil icon injected next to the customer name (pos_edit_customer_name.js) */
@@ -181,6 +238,7 @@ body[data-route="point-of-sale"] .santu-edit-customer-name-btn {
 	cursor: pointer;
 	opacity: 0.55;
 	font-size: 16px;
+	color: #2563eb !important;
 }
 body[data-route="point-of-sale"] .santu-edit-customer-name-btn:hover {
 	opacity: 1;

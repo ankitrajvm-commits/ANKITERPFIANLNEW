@@ -21,8 +21,8 @@ body[data-route="santu-dashboard"] .page-body,
 
 .santu-dash {
 	height: calc(100vh - 56px);
-	padding: 4px;
-	background: #f3f4f8;
+	padding: 12px;
+	background: #f1f5f9;
 	box-sizing: border-box;
 	overflow: hidden;
 }
@@ -31,14 +31,14 @@ body[data-route="santu-dashboard"] .page-body,
 .santu-dash-error {
 	text-align: center;
 	padding: 64px 16px;
-	color: #71748e;
+	color: #64748b;
 	font-weight: 500;
 }
-.santu-dash-error { color: #f45972; }
+.santu-dash-error { color: #ef4444; }
 
 .santu-dash-layout {
 	display: flex;
-	gap: 4px;
+	gap: 12px;
 	width: 100%;
 	height: 100%;
 	align-items: stretch;
@@ -50,7 +50,7 @@ body[data-route="santu-dashboard"] .page-body,
 	height: 100%;
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
+	gap: 12px;
 	background: transparent;
 	border: none;
 	border-radius: 0;
@@ -66,7 +66,7 @@ body[data-route="santu-dashboard"] .page-body,
 
 .santu-dash-vy-row {
 	display: flex;
-	gap: 4px;
+	gap: 12px;
 	height: 18%;
 	min-height: 110px;
 	margin: 0;
@@ -78,19 +78,15 @@ body[data-route="santu-dashboard"] .page-body,
 	display: flex;
 	flex-direction: column;
 	justify-content: space-around;
-	padding: 16px;
-	border-radius: 4px;
-	border: none;
-	background: #fff;
+	padding: 20px;
+	border-radius: 12px;
+	border: 1px solid #e2e8f0;
+	background: #ffffff;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
 	cursor: pointer;
+	transition: all 0.2s ease-in-out;
 }
 
-/* Total Payable moved off Home (2026-08-18) — Total Receivable is now the
-   only card in this row and takes the full width, sized up so it doesn't
-   look like a half-card stretched thin. */
-/* Sized to its own content rather than a slice of the window: with one card
-   left, a percentage height just padded the middle with dead space. The room
-   this gives back goes to the chart, which is what the screen is for. */
 .santu-dash-vy-row-single {
 	height: auto;
 	min-height: 0;
@@ -98,17 +94,20 @@ body[data-route="santu-dashboard"] .page-body,
 }
 .santu-dash-vy-row-single .santu-dash-vy-card {
 	width: 100%;
-	padding: 16px 22px;
+	padding: 20px 24px;
 	justify-content: flex-start;
 }
 .santu-dash-vy-row-single .santu-dash-vy-card-amount {
-	font-size: 26px;
-	padding: 4px 0 0;
+	font-size: 28px;
+	padding: 8px 0 0;
 }
 .santu-dash-vy-row-single .santu-dash-vy-card-sub {
-	margin-top: 6px;
+	margin-top: 8px;
 }
-.santu-dash-vy-card:hover { box-shadow: none; }
+.santu-dash-vy-card:hover { 
+	box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+	transform: translateY(-2px);
+}
 
 .santu-dash-vy-card-top {
 	display: flex;
@@ -116,22 +115,23 @@ body[data-route="santu-dashboard"] .page-body,
 	align-items: flex-start;
 }
 .santu-dash-vy-card-label {
-	color: #71748e;
-	font-size: 14px;
-	font-weight: 400;
+	color: #64748b;
+	font-size: 15px;
+	font-weight: 500;
 	line-height: normal;
 	margin-bottom: 0;
 }
 .santu-dash-vy-card-amount {
-	color: #3f4155;
+	color: #0f172a;
 	padding: 10px 0;
-	font-size: 20px;
+	font-size: 24px;
 	font-weight: 700;
 	line-height: normal;
 	margin-bottom: 0;
+	letter-spacing: -0.5px;
 }
 .santu-dash-vy-card-sub {
-	color: #9b9eb8;
+	color: #94a3b8;
 	font-size: 14px;
 	font-weight: 400;
 	line-height: normal;
@@ -139,7 +139,7 @@ body[data-route="santu-dashboard"] .page-body,
 .santu-dash-vy-card-sub b,
 .santu-dash-party-count-num {
 	font-weight: 600;
-	color: #3f4155;
+	color: #334155;
 }
 
 .santu-dash-vy-card-icon {
@@ -162,21 +162,22 @@ body[data-route="santu-dashboard"] .page-body,
 }
 
 .santu-dash-vy-chart-card {
-	background: #fff;
-	border: none;
-	border-radius: 4px;
-	padding: 24px 20px 16px;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	padding: 24px 24px 16px;
 	margin-bottom: 0;
 	flex: 1;
 	min-height: 0;
 	display: flex;
 	flex-direction: column;
 	box-sizing: border-box;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
 }
 .santu-dash-vy-chart-card .santu-dash-chart {
 	border: none;
 	padding: 0;
-	margin-top: 8px;
+	margin-top: 12px;
 	flex: 1;
 	min-height: 0;
 	background: transparent;
@@ -189,9 +190,9 @@ body[data-route="santu-dashboard"] .page-body,
 	flex-shrink: 0;
 }
 .santu-dash-vy-chart-card .santu-dash-section-title {
-	color: #71748e;
-	font-size: 14px;
-	font-weight: 400;
+	color: #64748b;
+	font-size: 15px;
+	font-weight: 500;
 	margin-bottom: 12px;
 }
 .santu-dash-vy-chart-amount-row {
@@ -200,69 +201,81 @@ body[data-route="santu-dashboard"] .page-body,
 	gap: 12px;
 }
 .santu-dash-vy-chart-amount {
-	color: #3f4155;
-	font-size: 20px;
+	color: #0f172a;
+	font-size: 24px;
 	font-weight: 700;
 	line-height: normal;
+	letter-spacing: -0.5px;
 }
 .santu-dash-vy-chart-pct {
 	font-size: 14px;
-	font-weight: 400;
+	font-weight: 500;
+	padding: 4px 10px;
+	border-radius: 20px;
 }
-.santu-dash-vy-chart-pct b { font-weight: 700; }
-.santu-dash-vy-chart-pct.is-up { color: #08bd7c; }
-.santu-dash-vy-chart-pct.is-down { color: #f45972; }
-.santu-dash-vy-chart-pct.is-same { color: #71748e; }
+.santu-dash-vy-chart-pct b { font-weight: 600; }
+.santu-dash-vy-chart-pct.is-up { color: #059669; background: #d1fae5; }
+.santu-dash-vy-chart-pct.is-down { color: #e11d48; background: #ffe4e6; }
+.santu-dash-vy-chart-pct.is-same { color: #64748b; background: #f1f5f9; }
 
 .santu-dash-vy-chart-dropdown { position: relative; }
 .santu-dash-vy-chart-badge {
 	display: inline-flex;
 	align-items: center;
-	gap: 4px;
-	border: none;
+	gap: 6px;
+	border: 1px solid #e2e8f0;
 	cursor: pointer;
-	padding: 7px 12px 7px 16px;
+	padding: 8px 14px;
 	border-radius: 50px;
-	background: #f3f4f8;
-	color: #71748e;
-	font-weight: 400;
-	font-size: 12px;
+	background: #ffffff;
+	color: #475569;
+	font-weight: 500;
+	font-size: 13px;
 	line-height: 18px;
 	white-space: nowrap;
 	font-family: inherit;
+	transition: all 0.2s;
+}
+.santu-dash-vy-chart-badge:hover {
+	background: #f8fafc;
+	border-color: #cbd5e1;
 }
 .santu-dash-vy-chart-menu {
 	position: absolute;
-	top: calc(100% + 6px);
+	top: calc(100% + 8px);
 	right: 0;
 	z-index: 20;
-	min-width: 160px;
+	min-width: 180px;
 	background: #fff;
-	border: 1px solid #eaeaef;
-	border-radius: 8px;
-	box-shadow: 0 5px 24px rgba(63, 65, 85, 0.12);
-	padding: 6px 0;
+	border: 1px solid #e2e8f0;
+	border-radius: 10px;
+	box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+	padding: 8px 0;
 }
 .santu-dash-vy-chart-menu-item {
-	padding: 8px 14px;
+	padding: 10px 16px;
 	font-size: 14px;
-	color: #3f4155;
+	font-weight: 500;
+	color: #334155;
 	cursor: pointer;
+	transition: background 0.15s;
 }
-.santu-dash-vy-chart-menu-item:hover { background: #f8f8f8; }
+.santu-dash-vy-chart-menu-item:hover { background: #f1f5f9; color: #0f172a; }
 
 .santu-dash-reports-section {
-	background: #fff;
-	border-radius: 4px;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
 	height: 20%;
 	min-height: 120px;
-	padding: 20px 16px 16px 20px;
+	padding: 20px 24px;
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
 	gap: 16px;
 	box-sizing: border-box;
 	margin-bottom: 0;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
 }
 .santu-dash-section-head {
 	display: flex;
@@ -271,15 +284,15 @@ body[data-route="santu-dashboard"] .page-body,
 	margin-bottom: 0;
 }
 .santu-dash-section-title {
-	color: #3f4155;
-	font-weight: 400;
-	font-size: 14px;
+	color: #0f172a;
+	font-weight: 600;
+	font-size: 16px;
 	line-height: 1.3;
 	margin-bottom: 0;
 }
 .santu-dash-section-kicker {
-	color: #71748e;
-	font-weight: 400;
+	color: #64748b;
+	font-weight: 500;
 	font-size: 14px;
 	letter-spacing: 0;
 	text-transform: none;
@@ -288,18 +301,23 @@ body[data-route="santu-dashboard"] .page-body,
 .santu-dash-view-all {
 	border: none;
 	background: #fff;
-	color: #0075e8;
-	font-weight: 500;
+	color: #2563eb;
+	font-weight: 600;
 	font-size: 14px;
 	cursor: pointer;
-	padding: 0;
+	padding: 6px 12px;
+	border-radius: 6px;
+	transition: background 0.2s;
+}
+.santu-dash-view-all:hover {
+	background: #eff6ff;
 }
 .santu-dash-reports-row {
 	display: flex;
 	justify-content: space-between;
 	height: 70px;
 	min-height: 57px;
-	gap: 8px;
+	gap: 12px;
 }
 .santu-dash-report-card {
 	width: 23.5%;
@@ -307,23 +325,31 @@ body[data-route="santu-dashboard"] .page-body,
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 16px;
-	border-radius: 8px;
-	border: 1px solid #eaeaef;
-	background: #fff;
-	font-weight: 500;
+	padding: 16px 20px;
+	border-radius: 10px;
+	border: 1px solid #e2e8f0;
+	background: #f8fafc;
+	font-weight: 600;
 	font-size: 14px;
-	color: #3f4155;
+	color: #334155;
 	cursor: pointer;
+	transition: all 0.2s ease-in-out;
 }
 .santu-dash-report-card:hover {
-	border-color: #c4e3ff;
-	box-shadow: none;
+	border-color: #bae6fd;
+	background: #f0f9ff;
+	color: #0369a1;
+	transform: translateY(-2px);
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
 }
 .santu-dash-report-arrow {
-	color: #0075e8;
-	font-size: 18px;
+	color: #94a3b8;
+	font-size: 20px;
 	line-height: 1;
+	transition: color 0.2s;
+}
+.santu-dash-report-card:hover .santu-dash-report-arrow {
+	color: #0ea5e9;
 }
 
 .santu-dash-chart-empty {
@@ -334,14 +360,15 @@ body[data-route="santu-dashboard"] .page-body,
 }
 
 .santu-dash-widget-rail {
-	background: #fff;
-	border: none;
-	border-radius: 4px;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
 	height: 100%;
 	min-height: 0;
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
 }
 .santu-dash-widget-list {
 	flex: 1;
@@ -356,65 +383,84 @@ body[data-route="santu-dashboard"] .page-body,
 	align-items: center;
 	justify-content: center;
 	text-align: center;
-	gap: 12px;
-	padding: 24px 20px;
-	color: #3f4155;
-	font-weight: 500;
-	font-size: 14px;
+	gap: 16px;
+	padding: 32px 24px;
+	color: #0f172a;
+	font-weight: 600;
+	font-size: 16px;
 }
 .santu-dash-widget-empty-sub {
-	font-weight: 400;
-	font-size: 12px;
-	line-height: 16px;
-	color: #71748e;
-	max-width: 240px;
+	font-weight: 500;
+	font-size: 14px;
+	line-height: 1.5;
+	color: #64748b;
+	max-width: 260px;
 	margin: 0 !important;
 }
 .santu-dash-widget-empty p { margin: 0; }
 
 .santu-dash-w-card {
 	position: relative;
-	border-bottom: 1px solid #eaeaef;
-	padding: 20px;
+	border-bottom: 1px solid #e2e8f0;
+	padding: 24px 20px;
 	cursor: pointer;
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
+	gap: 10px;
+	transition: background 0.2s;
 }
+.santu-dash-w-card:hover { background: #f8fafc; }
 .santu-dash-w-top {
 	display: flex;
 	justify-content: space-between;
 	align-items: flex-start;
+	gap: 8px;
+	/* The remove (x) button is absolutely positioned over this row's right end,
+	   so the row has to keep clear of it -- without this the period text ran
+	   straight underneath it ("As of No[x]" on the Low Stocks widget). Width of
+	   the button plus a gap. */
+	padding-right: 30px;
 }
 .santu-dash-w-title {
-	font-size: 14px;
-	font-weight: 400;
-	color: #71748e;
+	font-size: 15px;
+	font-weight: 500;
+	color: #475569;
 	margin-bottom: 0;
+	/* Of the two, the period is the short fixed label and the title is the
+	   long one, so when the row runs out of room the title is what gives --
+	   otherwise a period like "This Financial Year" broke onto a second line. */
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 .santu-dash-w-period {
-	font-size: 12px;
-	font-weight: 400;
+	font-size: 13px;
+	font-weight: 500;
 	line-height: 18px;
-	color: #71748e;
+	color: #94a3b8;
+	white-space: nowrap;
+	flex-shrink: 0;
 }
 .santu-dash-w-value {
-	font-size: 16px;
-	font-weight: 600;
-	color: #3f4155;
+	font-size: 20px;
+	font-weight: 700;
+	color: #0f172a;
 	line-height: normal;
 }
 .santu-dash-w-remove {
 	position: absolute;
-	right: 12px;
-	top: 16px;
+	right: 16px;
+	top: 20px;
 	border: none;
 	background: none;
-	color: #9b9eb8;
-	font-size: 18px;
+	color: #94a3b8;
+	font-size: 20px;
 	cursor: pointer;
 	line-height: 1;
+	transition: color 0.2s;
 }
+.santu-dash-w-remove:hover { color: #ef4444; }
 
 .santu-dash-add-widget,
 .santu-dash-picker-footer {
@@ -423,17 +469,20 @@ body[data-route="santu-dashboard"] .page-body,
 	justify-content: space-between;
 	width: 100%;
 	border: none;
-	background: #e4f2ff;
-	color: #3f4155;
-	font-weight: 500;
-	font-size: 14px;
-	padding: 14px 16px;
+	border-top: 1px solid #e2e8f0;
+	background: #f8fafc;
+	color: #0f172a;
+	font-weight: 600;
+	font-size: 15px;
+	padding: 16px 20px;
 	cursor: pointer;
+	transition: background 0.2s;
 }
+.santu-dash-add-widget:hover { background: #f1f5f9; color: #2563eb; }
 .santu-dash-add-plus {
-	font-size: 22px;
+	font-size: 24px;
 	font-weight: 400;
-	color: #3f4155;
+	color: #3b82f6;
 }
 
 .santu-dash-picker-inrail { min-height: 0; height: 100%; }
@@ -442,35 +491,42 @@ body[data-route="santu-dashboard"] .page-body,
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 20px 16px;
-	border-bottom: 1px solid #eaeaef;
+	padding: 24px 20px;
+	border-bottom: 1px solid #e2e8f0;
 	background: #fff;
+	transition: background 0.15s;
 }
+.santu-dash-picker-row:hover { background: #f8fafc; }
 .santu-dash-picker-title {
-	font-size: 14px;
-	font-weight: 400;
-	color: #71748e;
+	font-size: 15px;
+	font-weight: 500;
+	color: #475569;
 }
 .santu-dash-picker-value {
-	font-size: 16px;
-	font-weight: 600;
-	color: #3f4155;
+	font-size: 20px;
+	font-weight: 700;
+	color: #0f172a;
 }
 .santu-dash-picker-add {
-	width: 36px;
-	height: 36px;
+	width: 40px;
+	height: 40px;
 	border: none;
-	background: none;
-	color: #0075e8;
-	font-size: 28px;
+	background: #f1f5f9;
+	border-radius: 8px;
+	color: #2563eb;
+	font-size: 24px;
 	line-height: 1;
 	cursor: pointer;
+	transition: all 0.2s;
 }
+.santu-dash-picker-add:hover { background: #e2e8f0; color: #1d4ed8; }
 .santu-dash-picker-add.is-added {
 	width: auto;
-	color: #08bd7c;
+	background: #d1fae5;
+	color: #059669;
 	font-size: 14px;
-	font-weight: 500;
+	font-weight: 600;
+	padding: 8px 12px;
 }
 .santu-dash-sale-link { cursor: pointer; }
 .santu-dash-picker-close {
@@ -496,4 +552,41 @@ body[data-route="santu-dashboard"] .page-body,
 	.santu-dash-vy-card { width: 100%; }
 	.santu-dash-reports-row { flex-wrap: wrap; height: auto; }
 	.santu-dash-report-card { width: 100%; flex: 1 1 100%; }
+}
+
+/* Short windows (2026-08-29: reported as cards overlapping — Most Used
+   Reports sitting on top of the sale chart). The dashboard is normally one
+   locked 100vh screen with no scrolling, but frappe-charts draws its SVG at
+   a fixed height: once the window is short enough that the chart no longer
+   fits its flex slot, the SVG spills out and the section below paints over
+   it. Two guards: clip the chart to its own box, and below ~700px tall stop
+   forcing the whole dashboard into the viewport — let it scroll instead. */
+.santu-dash-chart {
+	overflow: hidden;
+}
+
+@media (max-height: 700px) {
+	.santu-dash {
+		height: auto;
+		min-height: calc(100vh - 56px);
+		overflow: auto;
+	}
+	.santu-dash-layout {
+		height: auto;
+		align-items: flex-start;
+	}
+	.santu-dash-main,
+	.santu-dash-widgets {
+		height: auto;
+	}
+	.santu-dash-vy-chart-card {
+		height: auto;
+		min-height: 300px;
+	}
+	.santu-dash-reports-section {
+		height: auto;
+	}
+	.santu-dash-widget-rail {
+		min-height: 340px;
+	}
 }

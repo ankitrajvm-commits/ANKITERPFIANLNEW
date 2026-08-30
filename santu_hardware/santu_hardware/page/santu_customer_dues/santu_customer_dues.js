@@ -19,6 +19,7 @@ function render_customer_dues(page) {
 			<select class="form-control santu-dues-village">
 				<option value="">All Villages</option>
 			</select>
+			<button type="button" class="btn btn-sm btn-primary santu-dues-add-btn">+ Baki Jodein</button>
 		</div>
 		<div class="santu-dues-summary"></div>
 		<div class="santu-dues-list"></div>
@@ -35,9 +36,58 @@ function render_customer_dues(page) {
 		debounce = setTimeout(reload, 300);
 	});
 	$village.on("change", reload);
+	$root.find(".santu-dues-add-btn").on("click", () => open_add_due_dialog(reload));
 
 	populate_village_filter($village);
 	reload();
+}
+
+function open_add_due_dialog(on_done) {
+	const d = new frappe.ui.Dialog({
+		title: __("Baki Jodein — Add Due"),
+		fields: [
+			{
+				fieldtype: "Link",
+				fieldname: "customer",
+				label: __("Customer"),
+				options: "Customer",
+				reqd: 1,
+			},
+			{
+				fieldtype: "Currency",
+				fieldname: "amount",
+				label: __("Kitna Baki Jodna Hai?"),
+				reqd: 1,
+			},
+			{
+				fieldtype: "Small Text",
+				fieldname: "note",
+				label: __("Note (optional)"),
+				description: __("e.g. purana udhaar, loan, etc."),
+			},
+		],
+		primary_action_label: __("Add Due"),
+		primary_action: (values) => {
+			d.set_df_property("customer", "read_only", 1);
+			d.get_primary_btn().prop("disabled", true);
+			frappe
+				.xcall("santu_hardware.santu_hardware.api.add_manual_due", {
+					customer: values.customer,
+					amount: values.amount,
+					note: values.note || null,
+				})
+				.then(() => {
+					d.hide();
+					frappe.show_alert({ message: __("Baki add ho gaya."), indicator: "green" });
+					if (on_done) on_done();
+				})
+				.catch(() => {
+					d.set_df_property("customer", "read_only", 0);
+					d.get_primary_btn().prop("disabled", false);
+				});
+		},
+	});
+	d.show();
 }
 
 async function populate_village_filter($village) {

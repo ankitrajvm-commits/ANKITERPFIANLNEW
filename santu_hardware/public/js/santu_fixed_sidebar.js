@@ -7,7 +7,7 @@
 	// Bump whenever NAV_ITEMS changes shape — build_sidebar() reuses an
 	// already-rendered sidebar when this matches, so without a bump an open
 	// tab keeps the old menu.
-	const SIDEBAR_NAV_VERSION = "vyapar-match-20";
+	const SIDEBAR_NAV_VERSION = "vyapar-match-28";
 
 	// Nav glyphs are real icon files now, not emoji: emoji render differently
 	// on every OS (this shop is used from both a Mac and a phone) and sat at
@@ -21,7 +21,9 @@
 	const santu_nav_icon_html = (icon) => {
 		if (!icon) return '<span class="santu-app-sidebar-icon"></span>';
 		if (!/\.(svg|png|webp)$/i.test(icon)) return `<span class="santu-app-sidebar-icon">${icon}</span>`;
-		const url = `${SANTU_NAV_ICON_DIR}/${encodeURIComponent(icon)}`;
+		// Stamped like the CSS/JS: without it the browser keeps serving a
+		// redrawn icon's old copy until a hard reload.
+		const url = `${SANTU_NAV_ICON_DIR}/${encodeURIComponent(icon)}?v=${santu_asset_stamp()}`;
 		return `<span class="santu-app-sidebar-icon santu-app-sidebar-icon-img" style="--santu-nav-ico:url('${url}')"></span>`;
 	};
 	const SIDEBAR_COLLAPSE_KEY = "santu_sidebar_collapsed";
@@ -114,11 +116,17 @@
 			changeEvent: "santu-sale-view-change",
 			isActive: () => {
 				const r = get_route();
-				return r[0] === "santu-sale" || r[0] === "santu-sale-invoice" || r[0] === "santu-billing";
+				return (
+					r[0] === "santu-sale" ||
+					r[0] === "santu-sale-invoice" ||
+					r[0] === "santu-billing" ||
+					r[0] === "santu-delivery-challan"
+				);
 			},
 			getView: () => {
 				if (get_route()[0] === "santu-sale-invoice") return "new_invoice";
 				if (get_route()[0] === "santu-billing") return "pos";
+				if (get_route()[0] === "santu-delivery-challan") return "delivery_challan";
 				return sessionStorage.getItem("santu_sale_view") || "invoices";
 			},
 			children: [
@@ -126,6 +134,11 @@
 				{ view: "quotation", label: "Estimate / Quotation", route: "santu-sale" },
 				{ view: "payment_in", label: "Payment In", route: "santu-sale" },
 				{ view: "pos", label: "Billing (POS)", redirect: "santu-billing" },
+				// Back under Sale, not "More" (2026-08-27 direct request: "sale
+				// me chalan add ker do child me") — was moved into More on
+				// 2026-08-18 along with Proforma/Sales Order, but Ankit wants
+				// it reachable from Sale directly again.
+				{ view: "delivery_challan", label: "Delivery Challan", route: "santu-sale" },
 			],
 		},
 		{
@@ -140,7 +153,7 @@
 			// group's.
 			type: "group",
 			key: "return",
-			icon: "Sale.svg",
+			icon: "return.svg",
 			label: "Return",
 			storageExpanded: "santu_return_sidebar_expanded",
 			no_default_nav: true,
@@ -172,6 +185,8 @@
 		{
 			type: "group",
 			key: "grow",
+			// Points at whatsappLeftNav.svg, the file actually maintained for
+			// this row (whatsapp.svg is the older duplicate).
 			icon: "whatsappLeftNav.svg",
 			label: "WhatsApp",
 			storageView: "santu_grow_view",
@@ -237,6 +252,8 @@
 				{ view: "invoice_settings", label: "Invoice Settings", route: "santu-utilities" },
 				{ view: "verify_data", label: "Verify My Data", route: "santu-utilities" },
 				{ view: "bug_report", label: "Bug Report", route: "santu-utilities" },
+				{ view: "feature_workbook", label: "Feature Workbook", redirect: "santu-feature-workbo" },
+				{ view: "recycle_bin", label: "Recycle Bin", redirect: "santu-recycle-bin" },
 			],
 		},
 		{
@@ -275,7 +292,8 @@
 				{ view: "new_invoice", label: "+ New Sale Invoice", redirect: "santu-billing" },
 				{ view: "proforma", label: "Proforma Invoice", route: "santu-sale", storageView: "santu_sale_view" },
 				{ view: "sales_order", label: "Sales Order", route: "santu-sale", storageView: "santu_sale_view" },
-				{ view: "delivery_challan", label: "Delivery Challan", route: "santu-sale", storageView: "santu_sale_view" },
+				// Delivery Challan moved back under Sale itself (2026-08-27
+				// direct request) — see Sale's own children list above.
 				// Moved out of the top level (2026-08-18 direct request) — a
 				// plain route, same as Cash & Bank above it.
 				{ route: "santu-reports", label: "Reports" },
@@ -286,7 +304,7 @@
 				// just without the "/customers" segment — is what still has
 				// suppliers in it, kept here rather than deleted for whenever
 				// that's actually needed again.
-				{ route: "santu-parties", label: "Parties2" },
+				{ route: "santu-parties", label: "All Parties (Customers & Suppliers)" },
 				PURCHASE_GROUP,
 				// Moved out of Utilities (2026-08-18 direct request). Each
 				// carries its own `storageView` — a leaf living inside a
@@ -357,7 +375,15 @@
 	}
 
 	function is_active_link(route) {
-		return frappe.get_route_str() === route;
+		// frappe.get_route_str() calls frappe.get_route().join("/") with no
+		// null guard — mid-navigation to a "new" unsaved document (confirmed
+		// live 2026-08-20: /app/letter-head/new-letter-head) frappe.get_route()
+		// briefly returns null, and that .join() throws and aborts the
+		// sidebar's click handler entirely, leaving the whole page body blank
+		// until a manual reload picks up the route once it has settled. Using
+		// the local get_route() helper (already null-safe, defaults to [])
+		// instead of frappe.get_route_str() sidesteps the crash.
+		return get_route().join("/") === route;
 	}
 
 	function is_active_workspace(name) {
@@ -576,8 +602,8 @@
 		if (company) {
 			$(`
 				<div class="santu-app-sidebar-company">
-					<img class="santu-app-sidebar-company-badge" src="/assets/santu_hardware/images/logo.svg" alt="">
-					<span>${frappe.utils.escape_html(company.toUpperCase())}</span>
+					<img class="santu-app-sidebar-company-badge" src="/assets/santu_hardware/images/logo.svg?v=${santu_asset_stamp()}" alt="">
+					<span>${frappe.utils.escape_html(company)}</span>
 				</div>
 			`)
 				.on("click", () => window.santu_open_shop_profile())
@@ -587,6 +613,7 @@
 		$sidebar.appendTo("body");
 		document.body.classList.add("santu-fixed-sidebar");
 		apply_collapsed_state();
+		bind_sidebar_tooltips();
 
 		if (!$("#santu-app-sidebar-backdrop").length) {
 			$(`<div id="santu-app-sidebar-backdrop"></div>`)
@@ -613,6 +640,42 @@
 	function is_sidebar_collapsed() {
 		return localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === "1";
 	}
+	// Collapsed sidebar is icons only, and the browser's own title tooltip
+	// takes a second to appear and can be missed entirely — the icons then
+	// read as a guessing game. This shows the name instantly beside the
+	// icon. Appended to <body>, not the sidebar, so it is not clipped.
+	function bind_sidebar_tooltips() {
+		if (window.__santu_sb_tips_bound) return;
+		window.__santu_sb_tips_bound = true;
+
+		const $tip = $(`<div class="santu-sb-tip" style="display:none;"></div>`).appendTo(document.body);
+		const hide = () => $tip.hide();
+
+		$(document)
+			.on("mouseenter", ".santu-app-sidebar-item", function () {
+				if (!document.body.classList.contains("santu-sidebar-collapsed")) return hide();
+				const label =
+					$(this).attr("title") || $(this).find(".santu-app-sidebar-text").first().text().trim();
+				if (!label) return hide();
+				const r = this.getBoundingClientRect();
+				$tip.text(label)
+					.css({ top: Math.round(r.top + r.height / 2), left: Math.round(r.right + 10) })
+					.show();
+			})
+			.on("mouseleave", ".santu-app-sidebar-item", hide);
+
+		$(window).on("scroll resize", hide);
+	}
+
+	// The logo is a plain image URL, so the browser holds on to it across
+	// redeploys — a redrawn logo kept showing the old one until a hard
+	// reload. Borrow the ?v= stamp hooks.py already stamps on the app's own
+	// CSS so the image busts with everything else.
+	function santu_asset_stamp() {
+		const link = document.querySelector('link[href*="/santu_hardware/css/"][href*="?v="]');
+		return link ? link.href.split("?v=")[1] : "";
+	}
+
 	function apply_collapsed_state() {
 		const collapsed = is_sidebar_collapsed();
 		document.body.classList.toggle("santu-sidebar-collapsed", collapsed);
@@ -662,6 +725,38 @@
 		});
 	}
 
+	// The rail is `position: fixed`, so it needs to know where the top chrome
+	// actually ends. That used to be a hardcoded 56px in the CSS, correct only
+	// while the navbar sat flush at y=0; the shop status bar (41px) later moved
+	// the navbar down and the rail started covering its bottom half, clipping
+	// the left of the "Santu Hardware" logo whenever the sidebar was collapsed.
+	// The status bar is absent on some screens, so the offset is measured live
+	// rather than swapped for a second magic number.
+	function sync_sidebar_top() {
+		const navbar = document.querySelector(".navbar");
+		if (!navbar) return;
+		const bottom = Math.round(navbar.getBoundingClientRect().bottom);
+		if (bottom > 0) {
+			document.documentElement.style.setProperty("--santu-sidebar-top", bottom + "px");
+		}
+	}
+
+	// The status bar renders and re-renders on its own schedule (staff changes,
+	// privacy mode timing out), and each time it can change height — so the rail
+	// has to re-measure rather than trust whatever it read at page load.
+	let santu_top_observer = null;
+	function watch_top_chrome() {
+		if (typeof ResizeObserver === "undefined") return;
+		if (!santu_top_observer) santu_top_observer = new ResizeObserver(sync_sidebar_top);
+		santu_top_observer.disconnect();
+		[".santu-status-bar", ".navbar"].forEach((sel) => {
+			const el = document.querySelector(sel);
+			if (el) santu_top_observer.observe(el);
+		});
+	}
+	$(window).on("resize", sync_sidebar_top);
+	document.addEventListener("santu-privacy-mode-change", sync_sidebar_top);
+
 	function toggle_sidebar_visibility() {
 		if (is_kiosk()) {
 			$("#santu-app-sidebar").hide();
@@ -674,6 +769,8 @@
 			document.body.classList.add("santu-fixed-sidebar");
 			apply_collapsed_state();
 			update_active_states();
+			sync_sidebar_top();
+			watch_top_chrome();
 		}
 	}
 

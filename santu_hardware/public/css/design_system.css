@@ -24,14 +24,14 @@
 	--santu-gray-900: #111827;
 
 	/* Brand (unchanged values, now grouped with the rest of the system) */
-	--santu-brand: #3730a3;
-	--santu-brand-dark: #2c2483;
-	--santu-brand-soft: #eef2ff;
+	--santu-brand: #3b82f6;
+	--santu-brand-dark: #2563eb;
+	--santu-brand-soft: #eff6ff;
 
 	/* Semantic — meanings fixed by UI_GUIDELINES.md §4.3, values made deliberate */
-	--santu-success: #15803d;
+	--santu-success: #10b981;
 	--santu-success-soft: #f0fdf4;
-	--santu-danger: #b91c1c;
+	--santu-danger: #e11d48;
 	--santu-danger-soft: #fef2f2;
 	--santu-warning: #b45309;
 	--santu-warning-soft: #fffbeb;

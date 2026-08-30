@@ -249,6 +249,27 @@ santu_purchase.transactions = {
 				});
 			}
 			items.push({ label: __("Copy Link"), action: () => this._row_action("share", t, view) });
+			items.push({
+				label: __("Delete"),
+				action: () => {
+					frappe.confirm(__("Are you sure you want to delete {0}?", [t.invoice_no]), () => {
+						frappe.call({
+							method: "santu_hardware.santu_hardware.api.delete_sale_invoice",
+							args: { doctype: t.doctype, name: t.invoice_no },
+							freeze: true,
+							callback: (r) => {
+								if (r.message && r.message.ok) {
+									frappe.show_alert({ message: __("Deleted successfully"), indicator: "green" });
+									if (typeof santu_purchase !== "undefined" && santu_purchase.api) {
+										santu_purchase.api.clear_cache();
+									}
+									$(document).trigger("santu-purchase-view-change");
+								}
+							},
+						});
+					});
+				},
+			});
 			const d = new frappe.ui.Dialog({ title: t.invoice_no, fields: [{ fieldtype: "HTML", fieldname: "menu" }] });
 			const $menu = $(`<div class="santu-purchase-row-menu"></div>`);
 			items.forEach((item) => $menu.append(`<button type="button" class="santu-purchase-row-menu-item">${item.label}</button>`));

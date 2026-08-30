@@ -162,6 +162,7 @@ const santu_purchase_pos = {
 				tab.items.push({
 					id: santu_purchase_invoice.utils.uid(),
 					item_code: r.item_code,
+					item_name: r.item_name,
 					item_name: row.item_name || r.item_name || r.item_code,
 					qty: r.qty,
 					// Box for a pack-sized item read off a bill (2026-08-17:
@@ -554,7 +555,6 @@ const santu_purchase_pos = {
 	_party_ctx() {
 		return santu_party_inline.make_ctx(this, santu_party_inline.SUPPLIER, {
 			ddNamespace: "santu-pi-dd",
-			walkin: false,
 		});
 	},
 
@@ -649,8 +649,9 @@ const santu_purchase_pos = {
 		}
 
 		tab.items.forEach((row, idx) => {
+			const is_cpvc = santu_is_cpvc_item(row.item_code, row.item_name);
 			const $tr = $(`
-				<tr data-row="${row.id}">
+				<tr data-row="${row.id}" class="${is_cpvc ? "santu-cpvc-row" : ""}">
 					<td class="santu-si2-col-idx">${idx + 1}</td>
 					<td class="santu-si2-col-item">
 						<div class="santu-si2-item-name">
@@ -737,7 +738,7 @@ const santu_purchase_pos = {
 		}
 		rows.forEach((item) => {
 			$(`
-				<div class="santu-si2-dd-row santu-si2-item-dd-row">
+				<div class="santu-si2-dd-row santu-si2-item-dd-row ${santu_cpvc_dd_class(item.item_code, item.item_name)}">
 					<div>
 						<b>${frappe.utils.escape_html(item.item_name)}</b>
 						<span class="santu-si2-dd-sub">${frappe.utils.escape_html(item.item_code)}${item.brand ? " · " + frappe.utils.escape_html(item.brand) : ""}</span>
@@ -857,7 +858,8 @@ const santu_purchase_pos = {
 		return santu_purchase_invoice.api.item_row(tab.supplier, row.item_code, this.init_data.warehouse, row.qty, row.uom).then((r) => {
 			row.available_qty = r.available_qty;
 			row.barcode = r.barcode || null;
-			if (r.uom_options) row.uom_options = r.uom_options;
+			// uom_options is owned by santu_uom (the full list); the server's
+			// shorter reply must not shrink it back to one or two units.
 			this._save_debounced();
 		});
 	},
@@ -1082,6 +1084,10 @@ const santu_purchase_pos = {
 				$tr.find(".santu-si2-qty-input").val(row.qty);
 				on_change();
 			});
+			santu_uom.fill_select($tr.find(".santu-si2-uom-select"), row.item_code, row.uom, {
+				extra_html: `<option value="__new__">${__("+ Naya Unit")}</option>`,
+				on_ready: (opts) => (row.uom_options = opts),
+			});
 			$tr.find(".santu-si2-uom-select").on("change", (e) => {
 				if (e.target.value === "__new__") {
 					// Reset the visible select back to the current unit while
@@ -1091,8 +1097,14 @@ const santu_purchase_pos = {
 					this._add_custom_uom(row, $tr);
 					return;
 				}
-				row.uom = e.target.value;
-				this._recompute_row(row).then(() => on_change());
+				// Rescale qty/rate with the unit (santu_uom) -- switching a
+				// 2 Kg line to Gram used to leave it as "2", i.e. 2 grams.
+				santu_uom.convert(row, e.target.value, row.uom_options);
+				this._recompute_row(row).then(() => {
+					this._render_items();
+					this._recalc_totals();
+					on_change();
+				});
 			});
 			$tr.find(".santu-si2-tax-select").on("change", (e) => {
 				row.item_tax_template = e.target.value || null;
@@ -1547,6 +1559,7 @@ const santu_purchase_pos = {
 			description: tab.description || null,
 			items: tab.items.map((r) => ({
 				item_code: r.item_code,
+				item_name: r.item_name,
 				qty: r.qty,
 				rate: r.rate,
 				uom: r.uom,

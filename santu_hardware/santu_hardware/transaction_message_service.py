@@ -413,11 +413,15 @@ def build_message_context(doc, transaction_type: str) -> dict:
 	except Exception:
 		posting_date_display = str(getattr(doc, "posting_date", today()))
 
+	from santu_hardware.santu_hardware.api import format_bill_no
+
+	bill_no_val = format_bill_no(doc.santu_bill_no) if doc.get("santu_bill_no") else doc.name
+
 	return {
 		"customer_name": customer_name,
 		"supplier_name": supplier_name,
 		"party_name": customer_name or supplier_name or party_name or "",
-		"invoice_no": doc.name,
+		"invoice_no": bill_no_val,
 		"transaction_type": transaction_type,
 		"posting_date": posting_date_display,
 		"grand_total": f"{grand_total:,.2f}",
