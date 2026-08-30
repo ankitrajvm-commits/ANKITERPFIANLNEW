@@ -7891,6 +7891,9 @@ def save_quotation(quotation_json: str, submit: int = 1):
 		"docstatus": doc.docstatus,
 		"grand_total": doc.grand_total,
 		"status": doc.status,
+		# The estimate's own plain number (1, 2, 3…) — the only number the
+		# shop should ever be shown for it. See bill_label().
+		"santu_bill_no": doc.get("santu_bill_no"),
 	}
 
 

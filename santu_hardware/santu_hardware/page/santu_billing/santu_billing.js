@@ -461,6 +461,7 @@ window.santu_billing_page = {
 							<button type="button" class="santu-bill-more">${__("More")} \u25be</button>
 							<div class="santu-bill-more-menu" style="display:none">
 								<button type="button" data-more="draft">${__("Draft save karo (submit nahi)")}</button>
+								<button type="button" data-more="estimate" title="${__("Bill puri na karke isi saman ka Estimate bana do")}">${__("Convert to Estimate")}</button>
 								<button type="button" data-more="terms">${__("Terms &amp; Conditions")}</button>
 								<button type="button" data-more="note">${__("Customer ka note")}</button>
 								<button type="button" data-more="photo">${__("Photo lagao")}</button>
@@ -1015,6 +1016,9 @@ window.santu_billing_page = {
 				.on("click", () => this._quick_create_item(q))
 				.appendTo($dd);
 			$dd.show();
+			// Fill the empty area under the search box rather than stopping
+			// at a fixed few rows -- measured, so a taller screen shows more.
+			santu_sale_invoice.utils.size_dropdown($dd, this.$root.find(".santu-bill-gridwrap"));
 		});
 	},
 
@@ -1795,6 +1799,7 @@ window.santu_billing_page = {
 		this.$root.find(".santu-bill-more-menu").hide();
 		const b = this._bill();
 		if (kind === "draft") return this._save(true);
+		if (kind === "estimate") return this._convert_to_estimate();
 		if (kind === "bug") return this._report_bug(b);
 		if (kind === "note") return this._customer_note(b);
 		if (kind === "terms") {
@@ -2440,6 +2445,82 @@ window.santu_billing_page = {
 			});
 	},
 
+	// "Bill complete na karke Estimate me move karne ka option" (2026-08-30
+	// direct request). A customer who is still deciding shouldn't force the
+	// counter to either finish a sale that isn't happening or retype every
+	// line on the Estimate screen — this hands the open bill over as-is.
+	//
+	// Nothing is billed, no stock moves and no money is recorded: the tab
+	// becomes a real Quotation and closes, exactly like Chalan Banao does.
+	_convert_to_estimate() {
+		const b = this._bill();
+		if (!b.items.length) {
+			frappe.msgprint(__("Pehle koi saman daaliye."));
+			return;
+		}
+		// An estimate is always made out to someone — "bhav bata do" for
+		// nobody in particular can't be followed up later.
+		if (!b.customer) {
+			frappe.msgprint(__("Estimate ke liye customer chuniye."));
+			this.$root.find(".santu-bill-customer").focus();
+			return;
+		}
+		if (b.editing) {
+			frappe.msgprint(__("Ye bill already ban chuki hai — use Estimate me nahi badal sakte."));
+			return;
+		}
+		frappe.confirm(
+			__("Is bill ka Estimate bana dein? Bill save nahi hogi — na stock katega, na paisa lagega."),
+			() => this._check_backdated_warning(b, (allow_backdate) => this._proceed_convert_to_estimate(b, allow_backdate))
+		);
+	},
+
+	_proceed_convert_to_estimate(b, allow_backdate) {
+		frappe.dom.freeze(__("Estimate ban raha hai…"));
+		frappe
+			.xcall("santu_hardware.santu_hardware.api.save_quotation", {
+				quotation_json: JSON.stringify({
+					customer: b.customer,
+					company: this.init_data.company,
+					posting_date: b.posting_date,
+					allow_backdate: allow_backdate ? 1 : 0,
+					selling_price_list: this.init_data.selling_price_list,
+					description: b.remarks || null,
+					terms: b.terms || null,
+					additional_discount_amount: b.bill_discount || 0,
+					items: b.items.map((r) => ({
+						item_code: r.item_code,
+						item_name: r.item_name,
+						qty: r.qty,
+						rate: r.rate,
+						uom: r.uom,
+						// Send the factor the row actually used, same reason
+						// Chalan Banao does: the item's UOM table may be edited
+						// between adding the row and saving.
+						conversion_factor: santu_uom.factor(r.uom_options, r.uom),
+						discount_amount: r.discount || 0,
+					})),
+				}),
+				submit: 1,
+			})
+			.then((r) => {
+				frappe.dom.unfreeze();
+				frappe.show_alert({
+					message: __("Estimate {0} ban gaya", [santu_bill_label(r.santu_bill_no)]),
+					indicator: "green",
+				});
+				this.tabs = this.tabs.filter((x) => x.id !== b.id);
+				if (!this.tabs.length) this._new_bill(false);
+				this.active_id = this.tabs[0].id;
+				this._persist_soon();
+				this.render();
+			})
+			.catch((e) => {
+				frappe.dom.unfreeze();
+				frappe.msgprint((e && e.message) || __("Estimate nahi ban paya."));
+			});
+	},
+
 	// ---------- events ----------
 	_bind() {
 		const b = this._bill();
@@ -2512,12 +2593,23 @@ window.santu_billing_page = {
 		});
 
 		$(document).off("click.santu-bill").on("click.santu-bill", (e) => {
-			if (!$(e.target).closest(".santu-bill-searchwrap").length) $r.find(".santu-bill-dropdown").hide();
+			// The list now covers the whole item area, so getting OUT of it
+			// has to be as easy as getting in: clicking anywhere off the
+			// search box closes it and the item grid comes straight back.
+			if (!$(e.target).closest(".santu-bill-searchwrap").length) $r.find(".santu-bill-dropdown").hide().empty();
 			if (!$(e.target).closest(".santu-bill-custwrap").length) $r.find(".santu-bill-cust-dropdown").hide();
 		});
 
 		// The F-keys are the point of a counter screen — a cashier should
 		// never have to reach for the mouse mid-bill.
+		$r.find(".santu-bill-search").on("keydown", (e) => {
+			// Escape gets the grid back without touching the mouse.
+			if (e.key === "Escape") {
+				$r.find(".santu-bill-dropdown").hide().empty();
+				$(e.currentTarget).val("");
+			}
+		});
+
 		$(document).off("keydown.santu-bill").on("keydown.santu-bill", (ev) => {
 			if (frappe.get_route()[0] !== "santu-billing") return;
 			// F10 dropped from the map (was "loyalty") — loyalty points
