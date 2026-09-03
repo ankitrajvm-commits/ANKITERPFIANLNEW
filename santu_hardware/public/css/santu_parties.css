@@ -136,6 +136,31 @@
 	align-items: center;
 	padding: 16px;
 }
+/* Sab / Customer / Mahajan picker above the party list (2026-09-04) —
+   one list holds both kinds now, this is what narrows it. */
+.santu-parties-typebar {
+	display: flex;
+	gap: 6px;
+	padding: 0 16px 12px;
+}
+.santu-parties-type {
+	flex: 1;
+	border: 1px solid #e2e8f0;
+	background: #f8fafc;
+	border-radius: 8px;
+	padding: 6px 4px;
+	font-size: 12.5px;
+	font-weight: 600;
+	color: #64748b;
+	cursor: pointer;
+	transition: all 0.15s;
+}
+.santu-parties-type:hover { background: #f1f5f9; color: #0f172a; }
+.santu-parties-type.is-active {
+	background: #eef2ff;
+	border-color: #6366f1;
+	color: #4338ca;
+}
 .santu-parties-search {
 	margin-bottom: 0;
 	height: 38px;

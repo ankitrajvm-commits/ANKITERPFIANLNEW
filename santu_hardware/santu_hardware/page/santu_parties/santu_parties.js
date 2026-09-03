@@ -72,6 +72,19 @@ const santu_parties_page = {
 						<div class="santu-parties-search-wrap">
 							<input type="text" class="form-control santu-parties-search" placeholder="Search Party Name">
 						</div>
+						<!-- Customer AND mahajan live in one list now (2026-09-04
+						     direct request: "party me sab aayega naa, jo mera
+						     mahajan hai and jise mai baaki deta hu, and jo
+						     customer hai?"). The 2026-08-18 customers-only lock
+						     is gone; this picker is what narrows the list
+						     instead, so nobody has to go hunting in More for the
+						     other half of their parties. Hidden entirely while a
+						     route still locks the view. -->
+						<div class="santu-parties-typebar">
+							<button type="button" class="santu-parties-type is-active" data-ptype="">Sab</button>
+							<button type="button" class="santu-parties-type" data-ptype="Customer">Customer</button>
+							<button type="button" class="santu-parties-type" data-ptype="Supplier">Mahajan</button>
+						</div>
 						<div class="santu-parties-list-head">
 							<span>Party Name</span>
 							<span>Amount</span>
@@ -104,6 +117,20 @@ const santu_parties_page = {
 			debounce = setTimeout(() => this.reload_list(), 250);
 		});
 
+		this.$typebar = $root.find(".santu-parties-typebar");
+		this.$typebar.on("click", ".santu-parties-type", (e) => {
+			const $btn = $(e.currentTarget);
+			const ptype = $btn.data("ptype") || null;
+			this.$typebar.find(".santu-parties-type").removeClass("is-active");
+			$btn.addClass("is-active");
+			// Keep only_with_balance if something routed us here with it set
+			// (Customer Dues links in that way) — this picker only ever
+			// changes WHICH kind of party is listed.
+			this.filter = { party_type: ptype, only_with_balance: (this.filter && this.filter.only_with_balance) || 0 };
+			this.first_load = false;
+			this.reload_list();
+		});
+
 		$root.find(".santu-parties-add-btn").on("click", () => this.open_add_party());
 	},
 
@@ -123,7 +150,12 @@ const santu_parties_page = {
 		if (display_name) frappe.show_alert({ message: __("Added {0}", [display_name]), indicator: "green" });
 	},
 
-	open_add_party() {
+	// `default_type` pre-selects the Party Type — passed as "Supplier" by
+	// Purchase & Expense's "Mahajan (Suppliers)" quick-add, so adding a
+	// mahajan does not start by changing a dropdown that says Customer
+	// (2026-09-04). The field stays switchable; only its starting value
+	// changes.
+	open_add_party(default_type) {
 		// Locked to Customer, not just defaulted — this dialog is reached
 		// only from the counter's own "Parties" entry, which never shows a
 		// supplier, so letting the type still be switched here would be a
@@ -153,7 +185,7 @@ const santu_parties_page = {
 					fieldname: "party_type",
 					label: __("Party Type"),
 					options: "Customer\nSupplier",
-					default: "Customer",
+					default: default_type === "Supplier" ? "Supplier" : "Customer",
 					reqd: 1,
 				},
 				{ fieldtype: "Data", fieldname: "customer_name", label: __("Party Name"), reqd: 1 },
@@ -232,6 +264,22 @@ const santu_parties_page = {
 					: "Add your customers and suppliers to manage your business easily.<br>Track payments and grow your business without any hassle!"
 			);
 		}
+		// The Sab/Customer/Mahajan picker only makes sense when the view is
+		// free to show both — a locked route has no "show everyone" option
+		// by definition, so the control is hidden rather than shown doing
+		// nothing.
+		if (this.$typebar) this.$typebar.toggle(!locked);
+	},
+
+	// Keeps the picker showing whichever type is actually being listed, so
+	// arriving here from a link that pre-filters (Customer Dues, a supplier
+	// drill-down) does not leave "Sab" highlighted over a filtered list.
+	sync_typebar() {
+		if (!this.$typebar) return;
+		const current = (this.filter && this.filter.party_type) || "";
+		this.$typebar.find(".santu-parties-type").each((_, el) => {
+			$(el).toggleClass("is-active", ($(el).data("ptype") || "") === current);
+		});
 	},
 
 	apply_route_filter() {
@@ -249,6 +297,12 @@ const santu_parties_page = {
 			this.filter = null;
 		}
 		this.update_locked_copy();
+		this.sync_typebar();
+		// Purchase & Expense's "Mahajan" quick-add routes here asking for the
+		// Add dialog straight away, already set to Supplier (2026-09-04).
+		if (opts.add_new && !this.locked_party_type) {
+			setTimeout(() => this.open_add_party(opts.party_type), 0);
+		}
 		// A specific party can also be handed in — used where something used
 		// to jump to the native Customer/Supplier form.
 		const focus = opts.party || null;

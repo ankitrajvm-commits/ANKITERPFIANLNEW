@@ -7,7 +7,7 @@
 	// Bump whenever NAV_ITEMS changes shape — build_sidebar() reuses an
 	// already-rendered sidebar when this matches, so without a bump an open
 	// tab keeps the old menu.
-	const SIDEBAR_NAV_VERSION = "vyapar-match-29";
+	const SIDEBAR_NAV_VERSION = "vyapar-match-30";
 
 	// Nav glyphs are real icon files now, not emoji: emoji render differently
 	// on every OS (this shop is used from both a Mac and a phone) and sat at
@@ -35,6 +35,23 @@
 		// functionality daal do" — pulling every purchase-side entry point
 		// into this one group, top-level, matching Sale's own prominence).
 		{ view: "receive_stock", label: "Receive Stock", redirect: "santu-receive-stock" },
+		// Straight to the mahajan list, with the Add dialog reachable there
+		// (2026-09-04). Buying-side work starts with "who did I buy from",
+		// and that list previously had no entry point of its own at all.
+		{
+			view: "suppliers",
+			label: "Mahajan (Suppliers)",
+			run: () => {
+				frappe.route_options = { party_type: "Supplier" };
+				frappe.set_route("santu-parties");
+			},
+			quickadd: {
+				run: () => {
+					frappe.route_options = { party_type: "Supplier", add_new: 1 };
+					frappe.set_route("santu-parties");
+				},
+			},
+		},
 		{ view: "bills", label: "Purchase Bills", route: "santu-purchase" },
 		{ view: "payment_out", label: "Payment-Out", route: "santu-purchase", quickadd: { run: () => window.santu_open_collect_payment({ party_type: "Supplier" }) } },
 		{ view: "expenses", label: "Expenses", route: "santu-purchase", quickadd: { run: () => frappe.set_route("santu-expense") } },
@@ -99,14 +116,16 @@
 
 	const NAV_ITEMS = [
 		{ type: "link", route: "santu-dashboard", icon: "home.svg", label: "Home" },
-		// Locked to customers-only (2026-08-18 direct request: the counter's
-		// day-to-day flow has no use for supplier info right now — "party
-		// info ka koi kaam nahi hai... ye sab 2.0 me krenge"). Same page,
-		// same route family, just a second route segment the page itself
-		// reads to lock the list — see santu_parties.js on_page_show. The
-		// full Customer+Supplier directory still exists, moved to More as
-		// "Parties2" for whenever it's actually needed again.
-		{ type: "link", route: "santu-parties/customers", icon: "Parties.svg", label: "Parties" },
+		// Customers AND mahajans, in one list (2026-09-04 direct request:
+		// "party me sab aayega naa, jo mera mahajan hai and jise mai baaki
+		// deta hu, and jo customer hai?"). This was locked to customers-only
+		// on 2026-08-18 ("ye sab 2.0 me krenge") via a /customers route
+		// segment, with the full directory parked in More — but supplier
+		// dues and the supplier khata now exist, so keeping half the parties
+		// one extra tap away in a second menu is the thing that costs time.
+		// The page's own Sab/Customer/Mahajan picker narrows it instead, and
+		// the duplicate More entry is gone so there is one place to look.
+		{ type: "link", route: "santu-parties", icon: "Parties.svg", label: "Parties" },
 		// Items and Stock & Rates were two separate screens showing
 		// overlapping things (2026-08-17: "items and stock and rates ko
 		// merge kro") — Stock & Rates absorbed Items' Products/Services
@@ -327,14 +346,12 @@
 				// Moved out of the top level (2026-08-18 direct request) — a
 				// plain route, same as Cash & Bank above it.
 				{ route: "santu-reports", label: "Reports" },
-				// The full Customer+Supplier directory (2026-08-18 direct
-				// request) — "Parties" itself, in the main sidebar, now only
-				// ever shows customers (see the santu-parties/customers entry
-				// above); this unlocked version — same screen, same route,
-				// just without the "/customers" segment — is what still has
-				// suppliers in it, kept here rather than deleted for whenever
-				// that's actually needed again.
-				{ route: "santu-parties", label: "All Parties (Customers & Suppliers)" },
+				// "All Parties (Customers & Suppliers)" lived here while the
+				// main Parties entry was locked to customers. That lock is
+				// gone (2026-09-04) and Parties now shows both with its own
+				// type picker, so this pointed at the identical route — two
+				// menu entries for one screen. Removed rather than left as a
+				// duplicate path to the same place.
 				// Moved out of Utilities (2026-08-18 direct request). Each
 				// carries its own `storageView` — a leaf living inside a
 				// DIFFERENT group than the page it routes to needs that, since
