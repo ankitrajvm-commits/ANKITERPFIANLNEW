@@ -70,7 +70,10 @@ def run_backup_snapshot():
 
 # How stale the last full backup has to be before the launchd safety net
 # decides the scheduler is not doing its job.
-SAFETY_NET_STALE_HOURS = 20
+# The normal scheduler is hourly.  launchd checks a little later in every
+# hour, so one hour is enough to detect a missed run without creating a
+# second copy when the scheduler is healthy.
+SAFETY_NET_STALE_HOURS = 1
 
 
 def run_safety_net_backup():

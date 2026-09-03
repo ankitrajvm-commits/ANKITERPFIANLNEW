@@ -114,7 +114,7 @@ function render_receive_stock(page) {
 			$(`
 				<div class="santu-receive-result-card" role="button" tabindex="0">
 					<div class="santu-receive-result-name">${frappe.utils.escape_html(item.item_name)}</div>
-					<div class="santu-receive-result-meta">Currently in stock: ${item.available_qty ?? 0} ${frappe.utils.escape_html(item.stock_uom || "")}</div>
+					<div class="santu-receive-result-meta">Currently in stock: ${item.available_qty ?? 0} ${frappe.utils.escape_html(santu_uom.abbr(item.stock_uom) || "")}</div>
 				</div>
 			`)
 				.on("click", () => open_form(item))
@@ -159,7 +159,7 @@ function render_receive_stock(page) {
 		selected_item = item;
 		$root.find(".santu-receive-item-card").html(`
 			<div class="santu-receive-item-name">${frappe.utils.escape_html(item.item_name)}</div>
-			<div class="santu-receive-item-meta">Currently in stock: ${item.available_qty ?? 0} ${frappe.utils.escape_html(item.stock_uom || "")}</div>
+			<div class="santu-receive-item-meta">Currently in stock: ${item.available_qty ?? 0} ${frappe.utils.escape_html(santu_uom.abbr(item.stock_uom) || "")}</div>
 		`);
 		$root.find(".santu-receive-qty-input").val(1);
 		$root.find(".santu-receive-rate-input").val("");

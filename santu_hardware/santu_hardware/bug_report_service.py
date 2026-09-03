@@ -117,8 +117,14 @@ def record_bug(
 		doc.insert(ignore_permissions=True)
 		return doc.name
 	except Exception:
-		# Last resort only — do not recurse back into record_bug.
+		# Last resort only — do not recurse back into record_bug. The insert
+		# above can fail mid-transaction (seen 2026-09-02: a backup-failure
+		# report itself failed with a raw pymysql error) — without rolling
+		# back first, the fallback log_error() call inherits that same
+		# broken transaction and fails too, so the original failure never
+		# gets recorded anywhere at all.
 		try:
+			frappe.db.rollback()
 			frappe.log_error(title="Bug report could not be recorded", message=frappe.get_traceback())
 		except Exception:
 			pass

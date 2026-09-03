@@ -18,25 +18,27 @@
 		let printers = [];
 		let selected = null;
 		let levels = null;
-		let show_logo = 1;
 
 		async function boot() {
 			try {
 				printers = await frappe.xcall(`${API}.list_printers`);
 			} catch (e) {
-				$body.html(`<div class="santu-prn-error"><b>${__("Could not read the printer list.")}</b><p>${frappe.utils.escape_html(e.message || String(e))}</p></div>`);
+				$body.html(`<div class="santu-prn-error"><b>${__("Could not read the printer list.")}</b><p>${frappe.utils.escape_html((e && e.message) || String(e))}</p></div>`);
 				return;
 			}
 
-			levels = await frappe.xcall(`${API}.get_density_levels`);
-			const settings = await frappe.db.get_doc("Santu POS Settings");
+			try {
+				levels = await frappe.xcall(`${API}.get_density_levels`);
+				const settings = await frappe.db.get_doc("Santu POS Settings", "Santu POS Settings");
 
-			selected = settings.printer_name && printers.includes(settings.printer_name)
-				? settings.printer_name
-				: printers[0] || null;
-			show_logo = cint(settings.show_logo_on_bill ?? 1);
+				selected = settings.printer_name && printers.includes(settings.printer_name)
+					? settings.printer_name
+					: printers[0] || null;
 
-			render();
+				render();
+			} catch (e) {
+				$body.html(`<div class="santu-prn-error"><b>${__("Could not load settings.")}</b><p>${frappe.utils.escape_html((e && e.message) || String(e))}</p></div>`);
+			}
 		}
 
 		async function render() {
@@ -58,15 +60,6 @@
 								${printers.map((p) => `<option value="${frappe.utils.escape_html(p)}" ${p === selected ? "selected" : ""}>${frappe.utils.escape_html(p)}</option>`).join("")}
 							</select>
 						</div>
-					</div>
-
-					<div class="santu-prn-card">
-						<div class="santu-prn-section-title">${__("Bill Header")}</div>
-						<p class="santu-prn-help">${__("Whichever one is on prints on the next bill. Thermal printers are black-and-white only, so if the logo ever comes out too dark or too faint on the actual paper, switch back to the plain name instantly.")}</p>
-						<label class="santu-prn-check">
-							<input type="checkbox" class="santu-prn-logo-toggle" ${show_logo ? "checked" : ""}>
-							${__("Show logo on bill (off = plain text name)")}
-						</label>
 					</div>
 
 					<div class="santu-prn-card">
@@ -125,18 +118,6 @@
 				render();
 			});
 
-			$body.find(".santu-prn-logo-toggle").on("change", async (e) => {
-				show_logo = e.target.checked ? 1 : 0;
-				try {
-					await frappe.db.set_value("Santu POS Settings", "Santu POS Settings", "show_logo_on_bill", show_logo);
-					frappe.show_alert({ message: show_logo ? __("Logo will print on the next bill") : __("Plain text name will print on the next bill"), indicator: "green" });
-				} catch (err) {
-					e.target.checked = !e.target.checked;
-					show_logo = show_logo ? 0 : 1;
-					frappe.msgprint({ title: __("Could not save"), message: err.message || String(err), indicator: "red" });
-				}
-			});
-
 			$body.find(".santu-prn-save").on("click", async () => {
 				const lvl = cint($slider.val());
 				const $btn = $body.find(".santu-prn-save").prop("disabled", true).text(__("Writing…"));
@@ -148,7 +129,7 @@
 					$body.html(`<div class="santu-prn-loading">${__("Reading printer…")}</div>`);
 					render();
 				} catch (e) {
-					frappe.msgprint({ title: __("Could not change density"), message: e.message || String(e), indicator: "red" });
+					frappe.msgprint({ title: __("Could not change density"), message: (e && e.message) || String(e), indicator: "red" });
 					$btn.prop("disabled", false).text(__("Save & Apply to Printer"));
 				}
 			});
@@ -159,13 +140,13 @@
 					const r = await frappe.xcall(`${API}.print_density_test`, { printer_name: selected, level: cint($slider.val()) });
 					frappe.show_alert({ message: __("Test printed at density {0} — {1}", [r.level, r.label]), indicator: "blue" });
 				} catch (e) {
-					frappe.msgprint({ title: __("Could not print"), message: e.message || String(e), indicator: "red" });
+					frappe.msgprint({ title: __("Could not print"), message: (e && e.message) || String(e), indicator: "red" });
 				}
 				$btn.prop("disabled", false).text(__("Test Density"));
 			});
 		}
 
-		boot();
+		await boot();
 	};
 
 	window.santu_open_printer_settings = function () {
@@ -187,6 +168,8 @@
 		$body.html(`<div class="santu-prn-loading">${__("Loading templates…")}</div>`);
 
 		let settings = null;
+		let show_logo = 1;
+		let show_logo_a4 = 1;
 		const latest_docs = {};
 		// Which Print Formats actually exist, so the preview never asks the
 		// server for one that was never built. Without this the panel showed a
@@ -267,8 +250,8 @@
 			const candidates = lib === "Thermal Invoice Library"
 				? [`Santu Thermal - ${style}`, "Santu Hardware Thermal Bill (Sales Invoice)",
 				   "Santu Hardware Thermal Estimate (Quotation)", "Santu Hardware Challan (Delivery Note)",
-				   "Santu Hardware Purchase Bill", "Santu Hardware Payment Receipt", "Santu Hardware Thermal Bill"]
-				: [`Santu A4 - WhatsApp (${dt})`, `Santu Hardware Bill (${dt})`, "Santu Hardware Bill"];
+				   "Santu Hardware Thermal Purchase Bill", "Santu Hardware Thermal Payment Receipt", "Santu Hardware Thermal Bill"]
+				: [`Santu A4 - WhatsApp (${dt})`, `Santu Hardware Bill (${dt})`, "Santu Hardware Bill", "Santu Hardware Purchase Bill", "Santu Hardware Payment Receipt"];
 			return candidates.find((name) =>
 				available_formats.some((f) => f.name === name && f.doc_type === dt)
 			) || null;
@@ -290,6 +273,8 @@
 
 		async function boot() {
 			settings = await frappe.db.get_doc("Santu POS Settings");
+			show_logo = cint(settings.show_logo_on_bill ?? 1);
+			show_logo_a4 = cint(settings.show_logo_on_a4_bill ?? 1);
 			try {
 				available_formats = await frappe.db.get_list("Print Format", {
 					fields: ["name", "doc_type"],
@@ -357,6 +342,56 @@
 			$body.html(`
 				<div class="santu-prn-modern">
 					<div class="santu-prn-left">
+						<div class="santu-prn-card" style="margin-bottom: 24px;">
+							<div class="santu-prn-section-title">${__("Logo Library")}</div>
+							<p class="santu-prn-help">${__("Upload different logos for Thermal (black & white, high contrast) and A4 (colorful, high resolution).")}</p>
+							
+							<div style="display: flex; gap: 24px; margin-top: 16px;">
+								<div style="flex: 1; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; text-align: center;">
+									<div style="font-size: 12px; font-weight: 600; color: #4b5563; margin-bottom: 8px;">${__("Thermal Logo")}</div>
+									${settings.thermal_logo_image ? `<img src="${settings.thermal_logo_image}" style="max-height: 60px; max-width: 100%; margin-bottom: 12px; object-fit: contain;">` : `<div style="height: 60px; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 11px; margin-bottom: 12px; background: #f3f4f6; border-radius: 4px;">No Logo</div>`}
+									<button class="btn btn-default btn-xs santu-prn-upload-thermal-logo">${__("Upload")}</button>
+									${settings.thermal_logo_image ? `<button class="btn btn-danger btn-xs santu-prn-clear-thermal-logo" style="margin-left: 4px;">${__("Clear")}</button>` : ""}
+									<div style="margin-top: 16px; text-align: left;">
+										<div style="font-size: 11px; color: #4b5563; margin-bottom: 4px; display: flex; justify-content: space-between;">
+											<span>${__("Logo Size (Width)")}</span>
+											<span><span class="thermal-width-val">${settings.thermal_logo_width || 65}</span>mm</span>
+										</div>
+										<input type="range" class="santu-prn-thermal-width" min="10" max="72" value="${settings.thermal_logo_width || 65}" style="width: 100%;">
+									</div>
+								</div>
+								
+								<div style="flex: 1; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; text-align: center;">
+									<div style="font-size: 12px; font-weight: 600; color: #4b5563; margin-bottom: 8px;">${__("A4 Logo")}</div>
+									${settings.a4_logo_image ? `<img src="${settings.a4_logo_image}" style="max-height: 60px; max-width: 100%; margin-bottom: 12px; object-fit: contain;">` : `<div style="height: 60px; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 11px; margin-bottom: 12px; background: #f3f4f6; border-radius: 4px;">No Logo</div>`}
+									<button class="btn btn-default btn-xs santu-prn-upload-a4-logo">${__("Upload")}</button>
+									${settings.a4_logo_image ? `<button class="btn btn-danger btn-xs santu-prn-clear-a4-logo" style="margin-left: 4px;">${__("Clear")}</button>` : ""}
+									<div style="margin-top: 16px; text-align: left;">
+										<div style="font-size: 11px; color: #4b5563; margin-bottom: 4px; display: flex; justify-content: space-between;">
+											<span>${__("Logo Size (Width)")}</span>
+											<span><span class="a4-width-val">${settings.a4_logo_width || 40}</span>%</span>
+										</div>
+										<input type="range" class="santu-prn-a4-width" min="10" max="100" value="${settings.a4_logo_width || 40}" style="width: 100%;">
+									</div>
+								</div>
+							</div>
+						</div>
+
+						<div class="santu-prn-card" style="margin-bottom: 24px;">
+							<div class="santu-prn-section-title">${__("Bill Header Toggles")}</div>
+							<p class="santu-prn-help">${__("Control whether the shop logo prints at the top of the bills. Thermal printers are black-and-white, so if the logo ever comes out poorly on the actual roll, turn it off instantly.")}</p>
+							<div style="display: flex; gap: 24px; margin-top: 12px;">
+								<label class="santu-prn-check" style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer;">
+									<input type="checkbox" class="santu-prn-logo-toggle" ${show_logo ? "checked" : ""}>
+									<span>${__("Show logo on Thermal Bill")}</span>
+								</label>
+								<label class="santu-prn-check" style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer;">
+									<input type="checkbox" class="santu-prn-a4-logo-toggle" ${show_logo_a4 ? "checked" : ""}>
+									<span>${__("Show logo on A4 Bill")}</span>
+								</label>
+							</div>
+						</div>
+
 						${render_library_section("Thermal Invoice Library")}
 						${render_library_section("WhatsApp Library")}
 					</div>
@@ -381,6 +416,86 @@
 					</div>
 				</div>
 			`);
+
+			$body.find(".santu-prn-upload-thermal-logo").on("click", () => {
+				new frappe.ui.FileUploader({
+					doctype: "Santu POS Settings",
+					docname: "Santu POS Settings",
+					folder: "Home/Attachments",
+					on_success: async (file_doc) => {
+						await frappe.db.set_value("Santu POS Settings", "Santu POS Settings", "thermal_logo_image", file_doc.file_url);
+						settings.thermal_logo_image = file_doc.file_url;
+						render();
+					}
+				});
+			});
+
+			$body.find(".santu-prn-clear-thermal-logo").on("click", async () => {
+				await frappe.db.set_value("Santu POS Settings", "Santu POS Settings", "thermal_logo_image", "");
+				settings.thermal_logo_image = "";
+				render();
+			});
+
+			$body.find(".santu-prn-upload-a4-logo").on("click", () => {
+				new frappe.ui.FileUploader({
+					doctype: "Santu POS Settings",
+					docname: "Santu POS Settings",
+					folder: "Home/Attachments",
+					on_success: async (file_doc) => {
+						await frappe.db.set_value("Santu POS Settings", "Santu POS Settings", "a4_logo_image", file_doc.file_url);
+						settings.a4_logo_image = file_doc.file_url;
+						render();
+					}
+				});
+			});
+
+			$body.find(".santu-prn-clear-a4-logo").on("click", async () => {
+				await frappe.db.set_value("Santu POS Settings", "Santu POS Settings", "a4_logo_image", "");
+				settings.a4_logo_image = "";
+				render();
+			});
+
+			$body.find(".santu-prn-thermal-width").on("input", (e) => {
+				$body.find(".thermal-width-val").text(e.target.value);
+			}).on("change", async (e) => {
+				await frappe.db.set_value("Santu POS Settings", "Santu POS Settings", "thermal_logo_width", e.target.value);
+				settings.thermal_logo_width = e.target.value;
+				render();
+			});
+
+			$body.find(".santu-prn-a4-width").on("input", (e) => {
+				$body.find(".a4-width-val").text(e.target.value);
+			}).on("change", async (e) => {
+				await frappe.db.set_value("Santu POS Settings", "Santu POS Settings", "a4_logo_width", e.target.value);
+				settings.a4_logo_width = e.target.value;
+				render();
+			});
+
+			$body.find(".santu-prn-logo-toggle").on("change", async (e) => {
+				show_logo = e.target.checked ? 1 : 0;
+				try {
+					await frappe.db.set_value("Santu POS Settings", "Santu POS Settings", "show_logo_on_bill", show_logo);
+					frappe.show_alert({ message: show_logo ? __("Logo will print on thermal bills") : __("Plain text name will print on thermal bills"), indicator: "green" });
+					render();
+				} catch (err) {
+					e.target.checked = !e.target.checked;
+					show_logo = show_logo ? 0 : 1;
+					frappe.msgprint({ title: __("Could not save"), message: err.message || String(err), indicator: "red" });
+				}
+			});
+
+			$body.find(".santu-prn-a4-logo-toggle").on("change", async (e) => {
+				show_logo_a4 = e.target.checked ? 1 : 0;
+				try {
+					await frappe.db.set_value("Santu POS Settings", "Santu POS Settings", "show_logo_on_a4_bill", show_logo_a4);
+					frappe.show_alert({ message: show_logo_a4 ? __("Logo will print on A4 bills") : __("Plain text name will print on A4 bills"), indicator: "green" });
+					render();
+				} catch (err) {
+					e.target.checked = !e.target.checked;
+					show_logo_a4 = show_logo_a4 ? 0 : 1;
+					frappe.msgprint({ title: __("Could not save"), message: err.message || String(err), indicator: "red" });
+				}
+			});
 
 			$body.find(".santu-prn-doc-type").on("change", async function () {
 				const lib = $(this).attr("data-lib");
@@ -419,7 +534,7 @@
 					});
 					frappe.show_alert({ message: __("Template test printed."), indicator: "blue" });
 				} catch (e) {
-					frappe.msgprint({ title: __("Print Failed"), message: e.message || String(e), indicator: "red" });
+					frappe.msgprint({ title: __("Print Failed"), message: (e && e.message) || String(e), indicator: "red" });
 				}
 				$btn.prop("disabled", false).text(__("Test Print Template"));
 			});
@@ -441,7 +556,7 @@
 					frappe.show_alert({ message: __("Default template updated."), indicator: "green" });
 					render();
 				} catch (e) {
-					frappe.msgprint({ title: __("Error"), message: e.message, indicator: "red" });
+					frappe.msgprint({ title: __("Error"), message: (e && e.message) || String(e), indicator: "red" });
 					$btn.text(__("Set as Default")).prop("disabled", false);
 				}
 			});

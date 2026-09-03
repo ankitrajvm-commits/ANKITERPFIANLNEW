@@ -51,6 +51,29 @@ santu_sale_invoice.utils = {
 		$row[0].scrollIntoView({ block: "nearest", inline: "nearest" });
 	},
 
+	// Let a search dropdown use the whole empty area under the search box
+	// instead of a fixed few rows (2026-08-30: "isme bs 4 5 hi name aa raha
+	// hai, aisa kr ki pure niche tak saman show ho").
+	//
+	// The height is measured, not hard-coded, because it depends on the
+	// screen the operator is actually on -- a taller monitor should simply
+	// show more items. It stops at the BOTTOM OF THE ITEM GRID, deliberately
+	// short of the F-key bar: those keys are the counter's main controls and
+	// a list covering them would be worse than a short list. Falls back to
+	// the old fixed height if the grid is not on the page yet.
+	size_dropdown($dd, $stop_at) {
+		if (!$dd || !$dd.length || !$dd.is(":visible")) return;
+		const top = $dd.offset().top;
+		const stop = $stop_at && $stop_at.length
+			? $stop_at.offset().top + $stop_at.outerHeight()
+			: null;
+		// 8px so the list never sits flush against the edge it stops at.
+		const avail = stop ? stop - top - 8 : 0;
+		// Below ~180px a "taller" list is worse than the old fixed one, so
+		// keep a floor and let it scroll.
+		$dd.css("max-height", avail > 180 ? Math.floor(avail) + "px" : "320px");
+	},
+
 	// The one "Add Party" dialog, shared by the Sale Invoice and
 	// Estimate/Quotation screens (2026-08-14 rebuild, pixel-matched to a
 	// Vyapar reference: Party Name/GSTIN/Phone row, then GST & Address /
@@ -328,6 +351,11 @@ santu_sale_invoice.api = {
 	retry_print_job(job_name) {
 		return frappe.xcall("santu_hardware.santu_hardware.print_service.retry_print_job", { job_name });
 	},
+	dismiss_print_jobs(job_names) {
+		return frappe.xcall("santu_hardware.santu_hardware.print_service.dismiss_print_jobs", {
+			job_names: JSON.stringify(job_names),
+		});
+	},
 	update_customer_note(customer, note) {
 		return frappe.xcall("santu_hardware.santu_hardware.api.update_customer_note", { customer, note });
 	},
@@ -349,12 +377,13 @@ santu_sale_invoice.api = {
 	recent_items() {
 		return frappe.xcall("santu_hardware.santu_hardware.api.get_recent_sale_items");
 	},
-	item_row(customer, item_code, warehouse, qty) {
+	item_row(customer, item_code, warehouse, qty, uom) {
 		return frappe.xcall("santu_hardware.santu_hardware.api.get_sale_item_row", {
-			customer,
+			customer: customer || "",
 			item_code,
 			warehouse,
 			qty,
+			uom: uom || null,
 		});
 	},
 	// Third argument is an options bag, not a positional list — six other

@@ -1,6 +1,21 @@
 /*
  * Customer Dues by Village (2026-07-30) — new custom Page.
  */
+.santu-dues-tabs {
+	display: flex;
+	gap: 8px;
+	margin-bottom: var(--santu-space-3, 12px);
+}
+.santu-dues-tab {
+	background: var(--santu-bg-muted, #f1f5f9);
+	border: 1px solid transparent;
+	font-weight: 600;
+}
+.santu-dues-tab.is-active {
+	background: var(--santu-brand-soft, #eef2ff);
+	border-color: var(--santu-brand, #4f46e5);
+	color: var(--santu-brand, #4f46e5);
+}
 .santu-dues-filters {
 	display: flex;
 	gap: var(--santu-space-3, 12px);
@@ -8,6 +23,12 @@
 }
 .santu-dues-search { flex: 1 1 auto; }
 .santu-dues-village { flex: 0 0 200px; }
+.santu-dues-due {
+	margin-left: 6px;
+	font-weight: 600;
+	color: var(--santu-text-muted, #6b7280);
+}
+.santu-dues-due.is-overdue { color: #dc2626; }
 
 .santu-dues-summary-card {
 	background: var(--santu-brand-soft, #eef2ff);
@@ -33,17 +54,30 @@
 	overflow: hidden;
 }
 .santu-dues-row {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
 	padding: 14px 16px;
 	border-bottom: 1px solid var(--santu-border, #e5e7eb);
 	cursor: pointer;
 }
 .santu-dues-row:last-child { border-bottom: none; }
 .santu-dues-row:hover { background: var(--santu-gray-50, #f9fafb); }
+/* Amount sits on the SAME line as the customer name (2026-09-03 report:
+   "582 and 521 same line me aana tha naa, ye idhar udhar aa raha hai") —
+   it used to be vertically centered against the whole two-line name+meta
+   block instead, so it visually floated between the two lines rather than
+   lining up with the name every row shares as its anchor. */
+.santu-dues-row-top {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+}
+.santu-dues-row-bottom {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-top: 4px;
+}
 .santu-dues-row-name { font-weight: 600; font-size: 15px; }
-.santu-dues-row-meta { font-size: 13px; color: var(--santu-text-muted, #6b7280); margin-top: 2px; }
+.santu-dues-row-meta { font-size: 13px; color: var(--santu-text-muted, #6b7280); }
 .santu-dues-row-amount {
 	font-size: 17px;
 	font-weight: 700;
@@ -71,12 +105,20 @@
 .santu-dues-bill-row { cursor: pointer; }
 .santu-dues-bill-row:hover { background: var(--santu-gray-50, #f9fafb); }
 .santu-dues-bill-items {
-	max-width: 220px;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+	max-width: 260px;
 	color: var(--santu-text-muted, #6b7280);
 }
+/* One item per line, price against its own name (2026-09-03: "jitne v
+   item aahi un sab ke naam ke aage hi item price likhe, jaisa sale me
+   hota hai, eksaath naa likhe") — was one truncated, price-less string. */
+.santu-dues-bill-item-row {
+	display: flex;
+	justify-content: space-between;
+	gap: 10px;
+	white-space: nowrap;
+}
+.santu-dues-bill-item-row + .santu-dues-bill-item-row { margin-top: 2px; }
+.santu-dues-bill-item-rate { flex-shrink: 0; }
 
 @media (max-width: 700px) {
 	.santu-dues-filters { flex-direction: column; }

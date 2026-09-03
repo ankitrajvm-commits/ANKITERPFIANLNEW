@@ -651,10 +651,14 @@ def get_dashboard_data():
 		# `having net > 0` keeps one customer's leftover credit from
 		# cancelling out a different customer's real due — money owed by A
 		# is not reduced by money owed TO B.
+		# Lump-sum payments (create_payment_entry, 2026-09-03) net off here
+		# too — a customer's advance subtracts from THEIR invoice total
+		# before the per-customer `having net > 0` check, same "don't let
+		# one party's credit hide another's due" rule as before.
 		receivable_row = frappe.db.sql(
 			f"""
 			select sum(net), count(*) from (
-				select customer, sum(outstanding_amount) as net from (
+				select rows_.customer as customer, sum(rows_.outstanding_amount) - coalesce(max(adv.advance), 0) as net from (
 					select customer, outstanding_amount from `tabSales Invoice`
 					where docstatus = 1 {company_sql}
 					union all
@@ -663,7 +667,14 @@ def get_dashboard_data():
 						and (consolidated_invoice is null or consolidated_invoice = '')
 						{company_sql}
 				) rows_
-				group by customer
+				left join (
+					select party, sum(unallocated_amount) as advance
+					from `tabPayment Entry`
+					where docstatus = 1 and party_type = 'Customer' and payment_type = 'Receive'
+						{company_sql}
+					group by party
+				) adv on adv.party = rows_.customer
+				group by rows_.customer
 				having net > 0
 			) t
 			""",
@@ -1454,21 +1465,39 @@ def get_barcode_data_uri(data: str):
 
 @frappe.whitelist()
 def get_bill_logo_data_uri() -> str:
-	"""The thermal bill's header logo, embedded inline as the thermal QR
-	already is — wkhtmltopdf renders these formats with
-	`disable-local-file-access` set (see `_thermal_pdf_bytes`), so a plain
-	`/assets/...` <img> src would render blank; the bytes have to travel
-	inside the HTML itself. Cropped to its real content (the source PNG
-	carries a wide white margin) and pre-shrunk to 43mm-wide/203dpi so the
-	PDF embeds a few KB instead of the multi-hundred-KB original, and the
-	SH icon is pre-compacted to ~70% against the wordmark below it — sizing
-	and cropping Ankit approved directly (2026-08-23), not something to
-	redo from the source file.
-	"""
+	settings = frappe.get_single("Santu POS Settings")
+	if settings.thermal_logo_image:
+		try:
+			file_doc = frappe.get_doc("File", {"file_url": settings.thermal_logo_image})
+			content = file_doc.get_content()
+			encoded = base64.b64encode(content).decode("ascii")
+			import mimetypes
+			mime_type, _ = mimetypes.guess_type(settings.thermal_logo_image)
+			mime_type = mime_type or "image/png"
+			return f"data:{mime_type};base64,{encoded}"
+		except Exception:
+			pass
+			
 	path = frappe.get_app_path("santu_hardware", "public", "images", "thermal_bill_logo.png")
 	with open(path, "rb") as f:
 		encoded = base64.b64encode(f.read()).decode("ascii")
 	return f"data:image/png;base64,{encoded}"
+
+@frappe.whitelist()
+def get_a4_logo_data_uri() -> str:
+	settings = frappe.get_single("Santu POS Settings")
+	if settings.a4_logo_image:
+		try:
+			file_doc = frappe.get_doc("File", {"file_url": settings.a4_logo_image})
+			content = file_doc.get_content()
+			encoded = base64.b64encode(content).decode("ascii")
+			import mimetypes
+			mime_type, _ = mimetypes.guess_type(settings.a4_logo_image)
+			mime_type = mime_type or "image/png"
+			return f"data:{mime_type};base64,{encoded}"
+		except Exception:
+			pass
+	return get_bill_logo_data_uri()
 
 
 @frappe.whitelist()
@@ -1568,6 +1597,51 @@ def bill_label(bill_no=None, doctype: str = None, name: str = None) -> str:
 		if frappe.db.has_column(doctype, "santu_bill_no"):
 			bill_no = frappe.db.get_value(doctype, name, "santu_bill_no")
 	return format_bill_no(bill_no) or "—"
+
+
+# Short forms for a printed bill's Qty column (2026-09-03 direct request:
+# "yaha pe unit q nahi likh raha hai, 4 foot? yaha unit likhna chahiye,
+# jaise 4 ho gaya then foot, baaki ke liye pcs, ltr, mtr, etc, abbreviation
+# use ho accha wala"). Keyed by the UOM's own name, lowercased, so a shop
+# that later adds a new UOM in whatever case just falls through to showing
+# it as-is rather than throwing — no crash on an unmapped unit, just no
+# abbreviation for it yet.
+UOM_ABBR = {
+	"nos": "Pcs",
+	"piece": "Pcs",
+	"pcs": "Pcs",
+	"foot": "Ft",
+	"feet": "Ft",
+	"ft": "Ft",
+	"meter": "Mtr",
+	"metre": "Mtr",
+	"mtr": "Mtr",
+	"kg": "Kg",
+	"kilogram": "Kg",
+	"gram": "Gm",
+	"gm": "Gm",
+	"litre": "Ltr",
+	"liter": "Ltr",
+	"ltr": "Ltr",
+	"box": "Box",
+	"dozen": "Dzn",
+	"pair": "Pair",
+	"set": "Set",
+	"bag": "Bag",
+	"bundle": "Bdl",
+	"roll": "Roll",
+	"packet": "Pkt",
+	"unit": "Unit",
+}
+
+
+@frappe.whitelist()
+def uom_abbr(uom: str = None) -> str:
+	"""Printed short form of a UOM — "Foot" -> "Ft", "Nos" -> "Pcs", etc.
+	Unknown units pass through unchanged rather than disappearing."""
+	if not uom:
+		return ""
+	return UOM_ABBR.get(uom.strip().lower(), uom)
 
 
 def voucher_display(voucher_type: str, voucher_no: str) -> str:
@@ -2808,10 +2882,17 @@ def get_customer_dues(village: str = None, search: str = None):
 	village. One row per customer with any outstanding balance — reuses
 	the exact same Sales Invoice + un-consolidated-POS-Invoice sum as the
 	printed bill's "Previous Balance" line, so the two never disagree.
+
+	Village comes from `party_village()` (the linked Address), not the
+	`santu_village` field directly — that field stopped being written to on
+	2026-08-27 when the district/pin concept was dropped in favour of a
+	plain address (see party_village's own docstring). This page kept
+	reading santu_village straight off Customer, so every customer added
+	after that date showed "No village on file" even with a real address on
+	file (2026-09-03 bug report: "village kyun nahi aa raha, bina village ke
+	saman thodi bikega").
 	"""
 	customer_filters = {}
-	if village:
-		customer_filters["santu_village"] = village
 	if search:
 		customer_filters["customer_name"] = ["like", f"%{search}%"]
 
@@ -2823,7 +2904,7 @@ def get_customer_dues(village: str = None, search: str = None):
 
 	rows = []
 	for c in customers:
-		balance = flt(
+		invoice_total = flt(
 			frappe.db.sql(
 				"""
 				select sum(outstanding_amount) from (
@@ -2837,19 +2918,138 @@ def get_customer_dues(village: str = None, search: str = None):
 				{"customer": c.name},
 			)[0][0]
 		)
-		if balance > 0:
-			rows.append(
-				{
-					"customer": c.name,
-					"customer_name": c.customer_name,
-					"village": c.santu_village,
-					"mobile_no": c.mobile_no,
-					"total_due": balance,
-				}
-			)
+		# Lump-sum payments net off the invoice total here rather than
+		# reducing any one bill's own outstanding_amount (2026-09-03:
+		# "full bill se minus hona chahiye, individual bill se nahi") — see
+		# create_payment_entry / _party_advance_total.
+		balance = max(invoice_total - _party_advance_total("Customer", c.name), 0)
+		if balance <= 0:
+			continue
+		row_village = party_village("Customer", c.name, c.santu_village)
+		if village and row_village != village:
+			continue
+		rows.append(
+			{
+				"customer": c.name,
+				"customer_name": c.customer_name,
+				"village": row_village,
+				"mobile_no": c.mobile_no,
+				"total_due": balance,
+				# Earliest unpaid bill's due date -- "kis date ko kaun sa
+				# payment dena/lena hai" (2026-09-03 direct request). A
+				# lump-sum payment doesn't clear any one bill's own
+				# outstanding_amount any more, so this reads straight off
+				# the invoices themselves, same as get_party_outstanding.
+				"earliest_due_date": _earliest_due_date("Customer", c.name),
+			}
+		)
 
 	rows.sort(key=lambda r: r["total_due"], reverse=True)
 	return rows
+
+
+def _earliest_due_date(party_type: str, party: str):
+	"""Soonest `due_date` among this party's still-outstanding bills, or
+	None if none carry one. Shared by get_customer_dues and
+	get_supplier_dues."""
+	if party_type == "Customer":
+		dates = [
+			d
+			for d in frappe.db.sql(
+				"""
+				select due_date from (
+					select due_date, outstanding_amount from `tabSales Invoice`
+					where customer = %(party)s and docstatus = 1
+					union all
+					select due_date, outstanding_amount from `tabPOS Invoice`
+					where customer = %(party)s and docstatus = 1
+						and (consolidated_invoice is null or consolidated_invoice = '')
+				) t where outstanding_amount != 0 and due_date is not null
+				""",
+				{"party": party},
+				as_dict=True,
+			)
+		]
+	else:
+		dates = [
+			d
+			for d in frappe.db.sql(
+				"""select due_date from `tabPurchase Invoice`
+				where supplier = %(party)s and docstatus = 1
+					and outstanding_amount != 0 and due_date is not null""",
+				{"party": party},
+				as_dict=True,
+			)
+		]
+	due_dates = [d.due_date for d in dates if d.due_date]
+	return str(min(due_dates)) if due_dates else None
+
+
+@frappe.whitelist()
+def get_supplier_dues(search: str = None):
+	"""Payable mirror of get_customer_dues — "which supplier do I owe how
+	much" (2026-09-03 direct request: "kis party ko mujhe kitna paisa dena
+	hai" — the app only ever showed the receivable side of this before)."""
+	supplier_filters = {}
+	if search:
+		supplier_filters["supplier_name"] = ["like", f"%{search}%"]
+
+	suppliers = frappe.get_all(
+		"Supplier",
+		filters=supplier_filters,
+		fields=["name", "supplier_name", "mobile_no"],
+	)
+
+	rows = []
+	for s in suppliers:
+		invoice_total = flt(
+			frappe.db.sql(
+				"select sum(outstanding_amount) from `tabPurchase Invoice` where supplier = %(supplier)s and docstatus = 1",
+				{"supplier": s.name},
+			)[0][0]
+		)
+		balance = max(invoice_total - _party_advance_total("Supplier", s.name), 0)
+		if balance <= 0:
+			continue
+		rows.append(
+			{
+				"supplier": s.name,
+				"supplier_name": s.supplier_name,
+				"mobile_no": s.mobile_no,
+				"total_due": balance,
+				"earliest_due_date": _earliest_due_date("Supplier", s.name),
+			}
+		)
+
+	rows.sort(key=lambda r: r["total_due"], reverse=True)
+	return rows
+
+
+@frappe.whitelist()
+def get_supplier_all_bills(supplier: str):
+	"""Every Purchase Invoice for one supplier, payable mirror of
+	get_customer_all_bills, for the Supplier Dues drill-down."""
+	rows = frappe.get_all(
+		"Purchase Invoice",
+		filters={"supplier": supplier, "docstatus": 1},
+		fields=["name", "posting_date", "grand_total", "outstanding_amount", "status", "bill_no"],
+	)
+	for r in rows:
+		r["doctype"] = "Purchase Invoice"
+		r["display_number"] = r.get("bill_no") or r["name"]
+	_attach_full_item_lists(rows, "Purchase Invoice Item")
+	rows.sort(key=lambda r: r["posting_date"], reverse=True)
+	return rows
+
+
+@frappe.whitelist()
+def get_customer_due_villages():
+	"""Distinct villages among customers who currently owe money — feeds the
+	Customer Dues page's "All Villages" filter dropdown. Reuses get_customer_dues'
+	own address resolution (party_village) rather than querying santu_village
+	directly, for the same reason get_customer_dues itself does (see there)."""
+	rows = get_customer_dues()
+	return sorted({r["village"] for r in rows if r["village"]})
 
 
 def _format_qty(qty) -> str:
@@ -2953,11 +3153,21 @@ def get_customer_all_bills(customer: str):
 	si_rows = frappe.get_all(
 		"Sales Invoice",
 		filters={"customer": customer, "docstatus": 1},
-		fields=["name", "posting_date", "grand_total", "outstanding_amount", "status"],
+		fields=["name", "posting_date", "grand_total", "outstanding_amount", "status", "santu_bill_no"],
 	)
 	for r in si_rows:
 		r["doctype"] = "Sales Invoice"
-	_attach_item_summaries(si_rows, "Sales Invoice", "Sales Invoice Item")
+		# Same rule as everywhere else — the counter's own bill number, never
+		# the raw docname (2026-09-03 bug report: "sale invoice me phir se
+		# sinv aa raha hai" — this drill-down was the one screen still
+		# leaking it, since it returned `name` straight through).
+		r["display_number"] = bill_label(r.get("santu_bill_no"))
+	# Full per-item price, not a truncated "Item A x2, Item B x1" string —
+	# same table _attach_full_item_lists already built for the Khata screen
+	# (2026-09-03 direct request: "party bill me jitne v item aahi un sab ke
+	# naam ke aage hi item price likhe, jaisa sale me hota hai, eksaath naa
+	# likhe").
+	_attach_full_item_lists(si_rows, "Sales Invoice Item")
 
 	pos_rows = frappe.get_all(
 		"POS Invoice",
@@ -2966,11 +3176,12 @@ def get_customer_all_bills(customer: str):
 			"docstatus": 1,
 			"consolidated_invoice": ["in", ["", None]],
 		},
-		fields=["name", "posting_date", "grand_total", "outstanding_amount", "status"],
+		fields=["name", "posting_date", "grand_total", "outstanding_amount", "status", "santu_bill_no"],
 	)
 	for r in pos_rows:
 		r["doctype"] = "POS Invoice"
-	_attach_item_summaries(pos_rows, "POS Invoice", "POS Invoice Item")
+		r["display_number"] = bill_label(r.get("santu_bill_no"))
+	_attach_full_item_lists(pos_rows, "POS Invoice Item")
 
 	rows = list(si_rows) + list(pos_rows)
 	rows.sort(key=lambda r: r["posting_date"], reverse=True)
@@ -3214,6 +3425,119 @@ def get_customer_khata(customer: str, from_date: str = None, to_date: str = None
 	return {
 		"customer": customer,
 		"customer_name": frappe.db.get_value("Customer", customer, "customer_name") or customer,
+		"from_date": str(from_date),
+		"to_date": str(to_date),
+		"opening_balance": opening,
+		"closing_balance": balance,
+		"rows": rows,
+	}
+
+
+@frappe.whitelist()
+def get_supplier_khata(supplier: str, from_date: str = None, to_date: str = None):
+	"""Supplier-wise running khata — every purchase, every payment made,
+	same running-balance shape as get_customer_khata, mirrored for the
+	other direction of money (2026-09-03 direct request: "party system jo
+	sayad pahle hamne hataya tha ki kis party ko mujhe kitna paisa dena
+	hai, kab kitna payment de diya gya, tracking ho" — this had explicitly
+	been left out of the original Khata as "a different conversation" when
+	that was Customer-only; it's now being asked for).
+
+	A positive balance here means the SHOP owes the supplier (the mirror
+	image of the customer khata, where a positive balance means the
+	customer owes the shop) — a Purchase Invoice is a debit (more owed)
+	and a Payment Entry (Pay) is a credit (less owed), the opposite signs
+	from the customer side.
+	"""
+	from frappe.utils import add_months, today
+
+	if not frappe.db.exists("Supplier", supplier):
+		frappe.throw(_("Supplier {0} not found").format(supplier))
+
+	to_date = getdate(to_date) if to_date else getdate(today())
+	from_date = getdate(from_date) if from_date else add_months(to_date, -12)
+	if from_date > to_date:
+		from_date, to_date = to_date, from_date
+
+	rows = []
+
+	pi_rows = frappe.get_all(
+		"Purchase Invoice",
+		filters={"supplier": supplier, "docstatus": 1, "posting_date": ["between", [from_date, to_date]]},
+		fields=["name", "posting_date", "creation", "amended_from", "grand_total", "paid_amount", "outstanding_amount", "is_return", "bill_no"],
+	)
+	_attach_full_item_lists(pi_rows, "Purchase Invoice Item")
+	for r in pi_rows:
+		debit, credit = _khata_debit_credit(r)
+		rows.append(
+			{
+				"date": str(r["posting_date"]),
+				"_seq": _khata_sequence("Purchase Invoice", r["name"], r.get("creation"), r.get("amended_from")),
+				"doctype": "Purchase Invoice",
+				"voucher_no": r["name"],
+				"display_number": r.get("bill_no") or r["name"],
+				"type": "Purchase Return" if r["is_return"] else "Purchase",
+				"items": r["items"],
+				"items_summary": r["items_summary"],
+				"debit": debit,
+				"credit": credit,
+			}
+		)
+
+	payment_rows = frappe.get_all(
+		"Payment Entry",
+		filters={
+			"party_type": "Supplier",
+			"party": supplier,
+			"docstatus": 1,
+			"payment_type": "Pay",
+			"posting_date": ["between", [from_date, to_date]],
+		},
+		fields=["name", "posting_date", "creation", "paid_amount", "mode_of_payment"],
+	)
+	for r in payment_rows:
+		rows.append(
+			{
+				"date": str(r["posting_date"]),
+				"_seq": str(r.get("creation") or ""),
+				"doctype": "Payment Entry",
+				"voucher_no": r["name"],
+				"display_number": r["name"],
+				"type": "Payment Out",
+				"items": [],
+				"items_summary": r.get("mode_of_payment") or "",
+				"debit": 0,
+				"credit": flt(r["paid_amount"]),
+			}
+		)
+
+	rows.sort(key=lambda r: (r["date"], r.get("_seq") or "", r["doctype"]))
+
+	prior_pi = flt(
+		frappe.db.sql(
+			"""select sum(grand_total - ifnull(paid_amount, 0)) from `tabPurchase Invoice`
+			where supplier=%s and docstatus=1 and posting_date < %s""",
+			(supplier, from_date),
+		)[0][0]
+	)
+	prior_pay = flt(
+		frappe.db.sql(
+			"""select sum(paid_amount) from `tabPayment Entry`
+			where party_type='Supplier' and party=%s and docstatus=1
+			and payment_type='Pay' and posting_date < %s""",
+			(supplier, from_date),
+		)[0][0]
+	)
+	opening = prior_pi - prior_pay
+
+	balance = opening
+	for r in rows:
+		balance += r["debit"] - r["credit"]
+		r["balance"] = balance
+
+	return {
+		"supplier": supplier,
+		"supplier_name": frappe.db.get_value("Supplier", supplier, "supplier_name") or supplier,
 		"from_date": str(from_date),
 		"to_date": str(to_date),
 		"opening_balance": opening,
@@ -5569,7 +5893,7 @@ def get_customer_details_for_sale(customer: str):
 
 
 @frappe.whitelist()
-def get_sale_item_row(customer: str, item_code: str, warehouse: str = None, qty: float = 1):
+def get_sale_item_row(customer: str = None, item_code: str = None, warehouse: str = None, qty: float = 1, uom: str = None):
 	"""Fetch ERPNext item row details for Sales Invoice."""
 	from erpnext.stock.get_item_details import get_item_details
 
@@ -5589,6 +5913,7 @@ def get_sale_item_row(customer: str, item_code: str, warehouse: str = None, qty:
 			"price_list": price_list,
 			"selling_price_list": price_list,
 			"plc_conversion_rate": 1,
+			"uom": uom,
 		}
 	)
 	row = get_item_details(args)
@@ -6960,6 +7285,7 @@ def get_supplier_details_for_purchase(supplier: str):
 		"mobile_no": sup.mobile_no,
 		"address": address_line,
 		"address_line1": address_line1,
+		"gstin": sup.get("gstin") or "",
 		"outstanding_amount": outstanding,
 	}
 
@@ -7416,13 +7742,15 @@ def get_payment_entry_init(party_type: str = "Customer"):
 
 @frappe.whitelist()
 def get_party_outstanding(party_type: str, party: str):
-	"""The party's unpaid invoices, oldest first, for the Payment screen's
-	settlement table.
-
-	The old dialog asked for a bare amount with nothing on screen about
-	what was actually owed — the cashier typed blind and the backend
-	auto-allocated oldest-first with no way to see or change it. This is
-	what makes the amount reviewable before saving.
+	"""The party's unpaid invoices, oldest first — shown read-only on the
+	Payment screen so the amount being collected isn't typed blind, same
+	reason this existed originally. `total_outstanding` now comes from
+	get_party_net_due (invoice total minus every lump-sum payment on file)
+	rather than summing these rows' own `outstanding_amount`, because
+	payments no longer touch any one bill (2026-09-03: "full bill se minus
+	hona chahiye, individual bill se nahi") — these rows can no longer
+	reflect partial payment themselves, so the list is for "what did they
+	buy and when", not "what's still owed on each one".
 	"""
 	if not party:
 		return {"invoices": [], "total_outstanding": 0}
@@ -7472,7 +7800,7 @@ def get_party_outstanding(party_type: str, party: str):
 			}
 			for r in rows
 		],
-		"total_outstanding": sum(flt(r.outstanding_amount) for r in rows),
+		"total_outstanding": get_party_net_due(party_type, party)["total_due"],
 	}
 
 
@@ -7487,21 +7815,22 @@ def create_payment_entry(
 	allocations_json: str = None,
 	remarks: str = None,
 ):
-	"""Record a real, submitted Payment Entry against a party's outstanding
-	invoices — the "Collect Payment" (Customer) / "Payment Out" (Supplier)
-	quick action (2026-08-15 direct request: nowhere to actually record
-	money received against Total Receivable). Allocates the amount across
-	their outstanding Sales/Purchase Invoices oldest-first, same as a
-	cashier collecting against the oldest bills first, rather than leaving
-	it sitting as an unallocated advance.
+	"""Record a real, submitted Payment Entry against a party — the "Collect
+	Payment" (Customer) / "Payment Out" (Supplier) quick action.
 
-	`allocations_json` overrides that auto-split with explicit per-invoice
-	amounts, which is what the Payment screen's settlement table sends once
-	the cashier has adjusted a row (part-paying one bill while clearing
-	another is a real counter situation the oldest-first rule can't
-	express). Each allocation is still clamped to that invoice's actual
-	outstanding so a stale screen can't over-allocate a bill that was
-	settled in another tab meanwhile.
+	Booked as a lump sum against the PARTY, never against individual bills
+	(2026-09-03 direct request: "jab payment in ho tab individual bill se
+	minus ho raha hai, bhai full bill se minus hona chahiye ki itna net
+	bill tha aur is date ko itna paisa jama hua" — explicitly confirmed
+	after being warned this means a single old bill no longer shows its own
+	partial-paid status; only the party's total balance is guaranteed
+	correct going forward). Before 2026-09-03 this allocated oldest-bill-
+	first (or per an explicit `allocations_json`) via Payment Entry's
+	`references` child table; `allocations_json` is still accepted from
+	older callers but ignored — every rupee now lands as an unallocated
+	advance against the party, and `get_party_net_due`/`get_customer_dues`/
+	`get_dashboard_data` net that off the invoice total instead of relying
+	on any one invoice's own `outstanding_amount`.
 
 	Doesn't call Payment Entry's own set_missing_values() — that only
 	resolves the PARTY's own receivable/payable account, and only once
@@ -7545,91 +7874,84 @@ def create_payment_entry(
 	if reference_no:
 		doc.reference_no = reference_no
 		doc.reference_date = posting_date
-
 	if remarks:
 		doc.remarks = remarks
 
-	outstanding_doctype = "Sales Invoice" if party_type == "Customer" else "Purchase Invoice"
-	party_field = "customer" if party_type == "Customer" else "supplier"
-	rows = frappe.get_all(
-		outstanding_doctype,
-		filters={party_field: party, "docstatus": 1, "outstanding_amount": (">", 0)},
-		fields=["name", "outstanding_amount"],
-		order_by="posting_date asc",
-	)
-	outstanding_by_name = {r.name: flt(r.outstanding_amount) for r in rows}
-
-	requested = {}
-	if allocations_json:
-		import json
-
-		parsed = json.loads(allocations_json) if isinstance(allocations_json, str) else allocations_json
-		for entry in parsed or []:
-			name = entry.get("name") or entry.get("reference_name")
-			alloc = flt(entry.get("allocated_amount") or entry.get("amount"))
-			if name and alloc > 0:
-				requested[name] = alloc
-
-	# A bill the cashier explicitly picked but which cannot take money has to
-	# say so. The loop below only walks live, still-owing invoices, so a
-	# cancelled (or draft, or someone else's) bill simply never matched and
-	# the money was quietly booked as an unallocated advance instead — the
-	# screen said "Saved" while doing something other than what was asked
-	# (found 2026-08-28 paying against a cancelled bill).
-	for name in requested:
-		if name in outstanding_by_name:
-			continue
-		ref = frappe.db.get_value(
-			outstanding_doctype, name,
-			["name", party_field, "docstatus", "outstanding_amount"], as_dict=True,
-		)
-		if not ref:
-			frappe.throw(_("Bill {0} nahi mila.").format(bill_label(doctype=outstanding_doctype, name=name)))
-		if ref.docstatus == 2:
-			frappe.throw(_("Bill {0} cancel ho chuki hai — iske against paisa settle nahi kar sakte.").format(bill_label(doctype=outstanding_doctype, name=name)))
-		if ref.docstatus == 0:
-			frappe.throw(_("Bill {0} abhi draft hai — pehle use save/submit karein.").format(bill_label(doctype=outstanding_doctype, name=name)))
-		if ref.get(party_field) != party:
-			frappe.throw(_("Bill {0} {1} ki nahi hai.").format(bill_label(doctype=outstanding_doctype, name=name), party))
-		frappe.throw(_("Bill {0} par kuch baaki nahi hai.").format(bill_label(doctype=outstanding_doctype, name=name)))
-
-	remaining = amount
-	for row in rows:
-		if remaining <= 0:
-			break
-		# An explicit allocation set means "only these rows, these amounts";
-		# rows the cashier zeroed out stay untouched rather than silently
-		# soaking up the leftover the way oldest-first would.
-		if requested:
-			if row.name not in requested:
-				continue
-			alloc = min(requested[row.name], outstanding_by_name[row.name], remaining)
-		else:
-			alloc = min(outstanding_by_name[row.name], remaining)
-		if alloc <= 0:
-			continue
-		doc.append(
-			"references",
-			{
-				"reference_doctype": outstanding_doctype,
-				"reference_name": row.name,
-				"total_amount": outstanding_by_name[row.name],
-				"outstanding_amount": outstanding_by_name[row.name],
-				"allocated_amount": alloc,
-			},
-		)
-		remaining -= alloc
-
+	# No `references` appended — the whole amount stays unallocated, a
+	# lump-sum credit against the party rather than a specific bill.
 	doc.insert()
 	doc.submit()
 
 	return {
 		"name": doc.name,
-		"allocated": amount - remaining,
-		"unallocated": remaining,
+		"allocated": 0,
+		"unallocated": amount,
 		"party": party,
 		"party_type": party_type,
 	}
+
+
+def _party_advance_total(party_type: str, party: str, company: str = None) -> float:
+	"""Sum of unallocated Payment Entry amount sitting against this party —
+	the lump-sum credit create_payment_entry now books every payment as.
+	Netted against the party's summed invoice outstanding wherever "how
+	much do they owe" is shown, so a lump-sum payment reduces that total
+	even though it never touched any one bill's own `outstanding_amount`."""
+	payment_type = "Receive" if party_type == "Customer" else "Pay"
+	filters = {
+		"party_type": party_type,
+		"party": party,
+		"payment_type": payment_type,
+		"docstatus": 1,
+	}
+	if company:
+		filters["company"] = company
+	return flt(
+		frappe.db.sql(
+			"select sum(unallocated_amount) from `tabPayment Entry` where "
+			+ " and ".join(f"{k} = %({k})s" for k in filters),
+			filters,
+		)[0][0]
+	)
+
+
+@frappe.whitelist()
+def get_party_net_due(party_type: str, party: str):
+	"""What a party actually owes right now — invoice total minus every
+	lump-sum payment on file, regardless of which bill (if any) it was
+	ever meant to cover. The one number the Payment In/Out screen, Customer
+	Dues, and the Dashboard all now agree on (2026-09-03 direct request)."""
+	if not party:
+		return {"total_due": 0}
+	company = frappe.defaults.get_user_default("Company")
+	outstanding_doctype = "Sales Invoice" if party_type == "Customer" else "Purchase Invoice"
+	party_field = "customer" if party_type == "Customer" else "supplier"
+	filters = {party_field: party, "docstatus": 1}
+	if company:
+		filters["company"] = company
+	invoice_total = flt(
+		frappe.db.sql(
+			f"select sum(outstanding_amount) from `tab{outstanding_doctype}` where "
+			+ " and ".join(f"{k} = %({k})s" for k in filters),
+			filters,
+		)[0][0]
+	)
+	if outstanding_doctype == "Sales Invoice":
+		invoice_total += flt(
+			frappe.db.sql(
+				"""select sum(outstanding_amount) from `tabPOS Invoice`
+				where customer = %(customer)s and docstatus = 1
+					and (consolidated_invoice is null or consolidated_invoice = '')
+					""" + ("and company = %(company)s" if company else ""),
+				{"customer": party, "company": company},
+			)[0][0]
+		)
+	advance = _party_advance_total(party_type, party, company)
+	# Not clamped at 0 — a negative result is meaningful (a credit note
+	# balance the shop owes back), same as the invoice-outstanding sum this
+	# replaces always allowed. Only an actual credit note or a genuinely
+	# overpaid advance makes it negative.
+	return {"total_due": invoice_total - advance}
 
 
 _INVOICE_VIEW_ITEM_DOCTYPES = (
@@ -7791,6 +8113,14 @@ def get_invoice_view_data(doctype: str, name: str):
 		"tax": doc.total_taxes_and_charges or 0,
 		"discount_amount": doc.discount_amount or 0,
 		"grand_total": doc.grand_total,
+		# Grand Total minus Outstanding, not a sum of the `payments` child
+		# table — that table is POS-split-payment rows only and misses
+		# anything settled later through a separate Payment Entry, so it
+		# under-counts a bill paid off gradually. This is always right
+		# because it's the same number outstanding_amount is derived from
+		# (2026-09-03 direct request: "net amount was this, paid this and
+		# baaki amount this, correctly show ho").
+		"paid_amount": flt(doc.grand_total) - flt(doc.get("outstanding_amount") or 0),
 		"outstanding_amount": doc.get("outstanding_amount"),
 		"terms": doc.terms,
 		"description": doc.get("remarks"),
@@ -8347,13 +8677,26 @@ def save_purchase_return(return_json: str, submit: int = 1):
 		if rate < 0:
 			frappe.throw(_("Please enter a valid rate for {0}.").format(row.get("item_code")))
 
+		cf = _conversion_factor_for(row.get("item_code"), row.get("uom"), row.get("conversion_factor"))
+		wh = row.get("warehouse") or warehouse
+		
+		# Prevent "Unable to repost item valuation" background crashes by validating
+		# stock BEFORE the return is submitted (Bug 10).
+		available_qty = flt(frappe.db.get_value("Bin", {"item_code": row.get("item_code"), "warehouse": wh}, "actual_qty"))
+		stock_qty_to_return = abs(qty) * cf
+		
+		if stock_qty_to_return > available_qty and not frappe.db.get_single_value("Stock Settings", "allow_negative_stock"):
+			frappe.throw(_("Cannot return {0} {1} of {2}; only {3} available in {4}.").format(
+				abs(qty), row.get("uom"), row.get("item_code"), available_qty / (cf or 1), wh
+			))
+
 		item_row = {
 			"item_code": row.get("item_code"),
 			"qty": -abs(qty),
 			"rate": rate,
-			"warehouse": row.get("warehouse") or warehouse,
+			"warehouse": wh,
 			"uom": row.get("uom"),
-			"conversion_factor": _conversion_factor_for(row.get("item_code"), row.get("uom"), row.get("conversion_factor")),
+			"conversion_factor": cf,
 			"discount_percentage": flt(row.get("discount_percentage")),
 			"discount_amount": flt(row.get("discount_amount")),
 		}
@@ -10386,6 +10729,58 @@ def update_party_phone(party_type: str, party: str, phone: str):
 	return {"phone": phone}
 
 
+# GST state codes 01-38 — used to catch the single most common real GSTIN
+# typo (a swapped/mistyped state prefix), which the checksum digit alone
+# cannot see (2026-09-03 direct request: "gstin ko verify karne ka option
+# laa do ki verified, incorrect name, incorrect gst").
+GST_STATE_CODES = {
+	"01": "Jammu and Kashmir", "02": "Himachal Pradesh", "03": "Punjab", "04": "Chandigarh",
+	"05": "Uttarakhand", "06": "Haryana", "07": "Delhi", "08": "Rajasthan", "09": "Uttar Pradesh",
+	"10": "Bihar", "11": "Sikkim", "12": "Arunachal Pradesh", "13": "Nagaland", "14": "Manipur",
+	"15": "Mizoram", "16": "Tripura", "17": "Meghalaya", "18": "Assam", "19": "West Bengal",
+	"20": "Jharkhand", "21": "Odisha", "22": "Chattisgarh", "23": "Madhya Pradesh", "24": "Gujarat",
+	"25": "Daman and Diu", "26": "Dadra and Nagar Haveli", "27": "Maharashtra", "28": "Andhra Pradesh (Old)",
+	"29": "Karnataka", "30": "Goa", "31": "Lakshadweep", "32": "Kerala", "33": "Tamil Nadu",
+	"34": "Puducherry", "35": "Andaman and Nicobar Islands", "36": "Telangana", "37": "Andhra Pradesh",
+	"38": "Ladakh",
+}
+
+
+@frappe.whitelist()
+def verify_gstin_format(gstin: str):
+	"""Structural check only — 15 characters, valid state-code prefix,
+	correct checksum digit — via india_compliance's own validator. Confirmed
+	2026-09-03: this shop has no GSP subscription configured (GST
+	Settings.api_secret is blank), so a real "does this GSTIN's registered
+	name match the party's name" lookup against the government database
+	isn't available here; that needs a paid GSP account set up separately.
+	This is the offline half of that ask, explicitly agreed to as the
+	fallback."""
+	from india_compliance.gst_india.utils import validate_gstin_check_digit
+
+	gstin = (gstin or "").strip().upper()
+	if not gstin:
+		return {"ok": False, "status": "empty", "message": _("GSTIN is empty.")}
+	if len(gstin) != 15:
+		return {"ok": False, "status": "invalid_length", "message": _("GSTIN must be exactly 15 characters — this one has {0}.").format(len(gstin))}
+
+	state_code = gstin[:2]
+	if state_code not in GST_STATE_CODES:
+		return {"ok": False, "status": "invalid_state_code", "message": _("First 2 digits ({0}) aren't a real GST state code.").format(state_code)}
+
+	try:
+		validate_gstin_check_digit(gstin)
+	except Exception:
+		return {"ok": False, "status": "invalid_checksum", "message": _("GSTIN format looks right, but the check digit doesn't match — likely a typo somewhere in the middle.")}
+
+	return {
+		"ok": True,
+		"status": "valid_format",
+		"message": _("Format is valid — state: {0}. This only checks the format, not whether the name matches GST's own records (needs a GSP subscription, not set up here).").format(GST_STATE_CODES[state_code]),
+		"state": GST_STATE_CODES[state_code],
+	}
+
+
 @frappe.whitelist()
 def update_party_details(
 	party_type: str,
@@ -11404,7 +11799,18 @@ def get_stock_summary(search: str = None, item_group: str = None, only_low: int 
 		reorder = flt(r.reorder_level)
 		# A service has nothing to run low on — "qty <= 0" would otherwise
 		# flag every service as low stock, which is meaningless for it.
-		low = is_stock_item and (bool(reorder and qty <= reorder) or qty <= 0)
+		#
+		# Falls back to DEFAULT_LOW_STOCK_THRESHOLD when the item has no
+		# reorder level set, same as get_low_stock_items — this used to
+		# require an EXPLICITLY configured reorder level (`reorder and qty
+		# <= reorder`), so an item with none never counted as low no matter
+		# how close to zero its stock actually was. Since almost no item in
+		# this shop has a reorder level set, "Only low stock" on the Items
+		# screen showed almost nothing while real low-stock items sat right
+		# there unflagged (2026-09-03 bug report: "wo saman nahi dikha jo
+		# running low ho raha").
+		effective_reorder = reorder or DEFAULT_LOW_STOCK_THRESHOLD
+		low = is_stock_item and (qty <= effective_reorder or qty <= 0)
 		if cint(only_low) and not low:
 			continue
 		out.append({

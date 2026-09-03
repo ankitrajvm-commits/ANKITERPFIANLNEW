@@ -20,14 +20,14 @@ santu_sale.transactions = {
 	// "sare billing me billing pos ka hi landing daal do". There is no
 	// per-target routing any more; the old `target` argument (which chose
 	// santu-sales-order vs santu-sale-invoice) is gone.
-	_convert_via_mapped_doc(method, source_name) {
+	_convert_via_mapped_doc(method, source_name, source_doctype) {
 		frappe.call({
 			method,
 			args: { source_name },
 			freeze: true,
 			callback: (r) => {
 				if (!r.message) return;
-				frappe.route_options = { prefill: r.message };
+				frappe.route_options = { prefill: r.message, source_doctype: source_doctype };
 				frappe.set_route("santu-billing");
 			},
 		});
@@ -209,7 +209,8 @@ santu_sale.transactions = {
 			e.stopPropagation();
 			this._convert_via_mapped_doc(
 				"erpnext.selling.doctype.quotation.quotation.make_sales_invoice",
-				t.name || t.invoice_no
+				t.name || t.invoice_no,
+				"Quotation"
 			);
 		});
 		$row.find("[data-action='more']").on("click", (e) => {

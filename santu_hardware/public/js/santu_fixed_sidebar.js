@@ -134,10 +134,6 @@
 				{ view: "quotation", label: "Estimate / Quotation", route: "santu-sale" },
 				{ view: "payment_in", label: "Payment In", route: "santu-sale" },
 				{ view: "pos", label: "Billing (POS)", redirect: "santu-billing" },
-				// Back under Sale, not "More" (2026-08-27 direct request: "sale
-				// me chalan add ker do child me") — was moved into More on
-				// 2026-08-18 along with Proforma/Sales Order, but Ankit wants
-				// it reachable from Sale directly again.
 				{ view: "delivery_challan", label: "Delivery Challan", route: "santu-sale" },
 			],
 		},
@@ -231,9 +227,6 @@
 			label: "Utilities",
 			storageView: "santu_utilities_view",
 			storageExpanded: "santu_utilities_sidebar_expanded",
-			// Was "import_items" — moved into More (2026-08-18), so the
-			// group's own default landing view points at something still
-			// listed under Utilities itself.
 			defaultView: "shop_profile",
 			route: "santu-utilities",
 			changeEvent: "santu-utilities-view-change",
@@ -245,14 +238,24 @@
 				// anyone wants to do at that moment.
 				{ view: "doctor", label: "Doctor Uncle (kuch kaam na kare to)", redirect: "santu-doctor" },
 				{ view: "shop_profile", label: "Shop Profile", route: "santu-utilities" },
-				{ view: "payment_modes", label: "Payment Modes", run: () => window.santu_open_payment_modes() },
-				{ view: "cost_price_lock", label: "Cost Price Lock", run: () => window.santu_privacy.manage_dialog() },
+				{ view: "payment_modes", label: "Payment Modes", route: "santu-utilities" },
+				{ view: "cost_price_lock", label: "Cost Price Lock", route: "santu-utilities" },
 				{ view: "barcode_generator", label: "Barcode Generator", route: "santu-utilities" },
+				// 2026-09-03 direct request: "agar mai koi v saaman ko new
+				// colour dena chahu to wo ho jaye ... item name start with
+				// this, then ye colour apply" — same mechanism CPVC/UPVC
+				// already used, made configurable.
+				{ view: "item_highlight_rules", label: "Item Colour Rules", route: "santu-utilities" },
+				{ view: "voice_model", label: "Voice Model (आवाज़ पहचान)", route: "santu-utilities" },
 				{ view: "printer_settings", label: "Printer Settings", route: "santu-utilities" },
 				{ view: "invoice_settings", label: "Invoice Settings", route: "santu-utilities" },
 				{ view: "verify_data", label: "Verify My Data", route: "santu-utilities" },
+				// Moved back in from More (2026-09-03 direct request: "import
+				// item ko utility ka child banao") — reverses the 2026-08-18
+				// move that had pulled it out.
+				{ view: "import_items", label: "Import Items", route: "santu-utilities" },
 				{ view: "bug_report", label: "Bug Report", route: "santu-utilities" },
-				{ view: "feature_workbook", label: "Feature Workbook", redirect: "santu-feature-workbo" },
+				{ view: "feature_workbook", label: "Feature Workbook", redirect: "santu-feature-workbook" },
 				{ view: "recycle_bin", label: "Recycle Bin", redirect: "santu-recycle-bin" },
 			],
 		},
@@ -292,8 +295,6 @@
 				{ view: "new_invoice", label: "+ New Sale Invoice", redirect: "santu-billing" },
 				{ view: "proforma", label: "Proforma Invoice", route: "santu-sale", storageView: "santu_sale_view" },
 				{ view: "sales_order", label: "Sales Order", route: "santu-sale", storageView: "santu_sale_view" },
-				// Delivery Challan moved back under Sale itself (2026-08-27
-				// direct request) — see Sale's own children list above.
 				// Moved out of the top level (2026-08-18 direct request) — a
 				// plain route, same as Cash & Bank above it.
 				{ route: "santu-reports", label: "Reports" },
@@ -319,7 +320,6 @@
 				{ view: "import_parties", label: "Import Parties", route: "santu-utilities", storageView: "santu_utilities_view" },
 				{ view: "track_salesmen", label: "Track Your Salesmen", route: "santu-utilities", storageView: "santu_utilities_view" },
 				{ view: "export_items", label: "Export Items", route: "santu-utilities", storageView: "santu_utilities_view" },
-				{ view: "import_items", label: "Import Items", route: "santu-utilities", storageView: "santu_utilities_view" },
 				{ view: "export_tally", label: "Exports To Tally", route: "santu-utilities", storageView: "santu_utilities_view" },
 				{ view: "close_fy", label: "Close Financial Year", route: "santu-utilities", storageView: "santu_utilities_view" },
 			],
@@ -597,18 +597,6 @@
 				});
 			}
 		});
-
-		const company = frappe.boot.sysdefaults && frappe.boot.sysdefaults.company;
-		if (company) {
-			$(`
-				<div class="santu-app-sidebar-company">
-					<img class="santu-app-sidebar-company-badge" src="/assets/santu_hardware/images/logo.svg?v=${santu_asset_stamp()}" alt="">
-					<span>${frappe.utils.escape_html(company)}</span>
-				</div>
-			`)
-				.on("click", () => window.santu_open_shop_profile())
-				.appendTo($sidebar);
-		}
 
 		$sidebar.appendTo("body");
 		document.body.classList.add("santu-fixed-sidebar");

@@ -351,9 +351,9 @@ window.santu_delivery_challan_page = {
 		}
 
 		tab.items.forEach((row, idx) => {
-			const is_cpvc = santu_is_cpvc_item(row.item_code, row.item_name);
+			const row_hl = santu_item_row_class(row.item_code, row.item_name);
 			const $tr = $(`
-				<tr data-row="${row.id}" class="${is_cpvc ? "santu-cpvc-row" : ""}">
+				<tr data-row="${row.id}" class="${row_hl}">
 					<td class="santu-si2-col-idx">${idx + 1}</td>
 					<td class="santu-si2-col-item">
 						<div class="santu-si2-item-name">${frappe.utils.escape_html(row.item_name || row.item_code)}</div>
@@ -411,7 +411,7 @@ window.santu_delivery_challan_page = {
 		}
 		rows.forEach((item) => {
 			$(`
-				<div class="santu-si2-dd-row santu-si2-item-dd-row ${santu_cpvc_dd_class(item.item_code, item.item_name)}">
+				<div class="santu-si2-dd-row santu-si2-item-dd-row ${santu_item_dd_class(item.item_code, item.item_name)}">
 					<div>
 						<b>${frappe.utils.escape_html(item.item_name)}</b>
 						<span class="santu-si2-dd-sub">${frappe.utils.escape_html(item.item_code)}${item.brand ? " · " + frappe.utils.escape_html(item.brand) : ""}</span>

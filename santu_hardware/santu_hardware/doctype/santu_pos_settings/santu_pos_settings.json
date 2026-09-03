@@ -18,6 +18,11 @@
   "column_break_printer",
   "bill_header_section",
   "show_logo_on_bill",
+  "thermal_logo_image",
+  "thermal_logo_width",
+  "show_logo_on_a4_bill",
+  "a4_logo_image",
+  "a4_logo_width",
   "print_quality_section",
   "printer_densities",
   "invoice_library_section",
@@ -114,6 +119,35 @@
    "fieldname": "show_logo_on_bill",
    "fieldtype": "Check",
    "label": "Show Logo on Bill"
+  },
+  {
+   "fieldname": "thermal_logo_image",
+   "fieldtype": "Attach Image",
+   "label": "Thermal Logo Image"
+  },
+  {
+   "default": "65",
+   "fieldname": "thermal_logo_width",
+   "fieldtype": "Int",
+   "label": "Thermal Logo Width (mm)"
+  },
+  {
+   "default": "1",
+   "description": "On = the logo image prints at the top of the A4 bill. Off = the shop name prints as plain bold text instead.",
+   "fieldname": "show_logo_on_a4_bill",
+   "fieldtype": "Check",
+   "label": "Show Logo on A4 Bill"
+  },
+  {
+   "fieldname": "a4_logo_image",
+   "fieldtype": "Attach Image",
+   "label": "A4 Logo Image"
+  },
+  {
+   "default": "40",
+   "fieldname": "a4_logo_width",
+   "fieldtype": "Int",
+   "label": "A4 Logo Width (%)"
   },
   {
    "fieldname": "print_quality_section",

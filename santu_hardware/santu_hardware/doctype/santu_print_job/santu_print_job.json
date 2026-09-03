@@ -46,7 +46,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Status",
-   "options": "Queued\nPrinted\nConfirmed\nNot Printed\nFailed",
+   "options": "Queued\nPrinted\nConfirmed\nNot Printed\nFailed\nCancelled",
    "reqd": 1
   },
   {

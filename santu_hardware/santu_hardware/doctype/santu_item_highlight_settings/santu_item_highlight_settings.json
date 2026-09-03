@@ -1,0 +1,42 @@
+{
+ "actions": [],
+ "creation": "2026-09-03 00:00:00.000000",
+ "doctype": "DocType",
+ "document_type": "Setup",
+ "engine": "InnoDB",
+ "field_order": [
+  "rules"
+ ],
+ "fields": [
+  {
+   "description": "Item Name/Code me text milte hi us item ki row is rang se rangeen ho jaati hai — Items list, billing, sale/purchase, reports, sab jagah ek jaisa. Pehla milne wala rule jeetta hai, upar se neeche crama me check hota hai.",
+   "fieldname": "rules",
+   "fieldtype": "Table",
+   "label": "Highlight Rules",
+   "options": "Santu Item Highlight Rule"
+  }
+ ],
+ "icon": "fa fa-paint-brush",
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-09-03 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Santu Hardware",
+ "name": "Santu Item Highlight Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "ASC",
+ "states": []
+}

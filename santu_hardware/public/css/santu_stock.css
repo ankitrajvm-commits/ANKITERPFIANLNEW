@@ -234,6 +234,17 @@
 .santu-stock-card-warn .santu-stock-card-value {
 	color: #d1671f;
 }
+/* Clickable straight into the filtered list (2026-09-03 direct request:
+   "only low stock ko click karna pad raha hai, running low click karte hi
+   dikhna chahiye") */
+.santu-stock-card-warn {
+	cursor: pointer;
+	transition: box-shadow 0.12s, border-color 0.12s;
+}
+.santu-stock-card-warn:hover {
+	border-color: #f0b688;
+	box-shadow: 0 2px 8px rgba(209, 103, 31, 0.15);
+}
 
 /* ---------- table ---------- */
 .santu-stock-table-wrap {
@@ -497,6 +508,21 @@
 .santu-stock-qty-low {
 	color: #d1671f;
 	font-weight: 600;
+}
+/* 1 ya 0 bacha hai — "low" se ek pad zyada urgent (2026-09-03 direct
+   request: "1 ya 0 ho gya to use critical mark dikhao"). */
+.santu-stock-critical-badge {
+	display: inline-block;
+	margin-left: 6px;
+	padding: 1px 6px;
+	border-radius: 4px;
+	background: #fee2e2;
+	color: #b91c1c;
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+	vertical-align: middle;
 }
 
 .santu-stock-qty-edit {

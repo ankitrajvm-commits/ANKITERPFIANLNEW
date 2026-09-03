@@ -579,6 +579,18 @@
 
 /* Add Party dialog — AddEditPartyDialog (max-width 352px, radius 8px) */
 .santu-parties-add-dialog .modal-dialog { max-width: 352px; }
+/* GSTIN verify result (2026-09-03 direct request: "gstin ko verify karne
+   ka option laa do") */
+.santu-gstin-status {
+	margin-top: -6px;
+	margin-bottom: 10px;
+	padding: 6px 10px;
+	border-radius: 6px;
+	font-size: 12.5px;
+	line-height: 1.4;
+}
+.santu-gstin-status.is-ok { background: #ecfdf5; color: #047857; }
+.santu-gstin-status.is-bad { background: #fef2f2; color: #b91c1c; }
 .santu-parties-add-dialog .modal-content { border-radius: 12px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); }
 .santu-parties-add-dialog .modal-header {
 	border-bottom: 1px solid #e2e8f0;

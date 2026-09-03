@@ -700,9 +700,9 @@ window.santu_add_item_page = {
 				frappe.dom.unfreeze();
 				this.saving = false;
 				const bits = [`${r.item_name} saved`];
-				if (r.opening_qty) bits.push(`Opening Stock: ${r.opening_qty} ${r.uom}`);
-				if (r.min_stock) bits.push(`Minimum Stock: ${r.min_stock} ${r.uom}`);
-				if (r.current_stock) bits.push(`Current Stock: ${r.current_stock} ${r.uom}`);
+				if (r.opening_qty) bits.push(`Opening Stock: ${r.opening_qty} ${santu_uom.abbr(r.uom)}`);
+				if (r.min_stock) bits.push(`Minimum Stock: ${r.min_stock} ${santu_uom.abbr(r.uom)}`);
+				if (r.current_stock) bits.push(`Current Stock: ${r.current_stock} ${santu_uom.abbr(r.uom)}`);
 				if (r.batch_no) bits.push(`Batch: ${r.batch_no}`);
 				frappe.show_alert({ message: bits.join(" · "), indicator: "green" }, 7);
 				if (and_new) this.reset();

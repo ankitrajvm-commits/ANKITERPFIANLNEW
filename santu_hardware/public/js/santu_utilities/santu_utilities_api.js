@@ -2,10 +2,17 @@
 frappe.provide("santu_utilities");
 
 const UTILITIES_API = "santu_hardware.santu_hardware.utilities_api";
+const ITEM_HIGHLIGHT_API = "santu_hardware.santu_hardware.item_highlight_api";
 
 santu_utilities.api = {
 	lookupBarcode(barcode) {
 		return frappe.xcall(`${UTILITIES_API}.lookup_barcode_item`, { barcode });
+	},
+	fetchItemHighlightRules() {
+		return frappe.xcall(`${ITEM_HIGHLIGHT_API}.fetch_item_highlight_rules`);
+	},
+	saveItemHighlightRules(rules) {
+		return frappe.xcall(`${ITEM_HIGHLIGHT_API}.save_item_highlight_rules`, { rules });
 	},
 	parseItemsFile(file_url) {
 		return frappe.xcall(`${UTILITIES_API}.parse_items_import_file`, { file_url });
@@ -84,5 +91,32 @@ santu_utilities.api = {
 	},
 	createBackup() {
 		return frappe.xcall("santu_hardware.santu_hardware.sync_backup_api.create_manual_backup", { include_files: true });
+	},
+	getVoiceModel() {
+		return frappe.xcall("santu_hardware.santu_hardware.voice_model_api.get_voice_model");
+	},
+	saveVoiceSettings(args) {
+		return frappe.xcall("santu_hardware.santu_hardware.voice_model_api.save_voice_settings", args);
+	},
+	saveVoiceRule(args) {
+		return frappe.xcall("santu_hardware.santu_hardware.voice_model_api.save_voice_rule", args);
+	},
+	deleteVoiceRule(rule_id) {
+		return frappe.xcall("santu_hardware.santu_hardware.voice_model_api.delete_voice_rule", { rule_id });
+	},
+	autoTrainCatalog() {
+		return frappe.xcall("santu_hardware.santu_hardware.voice_model_api.auto_train_from_catalog");
+	},
+	testVoiceQuery(query) {
+		return frappe.xcall("santu_hardware.santu_hardware.voice_model_api.test_voice_query", { query });
+	},
+	getCatalogItemsForTraining(args = {}) {
+		return frappe.xcall("santu_hardware.santu_hardware.voice_model_api.get_catalog_items_for_training", args);
+	},
+	trainItemVoiceAlias(item_code, phrase, audio_base64 = null, audio_format = "webm") {
+		return frappe.xcall("santu_hardware.santu_hardware.voice_model_api.train_item_voice_alias", { item_code, phrase, audio_base64, audio_format });
+	},
+	getVoiceDatasetStats() {
+		return frappe.xcall("santu_hardware.santu_hardware.voice_model_api.get_voice_dataset_stats");
 	},
 };

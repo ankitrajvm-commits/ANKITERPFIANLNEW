@@ -313,6 +313,8 @@ def record_print_attempt(job_name: str, method: str, ok=0, error=None):
 	for attempt in range(3):
 		try:
 			job = frappe.get_doc("Santu Print Job", job_name)
+			if attempt > 0:
+				job.reload()
 			job.attempts = cint(job.attempts) + 1
 			job.attempt_log = _append_attempt(job, f"{method}: {'ok' if ok else (error or 'failed')}")
 			if ok:
@@ -375,6 +377,8 @@ def confirm_print_job(job_name: str, printed=1):
 	for attempt in range(3):
 		try:
 			job = frappe.get_doc("Santu Print Job", job_name)
+			if attempt > 0:
+				job.reload()
 			job.status = "Confirmed" if cint(printed) else "Not Printed"
 			job.confirmed_by_user = frappe.session.user
 			job.attempt_log = _append_attempt(job, "operator says " + ("printed" if cint(printed) else "NOT printed"))

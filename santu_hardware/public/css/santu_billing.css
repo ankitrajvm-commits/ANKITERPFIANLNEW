@@ -110,7 +110,7 @@
 	height: 52px;
 	border: 2px solid #3b82f6;
 	border-radius: 8px;
-	padding: 0 44px 0 16px;
+	padding: 0 44px 0 44px;
 	font-size: 16px;
 	background: #ffffff;
 	box-sizing: border-box;
@@ -118,7 +118,17 @@
 	transition: all 0.2s;
 }
 .santu-bill-search:focus { outline: none; border-color: #2563eb; box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.1); }
-.santu-bill-search-icon { position: absolute; right: 16px; top: 15px; opacity: 0.6; color: #3b82f6; }
+.santu-bill-search-icon {
+	position: absolute;
+	left: 16px;
+	top: 50%;
+	transform: translateY(-50%);
+	opacity: 0.6;
+	color: #3b82f6;
+	font-size: 18px;
+	pointer-events: none;
+	z-index: 4;
+}
 .santu-bill-dropdown,
 .santu-bill-cust-dropdown {
 	position: absolute;
@@ -130,10 +140,26 @@
 	border-radius: 8px;
 	box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 	z-index: 60;
+	/* Starting point only. On the item search this is replaced at open time
+	   by santu_sale_invoice.utils.size_dropdown(), which measures the empty
+	   area under the search box so the list runs down to the bottom of the
+	   item grid instead of stopping after four or five names (2026-08-30).
+	   It stops there on purpose -- the F-key bar below stays uncovered. */
 	max-height: 320px;
 	overflow-y: auto;
 }
 .santu-bill-cust-dropdown { top: 48px; }
+/* "Add Customer"/"Add Supplier" form, rendered right inside this same
+   dropdown instead of a full-screen popup (2026-09-03: "add customer ke
+   liye new window kyun khol rahe ho, same dialog me hi sab kuch ho jaye,
+   niche kaafi space hai"). Reuses .santu-bill-modal-grid/-field as-is —
+   those were never actually tied to being inside a modal. */
+.santu-bill-addcust-inline { padding: 16px; }
+.santu-bill-addcust-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+}
 .santu-bill-dd-row {
 	display: flex;
 	justify-content: space-between;
@@ -224,6 +250,14 @@
 	position: relative;
 }
 .santu-bill-gridscroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.santu-bill-grid tr.santu-bill-row-new {
+	animation: santu-bill-new-row-flash 1.8s ease-out;
+}
+@keyframes santu-bill-new-row-flash {
+	0% { background-color: #dbeafe; }
+	35% { background-color: #eff6ff; }
+	100% { background-color: transparent; }
+}
 .santu-bill-grid { width: 100%; border-collapse: collapse; font-size: 14px; }
 .santu-bill-grid thead th {
 	position: sticky;
@@ -253,10 +287,42 @@
 .santu-bill-grid tbody tr { cursor: pointer; transition: background 0.15s; }
 .santu-bill-grid tbody tr:hover { background: #f8fafc; }
 .santu-bill-grid tbody tr.is-selected { background: #eff6ff; }
-/* CPVC rows ka pila rang santu_cpvc_highlight.css me hai — sab screens ek saath */
+/* CPVC ka pila aur UPVC ka gulaabi rang santu_item_highlight.css me hai — sab screens ek saath */
 .c-idx { width: 46px; }
-.c-code { width: 130px; }
-.c-qty, .c-unit { width: 90px; }
+/* Hidden for now (2026-09-03 direct request: "item code ka concept abhi k
+   liye hide kr de, gst wagerah nh kr rahe, kafi space le raha hai") — this
+   file loads globally, so one rule here hides the ITEM CODE column
+   everywhere it appears: Billing, Estimate, Sales Return, Purchase Return.
+   Data is untouched, nothing else reads .c-code -- flip this back to
+   `width: 130px;` whenever GST/item-code work starts again. */
+.c-code { display: none; }
+.c-qty { width: 90px; }
+/* table-layout is auto (item name needs to stay flexible), so a plain
+   `width` on <th>/<td> is only ever a hint -- the browser shrank it back
+   to fit the tiny <select>'s own intrinsic size, clipping "Pcs" down to
+   one letter under the dropdown arrow (2026-09-03 bug report: "unit ka ui
+   bekar h"). white-space: nowrap forces the browser to actually keep the
+   column wide enough instead of ignoring the width. */
+.c-unit { width: 110px; white-space: nowrap; }
+/* Inline unit dropdown, right in the row (2026-09-03 direct request:
+   "item ki unit me dropdown daal do, sare jagah") */
+.santu-bill-unit-select {
+	width: 100%;
+	min-width: 76px;
+	box-sizing: border-box;
+	border: 1px solid transparent;
+	background: transparent;
+	border-radius: 5px;
+	padding: 3px 18px 3px 4px;
+	font-size: 13px;
+	color: inherit;
+	cursor: pointer;
+}
+.santu-bill-unit-select:hover, .santu-bill-unit-select:focus {
+	border-color: #d1d5db;
+	background: #fff;
+	outline: none;
+}
 .c-rate, .c-disc, .c-tax, .c-total { width: 130px; }
 .c-del { width: 52px; text-align: center; }
 .santu-bill-del-btn {
@@ -302,6 +368,17 @@
 }
 
 .santu-bill-custwrap { position: relative; }
+/* Phone/address line under the picked customer (2026-09-03 direct request:
+   "customer select karne ke baad, naam ke neeche village/phone dikhna
+   chahiye, ye gayab ho gaya") */
+.santu-bill-cust-info {
+	font-size: 12.5px;
+	color: #6b7280;
+	padding: 0 2px;
+	margin-top: -2px;
+	min-height: 16px;
+}
+.santu-bill-cust-info-empty { color: #9ca3af; font-style: italic; }
 .santu-bill-totalcard {
 	background: #ffffff;
 	border: 1px solid #e2e8f0;
@@ -383,34 +460,31 @@
 	margin-right: 12px;
 }
 
-/* ---- action bar ---- */
-.santu-bill-actions {
+/* ---- action bar ----
+   .santu-bill-actions (the old full-width row under BOTH columns) is gone:
+   it used to be half F-key grid, half save column, but once the F-keys moved
+   into the More menu it held only the right-pinned 340px column and rendered
+   its entire left width as a bare grey band under the item card (2026-09-03).
+   The save column now sits at the bottom of .santu-bill-right, which is the
+   same width and already aligned with it. */
+.santu-bill-savecol {
+	flex: 0 0 auto;
 	display: flex;
+	flex-direction: column;
 	gap: 12px;
-	padding: 12px 16px;
-	flex-shrink: 0;
-	background: #f1f5f9;
+	/* Pinned to the bottom of the right column. Billing has a
+	   .santu-bill-spacer that already pushes it there (flex-grow eats the
+	   free space, so this margin resolves to 0 and changes nothing);
+	   Estimate / Sales Return / Purchase Return have no spacer, and without
+	   this the buttons would float in the middle of the panel. */
+	margin-top: auto;
+	padding-top: 12px;
 }
-.santu-bill-fkeys {
-	flex: 1 1 auto;
-	display: grid;
-	grid-template-columns: repeat(4, 1fr);
-	gap: 12px;
+.santu-bill-more-sep {
+	height: 1px;
+	background: #e5e7eb;
+	margin: 6px 4px;
 }
-.santu-bill-fkeys button {
-	background: #eff6ff;
-	border: 1px solid #bfdbfe;
-	border-radius: 8px;
-	padding: 14px 12px;
-	font-size: 14px;
-	font-weight: 600;
-	color: #1d4ed8;
-	cursor: pointer;
-	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-	transition: all 0.2s;
-}
-.santu-bill-fkeys button:hover { background: #dbeafe; border-color: #93c5fd; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
-.santu-bill-savecol { flex: 0 0 340px; display: flex; flex-direction: column; gap: 12px; }
 .santu-bill-save {
 	background: #10b981;
 	border: 1px solid #059669;
@@ -484,9 +558,30 @@
 }
 
 @media (max-width: 1200px) {
-	.santu-bill-main { flex-direction: column; }
+	/* Stacked layout (items above, customer/payment/save below) needs real
+	   page height, not the fixed `calc(100vh - 56px)` row layout uses --
+	   that fixed height was forcing .santu-bill-gridscroll (the item rows)
+	   down to 0px so the customer/payment/Save section could fit, which
+	   made the item list disappear entirely on a narrow screen (2026-09-03
+	   bug report + screenshot: "isko pura niche tak laao" -- the whole
+	   screen, items included, needs to actually be reachable by scrolling
+	   the page, not squeezed to fit one viewport). */
+	/* `min-height`, not a fixed `height`: a fixed height forces the two
+	   stacked columns to always add up to exactly that box, so a tall
+	   customer/payment column squeezed the item grid down to 0px
+	   (2026-09-03 bug report). `min-height` sets a FLOOR instead -- the
+	   item grid flex-grows to fill it when the bill is short (no dead grey
+	   area below a one-item bill, 2026-09-03 follow-up report: "table ko
+	   remaining screen height fill karni chahiye"), and the page is simply
+	   free to grow taller and scroll when a long item list genuinely needs
+	   more room than one screen, instead of clamping rows out of
+	   existence. */
+	.santu-bill { height: auto; min-height: calc(100vh - 56px); overflow: visible; }
+	.santu-bill-main { flex-direction: column; height: auto; }
+	.santu-bill-left { flex: 1 1 auto; }
+	.santu-bill-gridwrap { flex: 1 1 auto; height: auto; }
+	.santu-bill-gridscroll { flex: 1 1 auto; }
 	.santu-bill-right, .santu-bill-savecol { flex-basis: auto; }
-	.santu-bill-fkeys { grid-template-columns: repeat(2, 1fr); }
 }
 
 /* ---- customer dropdown: Name / Phone header + Add Customer ---- */
@@ -501,7 +596,7 @@
 }
 .santu-bill-cust-row {
 	display: flex;
-	justify-content: space-between;
+	align-items: center;
 	gap: 12px;
 	padding: 9px 14px;
 	font-size: 13px;
@@ -510,7 +605,20 @@
 	border-bottom: 1px solid #f5f7fa;
 }
 .santu-bill-cust-row:hover { background: #f3f7ff; }
+.santu-bill-cust-row > span:first-child { flex: 1; min-width: 0; }
 .santu-bill-cust-phone { color: #71748e; }
+/* 2026-09-03 direct request: "yaha ek pencil dal do, customer data edit kr
+   sakoon" */
+.santu-bill-cust-edit {
+	border: none;
+	background: none;
+	cursor: pointer;
+	font-size: 13px;
+	padding: 2px 4px;
+	border-radius: 4px;
+	opacity: 0.55;
+}
+.santu-bill-cust-edit:hover { opacity: 1; background: #e5edff; }
 .santu-bill-addcust {
 	display: block;
 	width: calc(100% - 20px);
@@ -909,6 +1017,25 @@
 	background: #ffefc9;
 }
 
+/* Dismiss (×) — pushed to the far right so it never sits next to "Dobara
+   chhapo" as a second look-alike button. */
+.santu-bill-print-alert-close {
+	margin-left: auto;
+	border: none;
+	background: transparent;
+	color: #a07a1e;
+	font-size: 20px;
+	line-height: 1;
+	padding: 0 4px;
+	cursor: pointer;
+	border-radius: 5px;
+}
+
+.santu-bill-print-alert-close:hover {
+	background: #ffefc9;
+	color: #7a5600;
+}
+
 /* The "More" menu next to Save. Opens UPWARD: Save sits at the bottom of the
    screen, so a downward menu would fall off the edge. */
 .santu-bill-morewrap {
@@ -936,6 +1063,8 @@
 	bottom: calc(100% + 6px);
 	right: 0;
 	min-width: 230px;
+	max-height: 70vh;
+	overflow-y: auto;
 	z-index: 40;
 	padding: 5px;
 	border: 1px solid #e1e3ec;

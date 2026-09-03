@@ -453,7 +453,7 @@ santu_wa_connect.openChat = async function (chat) {
 	$panel.find(".wa-attach-btn").on("click", () => santu_wa_connect.showAttachMenu(chat));
 };
 
-santu_wa_connect.previewDocument = function (url, title, download_url) {
+santu_wa_connect.previewDocument = function (url, title, download_url, ref_doctype, ref_name) {
 	const d = new frappe.ui.Dialog({
 		title: `<div style="display:flex;align-items:center;gap:8px;"><span style="background:#fee2e2;color:#dc2626;font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;">PDF</span> <b>${frappe.utils.escape_html(title || "Document Preview")}</b></div>`,
 		size: "large",
@@ -481,10 +481,25 @@ santu_wa_connect.previewDocument = function (url, title, download_url) {
 	`);
 
 	$wrap.find(".wa-preview-print-btn").on("click", () => {
-		const iframe = document.getElementById("santu_wa_doc_iframe");
-		if (iframe && iframe.contentWindow) {
-			iframe.contentWindow.focus();
-			iframe.contentWindow.print();
+		if (!ref_doctype || !ref_name) {
+			try {
+				const u = new URL(url, window.location.origin);
+				ref_doctype = u.searchParams.get("doctype") || ref_doctype;
+				ref_name = u.searchParams.get("name") || ref_name;
+			} catch(e) {}
+		}
+
+		if (ref_doctype && ref_name && typeof window.santu_print_thermal_bill === "function") {
+			window.santu_print_thermal_bill(ref_doctype, ref_name);
+		} else if (ref_doctype && ref_name && typeof santu_print_thermal_bill === "function") {
+			santu_print_thermal_bill(ref_doctype, ref_name);
+		} else {
+			frappe.show_alert({message: "System could not find thermal print function. Falling back to A4.", indicator: "orange"});
+			const iframe = document.getElementById("santu_wa_doc_iframe");
+			if (iframe && iframe.contentWindow) {
+				iframe.contentWindow.focus();
+				iframe.contentWindow.print();
+			}
 		}
 	});
 
@@ -543,7 +558,7 @@ santu_wa_connect.loadMessages = async function (phone) {
 			const dl_url = `/api/method/frappe.utils.print_format.download_pdf?doctype=${encodeURIComponent(m.reference_doctype)}&name=${encodeURIComponent(m.reference_name)}&no_letterhead=0`;
 			const card_title = `${m.reference_name} (${doctype_label})`;
 			attachment_html = `
-				<div class="santu-wa-pdf-card" data-url="${preview_url}" data-title="${frappe.utils.escape_html(card_title)}" data-download="${dl_url}">
+				<div class="santu-wa-pdf-card" data-url="${preview_url}" data-title="${frappe.utils.escape_html(card_title)}" data-download="${dl_url}" data-doctype="${m.reference_doctype}" data-docname="${m.reference_name}">
 					<div class="santu-wa-pdf-card-icon">PDF</div>
 					<div class="santu-wa-pdf-card-details">
 						<div class="santu-wa-pdf-card-title">${frappe.utils.escape_html(card_title)}</div>
@@ -574,8 +589,10 @@ santu_wa_connect.loadMessages = async function (phone) {
 		const url = $(this).data("url");
 		const title = $(this).data("title");
 		const download_url = $(this).data("download");
+		const ref_doctype = $(this).data("doctype");
+		const ref_name = $(this).data("docname");
 		if (url) {
-			santu_wa_connect.previewDocument(url, title, download_url);
+			santu_wa_connect.previewDocument(url, title, download_url, ref_doctype, ref_name);
 		}
 	});
 

@@ -19,8 +19,6 @@ ALLOWED_WIDGETS = [
 	"purchases",
 	"expenses",
 	"stock_value",
-	"cash_in_hand",
-	"bank_balance",
 	"low_stock",
 	"whatsapp",
 ]
@@ -32,35 +30,6 @@ def _company():
 
 def _can_read(doctype: str) -> bool:
 	return bool(frappe.has_permission(doctype, "read"))
-
-
-def _account_balance(account_type: str) -> float:
-	if not _can_read("Account"):
-		return 0.0
-	company = _company()
-	filters = {"account_type": account_type, "is_group": 0, "disabled": 0}
-	if company:
-		filters["company"] = company
-	accounts = frappe.get_all("Account", filters=filters, pluck="name")
-	if not accounts:
-		return 0.0
-	try:
-		from erpnext.accounts.utils import get_balance_on
-	except Exception:
-		row = frappe.db.sql(
-			"""
-			select sum(debit) - sum(credit)
-			from `tabGL Entry`
-			where is_cancelled = 0 and account in %(accounts)s
-			""",
-			{"accounts": accounts},
-		)
-		return flt(row[0][0] if row else 0)
-
-	total = 0.0
-	for account in accounts:
-		total += flt(get_balance_on(account, company=company))
-	return total
 
 
 def _period_totals(period: str = "This Month", from_date: str = None, to_date: str = None):
@@ -135,8 +104,6 @@ def get_widget_metrics(period: str = "This Month", from_date: str = None, to_dat
 		"purchases": period_totals["purchases"],
 		"expenses": period_totals["expenses"],
 		"stock_value": stock_value,
-		"cash_in_hand": _account_balance("Cash"),
-		"bank_balance": _account_balance("Bank"),
 		"whatsapp_connected": whatsapp_connected,
 		"whatsapp_label": whatsapp_label,
 		"period_from": period_totals["from_date"],
@@ -171,22 +138,6 @@ def widget_catalog(metrics: dict, low_stock_count: int = 0, period: str = "This 
 			"period": "As of Now",
 			"route": "santu-reports",
 			"report_id": "stock_summary_item_category",
-		},
-		{
-			"key": "cash_in_hand",
-			"title": "Cash In Hand",
-			"kind": "currency",
-			"value": metrics.get("cash_in_hand") or 0,
-			"period": "As of Now",
-			"route": "santu-cash-bank",
-		},
-		{
-			"key": "bank_balance",
-			"title": "Total Bank Balance",
-			"kind": "currency",
-			"value": metrics.get("bank_balance") or 0,
-			"period": "As of Now",
-			"route": "santu-cash-bank",
 		},
 		{
 			"key": "low_stock",

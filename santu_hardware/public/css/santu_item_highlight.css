@@ -1,58 +1,31 @@
-/* CPVC items ko har jagah halke pile me dikhao (2026-08-27 direct request:
-   "cpvc wale sare item ko halka sa pila me kr do, taki wo alag sa show ho in
-   items, sale, and all").
+/* Item family ke rang — ab ek colour wheel se koi bhi hex chuna ja sakta hai
+   (2026-09-03 follow-up: "ye wali colour schema... item colour yaha se
+   choose hoga, jo man karega mai wo choose karunga, light theme preferred
+   qk agar dark hoga to item nahi dikhega list me"). Kyunki rang ab fixed
+   palette se nahi, kisi bhi hex se aata hai, is file me koi fixed rang-class
+   nahi hai — santu_item_highlight.js hi runtime par har rang ke liye ek
+   halka (light) tint compute karke `<style>` tag me class inject karta hai,
+   taaki text hamesha padha jaa sake chahe original colour kitna bhi dark ho.
 
-   Ek hi jagah rakha hai jaan-boojh kar — CPVC ka rang har item-list screen pe
-   ek jaisa rehna chahiye, aur har screen ki apni CSS me copy karne se woh
-   dheere-dheere alag ho jaata.
+   Yahan sirf do cheezein hain: print ke liye rang band karna (sab
+   santu-hl-* classes ke liye ek saath), aur woh rules jo santu_item_highlight.js
+   khud is file me nahi likh sakta (kyunki wo sirf ek <style> tag banata hai,
+   poori file nahi). */
 
-   Class dobara likhi gayi hai (`.santu-cpvc-row.santu-cpvc-row`) taaki
-   specificity in screens ke apne row rules se upar rahe — jaise
-   `.santu-stock-table tbody tr:hover` aur `.santu-stock-row-low`, jo warna
-   is rang ko dhak dete. */
-tr.santu-cpvc-row.santu-cpvc-row {
-	background: #fdf6d8;
-}
-
-tr.santu-cpvc-row.santu-cpvc-row:hover {
-	background: #faf0bd;
-}
-
-/* Billing/Estimate/Return grids me chuni hui row alag dikhti hai — CPVC ho
-   to bhi wo "chuni hui" wali pehchaan bani rehni chahiye, bas pile shade me. */
-tr.santu-cpvc-row.santu-cpvc-row.is-selected {
-	background: #f5e9a8;
-}
-
-/* Search karte waqt jo suggestion list girti hai, usme bhi (2026-08-27,
-   Ankit: "searching krte waqt cpvc yellow nh aa raha, usme v dikhna
-   chahiye"). Yahan row <tr> nahi, <div> hoti hai — isliye alag rule.
-   Class dobara likhi hai taaki in dropdowns ke apne :hover rules
-   (.santu-bill-dd-row:hover, .santu-si2-dd-row-main:hover) se upar rahe. */
-.santu-cpvc-dd-row.santu-cpvc-dd-row {
-	background: #fdf6d8;
-}
-
-.santu-cpvc-dd-row.santu-cpvc-dd-row:hover,
-.santu-cpvc-dd-row.santu-cpvc-dd-row .santu-si2-dd-row-main:hover {
-	background: #faf0bd;
-}
-
-/* Chhapte waqt pila bilkul nahi (2026-08-27, Ankit: "thermal wale print jo v
+/* Chhapte waqt koi rang nahi (2026-08-27, Ankit: "thermal wale print jo v
    hoga usme pila nh aayega naa? nh to pura black dikhne lagega cpvc").
 
-   Thermal printer sirf kaala-safed chhapta hai — pila background uske liye ek
-   kaala/dhusar block ban jaata hai aur CPVC ki poori line padhi hi nahi
+   Thermal printer sirf kaala-safed chhapta hai — rangeen background uske liye
+   ek kaala/dhusar block ban jaata hai aur us item ki poori line padhi hi nahi
    jaati. Grahak ka asli bill to alag print-format se banta hai (jisme ye
    class jaati hi nahi), par kuch screens — Reports, Parties, Sale/Purchase
-   transactions — Desk ka page hi seedha `window.print()` karti hain, aur
-   Reports ke andar Stock Summary jaisi screens embed hoti hain. Isliye rang
-   yahin, ek hi jagah, print ke liye band kar diya — har ab wale aur aage
-   banne wale print raste ke liye. */
+   transactions — Desk ka page hi seedha `window.print()` karti hain. Isliye
+   rang yahin, ek hi jagah, print ke liye band kar diya — har rang ke liye,
+   chahe wo kisi bhi hex se bana ho. */
 @media print {
-	tr.santu-cpvc-row.santu-cpvc-row,
-	tr.santu-cpvc-row.santu-cpvc-row:hover,
-	tr.santu-cpvc-row.santu-cpvc-row.is-selected {
+	tr[class*="santu-hl-"],
+	tr[class*="santu-hl-"]:hover,
+	tr[class*="santu-hl-"].is-selected {
 		background: transparent !important;
 	}
 }

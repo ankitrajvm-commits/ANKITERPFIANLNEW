@@ -252,6 +252,7 @@ app_include_js = _LiveAssets([
 	f"/assets/santu_hardware/js/pos_privacy_mode.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/pos_edit_customer_name.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/pos_numpad_fast_type_fix.js?v={SANTU_ASSET_VERSION}",
+	f"/assets/santu_hardware/js/santu_voice_search.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/santu_pwa.js?v={SANTU_ASSET_VERSION}",
 ])
 
@@ -331,6 +332,11 @@ doctype_js = {
 # ------------
 
 after_install = "santu_hardware.setup.install.after_install"
+
+# Item-name colour rules (Utilities > Item Highlight Rules) need to be on
+# every Desk page before its first item list renders — extend_bootinfo puts
+# them in frappe.boot synchronously at page load, no extra round trip.
+extend_bootinfo = "santu_hardware.santu_hardware.item_highlight_api.extend_bootinfo"
 
 # Frappe re-seeds Navbar Settings' dropdown rows on upgrade, which would put
 # its own Documentation / Frappe School / Support / Apps entries back in front

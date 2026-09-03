@@ -139,13 +139,109 @@ santu_party_inline.select_party = function (ctx, name, opts = {}) {
 	});
 };
 
+// GST/address/shipping fields expand INLINE in the same panel now, not in a
+// popup (2026-09-03 direct request: "add customer ke liye new window kyun
+// khol rahe ho, same dialog me hi sab kuch ho jaye, niche kaafi space hai") —
+// Name/Phone/Address were already inline fields right above this; only
+// GSTIN/GST Type/State/Email/Shipping were dialog-only, so this panel adds
+// just those, then saves through the same create_full API the old dialog
+// used. Kept local to santu_party_inline (Billing/Estimate/Sales Return/
+// Purchase Return) — Sales Order, Purchase Order, Delivery Challan and the
+// Parties page each open their own separate "Add Party" dialog directly and
+// are unaffected by this.
 santu_party_inline.open_advanced_dialog = function (ctx, name) {
-	const { $root, api } = ctx;
-	const { phone } = santu_party_inline.get_fields($root);
-	api.open_dialog({
-		name: name || santu_party_inline.get_fields($root).name,
-		phone,
-		on_created: (party_name) => santu_party_inline.select_party(ctx, party_name),
+	const { $root, cfg } = ctx;
+	if ($root.find(".santu-si2-adv-inline").length) return;
+	$root.find(".santu-si2-customer-dropdown").hide().empty();
+	if (name) $root.find(".santu-si2-customer-search").val(name);
+
+	const states = cfg.partyType === "Customer" ? santu_sale_invoice.INDIAN_STATES : santu_purchase_invoice.INDIAN_STATES;
+	const $panel = $(`
+		<div class="santu-si2-adv-inline">
+			<div class="santu-party-gst-address">
+				<div class="santu-party-col santu-party-col-gst">
+					<div class="frappe-control">
+						<label class="control-label">${__("GSTIN")}</label>
+						<input type="text" class="form-control santu-si2-adv-gstin">
+					</div>
+					<div class="frappe-control">
+						<label class="control-label">${__("GST Type")}</label>
+						<select class="form-control santu-si2-adv-gst-type">
+							<option value="Unregistered">Unregistered</option>
+							<option value="Registered Regular">Registered Regular</option>
+							<option value="Registered Composition">Registered Composition</option>
+							<option value="SEZ">SEZ</option>
+							<option value="Overseas">Overseas</option>
+							<option value="Deemed Export">Deemed Export</option>
+							<option value="UIN Holders">UIN Holders</option>
+							<option value="Consumer">Consumer</option>
+						</select>
+					</div>
+					<div class="frappe-control">
+						<label class="control-label">${__("State")}</label>
+						<select class="form-control santu-si2-adv-state">
+							${states.map((s) => `<option value="${frappe.utils.escape_html(s)}" ${s === "Bihar" ? "selected" : ""}>${frappe.utils.escape_html(s)}</option>`).join("")}
+						</select>
+					</div>
+					<div class="frappe-control">
+						<label class="control-label">${__("Email ID")}</label>
+						<input type="text" class="form-control santu-si2-adv-email">
+					</div>
+				</div>
+				<div class="santu-party-col santu-party-col-shipping">
+					<label class="control-label">${__("Shipping Address")}</label>
+					<a href="#" class="santu-party-enable-shipping">+ ${__("Enable Shipping Address")}</a>
+					<div class="santu-party-shipping-block" style="display:none;">
+						<textarea class="form-control santu-si2-adv-shipping" placeholder="${__("Shipping Address")}" rows="3"></textarea>
+					</div>
+				</div>
+			</div>
+			<div class="santu-si2-adv-actions">
+				<button type="button" class="btn btn-xs btn-default santu-si2-adv-cancel">${__("Cancel")}</button>
+				<button type="button" class="btn btn-xs btn-primary santu-si2-adv-save">${__("Save Party")}</button>
+			</div>
+		</div>
+	`);
+	$panel.insertAfter($root.find(".santu-si2-party-advanced"));
+
+	let shipping_open = false;
+	$panel.find(".santu-party-enable-shipping").on("click", (e) => {
+		e.preventDefault();
+		shipping_open = !shipping_open;
+		$panel.find(".santu-party-shipping-block").toggle(shipping_open);
+		$(e.currentTarget).text(shipping_open ? "− " + __("Disable Shipping Address") : "+ " + __("Enable Shipping Address"));
+	});
+	$panel.find(".santu-si2-adv-cancel").on("click", () => $panel.remove());
+	$panel.find(".santu-si2-adv-save").on("click", () => {
+		const { name: party_name, phone, address } = santu_party_inline.get_fields($root);
+		if (!party_name) {
+			frappe.msgprint(__("Party Name is required."));
+			return;
+		}
+		if (Boolean(phone) !== Boolean(address)) {
+			frappe.msgprint(__("Phone number aur address dono do, ya dono chhod do — sirf ek nahi."));
+			return;
+		}
+		const payload = {
+			customer_name: party_name,
+			gstin: $panel.find(".santu-si2-adv-gstin").val(),
+			phone,
+			gst_category: $panel.find(".santu-si2-adv-gst-type").val(),
+			state: $panel.find(".santu-si2-adv-state").val(),
+			email: $panel.find(".santu-si2-adv-email").val(),
+			address,
+		};
+		if (shipping_open) payload.shipping_address = $panel.find(".santu-si2-adv-shipping").val();
+
+		const $btn = $panel.find(".santu-si2-adv-save").prop("disabled", true).text(__("Saving…"));
+		ctx.api
+			.create_full(payload)
+			.then((created_name) => {
+				frappe.show_alert({ message: __("Party added"), indicator: "green" });
+				$panel.remove();
+				santu_party_inline.select_party(ctx, created_name);
+			})
+			.catch(() => $btn.prop("disabled", false).text(__("Save Party")));
 	});
 };
 

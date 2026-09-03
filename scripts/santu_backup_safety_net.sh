@@ -1,14 +1,10 @@
 #!/bin/bash
-# Safety-net backup, run by launchd — not by Frappe's scheduler.
+# Hourly local backup safety-net, run by macOS launchd.
 #
-# The scheduler is the normal path, but a scheduler that has quietly stopped
-# looks exactly like one that is running: no error, no backup, nobody notices
-# for weeks. launchd runs this from outside the bench, so the shop keeps
-# getting a nightly backup even if the scheduler, the workers or the web
-# process are all dead.
-#
-# Frappe skips this run if the scheduler already took a backup within the
-# hour, so a healthy machine does not end up with two copies.
+# Frappe's scheduler is the normal path. This independent process runs at
+# :15 every hour and asks the same due-check to make a backup. If the normal
+# scheduler already ran, the due-check is a no-op; if it stalled, this creates
+# the missed full local backup without waiting until the next day.
 
 set -u
 
@@ -23,5 +19,5 @@ mkdir -p "$BENCH_DIR/logs"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] safety-net backup starting" >> "$LOG"
 bench --site "$SITE" execute \
-	santu_hardware.santu_hardware.tasks.run_safety_net_backup >> "$LOG" 2>&1
+	santu_hardware.santu_hardware.tasks.run_auto_backup_check >> "$LOG" 2>&1
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] safety-net backup finished (exit $?)" >> "$LOG"

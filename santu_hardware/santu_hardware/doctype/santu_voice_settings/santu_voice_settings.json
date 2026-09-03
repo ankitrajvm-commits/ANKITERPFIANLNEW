@@ -1,0 +1,78 @@
+{
+ "actions": [],
+ "creation": "2026-09-02 02:53:00.000000",
+ "doctype": "DocType",
+ "document_type": "Setup",
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "language",
+  "column_break_1",
+  "auto_unit_conversion",
+  "fuzzy_matching",
+  "rules_section",
+  "rules_json"
+ ],
+ "fields": [
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enable Voice Model & Search"
+  },
+  {
+   "default": "hi-IN",
+   "fieldname": "language",
+   "fieldtype": "Select",
+   "label": "Speech Recognition Language",
+   "options": "hi-IN\nen-IN\nauto"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "auto_unit_conversion",
+   "fieldtype": "Check",
+   "label": "Auto Hardware Unit & Fraction Conversion (आधा -> 1/2, पौना -> 3/4)"
+  },
+  {
+   "default": "1",
+   "fieldname": "fuzzy_matching",
+   "fieldtype": "Check",
+   "label": "Fuzzy Phonetic Keyword Matching"
+  },
+  {
+   "fieldname": "rules_section",
+   "fieldtype": "Section Break",
+   "label": "Trained Voice Rules"
+  },
+  {
+   "fieldname": "rules_json",
+   "fieldtype": "Long Text",
+   "label": "Rules JSON"
+  }
+ ],
+ "issingle": 1,
+ "modified": "2026-09-02 02:53:00.000000",
+ "modified_by": "Administrator",
+ "module": "Santu Hardware",
+ "name": "Santu Voice Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

@@ -393,7 +393,7 @@ window.santu_view_invoice_page = {
 										<td class="santu-si2-col-idx">${idx + 1}</td>
 										<td class="santu-si2-col-item"><div class="santu-si2-item-name">${frappe.utils.escape_html(row.item_name || row.item_code)}</div></td>
 										<td class="santu-si2-col-qty">${row.qty}</td>
-										<td class="santu-si2-col-uom">${frappe.utils.escape_html(row.uom || "")}</td>
+										<td class="santu-si2-col-uom">${frappe.utils.escape_html(santu_uom.abbr(row.uom) || "")}</td>
 										<td class="santu-si2-col-rate">${this._fmt(row.rate)}</td>
 										<td class="santu-si2-col-amount santu-si2-figures">${this._fmt(row.amount)}</td>
 									</tr>
@@ -427,7 +427,11 @@ window.santu_view_invoice_page = {
 							</div>
 							${d.outstanding_amount != null && d.doctype !== "Quotation" ? `
 							<div class="santu-si2-summary-row">
-								<span class="${d.outstanding_amount > 0 ? "santu-si2-warn-text" : ""}">Outstanding</span>
+								<span>Paid</span>
+								<span class="santu-si2-figures">${this._fmt(d.paid_amount)}</span>
+							</div>
+							<div class="santu-si2-summary-row">
+								<span class="${d.outstanding_amount > 0 ? "santu-si2-warn-text" : ""}">Baaki (Outstanding)</span>
 								<span class="santu-si2-figures ${d.outstanding_amount > 0 ? "santu-si2-warn-text" : ""}">${this._fmt(d.outstanding_amount)}</span>
 							</div>` : ""}
 						</div>

@@ -11,7 +11,6 @@ from santu_hardware.santu_hardware.whatsapp_provider import (
 	is_whatsapp_configured,
 )
 
-
 def get_connection_state() -> dict:
 	from santu_hardware.santu_hardware.smart_connect_bridge import read_bridge_status
 

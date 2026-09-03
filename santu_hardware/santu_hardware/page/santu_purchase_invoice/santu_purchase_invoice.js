@@ -649,9 +649,9 @@ const santu_purchase_pos = {
 		}
 
 		tab.items.forEach((row, idx) => {
-			const is_cpvc = santu_is_cpvc_item(row.item_code, row.item_name);
+			const row_hl = santu_item_row_class(row.item_code, row.item_name);
 			const $tr = $(`
-				<tr data-row="${row.id}" class="${is_cpvc ? "santu-cpvc-row" : ""}">
+				<tr data-row="${row.id}" class="${row_hl}">
 					<td class="santu-si2-col-idx">${idx + 1}</td>
 					<td class="santu-si2-col-item">
 						<div class="santu-si2-item-name">
@@ -659,7 +659,7 @@ const santu_purchase_pos = {
 							<button type="button" class="santu-si2-item-edit" title="${__("Naam, category, HSN edit karein")}">✎</button>
 						</div>
 						<div class="santu-si2-item-sub">
-							${row.available_qty != null ? `<span class="${row.available_qty <= 0 ? "santu-si2-stock-out" : row.available_qty <= 5 ? "santu-si2-stock-low" : "santu-si2-stock-ok"}">In Stock: ${row.available_qty} ${frappe.utils.escape_html(row.uom || "")}</span>` : ""}
+							${row.available_qty != null ? `<span class="${row.available_qty <= 0 ? "santu-si2-stock-out" : row.available_qty <= 5 ? "santu-si2-stock-low" : "santu-si2-stock-ok"}">In Stock: ${row.available_qty} ${frappe.utils.escape_html(santu_uom.abbr(row.uom) || "")}</span>` : ""}
 							<!-- Per-row, not just the page-wide scanner: an item read
 							     off a PDF bill or picked from search very often has no
 							     barcode yet, and the whole point of scanning is that
@@ -738,13 +738,13 @@ const santu_purchase_pos = {
 		}
 		rows.forEach((item) => {
 			$(`
-				<div class="santu-si2-dd-row santu-si2-item-dd-row ${santu_cpvc_dd_class(item.item_code, item.item_name)}">
+				<div class="santu-si2-dd-row santu-si2-item-dd-row ${santu_item_dd_class(item.item_code, item.item_name)}">
 					<div>
 						<b>${frappe.utils.escape_html(item.item_name)}</b>
 						<span class="santu-si2-dd-sub">${frappe.utils.escape_html(item.item_code)}${item.brand ? " · " + frappe.utils.escape_html(item.brand) : ""}</span>
 					</div>
 					<div class="santu-si2-dd-right">
-						<span class="santu-si2-stock-ok">${item.available_qty != null ? item.available_qty + " " + (item.stock_uom || "") : ""}</span>
+						<span class="santu-si2-stock-ok">${item.available_qty != null ? item.available_qty + " " + santu_uom.abbr(item.stock_uom || "") : ""}</span>
 						<span class="santu-si2-figures">₹ ${santu_purchase_invoice.utils.format_money(item.price || 0).replace("₹ ", "")}</span>
 					</div>
 				</div>

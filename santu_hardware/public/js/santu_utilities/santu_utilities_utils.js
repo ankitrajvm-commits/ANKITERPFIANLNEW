@@ -6,6 +6,7 @@ santu_utilities.VIEWS = {
 	shop_profile: { title: "Shop Profile", label: "Shop Profile" },
 	accountant_access: { title: "Accountant Access", label: "Accountant Access" },
 	barcode_generator: { title: "Barcode Generator", label: "Barcode Generator" },
+	voice_model: { title: "Voice Model Training (आवाज़ पहचान)", label: "Voice Model" },
 	bulk_update: { title: "Update Items In Bulk", label: "Update Items In Bulk" },
 	import_parties: { title: "Import Parties", label: "Import Parties" },
 	track_salesmen: { title: "Track Your Salesmen", label: "Track Your Salesmen" },
@@ -15,6 +16,12 @@ santu_utilities.VIEWS = {
 	invoice_settings: { title: "Invoice Settings", label: "Invoice Settings" },
 	verify_data: { title: "Verify My Data", label: "Verify My Data" },
 	close_fy: { title: "Close Financial Year", label: "Close Financial Year" },
+	payment_modes: { title: "Payment Modes", label: "Payment Modes" },
+	cost_price_lock: { title: "Cost Price Lock", label: "Cost Price Lock" },
+	item_highlight_rules: { title: "Item Colour Rules", label: "Item Colour Rules" },
+	doctor_uncle: { title: "Doctor Uncle (Health Check)", label: "Doctor Uncle" },
+	bug_report: { title: "Bug Report (प्रॉब्लम रिपोर्ट)", label: "Bug Report" },
+	recycle_bin: { title: "Recycle Bin", label: "Recycle Bin" },
 };
 
 santu_utilities.ITEM_FIELDS = [
@@ -26,6 +33,7 @@ santu_utilities.ITEM_FIELDS = [
 	{ key: "description", label: "Description" },
 	{ key: "standard_rate", label: "Selling Price" },
 	{ key: "valuation_rate", label: "Purchase Price" },
+	{ key: "custom_mrp", label: "MRP" },
 	{ key: "stock_uom", label: "Stock UOM" },
 	{ key: "opening_stock", label: "Opening Stock" },
 	{ key: "min_order_qty", label: "Minimum Stock" },

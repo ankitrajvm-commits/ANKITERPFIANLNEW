@@ -230,36 +230,6 @@
 	font-weight: 600;
 }
 
-/* ---------- Bottom company pill (replaces the reference's trial/premium
-   block — see file header) ---------- */
-.santu-app-sidebar-company {
-	display: flex;
-	align-items: center;
-	gap: 12px;
-	padding: 13px 16px;
-	border-top: 1px solid rgba(255, 255, 255, 0.08);
-	background: rgba(0, 0, 0, 0.12);
-	color: #f8fafc;
-	font-size: 14.5px;
-	font-weight: 600;
-	letter-spacing: -0.01em;
-	cursor: pointer;
-	transition: background 0.15s ease, color 0.15s ease;
-}
-.santu-app-sidebar-company:hover {
-	background: rgba(255, 255, 255, 0.06);
-	color: #ffffff;
-}
-.santu-app-sidebar-company-badge {
-	width: 28px;
-	height: 28px;
-	border-radius: 7px;
-	flex-shrink: 0;
-	display: block;
-	object-fit: contain;
-	box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25);
-}
-
 /* ---------- Collapse/expand toggle ---------- */
 /* Sat half-outside the rail (right: -12px) for the classic collapse-handle
    look. It could not work there: the rail scrolls, so it has `overflow:
@@ -302,17 +272,12 @@ body.santu-sidebar-collapsed .santu-app-sidebar-text,
 body.santu-sidebar-collapsed .santu-app-sidebar-chevron,
 body.santu-sidebar-collapsed .santu-app-sidebar-quickadd,
 body.santu-sidebar-collapsed .santu-app-sidebar-label,
-body.santu-sidebar-collapsed .santu-app-sidebar-children,
-body.santu-sidebar-collapsed .santu-app-sidebar-company span:not(.santu-app-sidebar-company-badge) {
+body.santu-sidebar-collapsed .santu-app-sidebar-children {
 	display: none !important;
 }
 body.santu-sidebar-collapsed .santu-app-sidebar-item {
 	justify-content: center;
 	padding: 10px 0;
-}
-body.santu-sidebar-collapsed .santu-app-sidebar-company {
-	justify-content: center;
-	padding: 14px 0;
 }
 /* Icons carry the whole row's meaning once the label text is hidden — sized
    up so they read at a glance with clean balanced proportions. */

@@ -325,6 +325,22 @@ body[data-route="santu-sale-invoice"] .page-content {
 	flex-direction: column;
 	gap: 8px;
 }
+/* GST/address/shipping panel — expands in place under "GST & more details…"
+   instead of a popup (2026-09-03: "add customer ke liye new window kyun
+   khol rahe ho, same dialog me hi sab kuch ho jaye"). Reuses the old
+   dialog's .santu-party-gst-address/.santu-party-col layout as-is. */
+.santu-si2-adv-inline {
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	padding: 12px;
+	background: #fafafa;
+}
+.santu-si2-adv-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 12px;
+}
 .santu-si2-customer-row1 {
 	display: flex;
 	gap: 10px;

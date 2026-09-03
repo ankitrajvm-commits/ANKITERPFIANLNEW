@@ -8,6 +8,18 @@
 
 ---
 
+## 2026-08-31 — Voice Search (Speech to Text) across POS and Topbar
+
+- **Problem:** The user requested an easier way to search for items without typing, specifically through voice dictation ("voice to text") to speed up billing when hands are full.
+- **Solution applied:** Implemented a new `santu_voice_search.js` module that injects a microphone icon into all `.santu-bill-search`, `.santu-topbar-search`, and `.santu-bg-item-search` inputs. When clicked, it activates the browser's native `SpeechRecognition`. Fixed Safari compatibility by instantiating a new `SpeechRecognition` instance on every click and relying on the system default dictation language (removed `hi-IN` hardcode) to prevent silent failures. Dispatched native `input` and `change` events so frontend frameworks correctly register the dictated text as if it was typed.
+- **Future idea:** If voice accuracy needs improvement, we could implement a fuzzy matching algorithm on the frontend that compares the transcribed text (which might mishear technical hardware terms) with the actual item master list.
+
+## 2026-08-31 — Dynamic Logo Size Controls (Sliders) for Print Formats
+
+- **Problem:** Logo uploaded for bills looked disproportionate (too small or too much white space) on thermal and A4 bills, and the user requested manual control over the sizes on both A4 and Thermal bills separately.
+- **Solution applied:** Added `thermal_logo_width` and `a4_logo_width` integer fields to `Santu POS Settings`. Built interactive range sliders in `santu_printer_settings.js` that update the backend settings and trigger live previews immediately. Wrote a Python script to patch all 15+ existing thermal and A4 print formats to use these dynamic settings instead of hardcoded `width` CSS values.
+- **Future idea:** If more layout controls are requested, adding margin/padding sliders could be done using the exact same pattern.
+
 ## 2026-07-30 — New DocType controller `.py` must define a real class, or `bench migrate` silently deletes it
 
 - **Problem:** Created `Santu POS Settings` (a Single DocType) with a

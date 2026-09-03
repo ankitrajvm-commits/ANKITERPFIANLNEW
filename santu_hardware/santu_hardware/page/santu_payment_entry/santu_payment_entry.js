@@ -142,11 +142,9 @@ window.santu_payment_entry_page = {
 			invoices: [],
 			total_outstanding: 0,
 			amount: 0,
-			// null/false = "auto": Amount follows the allocation table until
-			// the counter types their own figure (an advance).
+			// true once the counter has typed their own figure, so picking a
+			// party doesn't silently overwrite it with the new total due.
 			amount_touched: false,
-			// { invoice_name: allocated_amount }
-			allocations: {},
 			saved: null,
 		};
 	},
@@ -188,17 +186,13 @@ window.santu_payment_entry_page = {
 											<th class="santu-pay-col-inv">INVOICE NO.</th>
 											<th class="santu-pay-col-date">DATE</th>
 											<th class="santu-pay-col-amt">INVOICE AMOUNT</th>
-											<th class="santu-pay-col-due">AMOUNT DUE</th>
-											<th class="santu-pay-col-pay">PAYING NOW</th>
 										</tr>
 									</thead>
 									<tbody></tbody>
 								</table>
 							</div>
 							<div class="santu-bill-gridfoot">
-								<button type="button" class="santu-pay-settle-all">SETTLE ALL</button>
-								<button type="button" class="santu-pay-clear-all">CLEAR</button>
-								<span class="santu-bill-grandrow santu-pay-foot-alloc">₹ 0.00</span>
+								<span class="santu-pay-foot-hint">${__("Payment party ke poore balance se minus hota hai — kisi ek bill se nahi.")}</span>
 							</div>
 						</div>
 					</div>
@@ -251,17 +245,6 @@ window.santu_payment_entry_page = {
 									<span class="santu-bill-rs">₹</span>
 									<input type="number" min="0" step="0.01" class="santu-pay-amount santu-si2-figures" value="${b.amount || ""}" placeholder="0.00">
 								</div>
-							</div>
-						</div>
-
-						<div class="santu-si2-summary">
-							<div class="santu-si2-summary-row">
-								<span>Settling</span>
-								<span class="santu-si2-figures santu-pay-sum-alloc">₹ 0.00</span>
-							</div>
-							<div class="santu-si2-summary-row santu-pay-advance-row">
-								<span>Advance (unadjusted)</span>
-								<span class="santu-si2-figures santu-pay-sum-advance">₹ 0.00</span>
 							</div>
 						</div>
 
@@ -411,33 +394,15 @@ window.santu_payment_entry_page = {
 			.then((r) => {
 				b.invoices = r.invoices || [];
 				b.total_outstanding = flt(r.total_outstanding);
-				// Default to settling everything, oldest-first, capped at the
-				// amount already typed if the cashier led with a figure.
-				b.allocations = {};
-				this._auto_allocate(b, b.amount_touched ? flt(b.amount) : b.total_outstanding);
-				if (!b.amount_touched) b.amount = this._allocated_total(b);
+				// One-time default so the field isn't blank, not a running
+				// auto-follow — payments are a lump sum against the party now
+				// (2026-09-03: "full bill se minus hona chahiye, individual
+				// bill se nahi"), so there's no per-row allocation left to sum.
+				if (!b.amount_touched) b.amount = b.total_outstanding;
 				this._persist_soon();
 				this.$root.find(".santu-pay-amount").val(b.amount || "");
 				this._render_invoices();
 			});
-	},
-
-	// ---------- allocations ----------
-	_auto_allocate(b, budget) {
-		let remaining = flt(budget);
-		b.allocations = {};
-		b.invoices.forEach((inv) => {
-			if (remaining <= 0) return;
-			const alloc = Math.min(flt(inv.outstanding_amount), remaining);
-			if (alloc > 0) {
-				b.allocations[inv.name] = alloc;
-				remaining -= alloc;
-			}
-		});
-	},
-
-	_allocated_total(b) {
-		return Object.values((b || this._payment()).allocations).reduce((a, v) => a + flt(v), 0);
 	},
 
 	_render_invoices() {
@@ -446,44 +411,24 @@ window.santu_payment_entry_page = {
 		$tbody.empty();
 
 		if (!b.party) {
-			$(`<tr class="santu-si2-empty-row"><td colspan="6">Select a party to see their unpaid bills.</td></tr>`).appendTo($tbody);
+			$(`<tr class="santu-si2-empty-row"><td colspan="4">Select a party to see their bills.</td></tr>`).appendTo($tbody);
 		} else if (!b.invoices.length) {
-			$(`<tr class="santu-si2-empty-row"><td colspan="6">No unpaid bills — this will be recorded as an advance.</td></tr>`).appendTo($tbody);
+			$(`<tr class="santu-si2-empty-row"><td colspan="4">No bills on file — this will be recorded as an advance.</td></tr>`).appendTo($tbody);
 		}
 
+		// Read-only reference list — "what did they buy and when", not "how
+		// much is still due on each one". A lump-sum payment doesn't touch
+		// any one bill's own outstanding_amount any more, so that number
+		// can't be shown here without going stale the moment a payment lands.
 		b.invoices.forEach((inv, idx) => {
-			const alloc = flt(b.allocations[inv.name] || 0);
-			const $tr = $(`
+			$(`
 				<tr class="santu-pay-row">
 					<td class="santu-si2-col-idx">${idx + 1}</td>
 					<td class="santu-pay-col-inv">${frappe.utils.escape_html(inv.display_number || santu_bill_label(inv.santu_bill_no))}</td>
 					<td class="santu-pay-col-date">${inv.posting_date ? frappe.datetime.str_to_user(inv.posting_date) : "—"}</td>
 					<td class="santu-pay-col-amt santu-si2-figures">₹ ${format_currency_num(inv.grand_total)}</td>
-					<td class="santu-pay-col-due santu-si2-figures">₹ ${format_currency_num(inv.outstanding_amount)}</td>
-					<td class="santu-pay-col-pay">
-						<input type="number" min="0" step="0.01" class="santu-pay-alloc" value="${alloc || ""}" placeholder="0">
-					</td>
 				</tr>
-			`);
-			$tr.find(".santu-pay-alloc").on("input", (e) => {
-				let v = flt($(e.target).val());
-				const cap = flt(inv.outstanding_amount);
-				if (v > cap) {
-					v = cap;
-					$(e.target).val(cap);
-				}
-				if (v > 0) b.allocations[inv.name] = v;
-				else delete b.allocations[inv.name];
-				// Typing in the table drives the received total, unless the
-				// cashier has explicitly overridden it (advance payment).
-				if (!b.amount_touched) {
-					b.amount = this._allocated_total(b);
-					this.$root.find(".santu-pay-amount").val(b.amount || "");
-				}
-				this._persist_soon();
-				this._render_totals();
-			});
-			$tr.appendTo($tbody);
+			`).appendTo($tbody);
 		});
 
 		this._render_totals();
@@ -491,17 +436,7 @@ window.santu_payment_entry_page = {
 
 	_render_totals() {
 		const b = this._payment();
-		const allocated = this._allocated_total(b);
-		const amount = flt(b.amount);
-		const advance = Math.max(amount - allocated, 0);
-
-		this.$root.find(".santu-pay-foot-alloc").text(`₹ ${format_currency_num(allocated)}`);
 		this.$root.find(".santu-pay-sum-due").text(`Total Due ₹ ${format_currency_num(b.total_outstanding)}`);
-		this.$root.find(".santu-pay-sum-alloc").text(`₹ ${format_currency_num(allocated)}`);
-		this.$root.find(".santu-pay-sum-advance").text(`₹ ${format_currency_num(advance)}`);
-		// The old dialog silently parked any excess as an unallocated advance
-		// with nothing on screen about it — this makes that visible instead.
-		this.$root.find(".santu-pay-advance-row").toggleClass("santu-pay-advance-on", advance > 0);
 
 		const $bar = this.$root.find(".santu-pay-duebar");
 		if (!b.party) {
@@ -592,23 +527,6 @@ window.santu_payment_entry_page = {
 			this._render_totals();
 		});
 
-		$r.find(".santu-pay-settle-all").on("click", () => {
-			const b = this._payment();
-			this._auto_allocate(b, b.total_outstanding);
-			b.amount = this._allocated_total(b);
-			b.amount_touched = false;
-			this._persist_soon();
-			this.render();
-		});
-		$r.find(".santu-pay-clear-all").on("click", () => {
-			const b = this._payment();
-			b.allocations = {};
-			b.amount = 0;
-			b.amount_touched = false;
-			this._persist_soon();
-			this.render();
-		});
-
 		$r.find(".santu-pay-save-btn").on("click", () => this._save());
 
 		$(document).off("keydown.santu-pay").on("keydown.santu-pay", (e) => {
@@ -642,12 +560,9 @@ window.santu_payment_entry_page = {
 			return;
 		}
 
-		const allocations = Object.keys(b.allocations).map((name) => ({
-			name,
-			allocated_amount: flt(b.allocations[name]),
-		}));
-		const advance = amount - this._allocated_total(b);
-
+		// Booked as a lump sum against the party, not any one bill (2026-09-03:
+		// "full bill se minus hona chahiye, individual bill se nahi") —
+		// create_payment_entry no longer takes/uses per-invoice allocations.
 		const submit = () => {
 			frappe.dom.freeze(__("Saving…"));
 			frappe
@@ -659,11 +574,11 @@ window.santu_payment_entry_page = {
 					posting_date: b.posting_date,
 					reference_no: b.reference_no || null,
 					remarks: b.remarks || null,
-					allocations_json: allocations.length ? JSON.stringify(allocations) : null,
 				})
 				.then((r) => {
 					frappe.dom.unfreeze();
 					frappe.show_alert({ message: __("Saved {0}", [r.name]), indicator: "green" });
+					this._show_payment_share_popup(r.name, b, amount);
 					b.saved = { name: r.name };
 					// Receipt done: drop this tab and open a clean one, the
 					// same way Billing moves on after Save & Print.
@@ -676,9 +591,10 @@ window.santu_payment_entry_page = {
 				.catch(() => frappe.dom.unfreeze());
 		};
 
+		const advance = amount - flt(b.total_outstanding);
 		if (advance > 0.005) {
 			frappe.confirm(
-				__("₹ {0} is more than the bills being settled. The extra will be kept as an advance. Continue?", [
+				__("₹ {0} is more than what's currently due. The extra will be kept as an advance. Continue?", [
 					format_currency_num(advance),
 				]),
 				submit
@@ -686,6 +602,37 @@ window.santu_payment_entry_page = {
 			return;
 		}
 		submit();
+	},
+
+	// 2026-09-03 direct request: "payment in ke baad whatsapp me share ka
+	// option de do" — same summary-card + WhatsApp pattern already used
+	// after a sale (post_sale_popup.js), reusing its .santu-post-sale-*
+	// styling and window.santu_whatsapp_share (Payment Entry already has
+	// its own message template in transaction_message_service.py, so no
+	// new send path is needed, just the button).
+	_show_payment_share_popup(name, b, amount) {
+		const d = new frappe.ui.Dialog({
+			title: __("Payment Saved — {0}", [name]),
+			fields: [
+				{
+					fieldtype: "HTML",
+					fieldname: "summary",
+					options: `
+						<div class="santu-post-sale-summary">
+							<div class="santu-post-sale-amount">₹ ${format_currency_num(amount)}</div>
+							<div class="santu-post-sale-customer">${frappe.utils.escape_html(b.party_label || b.party || "")}</div>
+						</div>
+					`,
+				},
+			],
+			primary_action_label: __("Share on WhatsApp"),
+			primary_action: () => {
+				if (window.santu_whatsapp_share) window.santu_whatsapp_share.send_transaction("Payment Entry", name);
+				d.hide();
+			},
+		});
+		d.set_secondary_action_label(__("Close"));
+		d.show();
 	},
 };
 

@@ -23,11 +23,11 @@
    "label": "Enable Auto Backup"
   },
   {
-   "default": "Daily",
+   "default": "Hourly",
    "fieldname": "backup_frequency",
    "fieldtype": "Select",
    "label": "Backup Frequency",
-   "options": "Daily\nWeekly\nCustom"
+   "options": "Hourly\nDaily\nWeekly"
   },
   {
    "default": "02:00:00",

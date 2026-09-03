@@ -23,6 +23,7 @@ ITEM_IMPORT_FIELDS = {
 	"description": "Description",
 	"standard_rate": "Selling Price",
 	"valuation_rate": "Purchase Price",
+	"custom_mrp": "MRP",
 	"stock_uom": "Stock UOM",
 	"opening_stock": "Opening Stock",
 	"min_order_qty": "Minimum Stock",
@@ -53,6 +54,26 @@ def _read_uploaded_file(file_url: str):
 	return fname, content
 
 
+def _fold_size_into_item_name(headers: list, rows: list) -> tuple:
+	"""No "Size" field exists on Item (2026-09-03 decision: fold size into
+	the item name rather than add a schema field), so any uploaded column
+	that looks like a size ("Size", "Size (inch)", ...) gets appended onto
+	the item-name column's value here, before column mapping is even shown
+	— e.g. "SUPREME CPVC REDUCER" + '1" x 3/4"' -> 'SUPREME CPVC REDUCER 1" x 3/4"'.
+	Applies to every Excel/CSV item import, not just one file.
+	"""
+	name_header = next((h for h in headers if h.strip().lower() in ("item name", "item_name", "name")), None)
+	size_header = next((h for h in headers if re.match(r"^size\b", h.strip(), re.IGNORECASE)), None)
+	if not name_header or not size_header:
+		return headers, rows
+	for row in rows:
+		size_val = str(row.get(size_header) or "").strip()
+		if size_val:
+			row[name_header] = f"{str(row.get(name_header) or '').strip()} {size_val}".strip()
+		row.pop(size_header, None)
+	return [h for h in headers if h != size_header], rows
+
+
 def _parse_tabular_file(file_url: str):
 	fname, content = _read_uploaded_file(file_url)
 	lower = (fname or "").lower()
@@ -66,12 +87,12 @@ def _parse_tabular_file(file_url: str):
 		data = []
 		for row in rows[1:]:
 			data.append({headers[i]: (row[i] if i < len(row) else "") for i in range(len(headers))})
-		return headers, data
+		return _fold_size_into_item_name(headers, data)
 	if lower.endswith(".csv"):
 		text = content.decode("utf-8-sig", errors="replace")
 		reader = csv.DictReader(io.StringIO(text))
 		headers = reader.fieldnames or []
-		return list(headers), list(reader)
+		return _fold_size_into_item_name(list(headers), list(reader))
 	frappe.throw("Unsupported file type. Upload .xlsx, .xls or .csv")
 
 
@@ -90,6 +111,26 @@ def lookup_barcode_item(barcode: str):
 	return result
 
 
+# Short-form column headers sellers actually type in their own price-list
+# Excel sheets (e.g. "SP" for Selling Price, "CP"/"PP" for Purchase Price) —
+# matched only when the header doesn't already match ITEM_IMPORT_FIELDS'
+# fieldname/label exactly, so a same-format re-upload maps every column
+# without the user touching a dropdown (2026-09-03 request: "1 click me
+# kaam karao, jo v ho excel same format ka hi aayega").
+ITEM_IMPORT_FIELD_ALIASES = {
+	"sp": "standard_rate",
+	"cp": "valuation_rate",
+	"pp": "valuation_rate",
+	"mrp": "custom_mrp",
+	"hsn": "gst_hsn_code",
+	"uom": "stock_uom",
+	"unit": "stock_uom",
+	"qty": "opening_stock",
+	"code": "item_code",
+	"name": "item_name",
+}
+
+
 @frappe.whitelist()
 def parse_items_import_file(file_url: str):
 	_require_manager()
@@ -99,6 +140,12 @@ def parse_items_import_file(file_url: str):
 		for h in headers:
 			if h.lower().replace(" ", "_") == erp_field or h.lower() == label.lower():
 				suggested[h] = erp_field
+	for h in headers:
+		if h in suggested:
+			continue
+		alias_field = ITEM_IMPORT_FIELD_ALIASES.get(h.strip().lower())
+		if alias_field:
+			suggested[h] = alias_field
 	return {"headers": headers, "rows": rows[:500], "total_rows": len(rows), "suggested_mapping": suggested}
 
 
@@ -182,6 +229,11 @@ def validate_items_import(file_url: str = None, rows: str = None, mapping: str =
 				flt(row.get("standard_rate"))
 		except Exception:
 			issues.append("Invalid selling price")
+		try:
+			if row.get("custom_mrp") not in (None, ""):
+				flt(row.get("custom_mrp"))
+		except Exception:
+			issues.append("Invalid MRP")
 		if row.get("item_group") and not frappe.db.exists("Item Group", row.get("item_group")):
 			issues.append(f"Item Group '{row.get('item_group')}' not found")
 
@@ -240,6 +292,8 @@ def import_items_valid(rows: str):
 				item.standard_rate = flt(data.get("standard_rate"))
 			if data.get("valuation_rate") not in (None, ""):
 				item.valuation_rate = flt(data.get("valuation_rate"))
+			if data.get("custom_mrp") not in (None, ""):
+				item.custom_mrp = flt(data.get("custom_mrp"))
 			if data.get("barcode"):
 				item.append("barcodes", {"barcode": data.get("barcode")})
 			item.insert(ignore_permissions=True)

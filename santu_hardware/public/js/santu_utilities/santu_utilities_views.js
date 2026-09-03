@@ -8,7 +8,7 @@ santu_utilities.views = {
 			const fn = this[`render_${view}`] || this.render_import_items;
 			await fn.call(this, $wrap, ctx);
 		} catch (e) {
-			$wrap.html(`<div class="santu-utilities-error">${frappe.utils.escape_html(e.message || "Failed to load")}</div>`);
+			$wrap.html(`<div class="santu-utilities-error">${frappe.utils.escape_html((e && e.message) || "Failed to load")}</div>`);
 		}
 	},
 
@@ -344,6 +344,16 @@ santu_utilities.views = {
 			parse_call.then((data) => {
 				state.parsed = data;
 				state.mapping = { ...data.suggested_mapping };
+				// Every column matched a known field on its own (same-format
+				// re-upload, e.g. Item Name/Size/MRP/SP) — skip straight to
+				// the review screen instead of making the user re-pick
+				// dropdowns they'd just pick the same way again.
+				const all_mapped = data.headers.length > 0 && data.headers.every((h) => !!state.mapping[h]);
+				if (all_mapped && !state._mapping_reviewed) {
+					state.step = "validate";
+					this._render_excel_import($wrap, state, onBack);
+					return;
+				}
 				let mapHtml = `<div class="santu-utilities-toolbar"><button class="btn btn-default btn-sm santu-util-back-map">← Upload</button></div>
 					<div class="santu-utilities-card"><h3>Map Columns</h3><div class="santu-utilities-map-grid">`;
 				data.headers.forEach((h) => {
@@ -382,6 +392,36 @@ santu_utilities.views = {
 			);
 			state.validation = result;
 			const c = result.counts;
+			// Everything the user needs to eyeball before items get created:
+			// every row (not just the counts), what's wrong with it, and a
+			// place to type how many are actually on the shelf right now —
+			// their source Excel has no quantity column, so opening stock
+			// has to be entered here or every item lands at zero stock
+			// (2026-09-03 request: "saman list dikhna chahiye ... kitna
+			// item available hai, ye v dalna padega").
+			const all_rows = [...result.valid, ...result.warnings, ...result.errors].sort((a, b) => a.row - b.row);
+			const error_rows = new Set((result.errors || []).map((e) => e.row));
+			let rowsHtml = all_rows.map((entry) => {
+				const is_error = error_rows.has(entry.row);
+				const d = entry.data || {};
+				const mrp = flt(d.custom_mrp);
+				const sp = flt(d.standard_rate);
+				// Discount % shown here is derived from MRP/SP already present
+				// (from the file), not stored anywhere — typing a new % is
+				// what drives SP, one-way (2026-09-03 request: "mrp - discount
+				// percent then sp").
+				const discount = mrp > 0 && sp > 0 ? (((mrp - sp) / mrp) * 100).toFixed(2) : "";
+				return `
+					<tr data-row="${entry.row}" class="${is_error ? "santu-import-row-error" : ""}">
+						<td><input type="checkbox" class="santu-row-include" ${is_error ? "" : "checked"}></td>
+						<td><input type="text" class="form-control input-sm santu-row-name" value="${frappe.utils.escape_html(d.item_name || "")}"></td>
+						<td><input type="number" class="form-control input-sm santu-row-mrp" min="0" step="0.01" value="${d.custom_mrp || ""}"></td>
+						<td><input type="number" class="form-control input-sm santu-row-discount" min="0" max="100" step="0.01" value="${discount}" placeholder="%"></td>
+						<td><input type="number" class="form-control input-sm santu-row-sp" min="0" step="0.01" value="${d.standard_rate || ""}"></td>
+						<td><input type="number" class="form-control input-sm santu-row-stock" min="0" value="${d.opening_stock || ""}" placeholder="0"></td>
+						<td class="${is_error ? "text-danger" : entry.issues.length ? "text-warning" : "text-muted"}">${(entry.issues || []).join("; ") || "OK"}</td>
+					</tr>`;
+			}).join("");
 			$wrap.html(`
 				<div class="santu-utilities-toolbar">
 					<button class="btn btn-default btn-sm santu-util-back-map">← Mapping</button>
@@ -392,11 +432,83 @@ santu_utilities.views = {
 					<div class="summary-card error"><b>${c.errors}</b><span>Error Rows</span></div>
 				</div>
 				<div class="santu-utilities-toolbar">
-					<button class="btn btn-primary santu-import-valid" ${c.valid ? "" : "disabled"}>Import Valid Rows (${c.valid})</button>
+					<label class="santu-utilities-muted" style="margin-right:6px;">Set Available Qty for all rows:</label>
+					<input type="number" min="0" class="form-control input-sm santu-set-all-qty" style="width:100px;display:inline-block;" placeholder="0">
+					<button class="btn btn-default btn-sm santu-apply-all-qty">Apply to All</button>
+					<label class="santu-utilities-muted" style="margin:0 6px 0 16px;">Set Discount % for all rows:</label>
+					<input type="number" min="0" max="100" step="0.01" class="form-control input-sm santu-set-all-discount" style="width:100px;display:inline-block;" placeholder="%">
+					<button class="btn btn-default btn-sm santu-apply-all-discount">Apply to All</button>
+				</div>
+				<div class="santu-utilities-card">
+					<div class="table-responsive">
+						<table class="santu-utilities-table">
+							<thead><tr>
+								<th><input type="checkbox" class="santu-select-all" checked></th>
+								<th>Item Name</th><th>MRP</th><th>Discount %</th><th>SP</th><th>Available Qty</th><th>Issues</th>
+							</tr></thead>
+							<tbody>${rowsHtml}</tbody>
+						</table>
+					</div>
+				</div>
+				<div class="santu-utilities-toolbar santu-import-summary santu-utilities-muted"></div>
+				<div class="santu-utilities-toolbar">
+					<button class="btn btn-primary santu-import-valid" ${c.valid || c.warnings ? "" : "disabled"}>Import Selected Rows</button>
 					<button class="btn btn-default santu-download-errors" ${c.errors ? "" : "disabled"}>Download Error Report</button>
 				</div>
 			`);
-			$wrap.find(".santu-util-back-map").on("click", () => { state.step = "map"; this._render_excel_import($wrap, state, onBack); });
+			// Bhaiya can't read 30 rows before clicking Import — a running
+			// count + stock value catches "oops wrong file" or "typed an
+			// extra zero" before items actually get created, since import
+			// itself can't be undone from here.
+			const refresh_summary = () => {
+				let count = 0, qty_total = 0, value_total = 0;
+				$wrap.find("tr[data-row]").each(function () {
+					const $tr = $(this);
+					if (!$tr.find(".santu-row-include").is(":checked")) return;
+					count += 1;
+					const qty = flt($tr.find(".santu-row-stock").val());
+					const sp = flt($tr.find(".santu-row-sp").val());
+					qty_total += qty;
+					value_total += qty * sp;
+				});
+				$wrap.find(".santu-import-summary").text(
+					`${count} item${count === 1 ? "" : "s"} selected · ${qty_total} total qty · ₹${value_total.toFixed(2)} stock value`
+				);
+			};
+			refresh_summary();
+			$wrap.find("tbody").on("input change", "input", refresh_summary);
+			$wrap.find(".santu-select-all").on("change", function () {
+				$wrap.find(".santu-row-include:not(:disabled)").prop("checked", $(this).is(":checked"));
+				refresh_summary();
+			});
+			$wrap.find(".santu-apply-all-qty").on("click", () => {
+				const qty = $wrap.find(".santu-set-all-qty").val();
+				if (qty === "" || qty === null) return;
+				$wrap.find(".santu-row-stock").val(qty);
+				refresh_summary();
+			});
+			$wrap.find(".santu-apply-all-discount").on("click", () => {
+				const pct = $wrap.find(".santu-set-all-discount").val();
+				if (pct === "" || pct === null) return;
+				$wrap.find(".santu-row-discount").val(pct).trigger("input");
+			});
+			$wrap.find(".santu-row-discount").on("input", function () {
+				const $tr = $(this).closest("tr");
+				const mrp_val = flt($tr.find(".santu-row-mrp").val());
+				const pct = flt($(this).val());
+				if (mrp_val > 0 && $(this).val() !== "") {
+					$tr.find(".santu-row-sp").val((mrp_val - (mrp_val * pct) / 100).toFixed(2));
+				}
+			});
+			$wrap.find(".santu-row-mrp").on("input", function () {
+				const $tr = $(this).closest("tr");
+				const $discount = $tr.find(".santu-row-discount");
+				if ($discount.val() === "") return;
+				const mrp_val = flt($(this).val());
+				const pct = flt($discount.val());
+				if (mrp_val > 0) $tr.find(".santu-row-sp").val((mrp_val - (mrp_val * pct) / 100).toFixed(2));
+			});
+			$wrap.find(".santu-util-back-map").on("click", () => { state.step = "map"; state._mapping_reviewed = true; this._render_excel_import($wrap, state, onBack); });
 			$wrap.find(".santu-download-errors").on("click", () => {
 				const rows = [["Row", "Issues", "Item Name", "Item Code"]];
 				(result.errors || []).forEach((e) => {
@@ -405,8 +517,31 @@ santu_utilities.views = {
 				santu_utilities.utils.download_csv("import-errors.csv", rows);
 			});
 			$wrap.find(".santu-import-valid").on("click", async () => {
-				frappe.confirm(`Import ${c.valid} valid items?`, async () => {
-					const r = await santu_utilities.api.importItemsValid(result.valid);
+				const selected = [];
+				$wrap.find("tr[data-row]").each(function () {
+					const $tr = $(this);
+					if (!$tr.find(".santu-row-include").is(":checked")) return;
+					const row_no = parseInt($tr.data("row"), 10);
+					const entry = all_rows.find((e) => e.row === row_no);
+					if (!entry) return;
+					const name = $tr.find(".santu-row-name").val();
+					const mrp = $tr.find(".santu-row-mrp").val();
+					const sp = $tr.find(".santu-row-sp").val();
+					const stock = $tr.find(".santu-row-stock").val();
+					selected.push({
+						...entry,
+						data: {
+							...entry.data,
+							item_name: (name || "").trim(),
+							custom_mrp: mrp || "",
+							standard_rate: sp || "",
+							opening_stock: stock || 0,
+						},
+					});
+				});
+				if (!selected.length) return;
+				frappe.confirm(`Import ${selected.length} items?`, async () => {
+					const r = await santu_utilities.api.importItemsValid(selected);
 					frappe.msgprint(`Imported ${r.created_count} items. ${r.failed.length ? r.failed.length + " failed." : ""}`);
 					state.step = "upload";
 					state.method = null;
@@ -414,6 +549,121 @@ santu_utilities.views = {
 				});
 			});
 		}
+	},
+
+	/* ── 2b. Item Highlight Rules ────────────────────────────── */
+	// Generic version of the old hardcoded CPVC(yellow)/UPVC(pink) rule
+	// (2026-09-03 direct request: "agar mai koi v saaman ko new colour dena
+	// chahu to wo ho jaye, item name start with this then ye colour apply,
+	// item name include this then ye colour apply, sare colour option diye
+	// ho"). Rules save to Santu Item Highlight Settings (item_highlight_api.py)
+	// and take effect everywhere item rows render — Items, billing, sale/
+	// purchase, reports — via santu_item_highlight.js, on the very next page
+	// load (rules are read from frappe.boot, stamped once at login/reload).
+	async render_item_highlight_rules($wrap) {
+		// A real colour wheel, not a fixed list (2026-09-03 follow-up: "ye
+		// wali colour schema ki baat kar raha tha, item colour yaha se
+		// choose hoga, jo man karega mai wo choose karunga") — the browser's
+		// own colour picker (native OS wheel on Mac/most browsers) via
+		// `<input type="color">`. Whatever hex comes out of it is always
+		// shown here as a LIGHT tint preview next to the swatch, because the
+		// picker itself can return anything, including something too dark
+		// for black text to read in the actual item list ("light theme
+		// preferred qk agar dark hoga to item nahi dikhega list me") — the
+		// preview is exactly what santu_item_highlight.js will compute at
+		// runtime (santu_hl_lighten), so there's no surprise between what's
+		// picked here and what shows up on Items/Billing/Reports.
+		let rules = await santu_utilities.api.fetchItemHighlightRules();
+
+		const row_html = (r) => `
+			<tr>
+				<td><input type="checkbox" class="santu-hl-enabled" ${r.enabled ? "checked" : ""}></td>
+				<td>
+					<select class="form-control input-sm santu-hl-match">
+						<option value="Starts With" ${r.match_type === "Starts With" ? "selected" : ""}>Starts With</option>
+						<option value="Contains" ${r.match_type !== "Starts With" ? "selected" : ""}>Contains</option>
+					</select>
+				</td>
+				<td><input type="text" class="form-control input-sm santu-hl-value" value="${frappe.utils.escape_html(r.value || "")}" placeholder="e.g. CPVC"></td>
+				<td class="santu-hl-color-cell">
+					<input type="color" class="santu-hl-color" value="${r.color || "#f5d90a"}">
+					<span class="santu-hl-preview" title="List me aisa dikhega" style="display:inline-block;width:20px;height:20px;border-radius:4px;border:1px solid #d1d5db;vertical-align:middle;margin-left:6px;background:${window.santu_hl_lighten ? window.santu_hl_lighten(r.color || "#f5d90a", 0.88) : (r.color || "#f5d90a")}"></span>
+				</td>
+				<td>
+					<button class="btn btn-xs btn-default santu-hl-up" title="Priority me upar le jao">↑</button>
+					<button class="btn btn-xs btn-default santu-hl-down" title="Priority me neeche le jao">↓</button>
+					<button class="btn btn-xs btn-default santu-hl-remove">✕</button>
+				</td>
+			</tr>`;
+
+		const render_table = () => {
+			$wrap.find("tbody.santu-hl-body").html(rules.map(row_html).join(""));
+		};
+
+		$wrap.html(`
+			<div class="santu-utilities-card">
+				<h3>Item Colour Rules</h3>
+				<p class="santu-utilities-muted">
+					Jab bhi Item Name ya Item Code me ye text mile, wo item Items list, billing, sale/purchase, reports — har jagah is rang me dikhega.
+					CPVC (pila) aur UPVC (gulaabi) hamesha built-in hain, sabse AAKHIR me — sirf tab lagta hai jab neeche koi bhi rule match na kare. Colour box par click karke jo bhi rang chuno, list me hamesha uska halka (light) version hi dikhega.<br>
+					<b>Priority:</b> Table me sabse UPAR wala rule jeetta hai agar ek hi item do rules se match ho jaaye (jaise "SUPREME" aur "CPVC" dono ek item me hon) — ↑/↓ se order badlo.
+				</p>
+				<div class="table-responsive">
+					<table class="santu-utilities-table">
+						<thead><tr><th>On</th><th>Match</th><th>Item Name/Code Text</th><th>Colour</th><th></th></tr></thead>
+						<tbody class="santu-hl-body"></tbody>
+					</table>
+				</div>
+				<div class="santu-utilities-toolbar">
+					<button class="btn btn-default btn-sm santu-hl-add">+ Add Rule</button>
+					<button class="btn btn-primary santu-hl-save">Save</button>
+				</div>
+			</div>
+		`);
+		render_table();
+
+		$wrap.find(".santu-hl-add").on("click", () => {
+			rules.push({ enabled: 1, match_type: "Contains", value: "", color: "#f5d90a" });
+			render_table();
+		});
+		$wrap.on("click", ".santu-hl-remove", function () {
+			const idx = $(this).closest("tr").index();
+			rules.splice(idx, 1);
+			render_table();
+		});
+		$wrap.on("click", ".santu-hl-up", function () {
+			const idx = $(this).closest("tr").index();
+			if (idx <= 0) return;
+			[rules[idx - 1], rules[idx]] = [rules[idx], rules[idx - 1]];
+			render_table();
+		});
+		$wrap.on("click", ".santu-hl-down", function () {
+			const idx = $(this).closest("tr").index();
+			if (idx >= rules.length - 1) return;
+			[rules[idx + 1], rules[idx]] = [rules[idx], rules[idx + 1]];
+			render_table();
+		});
+		$wrap.on("input", ".santu-hl-color", function () {
+			const preview = window.santu_hl_lighten ? window.santu_hl_lighten($(this).val(), 0.88) : $(this).val();
+			$(this).closest("td").find(".santu-hl-preview").css("background", preview);
+		});
+		$wrap.find(".santu-hl-save").on("click", async () => {
+			const collected = [];
+			$wrap.find("tbody.santu-hl-body tr").each(function () {
+				const $tr = $(this);
+				const value = $tr.find(".santu-hl-value").val();
+				if (!(value || "").trim()) return;
+				collected.push({
+					enabled: $tr.find(".santu-hl-enabled").is(":checked") ? 1 : 0,
+					match_type: $tr.find(".santu-hl-match").val(),
+					value: value.trim(),
+					color: $tr.find(".santu-hl-color").val(),
+				});
+			});
+			rules = await santu_utilities.api.saveItemHighlightRules(collected);
+			render_table();
+			frappe.show_alert({ message: "Colour rules saved. Naye rang har page reload par dikhenge.", indicator: "green" });
+		});
 	},
 
 	/* ── 3. Accountant Access ────────────────────────────────── */
@@ -661,8 +911,8 @@ santu_utilities.views = {
 			html += `</tr></thead><tbody>`;
 			data.items.forEach((it, idx) => {
 				const checked = state.selected.has(it.name) ? "checked" : "";
-				const is_cpvc = santu_is_cpvc_item(it.name, it.item_name);
-				html += `<tr data-name="${frappe.utils.escape_html(it.name)}" class="${is_cpvc ? "santu-cpvc-row" : ""}"><td><input type="checkbox" class="santu-bulk-chk" ${checked}></td><td>${(state.page - 1) * PAGE_SIZE + idx + 1}</td>`;
+				const row_hl = santu_item_row_class(it.name, it.item_name);
+				html += `<tr data-name="${frappe.utils.escape_html(it.name)}" class="${row_hl}"><td><input type="checkbox" class="santu-bulk-chk" ${checked}></td><td>${(state.page - 1) * PAGE_SIZE + idx + 1}</td>`;
 				cols.forEach((c) => {
 					// A field staged in state.edits (typed by hand, or filled in by
 					// the barcode-scan / PDF-import actions below) always wins over
@@ -974,7 +1224,7 @@ santu_utilities.views = {
 				frappe.show_alert({ message: `Exported ${r.count} transactions to Tally XML`, indicator: "green" });
 			} catch (e) {
 				frappe.dom.unfreeze();
-				frappe.msgprint(__("Failed to generate Tally XML: ") + (e.message || e));
+				frappe.msgprint(__("Failed to generate Tally XML: ") + ((e && e.message) || String(e)));
 			}
 		});
 
@@ -989,7 +1239,7 @@ santu_utilities.views = {
 				frappe.show_alert({ message: `Exported ${r.count} transactions to Excel`, indicator: "green" });
 			} catch (e) {
 				frappe.dom.unfreeze();
-				frappe.msgprint(__("Failed to generate Excel: ") + (e.message || e));
+				frappe.msgprint(__("Failed to generate Excel: ") + ((e && e.message) || String(e)));
 			}
 		});
 
@@ -1033,7 +1283,13 @@ santu_utilities.views = {
 	   going forward rather than each getting a one-off screen. */
 	async render_invoice_settings($wrap) {
 		$wrap.html(`<div class="santu-utilities-loading">Loading…</div>`);
-		const settings = await frappe.db.get_doc("Santu POS Settings");
+		let settings;
+		try {
+			settings = await frappe.db.get_doc("Santu POS Settings", "Santu POS Settings");
+		} catch (e) {
+			$wrap.html(`<div class="santu-utilities-error">Could not load settings: ${frappe.utils.escape_html((e && e.message) || String(e))}</div>`);
+			return;
+		}
 		const esc = frappe.utils.escape_html;
 
 		$wrap.html(`
@@ -1076,24 +1332,105 @@ santu_utilities.views = {
 	},
 
 	async render_verify_data($wrap) {
-		$wrap.html(`<div class="santu-utilities-loading">Scanning database…</div>`);
-		const r = await santu_utilities.api.getDataAudit();
-		const s = r.summary;
-		$wrap.html(`
-			<div class="santu-utilities-summary-cards">
-				<div class="summary-card valid"><b>${s.passed}</b><span>Passed</span></div>
-				<div class="summary-card warning"><b>${s.warnings}</b><span>Warnings</span></div>
-				<div class="summary-card error"><b>${s.errors}</b><span>Errors</span></div>
-			</div>
-			<h3>Data Health: ${frappe.utils.escape_html(s.health)}</h3>
-			<table class="santu-utilities-table"><thead><tr><th>Category</th><th>Severity</th><th>Record</th><th>Description</th><th>Fix</th></tr></thead><tbody>
-			${(r.issues || []).map((i) => `<tr class="severity-${(i.severity || "").toLowerCase()}">
-				<td>${i.category}</td><td>${i.severity}</td><td>${frappe.utils.escape_html(i.record)}</td>
-				<td>${frappe.utils.escape_html(i.description)}</td><td>${frappe.utils.escape_html(i.fix)}</td></tr>`).join("")}
-			</tbody></table>
-			<button class="btn btn-default santu-verify-refresh">Re-scan</button>
-		`);
-		$wrap.find(".santu-verify-refresh").on("click", () => this.render_verify_data($wrap));
+		const render = async () => {
+			$wrap.html(`<div class="santu-shop-profile-loading">Scanning Database Health…</div>`);
+			const r = await santu_utilities.api.getDataAudit();
+			const s = r.summary;
+			
+			const issues_html = (r.issues && r.issues.length) ? `
+				<div class="santu-verify-issues">
+					<table class="santu-verify-table">
+						<thead>
+							<tr>
+								<th>Category</th>
+								<th>Severity</th>
+								<th>Record</th>
+								<th>Description</th>
+								<th>Suggested Fix</th>
+							</tr>
+						</thead>
+						<tbody>
+							${r.issues.map(i => `
+								<tr class="severity-${(i.severity || "").toLowerCase()}">
+									<td><span class="verify-badge">${frappe.utils.escape_html(i.category)}</span></td>
+									<td>
+										<span class="verify-severity-badge severity-${(i.severity || "").toLowerCase()}">
+											${i.severity === 'Error' ? '❌' : '⚠️'} ${frappe.utils.escape_html(i.severity)}
+										</span>
+									</td>
+									<td class="verify-record">${frappe.utils.escape_html(i.record)}</td>
+									<td class="verify-desc">${frappe.utils.escape_html(i.description)}</td>
+									<td class="verify-fix">${frappe.utils.escape_html(i.fix)}</td>
+								</tr>
+							`).join("")}
+						</tbody>
+					</table>
+				</div>
+			` : `
+				<div class="santu-verify-perfect">
+					<div class="verify-perfect-icon">🎉</div>
+					<h3>Your Data is Perfect!</h3>
+					<p>No errors or warnings found in the database. Everything is running smoothly.</p>
+				</div>
+			`;
+
+			$wrap.html(`
+				<div class="santu-pm-container">
+					<div class="santu-pm-card">
+						<div class="santu-pm-head verify-head">
+							<div class="santu-pm-title">
+								<h2>Database Health Check</h2>
+								<p>Scan your data for inconsistencies, missing links, or errors.</p>
+							</div>
+							<div class="verify-health-score">
+								<span class="health-label">System Health</span>
+								<span class="health-value ${s.errors > 0 ? 'bad' : s.warnings > 0 ? 'warn' : 'good'}">
+									${frappe.utils.escape_html(s.health)}
+								</span>
+							</div>
+						</div>
+						
+						<div class="santu-pm-body">
+							<div class="santu-verify-grid">
+								<div class="verify-stat-card good">
+									<div class="stat-icon">✅</div>
+									<div class="stat-info">
+										<h3>${s.passed}</h3>
+										<p>Checks Passed</p>
+									</div>
+								</div>
+								<div class="verify-stat-card warn">
+									<div class="stat-icon">⚠️</div>
+									<div class="stat-info">
+										<h3>${s.warnings}</h3>
+										<p>Warnings</p>
+									</div>
+								</div>
+								<div class="verify-stat-card bad">
+									<div class="stat-icon">❌</div>
+									<div class="stat-info">
+										<h3>${s.errors}</h3>
+										<p>Errors Found</p>
+									</div>
+								</div>
+							</div>
+							
+							${issues_html}
+						</div>
+
+						<div class="santu-pm-footer" style="display:flex; justify-content: flex-end;">
+							<button class="btn btn-primary santu-verify-refresh" style="display:flex; gap:8px; align-items:center;">
+								<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.59-9.21l5.67-5.67"/></svg>
+								Re-scan Database
+							</button>
+						</div>
+					</div>
+				</div>
+			`);
+			
+			$wrap.find(".santu-verify-refresh").on("click", render);
+		};
+		render();
 	},
 
 	/* ── 11. Close Financial Year ────────────────────────────── */
@@ -1175,25 +1512,88 @@ santu_utilities.views = {
 			const $mic = $wrap.find(".santu-bug-mic");
 			const $ta = $wrap.find(".santu-bug-textarea");
 			let recognition = null;
-			if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
-				const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-				recognition = new SR();
-				recognition.lang = "hi-IN";
-				recognition.interimResults = false;
-				recognition.maxAlternatives = 1;
-				recognition.onresult = (ev) => {
-					const transcript = ev.results[0][0].transcript;
-					$ta.val(($ta.val() ? $ta.val() + " " : "") + transcript);
-					$mic.removeClass("is-listening").text("🎙️");
-				};
-				recognition.onerror = () => { $mic.removeClass("is-listening").text("🎙️"); };
-				recognition.onend = () => { $mic.removeClass("is-listening").text("🎙️"); };
-				$mic.on("click", () => {
-					if ($mic.hasClass("is-listening")) {
-						recognition.stop();
-					} else {
+			let is_listening = false;
+			let initialText = "";
+
+			const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+			if (SpeechRecognition) {
+				const startListening = () => {
+					if (recognition) {
+						try { recognition.stop(); } catch(e) {}
+					}
+
+					recognition = new SpeechRecognition();
+					recognition.continuous = true;
+					recognition.interimResults = true;
+					recognition.lang = "hi-IN";
+
+					initialText = $ta.val() ? $ta.val().trim() + " " : "";
+
+					recognition.onstart = () => {
+						is_listening = true;
+						$mic.addClass("is-listening").html("⏹️").attr("title", "Listening… Click to Stop");
+						$wrap.find(".santu-bug-status-text").remove();
+						$wrap.find(".santu-bug-input-row").after(`
+							<div class="santu-bug-status-text" style="font-size:12px; font-weight:600; color:#ef4444; margin:4px 0 8px;">
+								🔴 Sun rahe hain… Boliye kya dikkat aayi (bolte hi yahan type hota jayega)
+							</div>
+						`);
+					};
+
+					recognition.onresult = (event) => {
+						let interimTranscript = '';
+						let finalTranscript = '';
+
+						for (let i = event.resultIndex; i < event.results.length; ++i) {
+							if (event.results[i].isFinal) {
+								finalTranscript += event.results[i][0].transcript;
+							} else {
+								interimTranscript += event.results[i][0].transcript;
+							}
+						}
+
+						const spoken = finalTranscript || interimTranscript;
+						if (spoken) {
+							$ta.val(initialText + spoken);
+						}
+					};
+
+					recognition.onerror = (event) => {
+						console.warn("Bug Report Voice recognition error:", event.error);
+						is_listening = false;
+						$mic.removeClass("is-listening").html("🎙️").attr("title", "Mic se bolo");
+						$wrap.find(".santu-bug-status-text").html(`
+							<span style="color:#ef4444; font-size:12px;">Mic error: ${event.error}. Mic button dobara dabakar try karein.</span>
+						`);
+					};
+
+					recognition.onend = () => {
+						is_listening = false;
+						$mic.removeClass("is-listening").html("🎙️").attr("title", "Mic se bolo");
+						$wrap.find(".santu-bug-status-text").fadeOut(2000, function() { $(this).remove(); });
+					};
+
+					try {
 						recognition.start();
-						$mic.addClass("is-listening").text("⏹️");
+					} catch(err) {
+						console.error("SpeechRecognition start error:", err);
+					}
+				};
+
+				const stopListening = () => {
+					if (recognition) {
+						try { recognition.stop(); } catch(e) {}
+					}
+					is_listening = false;
+					$mic.removeClass("is-listening").html("🎙️").attr("title", "Mic se bolo");
+				};
+
+				$mic.on("click", () => {
+					if (is_listening) {
+						stopListening();
+					} else {
+						startListening();
 					}
 				});
 			} else {
@@ -1221,4 +1621,1141 @@ santu_utilities.views = {
 		};
 		await render();
 	},
+
+	async render_payment_modes($wrap) {
+		const esc = frappe.utils.escape_html;
+		const render = async () => {
+			$wrap.html(`<div class="santu-shop-profile-loading">Loading Payment Modes…</div>`);
+			const rows = await frappe.xcall("santu_hardware.santu_hardware.api.get_payment_modes");
+			
+			$wrap.html(`
+				<div class="santu-pm-container">
+					<div class="santu-pm-card">
+						<div class="santu-pm-head">
+							<div class="santu-pm-title">
+								<h2>Payment Modes</h2>
+								<p>Manage the ways you accept payments from customers.</p>
+							</div>
+						</div>
+						
+						<div class="santu-pm-body">
+							<div class="santu-pm-list-modern">
+								${rows.map(r => `
+									<div class="santu-pm-row-modern ${r.enabled ? 'is-enabled' : ''}">
+										<div class="santu-pm-info">
+											<div class="santu-pm-icon">${r.name === 'Cash' ? '💵' : r.name === 'UPI' ? '📱' : r.name.toLowerCase().includes('bank') ? '🏦' : '💳'}</div>
+											<div class="santu-pm-details">
+												<h4>${esc(r.name)}</h4>
+												<span class="santu-pm-status ${r.ready ? 'ok' : 'warn'}">
+													${r.ready ? '✅ Setup Ready' : '⚠️ Missing Account setup'}
+												</span>
+											</div>
+										</div>
+										<label class="santu-pm-switch">
+											<input type="checkbox" data-mode="${esc(r.name)}" ${r.enabled ? "checked" : ""}>
+											<span class="santu-pm-slider"></span>
+										</label>
+									</div>
+								`).join("")}
+							</div>
+						</div>
+
+						<div class="santu-pm-footer">
+							<h4>Add Custom Payment Mode</h4>
+							<div class="santu-pm-add-form">
+								<input type="text" class="santu-pm-new-name" placeholder="E.g. Paytm Wallet, PhonePe..." maxlength="50">
+								<select class="santu-pm-new-type">
+									<option value="Bank">Bank / Online</option>
+									<option value="Cash">Cash</option>
+								</select>
+								<button type="button" class="santu-pm-add-btn">Add Mode</button>
+							</div>
+						</div>
+					</div>
+				</div>
+			`);
+
+			$wrap.find(".santu-pm-switch input").on("change", async function() {
+				const mode = $(this).data("mode");
+				const enabled = this.checked ? 1 : 0;
+				$(this).closest(".santu-pm-row-modern").toggleClass("is-enabled", enabled);
+				await frappe.xcall("santu_hardware.santu_hardware.api.set_payment_mode_enabled", { mode, enabled });
+				frappe.show_alert({ message: "Saved", indicator: "green" });
+			});
+
+			$wrap.find(".santu-pm-add-btn").on("click", async () => {
+				const mode_name = $wrap.find(".santu-pm-new-name").val().trim();
+				if (!mode_name) return;
+				const mode_type = $wrap.find(".santu-pm-new-type").val();
+				
+				frappe.dom.freeze("Adding…");
+				try {
+					await frappe.xcall("santu_hardware.santu_hardware.api.create_payment_mode", { mode_name, mode_type });
+					frappe.show_alert({ message: "Added Successfully", indicator: "green" });
+					render();
+				} catch (e) {
+					// standard error handler
+				} finally {
+					frappe.dom.unfreeze();
+				}
+			});
+		};
+		render();
+	},
+
+	async render_cost_price_lock($wrap) {
+		const render = async () => {
+			$wrap.html(`<div class="santu-shop-profile-loading">Checking Privacy Status…</div>`);
+			const s = await window.santu_privacy.status();
+			
+			$wrap.html(`
+				<div class="santu-pm-container">
+					<div class="santu-pm-card">
+						<div class="santu-pm-head">
+							<div class="santu-pm-title">
+								<h2>Cost Price Lock</h2>
+								<p>Cost price is hidden on the billing screen so customers cannot see your margins. Manage security here.</p>
+							</div>
+						</div>
+						
+						<div class="santu-pm-body">
+							<div class="santu-pm-list-modern">
+								<div class="santu-pm-row-modern ${s.pin_set ? 'is-enabled' : ''}">
+									<div class="santu-pm-info">
+										<div class="santu-pm-icon">🔒</div>
+										<div class="santu-pm-details">
+											<h4>Security PIN</h4>
+											<span class="santu-pm-status ${s.pin_set ? 'ok' : 'warn'}">
+												${s.pin_set ? '✅ PIN is Set' : '⚠️ Not Set Up'}
+											</span>
+										</div>
+									</div>
+									<button class="btn ${s.pin_set ? 'btn-default' : 'btn-primary'} btn-sm santu-privacy-set-pin">
+										${s.pin_set ? 'Change PIN' : 'Set PIN'}
+									</button>
+								</div>
+
+								<div class="santu-pm-row-modern ${s.touch_id_devices ? 'is-enabled' : ''}">
+									<div class="santu-pm-info">
+										<div class="santu-pm-icon">👆</div>
+										<div class="santu-pm-details">
+											<h4>Fingerprint (Touch ID)</h4>
+											<span class="santu-pm-status ${s.touch_id_devices ? 'ok' : 'warn'}">
+												${s.touch_id_devices ? `✅ ${s.touch_id_devices} device(s) active` : '⚠️ Not Set Up'}
+											</span>
+										</div>
+									</div>
+									<button class="btn btn-default btn-sm santu-privacy-add-touch" ${s.pin_set ? '' : 'disabled'}>
+										Add this Mac
+									</button>
+								</div>
+								
+								${!s.pin_set ? '<div style="margin-top:10px; color:#f59e0b; font-size:13px; font-weight:500;">Note: Set a PIN first — the fingerprint is a shortcut for it.</div>' : ''}
+							</div>
+						</div>
+					</div>
+				</div>
+			`);
+
+			$wrap.find(".santu-privacy-set-pin").on("click", async () => {
+				if (await window.santu_privacy.set_pin_dialog()) render();
+			});
+			$wrap.find(".santu-privacy-add-touch").on("click", async () => {
+				if (await window.santu_privacy.register_touch_id()) render();
+			});
+		};
+		render();
+	},
+
+	/* ── 14. Voice Model Training ───────────────────────────── */
+	async render_voice_model($wrap) {
+		let data = await santu_utilities.api.getVoiceModel();
+		let catalogData = await santu_utilities.api.getCatalogItemsForTraining({ status: "all" });
+		let datasetStats = await santu_utilities.api.getVoiceDatasetStats();
+		let activeTab = "wizard"; // "wizard" | "items" | "settings"
+		let wizardIndex = 0;
+		let wizardFilterGroup = "All Groups";
+		let wizardFilterStatus = "untrained"; // Untrained by default so trained items never repeat!
+		let recognition = null;
+		let is_recording = false;
+
+		const render = () => {
+			$wrap.html(`
+				<div class="santu-utilities-section">
+					<div class="santu-utilities-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+						<div>
+							<h1 class="santu-utilities-title">🎙️ Voice Model Training (आवाज़ पहचान & लोकल ऑडियो स्टोरेज)</h1>
+							<p class="santu-utilities-muted" style="margin:4px 0 0;">
+								Saman ka naam bolkar train karein — har trained saman ka voice audio aapke computer ke <code>voice_dataset/</code> folder me permanently save hota jayega.
+							</p>
+						</div>
+						<div style="display:flex; gap:8px;">
+							<button class="btn btn-default btn-sm santu-vm-auto-train">
+								⚡ 1-Click Auto-Train Brands
+							</button>
+							<button class="btn btn-primary btn-sm santu-vm-add-rule">
+								+ Add Custom Voice Rule
+							</button>
+						</div>
+					</div>
+
+					<!-- Navigation Tabs -->
+					<div class="santu-vm-tab-nav">
+						<button type="button" class="santu-vm-tab-btn ${activeTab === 'wizard' ? 'is-active' : ''}" data-tab="wizard">
+							🚀 Step-by-Step Training Wizard (${catalogData.untrained_count || 0} Untrained)
+						</button>
+						<button type="button" class="santu-vm-tab-btn ${activeTab === 'items' ? 'is-active' : ''}" data-tab="items">
+							📦 All Items Catalog (${catalogData.total_count || 0})
+						</button>
+						<button type="button" class="santu-vm-tab-btn ${activeTab === 'settings' ? 'is-active' : ''}" data-tab="settings">
+							⚙️ Voice Rules & Local Audio Dataset (${datasetStats.total_recordings || 0} Audio Files)
+						</button>
+					</div>
+
+					<!-- Tab Content Container -->
+					<div class="santu-vm-tab-content">
+						${activeTab === 'wizard' ? render_wizard_tab() : (activeTab === 'items' ? render_items_tab() : render_settings_tab())}
+					</div>
+				</div>
+			`);
+
+			attach_main_events();
+		};
+
+		/* ── Tab 1: Step-by-Step Training Wizard ── */
+		const get_wizard_items = () => {
+			let items = catalogData.items || [];
+			if (wizardFilterGroup && wizardFilterGroup !== "All Groups") {
+				items = items.filter(it => it.item_group === wizardFilterGroup);
+			}
+			if (wizardFilterStatus === "untrained") {
+				items = items.filter(it => !it.is_trained);
+			} else if (wizardFilterStatus === "trained") {
+				items = items.filter(it => it.is_trained);
+			}
+			return items;
+		};
+
+		const render_wizard_tab = () => {
+			const items = get_wizard_items();
+			const total = items.length;
+			if (wizardIndex >= total) wizardIndex = Math.max(0, total - 1);
+			const currentItem = items[wizardIndex];
+			const trainedCount = catalogData.trained_count || 0;
+			const totalCatalog = catalogData.total_count || 1;
+			const percent = Math.round((trainedCount / totalCatalog) * 100);
+
+			if (!currentItem) {
+				return `
+					<div class="santu-vm-wizard-card">
+						<div style="font-size:48px; margin-bottom:12px;">🎉</div>
+						<h2>Sabhi Saman Train Ho Chuke Hain!</h2>
+						<p class="text-muted" style="margin-bottom:18px;">
+							Aapke catalog ke sabhi <b>${totalCatalog} items</b> ka voice model train ho chuka hai. Naya saman add hone par wo yahan automatically aa jayega!
+						</p>
+						<button class="btn btn-default santu-vm-view-all-trained">
+							Review All Trained Items (${trainedCount})
+						</button>
+					</div>
+				`;
+			}
+
+			return `
+				<div class="santu-vm-wizard-card">
+					<!-- Progress Header -->
+					<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+						<div style="display:flex; align-items:center; gap:8px;">
+							<span class="badge ${currentItem.is_trained ? 'badge-success' : 'badge-warning'}">
+								${currentItem.is_trained ? '✅ Already Trained' : '⚠️ Untrained'}
+							</span>
+							<span style="font-weight:700; font-size:14px; color:#1e293b;">
+								Untrained Queue: Item ${wizardIndex + 1} of ${total}
+							</span>
+						</div>
+						<div style="display:flex; align-items:center; gap:8px;">
+							<select class="form-control input-sm santu-vm-wizard-group-select" style="width:160px; font-size:12px;">
+								${(catalogData.groups || []).map(g => `<option value="${g}" ${g === wizardFilterGroup ? 'selected' : ''}>${g}</option>`).join('')}
+							</select>
+							<select class="form-control input-sm santu-vm-wizard-status-select" style="width:140px; font-size:12px;">
+								<option value="untrained" ${wizardFilterStatus === 'untrained' ? 'selected' : ''}>Untrained Only</option>
+								<option value="trained" ${wizardFilterStatus === 'trained' ? 'selected' : ''}>Trained Only</option>
+								<option value="all" ${wizardFilterStatus === 'all' ? 'selected' : ''}>All Items</option>
+							</select>
+						</div>
+					</div>
+
+					<div class="santu-vm-progress-bar-wrap">
+						<div class="santu-vm-progress-bar-fill" style="width: ${percent}%;"></div>
+					</div>
+					<div style="font-size:12px; color:#64748b; margin-top:-14px; margin-bottom:18px; text-align:right;">
+						Overall Shop Progress: <b>${trainedCount} / ${totalCatalog} items trained (${percent}%)</b>
+					</div>
+
+					<!-- Item Info Display -->
+					<div style="margin: 16px 0;">
+						<div style="display:inline-flex; gap:6px; margin-bottom:8px;">
+							${currentItem.brand ? `<span class="badge badge-info">${frappe.utils.escape_html(currentItem.brand)}</span>` : ''}
+							<span class="badge badge-default">${frappe.utils.escape_html(currentItem.item_group || 'General')}</span>
+						</div>
+						<div class="santu-vm-wizard-item-title">
+							${frappe.utils.escape_html(currentItem.item_name)}
+						</div>
+						<div style="color:#64748b; font-size:14px; font-weight:500;">
+							Code: <code>${frappe.utils.escape_html(currentItem.item_code)}</code> | Rate: <b style="color:#16a34a;">₹${currentItem.standard_rate}</b> / ${currentItem.stock_uom}
+						</div>
+						${currentItem.aliases && currentItem.aliases.length ? `
+							<div style="margin-top:10px;">
+								<span style="font-size:12px; color:#475569; font-weight:600;">Current Trained Aliases: </span>
+								${currentItem.aliases.map(a => `<span class="santu-vm-badge santu-vm-badge-green">🗣️ "${frappe.utils.escape_html(a)}"</span>`).join('')}
+							</div>
+						` : ''}
+					</div>
+
+					<!-- Big Mic Button -->
+					<div style="margin: 20px 0;">
+						<button type="button" class="santu-vm-wizard-mic" id="santu-vm-wizard-mic-btn" title="Click to Speak & Record Audio">
+							<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+								<path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+								<line x1="12" y1="19" x2="12" y2="22"></line>
+							</svg>
+						</button>
+						<div class="santu-vm-wizard-status" style="font-size:15px; font-weight:600; color:#475569;">
+							👆 Click Mic & Speak local name (Audio will be recorded & saved locally)
+						</div>
+					</div>
+
+					<!-- Speech Feedback Banner -->
+					<div class="santu-vm-wizard-feedback" style="display:none; margin:16px auto; max-width:520px; padding:12px 18px; border-radius:10px; background:#eff6ff; border:1px solid #bfdbfe; font-size:14px; text-align:left;"></div>
+
+					<!-- Navigation Buttons -->
+					<div style="display:flex; justify-content:center; align-items:center; gap:12px; margin-top:24px;">
+						<button class="btn btn-default santu-vm-wizard-prev" ${wizardIndex === 0 ? 'disabled' : ''}>
+							← Previous Item
+						</button>
+						<button class="btn btn-default santu-vm-wizard-skip">
+							Skip (अगला सामान) →
+						</button>
+						<button class="btn btn-primary santu-vm-wizard-manual-add">
+							✏️ Type / Edit Alias
+						</button>
+					</div>
+				</div>
+			`;
+		};
+
+		/* ── Tab 2: All Items Catalog List ── */
+		const render_items_tab = () => {
+			const items = catalogData.items || [];
+			return `
+				<div class="santu-vm-card">
+					<div class="santu-vm-card-head">
+						<div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+							<h3><span>📦</span> Shop Items Catalog (${items.length})</h3>
+							<span class="badge badge-success">${catalogData.trained_count || 0} Trained</span>
+							<span class="badge badge-warning">${catalogData.untrained_count || 0} Untrained</span>
+						</div>
+						<div style="display:flex; gap:8px;">
+							<select class="form-control input-sm santu-vm-items-group-filter" style="width:160px; font-size:12px;">
+								${(catalogData.groups || []).map(g => `<option value="${g}">${g}</option>`).join('')}
+							</select>
+							<select class="form-control input-sm santu-vm-items-status-filter" style="width:140px; font-size:12px;">
+								<option value="all">All Status</option>
+								<option value="untrained">Untrained Only</option>
+								<option value="trained">Trained Only</option>
+							</select>
+							<input type="text" class="form-control input-sm santu-vm-items-search" placeholder="Search item by name/code…" style="width:220px;" />
+						</div>
+					</div>
+
+					<div style="overflow-x:auto;">
+						<table class="santu-vm-rules-table">
+							<thead>
+								<tr>
+									<th style="width:30%;">Item Details</th>
+									<th style="width:15%;">Category</th>
+									<th style="width:12%;">Rate</th>
+									<th style="width:28%;">Trained Voice Aliases</th>
+									<th style="width:15%; text-align:right;">Action</th>
+								</tr>
+							</thead>
+							<tbody class="santu-vm-items-table-body">
+								${render_items_table_rows(items)}
+							</tbody>
+						</table>
+					</div>
+				</div>
+			`;
+		};
+
+		const render_items_table_rows = (items) => {
+			if (!items.length) {
+				return `<tr><td colspan="5" style="text-align:center; padding:30px; color:#94a3b8;">No items found matching the selected filters.</td></tr>`;
+			}
+			return items.map(it => `
+				<tr data-item-code="${frappe.utils.escape_html(it.item_code)}">
+					<td>
+						<div style="font-weight:700; color:#0f172a;">${frappe.utils.escape_html(it.item_name)}</div>
+						<div style="font-size:12px; color:#64748b;"><code>${frappe.utils.escape_html(it.item_code)}</code> ${it.brand ? `• ${frappe.utils.escape_html(it.brand)}` : ''}</div>
+					</td>
+					<td><span class="badge badge-default">${frappe.utils.escape_html(it.item_group || 'General')}</span></td>
+					<td style="font-weight:600; color:#16a34a;">₹${it.standard_rate} <span style="font-size:11px; color:#64748b;">/${it.stock_uom}</span></td>
+					<td>
+						${it.aliases && it.aliases.length ? it.aliases.map(a => `<span class="santu-vm-badge santu-vm-badge-green">🗣️ "${frappe.utils.escape_html(a)}"</span>`).join('') : '<span class="badge santu-vm-badge-untrained">⚠️ Untrained</span>'}
+					</td>
+					<td style="text-align:right;">
+						<button class="btn btn-xs btn-primary santu-vm-train-item-btn" data-code="${frappe.utils.escape_html(it.item_code)}" data-name="${frappe.utils.escape_html(it.item_name)}">
+							🎙️ Train Voice
+						</button>
+					</td>
+				</tr>
+			`).join('');
+		};
+
+		/* ── Tab 3: Settings & Local Audio Dataset ── */
+		const render_settings_tab = () => {
+			const rules = data.rules || [];
+			const samples = datasetStats.recent_samples || [];
+			return `
+				<!-- Local Dataset Folder Summary Card -->
+				<div class="santu-vm-card" style="margin-bottom:20px; border-left:4px solid #2563eb;">
+					<div class="santu-vm-card-head" style="margin-bottom:8px;">
+						<h3><span>📁</span> Local Voice Audio Dataset Storage (Mac Hard Disk)</h3>
+						<span class="badge badge-success">${datasetStats.total_recordings || 0} Audio Clips Saved</span>
+					</div>
+					<div style="font-size:13px; color:#475569; line-height:1.6;">
+						<div>Aapki har ek training audio clip computer me is folder me save hoti hai:</div>
+						<div style="margin:6px 0;"><code>${frappe.utils.escape_html(datasetStats.folder_path || 'sites/site1.local/public/files/voice_dataset/')}</code></div>
+						<div style="font-size:12px; color:#64748b;">
+							Disk Usage: <b>${datasetStats.disk_usage_mb || 0} MB</b> | Total Recordings: <b>${datasetStats.total_recordings || 0}</b> | Format: <b>WebM / PCM Audio</b>
+						</div>
+					</div>
+
+					${samples.length ? `
+						<div style="margin-top:14px; padding-top:12px; border-top:1px dashed #cbd5e1;">
+							<div style="font-size:12px; font-weight:700; color:#334155; margin-bottom:8px;">RECENT RECORDED VOICE SAMPLES:</div>
+							<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:10px;">
+								${samples.slice(0, 6).map(s => `
+									<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px;">
+										<div style="font-weight:700; font-size:13px; color:#0f172a;">${frappe.utils.escape_html(s.item_name)}</div>
+										<div style="font-size:12px; color:#2563eb; margin:2px 0 6px;">🗣️ "${frappe.utils.escape_html(s.phrase)}"</div>
+										${s.file_url ? `
+											<audio controls style="width:100%; height:32px;" src="${frappe.utils.escape_html(s.file_url)}"></audio>
+										` : ''}
+										<div style="font-size:11px; color:#94a3b8; margin-top:4px;">${frappe.utils.escape_html(s.created_at || '')}</div>
+									</div>
+								`).join('')}
+							</div>
+						</div>
+					` : ''}
+				</div>
+
+				<div class="santu-vm-grid">
+					<!-- Live Voice Testing Sandbox -->
+					<div class="santu-vm-card">
+						<div class="santu-vm-card-head">
+							<h3><span>🎤</span> Live Voice Test & Training Sandbox</h3>
+							<span class="badge ${data.enabled ? 'badge-success' : 'badge-danger'}">
+								${data.enabled ? 'Active' : 'Disabled'}
+							</span>
+						</div>
+
+						<div style="text-align:center; padding:10px 0;">
+							<button type="button" class="santu-vm-mic-btn" id="santu-vm-mic-trigger" title="Click to Speak">
+								<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+									<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+									<path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+									<line x1="12" y1="19" x2="12" y2="22"></line>
+								</svg>
+							</button>
+							<div class="santu-vm-status-text" style="font-size:13px; font-weight:600; color:#64748b; margin-bottom:12px;">
+								Click Mic button to speak in Hindi or English (e.g., "adha inch socket" ya "tota pilas")
+							</div>
+						</div>
+
+						<div class="santu-vm-test-box">
+							<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+								<span style="font-size:12px; font-weight:600; color:#475569; text-transform:uppercase;">Voice Recognition & Mapping Result</span>
+								<span class="santu-vm-live-indicator" style="font-size:11px; color:#94a3b8;">Ready</span>
+							</div>
+							<div class="santu-vm-output" style="font-size:14px; color:#1e293b; min-height:22px;">
+								<i style="color:#94a3b8;">Spoken phrase will appear here in real-time…</i>
+							</div>
+							<div class="santu-vm-test-result" style="display:none;"></div>
+						</div>
+					</div>
+
+					<!-- Model Global Configuration -->
+					<div class="santu-vm-card">
+						<div class="santu-vm-card-head">
+							<h3><span>⚙️</span> Voice Model Settings</h3>
+							<span style="font-size:12px; color:#64748b;">${catalogData.total_count || 0} items catalog</span>
+						</div>
+
+						<form class="santu-vm-settings-form">
+							<div class="form-group" style="margin-bottom:14px;">
+								<label style="font-weight:600; font-size:13px; margin-bottom:4px; display:block;">Speech Recognition Language</label>
+								<select class="form-control santu-vm-lang" style="font-size:13px;">
+									<option value="hi-IN" ${data.language === 'hi-IN' ? 'selected' : ''}>Hindi / Hinglish (hi-IN) - Recommended</option>
+									<option value="en-IN" ${data.language === 'en-IN' ? 'selected' : ''}>Indian English (en-IN)</option>
+									<option value="auto" ${data.language === 'auto' ? 'selected' : ''}>System Default (Auto)</option>
+								</select>
+								<small class="text-muted">Dictation engine uses this primary dialect model.</small>
+							</div>
+
+							<div style="margin-bottom:12px;">
+								<label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">
+									<input type="checkbox" class="santu-vm-auto-unit" ${data.auto_unit_conversion ? 'checked' : ''} />
+									Auto Hardware Unit & Fraction Conversion (adha → 1/2, pauna → 3/4, dedh → 1-1/2, inchi → inch)
+								</label>
+							</div>
+
+							<div style="margin-bottom:18px;">
+								<label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">
+									<input type="checkbox" class="santu-vm-fuzzy" ${data.fuzzy_matching ? 'checked' : ''} />
+									Phonetic Fuzzy Matching (Tolerate accent & colloquial variances)
+								</label>
+							</div>
+
+							<button type="submit" class="btn btn-primary btn-sm">
+								Save Voice Settings
+							</button>
+						</form>
+					</div>
+				</div>
+
+				<!-- Trained Rules Table Card -->
+				<div class="santu-vm-card" style="margin-top:20px;">
+					<div class="santu-vm-card-head" style="margin-bottom:12px;">
+						<div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+							<h3><span>📋</span> Trained Vocabulary & Rules (${rules.length})</h3>
+							<span class="badge badge-info">${rules.filter(r => r.enabled).length} Active</span>
+						</div>
+						<div style="width:260px;">
+							<input type="text" class="form-control input-sm santu-vm-search-rules" placeholder="Search rules or phrases…" />
+						</div>
+					</div>
+
+					<div style="overflow-x:auto;">
+						<table class="santu-vm-rules-table">
+							<thead>
+								<tr>
+									<th style="width:28%;">What You Speak (Phrase)</th>
+									<th style="width:28%;">Searches For (Target Keyword)</th>
+									<th style="width:20%;">Linked Item / Category</th>
+									<th style="width:12%;">Status</th>
+									<th style="width:12%; text-align:right;">Actions</th>
+								</tr>
+							</thead>
+							<tbody class="santu-vm-rules-body">
+								${render_rules_rows(rules)}
+							</tbody>
+						</table>
+					</div>
+				</div>
+			`;
+		};
+
+		const render_rules_rows = (rules) => {
+			if (!rules.length) {
+				return `<tr><td colspan="5" style="text-align:center; padding:30px; color:#94a3b8;">No custom voice rules added yet.</td></tr>`;
+			}
+			return rules.map((r) => `
+				<tr data-rule-id="${r.id}">
+					<td><span class="santu-vm-phrase-tag">🗣️ "${frappe.utils.escape_html(r.phrase)}"</span></td>
+					<td><span class="santu-vm-target-tag">🔍 ${frappe.utils.escape_html(r.target)}</span></td>
+					<td style="color:#64748b; font-size:12px;">${r.item_code ? `<code>${frappe.utils.escape_html(r.item_code)}</code>` : (r.description || '—')}</td>
+					<td>
+						<span class="badge ${r.enabled ? 'badge-success' : 'badge-default'}" style="cursor:pointer;" data-action="toggle-status">
+							${r.enabled ? 'Enabled' : 'Disabled'}
+						</span>
+					</td>
+					<td style="text-align:right;">
+						<button class="btn btn-xs btn-default" data-action="edit-rule" title="Edit Rule" style="margin-right:4px;">✏️</button>
+						<button class="btn btn-xs btn-danger" data-action="delete-rule" title="Delete Rule">🗑️</button>
+					</td>
+				</tr>
+			`).join('');
+		};
+
+		const attach_main_events = () => {
+			const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+			// Tab Switching
+			$wrap.find(".santu-vm-tab-btn").on("click", function() {
+				activeTab = $(this).data("tab");
+				render();
+			});
+
+			$wrap.find(".santu-vm-view-all-trained").on("click", function() {
+				activeTab = "items";
+				render();
+			});
+
+			// Auto-Train Catalog
+			$wrap.find(".santu-vm-auto-train").on("click", async () => {
+				frappe.dom.freeze(__("Analyzing shop catalog & generating voice aliases…"));
+				try {
+					const res = await santu_utilities.api.autoTrainCatalog();
+					frappe.dom.unfreeze();
+					frappe.msgprint({
+						title: __("Voice Model Auto-Trained"),
+						indicator: "green",
+						message: `<b>${res.items_analyzed} items</b> analyzed.<br><b>${res.new_rules_added} new voice rules</b> generated from catalog brands and sizes!`,
+					});
+					data = await santu_utilities.api.getVoiceModel();
+					catalogData = await santu_utilities.api.getCatalogItemsForTraining();
+					datasetStats = await santu_utilities.api.getVoiceDatasetStats();
+					render();
+				} catch (err) {
+					frappe.dom.unfreeze();
+					frappe.msgprint({ title: __("Error"), message: err.message, indicator: "red" });
+				}
+			});
+
+			// Add Rule
+			$wrap.find(".santu-vm-add-rule").on("click", () => open_rule_dialog());
+
+			/* ── Wizard Events ── */
+			if (activeTab === "wizard") {
+				const items = get_wizard_items();
+				const currentItem = items[wizardIndex];
+
+				$wrap.find(".santu-vm-wizard-group-select").on("change", function() {
+					wizardFilterGroup = $(this).val();
+					wizardIndex = 0;
+					render();
+				});
+
+				$wrap.find(".santu-vm-wizard-status-select").on("change", function() {
+					wizardFilterStatus = $(this).val();
+					wizardIndex = 0;
+					render();
+				});
+
+				$wrap.find(".santu-vm-wizard-prev").on("click", () => {
+					if (wizardIndex > 0) {
+						wizardIndex--;
+						render();
+					}
+				});
+
+				$wrap.find(".santu-vm-wizard-skip").on("click", () => {
+					wizardIndex++;
+					render();
+				});
+
+				$wrap.find(".santu-vm-wizard-manual-add").on("click", () => {
+					if (currentItem) {
+						open_rule_dialog({
+							phrase: "",
+							target: currentItem.item_name,
+							item_code: currentItem.item_code,
+						});
+					}
+				});
+
+				// Wizard Mic & Audio Recorder Handler
+				const $wMic = $wrap.find("#santu-vm-wizard-mic-btn");
+				const $wStatus = $wrap.find(".santu-vm-wizard-status");
+				const $wFeedback = $wrap.find(".santu-vm-wizard-feedback");
+
+				let mediaRecorder = null;
+				let audioChunks = [];
+				let audioBase64 = null;
+
+				const startAudioRecording = async () => {
+					audioChunks = [];
+					audioBase64 = null;
+					try {
+						if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+							const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+							mediaRecorder = new MediaRecorder(stream);
+							mediaRecorder.ondataavailable = (e) => {
+								if (e.data && e.data.size > 0) audioChunks.push(e.data);
+							};
+							mediaRecorder.onstop = () => {
+								try {
+									const blob = new Blob(audioChunks, { type: 'audio/webm' });
+									const reader = new FileReader();
+									reader.onloadend = () => {
+										audioBase64 = reader.result;
+									};
+									reader.readAsDataURL(blob);
+									stream.getTracks().forEach(t => t.stop());
+								} catch(e) {}
+							};
+							mediaRecorder.start();
+						}
+					} catch(err) {
+						console.warn("Audio media recording not available:", err);
+					}
+				};
+
+				const stopAudioRecording = () => {
+					if (mediaRecorder && mediaRecorder.state === "recording") {
+						try { mediaRecorder.stop(); } catch(e) {}
+					}
+				};
+
+				$wMic.on("click", () => {
+					if (!SpeechRecognition) {
+						frappe.show_alert({ message: "Speech Recognition not supported in browser", indicator: "orange" });
+						return;
+					}
+					if (is_recording && recognition) {
+						try { recognition.stop(); } catch(e) {}
+						stopAudioRecording();
+						return;
+					}
+
+					recognition = new SpeechRecognition();
+					recognition.continuous = false;
+					recognition.interimResults = false;
+					const selLang = data.language || 'hi-IN';
+					if (selLang && selLang !== 'auto') recognition.lang = selLang;
+
+					recognition.onstart = () => {
+						is_recording = true;
+						$wMic.addClass("is-listening");
+						$wStatus.html(`<span style="color:#ef4444; font-weight:700;">🔴 Sun rahe hain & Record kar rahe hain… Boliye is saman ka naam!</span>`);
+						startAudioRecording();
+					};
+
+					recognition.onresult = async (event) => {
+						stopAudioRecording();
+						let transcript = '';
+						for (let i = event.resultIndex; i < event.results.length; ++i) {
+							transcript += event.results[i][0].transcript;
+						}
+						if (transcript && currentItem) {
+							// Wait a short tick for audio FileReader to finish encoding
+							await new Promise(r => setTimeout(r, 150));
+
+							$wFeedback.html(`
+								<div style="font-weight:700; color:#1e293b; margin-bottom:4px;">
+									🗣️ Suna: <span style="color:#2563eb; font-size:16px;">"${frappe.utils.escape_html(transcript)}"</span>
+								</div>
+								<div style="color:#16a34a; font-weight:600; margin-bottom:4px;">
+									✅ Saved voice alias for <b>${frappe.utils.escape_html(currentItem.item_name)}</b>!
+								</div>
+								<div style="font-size:12px; color:#64748b;">
+									📁 Audio sample saved to local <code>voice_dataset/</code> folder on Mac
+								</div>
+							`).slideDown();
+
+							// Save alias and audio sample to server & disk
+							await santu_utilities.api.trainItemVoiceAlias(currentItem.item_code, transcript, audioBase64, "webm");
+							data = await santu_utilities.api.getVoiceModel();
+							catalogData = await santu_utilities.api.getCatalogItemsForTraining();
+							datasetStats = await santu_utilities.api.getVoiceDatasetStats();
+
+							frappe.show_alert({ message: `Trained: "${transcript}" → ${currentItem.item_name}`, indicator: "green" });
+
+							// Auto advance to next untrained item after 1.2s
+							setTimeout(() => {
+								render();
+							}, 1200);
+						}
+					};
+
+					recognition.onerror = (e) => {
+						is_recording = false;
+						stopAudioRecording();
+						$wMic.removeClass("is-listening");
+						$wStatus.text("Error listening: " + e.error + ". Click mic to try again.");
+					};
+
+					recognition.onend = () => {
+						is_recording = false;
+						stopAudioRecording();
+						$wMic.removeClass("is-listening");
+					};
+
+					try { recognition.start(); } catch(e) { console.error(e); }
+				});
+			}
+
+			/* ── Items Tab Events ── */
+			if (activeTab === "items") {
+				const filter_items_table = () => {
+					const q = $wrap.find(".santu-vm-items-search").val().toLowerCase().trim();
+					const grp = $wrap.find(".santu-vm-items-group-filter").val();
+					const st = $wrap.find(".santu-vm-items-status-filter").val();
+
+					let filtered = (catalogData.items || []).filter(it => {
+						const matchQ = !q || it.item_name.toLowerCase().includes(q) || it.item_code.toLowerCase().includes(q) || (it.brand && it.brand.toLowerCase().includes(q));
+						const matchGrp = grp === "All Groups" || it.item_group === grp;
+						const matchSt = st === "all" || (st === "trained" && it.is_trained) || (st === "untrained" && !it.is_trained);
+						return matchQ && matchGrp && matchSt;
+					});
+					$wrap.find(".santu-vm-items-table-body").html(render_items_table_rows(filtered));
+				};
+
+				$wrap.find(".santu-vm-items-search").on("input", santu_utilities.utils.debounce(filter_items_table, 200));
+				$wrap.find(".santu-vm-items-group-filter, .santu-vm-items-status-filter").on("change", filter_items_table);
+
+				$wrap.find(".santu-vm-items-table-body").on("click", ".santu-vm-train-item-btn", function() {
+					const code = $(this).data("code");
+					const name = $(this).data("name");
+					open_single_item_mic_dialog(code, name);
+				});
+			}
+
+			/* ── Settings Tab Events ── */
+			if (activeTab === "settings") {
+				$wrap.find(".santu-vm-settings-form").on("submit", async (e) => {
+					e.preventDefault();
+					frappe.dom.freeze(__("Saving voice settings…"));
+					try {
+						await santu_utilities.api.saveVoiceSettings({
+							enabled: 1,
+							language: $wrap.find(".santu-vm-lang").val(),
+							auto_unit_conversion: $wrap.find(".santu-vm-auto-unit").is(":checked") ? 1 : 0,
+							fuzzy_matching: $wrap.find(".santu-vm-fuzzy").is(":checked") ? 1 : 0,
+						});
+						data = await santu_utilities.api.getVoiceModel();
+						frappe.dom.unfreeze();
+						frappe.show_alert({ message: __("Voice settings saved"), indicator: "green" });
+					} catch (err) {
+						frappe.dom.unfreeze();
+						frappe.msgprint({ title: __("Error"), message: err.message, indicator: "red" });
+					}
+				});
+
+				$wrap.find(".santu-vm-search-rules").on("input", function() {
+					const q = $(this).val().toLowerCase().trim();
+					const filtered = (data.rules || []).filter(r => 
+						(r.phrase && r.phrase.toLowerCase().includes(q)) || 
+						(r.target && r.target.toLowerCase().includes(q)) ||
+						(r.item_code && r.item_code.toLowerCase().includes(q))
+					);
+					$wrap.find(".santu-vm-rules-body").html(render_rules_rows(filtered));
+				});
+
+				$wrap.find(".santu-vm-rules-body").on("click", "[data-action]", async function(e) {
+					e.preventDefault();
+					const action = $(this).data("action");
+					const ruleId = $(this).closest("tr").data("rule-id");
+					const rule = (data.rules || []).find(r => r.id === ruleId);
+					if (!rule) return;
+
+					if (action === "toggle-status") {
+						rule.enabled = !rule.enabled;
+						await santu_utilities.api.saveVoiceRule(rule);
+						render();
+					} else if (action === "delete-rule") {
+						frappe.confirm(`Delete voice rule for "<b>${frappe.utils.escape_html(rule.phrase)}</b>"?`, async () => {
+							await santu_utilities.api.deleteVoiceRule(ruleId);
+							data = await santu_utilities.api.getVoiceModel();
+							catalogData = await santu_utilities.api.getCatalogItemsForTraining();
+							datasetStats = await santu_utilities.api.getVoiceDatasetStats();
+							render();
+						});
+					} else if (action === "edit-rule") {
+						open_rule_dialog(rule);
+					}
+				});
+
+				// Sandbox Mic Tester
+				const $micBtn = $wrap.find("#santu-vm-mic-trigger");
+				const $statusText = $wrap.find(".santu-vm-status-text");
+				const $output = $wrap.find(".santu-vm-output");
+				const $resContainer = $wrap.find(".santu-vm-test-result");
+				const $indicator = $wrap.find(".santu-vm-live-indicator");
+
+				$micBtn.on("click", () => {
+					if (!SpeechRecognition) {
+						frappe.show_alert({ message: "Speech Recognition not supported in browser", indicator: "orange" });
+						return;
+					}
+					if (is_recording && recognition) {
+						try { recognition.stop(); } catch(e) {}
+						return;
+					}
+
+					recognition = new SpeechRecognition();
+					recognition.continuous = false;
+					recognition.interimResults = true;
+					const selLang = $wrap.find(".santu-vm-lang").val();
+					if (selLang && selLang !== 'auto') recognition.lang = selLang;
+
+					recognition.onstart = () => {
+						is_recording = true;
+						$micBtn.addClass("is-listening");
+						$statusText.html(`<span style="color:#ef4444;">🔴 Listening… Speak now into your microphone</span>`);
+						$indicator.text("Listening…").css("color", "#ef4444");
+					};
+
+					recognition.onresult = async (event) => {
+						let transcript = '';
+						for (let i = event.resultIndex; i < event.results.length; ++i) {
+							transcript += event.results[i][0].transcript;
+						}
+						if (transcript) {
+							$output.html(`<b>Spoken:</b> <span style="font-size:15px; color:#2563eb;">"${frappe.utils.escape_html(transcript)}"</span>`);
+							const testResult = await santu_utilities.api.testVoiceQuery(transcript);
+							
+							let rulesBadges = (testResult.rules_applied || []).map(r => `<span class="santu-vm-badge">${frappe.utils.escape_html(r)}</span>`).join('');
+							if (!rulesBadges) rulesBadges = `<span style="color:#94a3b8; font-size:12px;">Direct search (no custom transformation needed)</span>`;
+
+							let itemsHtml = '';
+							if (testResult.matched_items && testResult.matched_items.length) {
+								itemsHtml = `
+									<div style="margin-top:10px;">
+										<div style="font-size:12px; font-weight:600; color:#475569; margin-bottom:4px;">MATCHED SHOP ITEMS (${testResult.matched_items.length}):</div>
+										${testResult.matched_items.slice(0, 3).map(it => `
+											<div class="santu-vm-item-preview">
+												<div>
+													<b>${frappe.utils.escape_html(it.item_name || it.item_code)}</b>
+													<span style="color:#64748b; font-size:12px; margin-left:6px;">(${frappe.utils.escape_html(it.item_code)})</span>
+												</div>
+												<div style="font-weight:600; color:#16a34a;">₹${it.standard_rate || 0}</div>
+											</div>
+										`).join('')}
+									</div>
+								`;
+							}
+
+							$resContainer.html(`
+								<div style="font-size:13px; margin-bottom:6px;">
+									<b>Transformed Search Term:</b> <span class="santu-vm-badge santu-vm-badge-green" style="font-size:13px;">${frappe.utils.escape_html(testResult.transformed_query)}</span>
+								</div>
+								<div style="margin-bottom:6px;">
+									<div style="font-size:12px; font-weight:600; color:#475569; margin-bottom:2px;">RULES APPLIED:</div>
+									${rulesBadges}
+								</div>
+								${itemsHtml}
+								<div style="margin-top:12px; text-align:right;">
+									<button class="btn btn-xs btn-primary santu-vm-save-quick-rule" data-spoken="${frappe.utils.escape_html(testResult.raw_query)}" data-target="${frappe.utils.escape_html(testResult.transformed_query)}">
+										+ Save as Custom Training Rule
+									</button>
+								</div>
+							`).show();
+
+							$resContainer.find(".santu-vm-save-quick-rule").on("click", function() {
+								open_rule_dialog({
+									phrase: $(this).data("spoken"),
+									target: $(this).data("target"),
+								});
+							});
+						}
+					};
+
+					recognition.onerror = (event) => {
+						is_recording = false;
+						$micBtn.removeClass("is-listening");
+						$statusText.text("Click Mic button to speak again.");
+						$indicator.text("Error: " + event.error).css("color", "#ef4444");
+					};
+
+					recognition.onend = () => {
+						is_recording = false;
+						$micBtn.removeClass("is-listening");
+						$statusText.text("Click Mic button to speak again.");
+						$indicator.text("Done").css("color", "#16a34a");
+					};
+
+					try { recognition.start(); } catch(e) { console.error(e); }
+				});
+			}
+		};
+
+		const open_single_item_mic_dialog = (item_code, item_name) => {
+			let mediaRec = null;
+			let audioDataChunks = [];
+			let encodedAudio = null;
+
+			const d = new frappe.ui.Dialog({
+				title: `🎙️ Train Voice for: ${item_name}`,
+				fields: [
+					{
+						fieldtype: "HTML",
+						fieldname: "mic_ui",
+						options: `
+							<div style="text-align:center; padding:15px 0;">
+								<div style="font-size:14px; font-weight:600; color:#1e293b; margin-bottom:12px;">
+									Item: <b>${frappe.utils.escape_html(item_name)}</b> (<code>${frappe.utils.escape_html(item_code)}</code>)
+								</div>
+								<button type="button" class="santu-vm-wizard-mic" id="santu-dialog-mic-btn" style="width:68px; height:68px;">
+									<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+										<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+										<path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+										<line x1="12" y1="19" x2="12" y2="22"></line>
+									</svg>
+								</button>
+								<div id="santu-dialog-mic-status" style="font-size:13px; font-weight:600; color:#64748b;">
+									Click Mic button & speak phrase (Audio will be recorded locally)
+								</div>
+							</div>
+						`,
+					},
+					{
+						fieldtype: "Data",
+						fieldname: "spoken_phrase",
+						label: __("Spoken Phrase (आवाज़ से क्या बोलेंगे)"),
+						reqd: 1,
+						description: __("Boliye ya type karein (e.g. 'astral 1 inch pipe')"),
+					},
+				],
+				primary_action_label: __("Save Voice Alias & Audio"),
+				primary_action: async (values) => {
+					d.hide();
+					frappe.dom.freeze(__("Saving voice alias and audio sample…"));
+					try {
+						await santu_utilities.api.trainItemVoiceAlias(item_code, values.spoken_phrase, encodedAudio, "webm");
+						data = await santu_utilities.api.getVoiceModel();
+						catalogData = await santu_utilities.api.getCatalogItemsForTraining();
+						datasetStats = await santu_utilities.api.getVoiceDatasetStats();
+						frappe.dom.unfreeze();
+						frappe.show_alert({ message: __("Voice alias and audio saved locally!"), indicator: "green" });
+						render();
+					} catch(err) {
+						frappe.dom.unfreeze();
+						frappe.msgprint({ title: __("Error"), message: err.message, indicator: "red" });
+					}
+				},
+			});
+
+			d.show();
+
+			const $dMic = d.$wrapper.find("#santu-dialog-mic-btn");
+			const $dStatus = d.$wrapper.find("#santu-dialog-mic-status");
+			const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+			$dMic.on("click", async () => {
+				if (!SpeechRecognition) return;
+				audioDataChunks = [];
+				encodedAudio = null;
+
+				try {
+					if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+						const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+						mediaRec = new MediaRecorder(stream);
+						mediaRec.ondataavailable = (e) => {
+							if (e.data && e.data.size > 0) audioDataChunks.push(e.data);
+						};
+						mediaRec.onstop = () => {
+							try {
+								const blob = new Blob(audioDataChunks, { type: 'audio/webm' });
+								const reader = new FileReader();
+								reader.onloadend = () => { encodedAudio = reader.result; };
+								reader.readAsDataURL(blob);
+								stream.getTracks().forEach(t => t.stop());
+							} catch(e) {}
+						};
+						mediaRec.start();
+					}
+				} catch(e) {}
+
+				const rec = new SpeechRecognition();
+				rec.continuous = false;
+				rec.interimResults = false;
+				rec.lang = data.language || 'hi-IN';
+
+				rec.onstart = () => {
+					$dMic.addClass("is-listening");
+					$dStatus.html(`<span style="color:#ef4444;">🔴 Listening & Recording… Speak now!</span>`);
+				};
+				rec.onresult = (e) => {
+					if (mediaRec && mediaRec.state === "recording") {
+						try { mediaRec.stop(); } catch(err) {}
+					}
+					let t = '';
+					for (let i = e.resultIndex; i < e.results.length; ++i) t += e.results[i][0].transcript;
+					if (t) {
+						d.set_value("spoken_phrase", t);
+						$dStatus.html(`<span style="color:#16a34a;">✅ Recognized & Recorded: "${frappe.utils.escape_html(t)}"</span>`);
+					}
+				};
+				rec.onerror = () => {
+					if (mediaRec && mediaRec.state === "recording") {
+						try { mediaRec.stop(); } catch(err) {}
+					}
+					$dMic.removeClass("is-listening");
+					$dStatus.text("Click mic to try again.");
+				};
+				rec.onend = () => {
+					if (mediaRec && mediaRec.state === "recording") {
+						try { mediaRec.stop(); } catch(err) {}
+					}
+					$dMic.removeClass("is-listening");
+				};
+				rec.start();
+			});
+		};
+
+		const open_rule_dialog = (existing = null) => {
+			const d = new frappe.ui.Dialog({
+				title: existing ? __("Edit Voice Training Rule") : __("Add Custom Voice Training Rule"),
+				fields: [
+					{
+						fieldtype: "Data",
+						fieldname: "phrase",
+						label: __("Spoken Phrase (What you or operator speaks)"),
+						reqd: 1,
+						default: existing ? existing.phrase : "",
+						description: __("e.g., totaplas, pechkas, adha inchi soket, fevikol"),
+					},
+					{
+						fieldtype: "Data",
+						fieldname: "target",
+						label: __("Target Keyword (What to search in catalog)"),
+						reqd: 1,
+						default: existing ? existing.target : "",
+						description: __("e.g., TOTA PLIERS, Screw Driver, 1/2 inch Socket, Fevicol"),
+					},
+					{
+						fieldtype: "Link",
+						options: "Item",
+						fieldname: "item_code",
+						label: __("Direct Linked Item (Optional)"),
+						default: existing ? existing.item_code : "",
+					},
+					{
+						fieldtype: "Data",
+						fieldname: "description",
+						label: __("Note / Description (Optional)"),
+						default: existing ? existing.description : "",
+					},
+					{
+						fieldtype: "Check",
+						fieldname: "enabled",
+						label: __("Rule Enabled"),
+						default: existing ? (existing.enabled ? 1 : 0) : 1,
+					},
+				],
+				primary_action_label: existing ? __("Update Rule") : __("Save Rule"),
+				primary_action: async (values) => {
+					d.hide();
+					frappe.dom.freeze(__("Saving voice rule…"));
+					try {
+						await santu_utilities.api.saveVoiceRule({
+							phrase: values.phrase,
+							target: values.target,
+							item_code: values.item_code,
+							description: values.description,
+							enabled: values.enabled,
+							rule_id: existing ? existing.id : null,
+						});
+						data = await santu_utilities.api.getVoiceModel();
+						catalogData = await santu_utilities.api.getCatalogItemsForTraining();
+						datasetStats = await santu_utilities.api.getVoiceDatasetStats();
+						frappe.dom.unfreeze();
+						frappe.show_alert({ message: __("Voice rule saved"), indicator: "green" });
+						render();
+					} catch (err) {
+						frappe.dom.unfreeze();
+						frappe.msgprint({ title: __("Error"), message: err.message, indicator: "red" });
+					}
+				},
+			});
+			d.show();
+		};
+
+		render();
+	},
 };
+
+
+

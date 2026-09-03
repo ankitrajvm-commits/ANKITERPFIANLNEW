@@ -69,7 +69,7 @@ santu_reports.runner = {
 				await this._run();
 			}
 		} catch (e) {
-			$table.html(`<div class="santu-reports-error">Could not load report: ${frappe.utils.escape_html(e.message || String(e))}</div>`);
+			$table.html(`<div class="santu-reports-error">Could not load report: ${frappe.utils.escape_html((e && e.message) || String(e))}</div>`);
 			console.error(e);
 		}
 	},
@@ -120,7 +120,7 @@ santu_reports.runner = {
 				}
 			}
 		} catch (e) {
-			$embed.html(`<div class="santu-reports-error">Could not load report: ${frappe.utils.escape_html(e.message || String(e))}</div>`);
+			$embed.html(`<div class="santu-reports-error">Could not load report: ${frappe.utils.escape_html((e && e.message) || String(e))}</div>`);
 			console.error(e);
 		}
 	},
@@ -151,7 +151,7 @@ santu_reports.runner = {
 			}
 			santu_reports.table.render($table, data, report);
 		} catch (e) {
-			$table.html(`<div class="santu-reports-error">${frappe.utils.escape_html(e.message || "Report failed")}</div>`);
+			$table.html(`<div class="santu-reports-error">${frappe.utils.escape_html((e && e.message) || "Report failed")}</div>`);
 			console.error(e);
 		}
 	},

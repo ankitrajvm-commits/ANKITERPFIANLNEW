@@ -147,14 +147,14 @@ function build_row(row, show_code) {
 		? `${esc(row.item_name)} <span class="santu-lowstock-code">${esc(row.item_code)}</span>`
 		: esc(row.item_name);
 	const order = row.suggested_reorder_qty > 0 ? row.suggested_reorder_qty : "—";
-	const is_cpvc = santu_is_cpvc_item(row.item_code, row.item_name);
+	const row_hl = santu_item_row_class(row.item_code, row.item_name);
 
 	return $(`
-		<tr class="santu-lowstock-row ${is_cpvc ? "santu-cpvc-row" : ""}">
+		<tr class="santu-lowstock-row ${row_hl}">
 			<td>
 				<div class="santu-lowstock-name">${name}</div>
 			</td>
-			<td class="num ${qty_cls}">${row.available_qty} ${esc(row.stock_uom || "")}</td>
+			<td class="num ${qty_cls}">${row.available_qty} ${esc(santu_uom.abbr(row.stock_uom) || "")}</td>
 			<td class="num">${row.reorder_level}</td>
 			<td><span class="santu-lowstock-pill ${st.cls}">${st.text}</span></td>
 			<td class="num">${order}</td>

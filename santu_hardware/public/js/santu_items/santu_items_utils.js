@@ -14,7 +14,7 @@ santu_items.utils = {
 		if (qty === null || qty === undefined) return "—";
 		const n = parseFloat(qty);
 		const formatted = Number.isInteger(n) ? String(n) : n.toFixed(2);
-		return uom ? `${formatted} ${uom}` : formatted;
+		return uom ? `${formatted} ${santu_uom.abbr(uom)}` : formatted;
 	},
 
 	format_currency_plain(value) {

@@ -177,6 +177,15 @@ def compute_next_backup_time(settings=None):
 		return None
 
 	now = get_datetime(now_datetime())
+	if settings.backup_frequency == "Hourly":
+		# Full local backups are scheduled once each hour.  Keep the next
+		# deadline on the hour so both Frappe's scheduler and the macOS
+		# safety-net can reason about the same deadline.
+		candidate = now.replace(minute=0, second=0, microsecond=0)
+		if candidate <= now:
+			candidate += timedelta(hours=1)
+		return candidate
+
 	backup_time = settings.backup_time or "02:00:00"
 	try:
 		hour, minute, second = [int(x) for x in str(backup_time).split(":")]

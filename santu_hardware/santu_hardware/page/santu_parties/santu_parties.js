@@ -406,7 +406,8 @@ function info_col(icon, label, value) {
 // and shows them as one running account with a balance after each row,
 // the same shape a paper khata page already has. Date range defaults to
 // the last 12 months, same window the WhatsApp statement has always used.
-function open_customer_khata_dialog(row) {
+function open_party_khata_dialog(row) {
+	const is_supplier = row.party_type === "Supplier";
 	const state = {
 		from_date: frappe.datetime.add_months(frappe.datetime.get_today(), -12),
 		to_date: frappe.datetime.get_today(),
@@ -422,16 +423,108 @@ function open_customer_khata_dialog(row) {
 			{ fieldtype: "Section Break" },
 			{ fieldtype: "HTML", fieldname: "khata_html", options: `<div class="santu-khata-loading">${__("Loading…")}</div>` },
 		],
-		primary_action_label: __("Download PDF"),
-		primary_action: () => {
-			window.open(
-				frappe.urllib.get_full_url(
-					`/api/method/santu_hardware.santu_hardware.api.download_customer_khata?customer=${encodeURIComponent(row.party)}&from_date=${encodeURIComponent(state.from_date)}&to_date=${encodeURIComponent(state.to_date)}`
-				),
-				"_blank"
-			);
-		},
+		// Download/Print/WhatsApp export only exists for the Customer khata so
+		// far (2026-09-03: the Supplier side is new — "tracking" was the ask,
+		// not yet a statement to hand someone). The on-screen ledger below is
+		// identical for both.
+		primary_action_label: is_supplier ? null : __("Download PDF"),
+		primary_action: is_supplier
+			? null
+			: () => {
+					window.open(
+						frappe.urllib.get_full_url(
+							`/api/method/santu_hardware.santu_hardware.api.download_customer_khata?customer=${encodeURIComponent(row.party)}&from_date=${encodeURIComponent(state.from_date)}&to_date=${encodeURIComponent(state.to_date)}`
+						),
+						"_blank"
+					);
+				},
 	});
+
+	const render_khata = () => {
+		const $wrap = d.fields_dict.khata_html.$wrapper;
+		$wrap.html(`<div class="santu-khata-loading">${__("Loading…")}</div>`);
+		frappe
+			.xcall(
+				is_supplier
+					? "santu_hardware.santu_hardware.api.get_supplier_khata"
+					: "santu_hardware.santu_hardware.api.get_customer_khata",
+				is_supplier
+					? { supplier: row.party, from_date: state.from_date, to_date: state.to_date }
+					: { customer: row.party, from_date: state.from_date, to_date: state.to_date }
+			)
+			.then((data) => {
+				const money = (v) => format_currency_plain(v || 0);
+				const rows_html = data.rows.length
+					? data.rows
+							.map(
+								(r, idx) => `
+						<tr>
+							<td>${idx + 1}</td>
+							<td>${frappe.datetime.str_to_user(r.date)}</td>
+							<td>${frappe.utils.escape_html(r.display_number)}</td>
+							<td>${frappe.utils.escape_html(r.type)}</td>
+							<td class="santu-khata-items">${
+								(r.items && r.items.length)
+									? r.items.map((it) => `<div class="santu-khata-item-line">${frappe.utils.escape_html(it.item_name)} x${frappe.utils.escape_html(String(it.qty))}</div>`).join("")
+									: frappe.utils.escape_html(r.items_summary || "")
+							}</td>
+							<td class="santu-khata-num">${r.debit ? money(r.debit) : ""}</td>
+							<td class="santu-khata-num">${r.credit ? money(r.credit) : ""}</td>
+							<td class="santu-khata-num santu-khata-balance">${money(r.balance)}</td>
+						</tr>`
+							)
+							.join("")
+					: `<tr><td colspan="8" class="santu-khata-empty">${__("Is date range me koi lena-dena nahi hai.")}</td></tr>`;
+
+				$wrap.html(`
+					<div class="santu-khata-table-wrap">
+						<table class="santu-khata-table">
+							<thead>
+								<tr>
+									<th>${__("#")}</th>
+									<th>${__("Date")}</th>
+									<th>${__("Bill No.")}</th>
+									<th>${__("Type")}</th>
+									<th>${__("Items")}</th>
+									<th class="santu-khata-num">${is_supplier ? __("Debit (Purchase)") : __("Debit (Sale)")}</th>
+									<th class="santu-khata-num">${__("Credit (Paid)")}</th>
+									<th class="santu-khata-num">${__("Balance")}</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr class="santu-khata-opening">
+									<td colspan="7">${__("Opening Balance")}</td>
+									<td class="santu-khata-num">${money(data.opening_balance)}</td>
+								</tr>
+								${rows_html}
+								<tr class="santu-khata-closing">
+									<td colspan="7">${__("Closing Balance")}</td>
+									<td class="santu-khata-num">${money(data.closing_balance)}</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
+				`);
+			})
+			.catch(() => {
+				$wrap.html(`<div class="santu-khata-empty">${__("Load nahi hua.")}</div>`);
+			});
+	};
+
+	d.fields_dict.from_date.$input.on("change", () => {
+		state.from_date = d.get_value("from_date");
+		render_khata();
+	});
+	d.fields_dict.to_date.$input.on("change", () => {
+		state.to_date = d.get_value("to_date");
+		render_khata();
+	});
+
+	if (is_supplier) {
+		d.show();
+		render_khata();
+		return;
+	}
 
 	// Print and WhatsApp, alongside Download PDF — a Dialog only has one
 	// built-in primary/secondary pair, so these two are appended to the
@@ -519,83 +612,6 @@ function open_customer_khata_dialog(row) {
 		});
 	});
 	$footer.prepend($wa_btn).prepend($print_btn);
-
-	const render_khata = () => {
-		const $wrap = d.fields_dict.khata_html.$wrapper;
-		$wrap.html(`<div class="santu-khata-loading">${__("Loading…")}</div>`);
-		frappe
-			.xcall("santu_hardware.santu_hardware.api.get_customer_khata", {
-				customer: row.party,
-				from_date: state.from_date,
-				to_date: state.to_date,
-			})
-			.then((data) => {
-				const money = (v) => format_currency_plain(v || 0);
-				const rows_html = data.rows.length
-					? data.rows
-							.map(
-								(r, idx) => `
-						<tr>
-							<td>${idx + 1}</td>
-							<td>${frappe.datetime.str_to_user(r.date)}</td>
-							<td>${frappe.utils.escape_html(r.display_number)}</td>
-							<td>${frappe.utils.escape_html(r.type)}</td>
-							<td class="santu-khata-items">${
-								(r.items && r.items.length)
-									? r.items.map((it) => `<div class="santu-khata-item-line">${frappe.utils.escape_html(it.item_name)} x${frappe.utils.escape_html(String(it.qty))}</div>`).join("")
-									: frappe.utils.escape_html(r.items_summary || "")
-							}</td>
-							<td class="santu-khata-num">${r.debit ? money(r.debit) : ""}</td>
-							<td class="santu-khata-num">${r.credit ? money(r.credit) : ""}</td>
-							<td class="santu-khata-num santu-khata-balance">${money(r.balance)}</td>
-						</tr>`
-							)
-							.join("")
-					: `<tr><td colspan="8" class="santu-khata-empty">${__("Is date range me koi lena-dena nahi hai.")}</td></tr>`;
-
-				$wrap.html(`
-					<div class="santu-khata-table-wrap">
-						<table class="santu-khata-table">
-							<thead>
-								<tr>
-									<th>${__("#")}</th>
-									<th>${__("Date")}</th>
-									<th>${__("Bill No.")}</th>
-									<th>${__("Type")}</th>
-									<th>${__("Items")}</th>
-									<th class="santu-khata-num">${__("Debit (Sale)")}</th>
-									<th class="santu-khata-num">${__("Credit (Paid)")}</th>
-									<th class="santu-khata-num">${__("Balance")}</th>
-								</tr>
-							</thead>
-							<tbody>
-								<tr class="santu-khata-opening">
-									<td colspan="7">${__("Opening Balance")}</td>
-									<td class="santu-khata-num">${money(data.opening_balance)}</td>
-								</tr>
-								${rows_html}
-								<tr class="santu-khata-closing">
-									<td colspan="7">${__("Closing Balance")}</td>
-									<td class="santu-khata-num">${money(data.closing_balance)}</td>
-								</tr>
-							</tbody>
-						</table>
-					</div>
-				`);
-			})
-			.catch(() => {
-				$wrap.html(`<div class="santu-khata-empty">${__("Load nahi hua.")}</div>`);
-			});
-	};
-
-	d.fields_dict.from_date.$input.on("change", () => {
-		state.from_date = d.get_value("from_date");
-		render_khata();
-	});
-	d.fields_dict.to_date.$input.on("change", () => {
-		state.to_date = d.get_value("to_date");
-		render_khata();
-	});
 
 	d.show();
 	render_khata();
@@ -813,23 +829,18 @@ async function load_party_detail($detail, row) {
 	});
 	$detail.find(".santu-parties-txn-print-btn").on("click", () => {
 		if (row.party_type === "Customer") {
-			open_customer_khata_dialog(row);
+			open_party_khata_dialog(row);
 		} else {
 			window.print();
 		}
 	});
 
-	// Customer-wise running khata (2026-08-27 direct request): every sale
-	// and every payment for this one customer, in date order, with a
-	// running balance after each row — same idea as a paper khata's page
-	// for one customer, not a generic accounting report. Customer only;
-	// a Supplier's own ledger is a different conversation (what THIS shop
-	// owes THEM), not asked for here.
-	if (row.party_type === "Customer") {
-		$detail.find(".santu-parties-khata-btn").on("click", () => open_customer_khata_dialog(row));
-	} else {
-		$detail.find(".santu-parties-khata-btn").hide();
-	}
+	// Running khata (2026-08-27 for Customer; 2026-09-03 direct request
+	// extended it to Supplier — "kis party ko mujhe kitna paisa dena hai,
+	// kab kitna payment de diya gya, tracking ho"): every sale/purchase and
+	// every payment for this one party, in date order, with a running
+	// balance after each row.
+	$detail.find(".santu-parties-khata-btn").on("click", () => open_party_khata_dialog(row));
 
 	const $bills = $detail.find(".santu-parties-bills");
 
@@ -888,6 +899,8 @@ function open_edit_party_dialog(row, contact, on_saved) {
 			{ fieldtype: "Column Break" },
 			{ fieldtype: "Data", fieldname: "email", label: __("Email"), default: contact.email || "" },
 			{ fieldtype: "Data", fieldname: "gstin", label: __("GSTIN"), default: contact.gstin || "" },
+			{ fieldtype: "Button", fieldname: "verify_gstin", label: __("Verify GSTIN") },
+			{ fieldtype: "HTML", fieldname: "gstin_status" },
 			{ fieldtype: "Section Break" },
 			{
 				fieldtype: "Currency",
@@ -942,6 +955,45 @@ function open_edit_party_dialog(row, contact, on_saved) {
 		},
 	});
 	d.$wrapper.addClass("santu-parties-add-dialog");
+
+	// 2026-09-03 direct request: "gstin ko verify karne ka option laa do ki
+	// verified, incorrect name, incorrect gst, etc". This shop has no GSP
+	// subscription configured (GST Settings.api_secret is blank, confirmed
+	// live) — a real government-database name-match lookup needs that, so
+	// this checks format + state-code + checksum only, which was explicitly
+	// agreed to as the fallback once the live option's cost/setup was
+	// explained.
+	const show_gstin_status = (result) => {
+		const $wrap = d.fields_dict.gstin_status.$wrapper;
+		if (!result) {
+			$wrap.empty();
+			return;
+		}
+		$wrap.html(`
+			<div class="santu-gstin-status ${result.ok ? "is-ok" : "is-bad"}">
+				${result.ok ? "✓" : "✕"} ${frappe.utils.escape_html(result.message)}
+			</div>
+		`);
+	};
+	d.fields_dict.verify_gstin.$input.on("click", async (e) => {
+		e.preventDefault();
+		const gstin = (d.get_value("gstin") || "").trim();
+		if (!gstin) {
+			show_gstin_status({ ok: false, message: __("Pehle GSTIN type karo.") });
+			return;
+		}
+		d.fields_dict.verify_gstin.$input.prop("disabled", true).text(__("Checking…"));
+		try {
+			const r = await frappe.xcall("santu_hardware.santu_hardware.api.verify_gstin_format", { gstin });
+			show_gstin_status(r);
+		} finally {
+			d.fields_dict.verify_gstin.$input.prop("disabled", false).text(__("Verify GSTIN"));
+		}
+	});
+	// Typing over an already-checked GSTIN invalidates that check — stale
+	// "✓ valid" sitting next to a since-edited number would be a lie.
+	d.fields_dict.gstin.$input.on("input", () => show_gstin_status(null));
+
 	d.show();
 }
 

@@ -370,19 +370,28 @@
 	// takings, khata balances, reports, purchase/cost screens, stock value —
 	// is exactly what Privacy is for, and stays covered.
 	const PRIVACY_EXEMPT_ROUTES = [
+		"santu-sale",
 		"santu-billing",
+		"santu-sale-invoice",
 		"point-of-sale",
 		"santu-estimate",
+		"santu-sales-order",
+		"santu-delivery-challan",
 		"santu-sales-return",
 		"santu-purchase-return",
-		"santu-delivery-challan",
 		"santu-receive-stock",
 		"santu-add-item",
+		"santu-view-invoice",
 	];
 
 	function privacy_exempt_route() {
 		const route = frappe.get_route() || [];
-		return PRIVACY_EXEMPT_ROUTES.includes(route[0]);
+		if (PRIVACY_EXEMPT_ROUTES.includes(route[0])) return true;
+		if (route[0] === "santu-purchase") {
+			const view = (frappe.route_options && frappe.route_options.view) || sessionStorage.getItem("santu_purchase_view") || "";
+			if (view === "purchase_return") return true;
+		}
+		return false;
 	}
 
 	// Runs on every route change as well as on the toggle: Privacy stays ON
@@ -654,6 +663,7 @@
 	}
 
 	frappe.router.on("change", sync_privacy_exempt);
+	$(document).on("santu-sale-view-change santu-purchase-view-change", sync_privacy_exempt);
 
 	function toggle_topbar() {
 		if (is_kiosk()) {
@@ -984,4 +994,32 @@ window.santu_open_payment_modes = function () {
 	});
 	d.show();
 	render(d);
+};
+
+window.santu_scroll_row_into_view = function ($root, opts = {}) {
+	// The POS grid is rebuilt synchronously, but it must be measured after
+	// layout. requestAnimationFrame is the browser's post-frame callback.
+	requestAnimationFrame(() => {
+		const rowSelector = opts.row_id
+			? `.santu-bill-tr[data-row="${CSS.escape(String(opts.row_id))}"]`
+			: ".santu-bill-tr.is-selected";
+		const $target = $root.find(rowSelector).first();
+		const $wrap = opts.wrapper || $root.find(".santu-bill-gridscroll").first();
+		if (!$target.length || !$wrap.length) return;
+
+		const wrap = $wrap[0];
+		const wrapRect = wrap.getBoundingClientRect();
+		const targetRect = $target[0].getBoundingClientRect();
+		const padding = 10;
+		const top = targetRect.top - wrapRect.top + wrap.scrollTop;
+		const bottom = top + targetRect.height;
+		let nextTop = null;
+
+		if (top < wrap.scrollTop + padding) {
+			nextTop = Math.max(0, top - padding);
+		} else if (bottom > wrap.scrollTop + wrap.clientHeight - padding) {
+			nextTop = Math.max(0, bottom - wrap.clientHeight + padding);
+		}
+		if (nextTop !== null) wrap.scrollTo({ top: nextTop, behavior: "smooth" });
+	});
 };

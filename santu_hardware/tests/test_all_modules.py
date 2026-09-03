@@ -360,6 +360,112 @@ def run_test_suite():
 	_test("doctor.run_checks", test_doctor_checks)
 
 	# ------------------------------------------------------------
+	# 8. AUTOMATIC TEARDOWN & CLEANUP
+	# ------------------------------------------------------------
+	try:
+		# Clean test sales invoices
+		sinvs = frappe.db.sql_list("SELECT name FROM `tabSales Invoice` WHERE customer LIKE %s", ("%Test%",))
+		for inv_name in sinvs:
+			try:
+				frappe.db.sql("DELETE FROM `tabGL Entry` WHERE voucher_no = %s", (inv_name,))
+				frappe.db.sql("DELETE FROM `tabStock Ledger Entry` WHERE voucher_no = %s", (inv_name,))
+				frappe.db.sql("DELETE FROM `tabPayment Ledger Entry` WHERE voucher_no = %s", (inv_name,))
+				frappe.db.sql("DELETE FROM `tabSales Invoice Item` WHERE parent = %s", (inv_name,))
+				frappe.db.sql("DELETE FROM `tabSales Invoice Payment` WHERE parent = %s", (inv_name,))
+				frappe.db.sql("UPDATE `tabSales Invoice` SET docstatus = 2 WHERE name = %s", (inv_name,))
+				frappe.delete_doc("Sales Invoice", inv_name, force=1, ignore_permissions=True)
+			except Exception:
+				pass
+
+		# Clean test delivery notes
+		dns = frappe.db.sql_list("SELECT name FROM `tabDelivery Note` WHERE customer LIKE %s", ("%Test%",))
+		for dn_name in dns:
+			try:
+				frappe.db.sql("DELETE FROM `tabStock Ledger Entry` WHERE voucher_no = %s", (dn_name,))
+				frappe.db.sql("DELETE FROM `tabDelivery Note Item` WHERE parent = %s", (dn_name,))
+				frappe.db.sql("UPDATE `tabDelivery Note` SET docstatus = 2 WHERE name = %s", (dn_name,))
+				frappe.delete_doc("Delivery Note", dn_name, force=1, ignore_permissions=True)
+			except Exception:
+				pass
+
+		# Clean test quotations
+		qtns = frappe.db.sql_list("SELECT name FROM `tabQuotation` WHERE party_name LIKE %s", ("%Test%",))
+		for qtn_name in qtns:
+			try:
+				frappe.db.sql("DELETE FROM `tabQuotation Item` WHERE parent = %s", (qtn_name,))
+				frappe.db.sql("UPDATE `tabQuotation` SET docstatus = 2 WHERE name = %s", (qtn_name,))
+				frappe.delete_doc("Quotation", qtn_name, force=1, ignore_permissions=True)
+			except Exception:
+				pass
+
+		# Clean test purchase invoices
+		pinvs = frappe.db.sql_list("SELECT name FROM `tabPurchase Invoice` WHERE supplier LIKE %s", ("%Test%",))
+		for pinv_name in pinvs:
+			try:
+				frappe.db.sql("DELETE FROM `tabGL Entry` WHERE voucher_no = %s", (pinv_name,))
+				frappe.db.sql("DELETE FROM `tabStock Ledger Entry` WHERE voucher_no = %s", (pinv_name,))
+				frappe.db.sql("DELETE FROM `tabPayment Ledger Entry` WHERE voucher_no = %s", (pinv_name,))
+				frappe.db.sql("DELETE FROM `tabPurchase Invoice Item` WHERE parent = %s", (pinv_name,))
+				frappe.db.sql("UPDATE `tabPurchase Invoice` SET docstatus = 2 WHERE name = %s", (pinv_name,))
+				frappe.delete_doc("Purchase Invoice", pinv_name, force=1, ignore_permissions=True)
+			except Exception:
+				pass
+
+		# Clean test payment entries
+		payments = frappe.db.sql_list("SELECT name FROM `tabPayment Entry` WHERE party LIKE %s", ("%Test%",))
+		for pay_name in payments:
+			try:
+				frappe.db.sql("DELETE FROM `tabGL Entry` WHERE voucher_no = %s", (pay_name,))
+				frappe.db.sql("DELETE FROM `tabPayment Ledger Entry` WHERE voucher_no = %s", (pay_name,))
+				frappe.db.sql("UPDATE `tabPayment Entry` SET docstatus = 2 WHERE name = %s", (pay_name,))
+				frappe.delete_doc("Payment Entry", pay_name, force=1, ignore_permissions=True)
+			except Exception:
+				pass
+
+		# Clean dynamic links & contacts
+		frappe.db.sql("DELETE FROM `tabDynamic Link` WHERE link_name LIKE %s", ("%Test%",))
+		contacts = frappe.db.sql_list("SELECT name FROM `tabContact` WHERE name LIKE %s", ("%Test%",))
+		for c_name in contacts:
+			try:
+				frappe.delete_doc("Contact", c_name, force=1, ignore_permissions=True)
+			except Exception:
+				pass
+
+		# Clean test parties
+		customers = frappe.db.sql_list("SELECT name FROM `tabCustomer` WHERE name LIKE %s OR customer_name LIKE %s", ("%Test%", "%Test%"))
+		for c in customers:
+			frappe.db.sql("DELETE FROM `tabGL Entry` WHERE party = %s", (c,))
+			frappe.db.sql("DELETE FROM `tabPayment Ledger Entry` WHERE party = %s", (c,))
+			try:
+				frappe.delete_doc("Customer", c, force=1, ignore_permissions=True)
+			except Exception:
+				pass
+
+		suppliers = frappe.db.sql_list("SELECT name FROM `tabSupplier` WHERE name LIKE %s OR supplier_name LIKE %s", ("%Test%", "%Test%"))
+		for s in suppliers:
+			frappe.db.sql("DELETE FROM `tabGL Entry` WHERE party = %s", (s,))
+			frappe.db.sql("DELETE FROM `tabPayment Ledger Entry` WHERE party = %s", (s,))
+			try:
+				frappe.delete_doc("Supplier", s, force=1, ignore_permissions=True)
+			except Exception:
+				pass
+
+		# Clean test items
+		test_items = frappe.db.sql_list("SELECT name FROM `tabItem` WHERE name LIKE %s OR item_name LIKE %s", ("%TEST%", "%Test%"))
+		for it in test_items:
+			frappe.db.sql("DELETE FROM `tabStock Ledger Entry` WHERE item_code = %s", (it,))
+			frappe.db.sql("DELETE FROM `tabBin` WHERE item_code = %s", (it,))
+			frappe.db.sql("DELETE FROM `tabItem Price` WHERE item_code = %s", (it,))
+			try:
+				frappe.delete_doc("Item", it, force=1, ignore_permissions=True)
+			except Exception:
+				pass
+
+		frappe.db.commit()
+	except Exception:
+		pass
+
+	# ------------------------------------------------------------
 	# SUMMARY
 	# ------------------------------------------------------------
 	passed = sum(1 for r in results if r["status"] == "PASS")
@@ -375,4 +481,5 @@ def run_test_suite():
 				print(f"  - {r['name']}: {r['detail']}")
 
 	return {"passed": passed, "failed": failed, "total": len(results), "results": results}
+
 

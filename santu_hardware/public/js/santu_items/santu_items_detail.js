@@ -228,7 +228,7 @@ santu_items.detail = {
 	share_item(item) {
 		const url = `${window.location.origin}/app/item/${encodeURIComponent(item.item_code)}`;
 		if (navigator.clipboard && navigator.clipboard.writeText) {
-			navigator.clipboard.writeText(url).then(() => frappe.show_alert({ message: "Item link copied", indicator: "green" }));
+			navigator.clipboard.writeText(url).then(() => frappe.show_alert({ message: "Item link copied", indicator: "green" })).catch(() => frappe.show_alert({ message: "Could not copy link", indicator: "red" }));
 		} else {
 			frappe.msgprint(url);
 		}

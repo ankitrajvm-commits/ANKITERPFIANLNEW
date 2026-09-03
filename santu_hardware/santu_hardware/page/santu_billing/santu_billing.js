@@ -37,9 +37,10 @@ frappe.pages["santu-billing"].on_page_load = function (wrapper) {
 // should land here, not on the secondary Sale Invoice screen).
 frappe.pages["santu-billing"].on_page_show = function () {
 	const prefill = frappe.route_options && frappe.route_options.prefill;
+	const source_doctype = frappe.route_options && frappe.route_options.source_doctype;
 	if (prefill && window.santu_billing_page && santu_billing_page.page && santu_billing_page.init_data) {
 		frappe.route_options = null;
-		santu_billing_page._apply_prefill(prefill);
+		santu_billing_page._apply_prefill(prefill, source_doctype);
 		return;
 	}
 	// A submitted bill sent here from "Edit Bill" on the View Invoice screen
@@ -96,9 +97,10 @@ window.santu_billing_page = {
 		santu_sale_invoice.api.init().then((data) => {
 			this.init_data = data;
 			const prefill = frappe.route_options && frappe.route_options.prefill;
+			const source_doctype = frappe.route_options && frappe.route_options.source_doctype;
 			frappe.route_options = null;
 			if (prefill) {
-				this._apply_prefill(prefill);
+				this._apply_prefill(prefill, source_doctype);
 				return;
 			}
 			const edit_invoice = frappe.route_options && frappe.route_options.edit_invoice;
@@ -117,7 +119,7 @@ window.santu_billing_page = {
 	// on_page_show above) — opened as a fresh bill tab rather than merged
 	// into whatever the cashier already had open, since the two are
 	// unrelated sales.
-	_apply_prefill(doc) {
+	async _apply_prefill(doc, source_doctype = null) {
 		const b = this._new_bill(true);
 		// Not _pick_customer(): it reaches into this.$root, which render()
 		// below is what creates in the first place — setting the bill's own
@@ -131,24 +133,182 @@ window.santu_billing_page = {
 		this._persist_soon();
 		this.render();
 
-		(doc.items || []).forEach((r) => {
-			santu_sale_invoice.api.item_row(b.customer, r.item_code, this.init_data.warehouse, r.qty).then((row) => {
-				b.items.push({
-					id: santu_sale_invoice.utils.uid(),
-					item_code: row.item_code || r.item_code,
-					item_name: row.item_name || r.item_name || r.item_code,
-					qty: r.qty,
-					uom: r.uom || row.uom || row.stock_uom,
-					uom_options: row.uoms && row.uoms.length ? row.uoms : [{ uom: row.uom || row.stock_uom, conversion_factor: 1 }],
-					rate: r.rate || row.price_list_rate || row.rate || 0,
-					discount: r.discount_amount || 0,
-					batch_no: null,
-					available_qty: row.available_qty,
-				});
-				b.selected_row = b.items[b.items.length - 1].id;
-				this._persist_soon();
-				this._render_rows();
+		const is_quotation = source_doctype === "Quotation";
+		const changed_items = [];
+		
+		frappe.dom.freeze(__("Loading items…"));
+		
+		try {
+			// Fetch all item rows in parallel but preserve order
+			const results = await Promise.all((doc.items || []).map(async (r) => {
+				const uom = r.uom || null;
+				const row = await santu_sale_invoice.api.item_row(b.customer, r.item_code, this.init_data.warehouse, r.qty, uom);
+				
+				const uom_options = row.uoms && row.uoms.length ? row.uoms : [{ uom: row.uom || row.stock_uom, conversion_factor: 1 }];
+				const r_uom = r.uom || row.uom || row.stock_uom;
+				
+				const current_base_price = Number(row.price_list_rate || row.rate || 0);
+				const quotation_base_price = Number(r.price_list_rate || r.rate || 0);
+				const quotation_final_rate = Number(r.rate || 0);
+				const quotation_discount_amount = Number(r.discount_amount || 0);
+				const quotation_discount_percentage = Number(r.discount_percentage || 0);
+				
+				// Negotiated if final rate < base price, or if explicit discount exists
+				const is_negotiated = (quotation_base_price > 0 && quotation_final_rate < quotation_base_price) || quotation_discount_percentage > 0 || quotation_discount_amount > 0;
+				
+				// Calculate difference based on base price
+				const price_diff = current_base_price - quotation_base_price;
+				
+				const m = {
+					r, row, uom_options, r_uom,
+					quotation_base_price, quotation_final_rate,
+					quotation_discount_amount, quotation_discount_percentage,
+					current_base_price, price_diff, is_negotiated,
+					// Safe default is to keep original prices
+					final_rate: quotation_final_rate,
+					final_discount: quotation_discount_amount
+				};
+				
+				if (is_quotation && Math.abs(price_diff) > 0.01) {
+					changed_items.push(m);
+				}
+				return m;
+			}));
+			frappe.dom.unfreeze();
+			
+			if (changed_items.length > 0) {
+				this._show_price_change_modal(changed_items, results, b);
+				return; // Halt prefill; modal will resume it
+			}
+			
+			this._finish_apply_prefill(results, b);
+		} catch (e) {
+			frappe.dom.unfreeze();
+			frappe.msgprint(__("Error loading items: {0}", [(e && e.message) || String(e)]));
+		}
+	},
+
+	_finish_apply_prefill(mapped_items, b) {
+		mapped_items.forEach((m) => {
+			const { r, row, uom_options, r_uom, final_rate, final_discount } = m;
+			b.items.push({
+				id: santu_sale_invoice.utils.uid(),
+				item_code: row.item_code || r.item_code,
+				item_name: row.item_name || r.item_name || r.item_code,
+				qty: r.qty,
+				uom: r_uom,
+				uom_options: uom_options,
+				rate: final_rate,
+				discount: final_discount,
+				batch_no: null,
+				available_qty: row.available_qty,
 			});
+			b.selected_row = b.items[b.items.length - 1].id;
+		});
+		this._persist_soon();
+		this._render_rows();
+	},
+
+	_show_price_change_modal(changed_items, all_items, b) {
+		const self = this;
+		$("#santu-bill-price-change-modal").remove();
+		const $m = $(`
+			<div id="santu-bill-price-change-modal" class="santu-bill-modal-backdrop" style="z-index: 1050;">
+				<div class="santu-bill-modal" style="max-width: 600px;">
+					<div class="santu-bill-modal-head">
+						<span>${__("Quotation Price Update")}</span>
+						<button type="button" class="santu-bill-modal-x">✕</button>
+					</div>
+					<div class="santu-bill-modal-body" style="padding: 16px; font-size: 14px;">
+						<p style="margin-bottom: 16px; color: #4B5563;">
+							${__("Some item prices have changed since this quotation was created. Which price do you want to use?")}
+						</p>
+						<div class="santu-price-change-list" style="max-height: 350px; overflow-y: auto; border: 1px solid #E5E7EB; border-radius: 6px; padding: 12px; margin-bottom: 16px;">
+						</div>
+					</div>
+					<div class="santu-bill-modal-foot" style="justify-content: flex-end; gap: 10px;">
+						<button type="button" class="santu-bill-modal-save" style="background: #2563EB; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 500; cursor: pointer;">
+							${__("Keep Quotation Price")}
+						</button>
+						<button type="button" class="santu-bill-modal-update" style="background: white; color: #2563EB; border: 1px solid #2563EB; padding: 8px 16px; border-radius: 6px; font-weight: 500; cursor: pointer;">
+							${__("Update to Current Price")}
+						</button>
+					</div>
+				</div>
+			</div>
+		`).appendTo("body");
+
+		const $list = $m.find(".santu-price-change-list");
+		changed_items.forEach((c) => {
+			const diff_pct = c.quotation_base_price > 0 ? (Math.abs(c.price_diff) / c.quotation_base_price) * 100 : 0;
+			const diff_sign = c.price_diff > 0 ? "+" : "";
+			const diff_color = c.price_diff > 0 ? "#DC2626" : "#16A34A";
+			
+			$list.append(`
+				<div style="border-bottom: 1px solid #F3F4F6; padding-bottom: 12px; margin-bottom: 12px;">
+					<div style="font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
+						${frappe.utils.escape_html(c.r.item_name || c.r.item_code)}
+						${c.is_negotiated ? `<span style="font-size: 11px; background: #FEF3C7; color: #D97706; padding: 2px 6px; border-radius: 4px; font-weight: 500;">Negotiated</span>` : ""}
+					</div>
+					<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; font-size: 13px; color: #4B5563;">
+						<div>
+							<div style="font-size: 11px; color: #6B7280; text-transform: uppercase;">Quotation</div>
+							<div style="font-weight: 500;">₹ ${format_number(c.quotation_base_price, null, 2)}</div>
+						</div>
+						<div>
+							<div style="font-size: 11px; color: #6B7280; text-transform: uppercase;">Current</div>
+							<div style="font-weight: 500;">₹ ${format_number(c.current_base_price, null, 2)}</div>
+						</div>
+						<div>
+							<div style="font-size: 11px; color: #6B7280; text-transform: uppercase;">Difference</div>
+							<div style="font-weight: 500; color: ${diff_color}">${diff_sign}₹ ${format_number(c.price_diff, null, 2)} (${diff_sign}${diff_pct.toFixed(1)}%)</div>
+						</div>
+					</div>
+				</div>
+			`);
+		});
+		$list.children().last().css({"border-bottom": "none", "margin-bottom": "0", "padding-bottom": "0"});
+
+		const close = () => {
+			$m.remove();
+			$(document).off("keydown.santu-bill-price-change");
+			// Abort flow completely, requiring user to start over if they pressed X or Esc
+		};
+
+		$m.find(".santu-bill-modal-x").on("click", close);
+		$m.on("click", (e) => {
+			if (e.target === $m[0]) close();
+		});
+		$(document).on("keydown.santu-bill-price-change", (e) => {
+			if (e.key === "Escape") close();
+		});
+
+		$m.find(".santu-bill-modal-save").on("click", () => {
+			// Keep Quotation Price (Safe Default)
+			// all_items already has final_rate = quotation_final_rate
+			close();
+			self._finish_apply_prefill(all_items, b);
+		});
+
+		$m.find(".santu-bill-modal-update").on("click", () => {
+			// Update to Current Price
+			changed_items.forEach((c) => {
+				const m = all_items.find((i) => i.r.item_code === c.r.item_code); // find mapped item ref
+				if (!m) return;
+				
+				// Recalculate rate while preserving discount semantic
+				if (c.quotation_discount_percentage > 0) {
+					m.final_rate = c.current_base_price * (1 - (c.quotation_discount_percentage / 100));
+				} else if (c.quotation_base_price > c.quotation_final_rate) {
+					const per_unit_discount = c.quotation_base_price - c.quotation_final_rate;
+					m.final_rate = Math.max(c.current_base_price - per_unit_discount, 0);
+				} else {
+					m.final_rate = c.current_base_price;
+				}
+				// The final_discount amount (r.discount_amount) remains the same to preserve standard bill discounts if they were mapped
+			});
+			close();
+			self._finish_apply_prefill(all_items, b);
 		});
 	},
 
@@ -227,6 +387,7 @@ window.santu_billing_page = {
 				this.tabs = parsed.tabs;
 				const today = frappe.datetime.get_today();
 				this.tabs.forEach((t) => {
+					t.items = t.items || [];
 					if (!t.editing && !t.saved && t.posting_date && t.posting_date < today) {
 						t.posting_date = today;
 					}
@@ -397,6 +558,7 @@ window.santu_billing_page = {
 							<input type="text" class="santu-bill-customer" placeholder="Search for a customer by name, phone number [F11]" value="${frappe.utils.escape_html(b.customer_label || "")}" autocomplete="off">
 							<div class="santu-bill-cust-dropdown" style="display:none;"></div>
 						</div>
+						<div class="santu-bill-cust-info"></div>
 
 						<div class="santu-bill-totalcard">
 							<div class="santu-bill-totalcard-left">
@@ -439,29 +601,36 @@ window.santu_billing_page = {
 							<span class="santu-bill-baaki">₹ 0.00</span>
 						</div>
 						<div class="santu-bill-baaki-note" style="display:none"></div>
-					</div>
-				</div>
 
-				<div class="santu-bill-actions">
-					<div class="santu-bill-fkeys">
-						<button type="button" data-act="qty">Change Quantity <b>[F2]</b></button>
-						<button type="button" data-act="idisc">Item Discount <b>[F3]</b></button>
-						<button type="button" data-act="remove">Remove Item <b>[F4]</b></button>
-						<button type="button" data-act="rate">Sale Value <b>[F5]</b></button>
-						<button type="button" data-act="unit">Change Unit <b>[F6]</b></button>
-						<button type="button" data-act="rename">Item Name <b>[F7]</b></button>
-						<button type="button" data-act="charges">Additional Charges <b>[F8]</b></button>
-						<button type="button" data-act="bdisc">Bill Discount <b>[F9]</b></button>
-						<!-- Loyalty Points [F10] switched off for now (2026-08-18) —
-						     <button type="button" data-act="loyalty">Loyalty Points <b>[F10]</b></button> -->
-						<button type="button" data-act="remarks">Remarks <b>[F12]</b></button>
-					</div>
-					<div class="santu-bill-savecol">
+						<!-- More / Save / Credit live INSIDE the right column, not in
+						     a full-width bar under both columns. That bar used to be
+						     half-filled by the F-key button grid; once those moved
+						     into the More menu (2026-09-03) it held nothing but this
+						     340px column pinned right, so its whole left width
+						     rendered as a ~200px band of bare grey directly under
+						     the item card -- the card visibly stopped short of the
+						     bottom while the buttons carried on past it (2026-09-03
+						     bug report + screenshot). This column is exactly as wide
+						     as, and aligned with, .santu-bill-right, so it belongs in
+						     it; .santu-bill-main is then the last flex child and the
+						     item card grows to the true bottom. -->
+						<div class="santu-bill-savecol">
 						<div class="santu-bill-morewrap">
 							<button type="button" class="santu-bill-more">${__("More")} \u25be</button>
 							<div class="santu-bill-more-menu" style="display:none">
+								<button type="button" data-act="qty">Change Quantity <b>[F2]</b></button>
+								<button type="button" data-act="idisc">Item Discount <b>[F3]</b></button>
+								<button type="button" data-act="remove">Remove Item <b>[F4]</b></button>
+								<button type="button" data-act="rate">Sale Value <b>[F5]</b></button>
+								<button type="button" data-act="unit">Change Unit <b>[F6]</b></button>
+								<button type="button" data-act="rename">Item Name <b>[F7]</b></button>
+								<button type="button" data-act="charges">Additional Charges <b>[F8]</b></button>
+								<button type="button" data-act="bdisc">Bill Discount <b>[F9]</b></button>
+								<button type="button" data-act="remarks">Remarks <b>[F12]</b></button>
+								<div class="santu-bill-more-sep"></div>
 								<button type="button" data-more="draft">${__("Draft save karo (submit nahi)")}</button>
 								<button type="button" data-more="estimate" title="${__("Bill puri na karke isi saman ka Estimate bana do")}">${__("Convert to Estimate")}</button>
+								<button type="button" data-more="challan" title="${__("Isi bill ke items ka Delivery Challan banao — koi payment nahi lagta")}">${__("Convert to Delivery Challan")}</button>
 								<button type="button" data-more="terms">${__("Terms &amp; Conditions")}</button>
 								<button type="button" data-more="note">${__("Customer ka note")}</button>
 								<button type="button" data-more="photo">${__("Photo lagao")}</button>
@@ -470,12 +639,8 @@ window.santu_billing_page = {
 							</div>
 						</div>
 						<button type="button" class="santu-bill-save">${b.editing ? __("Update Bill") : __("Save &amp; Print Bill")} <span class="santu-bill-kbd">Ctrl+P</span></button>
-						${
-							b.editing
-								? `<button type="button" class="santu-bill-credit">Other/Credit Payments <span class="santu-bill-kbd">Ctrl+M</span></button>`
-								: `<button type="button" class="santu-bill-chalan" title="${__("Isi bill ke items ka Delivery Challan banao — koi payment nahi lagta")}">Chalan Banao</button>
-						<button type="button" class="santu-bill-credit">Other/Credit Payments <span class="santu-bill-kbd">Ctrl+M</span></button>`
-						}
+						<button type="button" class="santu-bill-credit">Other/Credit Payments <span class="santu-bill-kbd">Ctrl+M</span></button>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -487,6 +652,20 @@ window.santu_billing_page = {
 		this._bind_toolbar();
 		this._refresh_print_alert();
 		this.$root.find(".santu-bill-search").focus();
+		// Phone + address for whoever's already picked on this tab (reopening
+		// a tab, or switching back to it) — 2026-09-03 direct request:
+		// "customer select karne ke baad, naam ke neeche village/phone
+		// dikhna chahiye". Billing never showed this before; other screens'
+		// party widget (santu_party_inline) already does.
+		if (b.customer) this._render_customer_info(b.customer);
+		// "Full billing wala hi open ho jaye niche tak" — the outer Desk page
+		// can scroll past the fold on shorter/native-app windows, hiding the
+		// Save button. Bring the whole screen into view on open so nothing
+		// below it is cut off.
+		setTimeout(() => {
+			const el = this.$root && this.$root[0];
+			if (el) el.scrollIntoView({ behavior: "auto", block: "start" });
+		}, 0);
 	},
 
 	// Bound once per render (the whole `.santu-bill` root is rebuilt each
@@ -666,7 +845,7 @@ window.santu_billing_page = {
 						<div class="santu-bill-return-item-row" data-row='${JSON.stringify(r).replace(/'/g, "&#39;")}'>
 							<div class="santu-bill-return-item-name">
 								${frappe.utils.escape_html(r.item_name)}
-								<span>${__("Sold")} ${format_number(r.qty, null, 2)} ${frappe.utils.escape_html(r.uom || "")} · ₹${format_number(r.rate, null, 2)}${__("/unit")}</span>
+								<span>${__("Sold")} ${format_number(r.qty, null, 2)} ${frappe.utils.escape_html(santu_uom.abbr(r.uom) || "")} · ₹${format_number(r.rate, null, 2)}${__("/unit")}</span>
 							</div>
 							<input type="number" class="ret-qty-input" min="0" max="${r.returnable_qty}" step="any" value="0">
 						</div>
@@ -770,7 +949,7 @@ window.santu_billing_page = {
 		frappe.confirm(__("This bill has items. Close anyway?"), drop);
 	},
 
-	_render_rows() {
+	_render_rows({ reveal_row_id = null } = {}) {
 		const b = this._bill();
 		const privacy_on =
 			typeof santu_is_privacy_mode_active === "function" && santu_is_privacy_mode_active();
@@ -779,7 +958,7 @@ window.santu_billing_page = {
 		b.items.forEach((r, i) => {
 			const row_hl = santu_item_row_class(r.item_code, r.item_name);
 			const $tr = $(`
-				<tr class="${r.id === b.selected_row ? "is-selected" : ""} ${row_hl}" data-row="${r.id}">
+				<tr class="santu-bill-tr ${r.id === b.selected_row ? "is-selected" : ""} ${r.id === reveal_row_id ? "santu-bill-row-new" : ""} ${row_hl}" data-row="${r.id}">
 					<td class="c-idx">${i + 1}</td>
 					<td class="c-code">${frappe.utils.escape_html(r.item_code || "-")}</td>
 					<td class="c-name santu-bill-editable" title="${__("Badalne ke liye dabaiye")}">${frappe.utils.escape_html(r.item_name)}${
@@ -792,7 +971,7 @@ window.santu_billing_page = {
 										: r.available_qty <= 5
 											? "santu-bill-stock-low"
 											: "santu-bill-stock-ok"
-								}">${__("Available")}: ${format_number(r.available_qty, null, 0)} ${frappe.utils.escape_html(r.uom || "")}</span>`
+								}">${__("Available")}: ${format_number(r.available_qty, null, 0)} ${frappe.utils.escape_html(santu_uom.abbr(r.uom) || "")}</span>`
 							: ""
 					}</td>
 					<td class="c-qty">
@@ -802,7 +981,7 @@ window.santu_billing_page = {
 							<button type="button" class="santu-bill-qty-btn" data-step="1">+</button>
 						</span>
 					</td>
-					<td class="c-unit">${frappe.utils.escape_html(r.uom || "-")}</td>
+					<td class="c-unit"><select class="santu-bill-unit-select"><option>${frappe.utils.escape_html(r.uom || "")}</option></select></td>
 					<td class="c-rate santu-bill-editable" title="${__("Badalne ke liye dabaiye")}">${format_number(r.rate, null, 2)}${
 						privacy_on && r.cost_price != null
 							? `<span class="santu-bill-cost">${__("cost")} ₹${format_number(r.cost_price, null, 2)}</span>`
@@ -821,6 +1000,21 @@ window.santu_billing_page = {
 				e.stopPropagation();
 				b.items = b.items.filter((x) => x.id !== r.id);
 				b.selected_row = b.items.length ? b.items[b.items.length - 1].id : null;
+				this._persist_soon();
+				this._render_rows();
+			});
+			// A real dropdown right in the row — no F6 + separate dialog
+			// (2026-09-03 direct request, repeatedly: "item ki unit me
+			// dropdown daal do, default uska added unit ho, use change kar
+			// saku dropdown se, sare jagah"). santu_uom.convert() still does
+			// the qty/rate rescale (2 Kg -> 2000 Gram, not 2 Gram) exactly
+			// as the old F6 dialog did — only how the unit gets picked changed.
+			const $unitSelect = $tr.find(".santu-bill-unit-select");
+			$unitSelect.on("click", (e) => e.stopPropagation());
+			santu_uom.fill_select($unitSelect, r.item_code, r.uom);
+			$unitSelect.on("change", (e) => {
+				b.selected_row = r.id;
+				santu_uom.convert(r, e.target.value);
 				this._persist_soon();
 				this._render_rows();
 			});
@@ -869,9 +1063,9 @@ window.santu_billing_page = {
 			$tb.append($tr);
 		});
 		this._render_totals();
-		// Newly added rows land at the bottom; bring the selected one back into
-		// view so the operator sees it go in without scrolling.
-		santu_sale_invoice.utils.scroll_row_into_view(this.$root);
+		// Preserve scroll position during normal edits/recalculations. Only a
+		// successful add asks for its row to be revealed after this render.
+		if (reveal_row_id) window.santu_scroll_row_into_view(this.$root, { row_id: reveal_row_id });
 	},
 
 	// Swaps a grid cell's text for a plain <input> right where it is, commits
@@ -1118,7 +1312,7 @@ window.santu_billing_page = {
 							(m) =>
 								`<button type="button" class="santu-si2-dup-existing" data-code="${frappe.utils.escape_html(m.item_code)}">
 									${frappe.utils.escape_html(m.item_code)}
-									<span>${m.available_qty != null ? m.available_qty + " " + (m.stock_uom || "") : ""}</span>
+									<span>${m.available_qty != null ? m.available_qty + " " + santu_uom.abbr(m.stock_uom || "") : ""}</span>
 								</button>`
 						)
 						.join("");
@@ -1287,6 +1481,9 @@ window.santu_billing_page = {
 		);
 		if (existing) {
 			existing.qty += 1;
+			// Duplicate items merge into this line, so reveal the line whose
+			// quantity just changed rather than leaving it off-screen.
+			b.selected_row = existing.id;
 		} else {
 			b.items.push({
 				id: santu_sale_invoice.utils.uid(),
@@ -1307,7 +1504,7 @@ window.santu_billing_page = {
 			b.selected_row = b.items[b.items.length - 1].id;
 		}
 		this._persist_soon();
-		this._render_rows();
+		this._render_rows({ reveal_row_id: b.selected_row });
 	},
 
 	_pick_batch(row, on_pick) {
@@ -1534,7 +1731,29 @@ window.santu_billing_page = {
 		b.redeem_points = 0;
 		this.$root.find(".santu-bill-customer").val(label);
 		this.$root.find(".santu-bill-cust-dropdown").hide().empty();
+		this._render_customer_info(name);
 		this._persist_soon();
+	},
+
+	// Small phone/address line under the customer box, right where it used
+	// to just go blank after picking someone (2026-09-03 direct request:
+	// "customer select karne ke baad, naam ke neeche village/phone dikhna
+	// chahiye, ye gayab ho gaya"). Reuses the same customer_details call
+	// santu_party_inline's info card uses elsewhere — no new endpoint.
+	_render_customer_info(customer) {
+		const $info = this.$root.find(".santu-bill-cust-info");
+		if (!customer) {
+			$info.empty();
+			return;
+		}
+		santu_sale_invoice.api.customer_details(customer).then((d) => {
+			if (!d || !d.name) {
+				$info.empty();
+				return;
+			}
+			const bits = [d.address, d.mobile_no].filter(Boolean);
+			$info.html(bits.length ? frappe.utils.escape_html(bits.join(" · ")) : `<span class="santu-bill-cust-info-empty">${__("No phone/address on file")}</span>`);
+		});
 	},
 
 	_cust_search(q) {
@@ -1545,19 +1764,26 @@ window.santu_billing_page = {
 				$dd.append(`<div class="santu-bill-cust-head"><span>Name</span><span>Phone Number</span></div>`);
 			}
 			rows.forEach((c) => {
-				$(`
+				const $row = $(`
 					<div class="santu-bill-cust-row">
 						<span>${frappe.utils.escape_html(c.customer_name)}</span>
 						<span class="santu-bill-cust-phone">${frappe.utils.escape_html(c.mobile_no || "—")}</span>
+						<button type="button" class="santu-bill-cust-edit" title="${__("Edit customer")}">✏️</button>
 					</div>
-				`)
-					.on("click", () => this._pick_customer(c.name, c.customer_name))
-					.appendTo($dd);
+				`).appendTo($dd);
+				$row.on("click", () => this._pick_customer(c.name, c.customer_name));
+				// 2026-09-03 direct request: "yaha ek pencil dal do, customer
+				// data edit kr sakoon" — stopPropagation so it edits instead
+				// of also picking the row it sits on.
+				$row.find(".santu-bill-cust-edit").on("click", (e) => {
+					e.stopPropagation();
+					this._edit_customer(c.name);
+				});
 			});
 			// Always offered, results or not — at a counter the customer in
 			// front of you is usually the one who isn't in the list yet.
 			$(`<button type="button" class="santu-bill-addcust">Add Customer <span class="santu-bill-kbd">Ctrl+D</span></button>`)
-				.on("click", () => this._add_customer(this.$root.find(".santu-bill-customer").val()))
+				.on("click", (e) => { e.stopPropagation(); this._add_customer(this.$root.find(".santu-bill-customer").val()); })
 				.appendTo($dd);
 			$dd.show();
 		};
@@ -1575,62 +1801,108 @@ window.santu_billing_page = {
 			.catch(() => draw([]));
 	},
 
+	// Pencil on a search row (2026-09-03 direct request: "yaha ek pencil dal
+	// do, customer data edit kr sakoon") — same inline-in-dropdown form as
+	// _add_customer, pre-filled, saving through update_party_details
+	// (rename-safe: a changed name goes through frappe.rename_doc there, so
+	// every linked invoice/payment follows rather than pointing at a party
+	// that no longer exists).
+	_edit_customer(customer_id) {
+		const self = this;
+		const $dd = this.$root.find(".santu-bill-cust-dropdown");
+		santu_sale_invoice.api.customer_details(customer_id).then((d) => {
+			$dd.empty().html(`
+				<div class="santu-bill-addcust-inline">
+					<div class="santu-bill-modal-grid">
+						<div class="santu-bill-modal-field">
+							<label>Customer Name<em>*</em></label>
+							<input type="text" class="ac-name" value="${frappe.utils.escape_html(d.customer_name || "")}">
+						</div>
+						<div class="santu-bill-modal-field">
+							<label>Phone Number</label>
+							<input type="text" class="ac-phone" value="${frappe.utils.escape_html(d.mobile_no || "")}" placeholder="Phone Number">
+						</div>
+					</div>
+					<div class="santu-bill-modal-field">
+						<label>Address</label>
+						<textarea class="ac-address" rows="2" placeholder="Kuch bhi likh sakte hain">${frappe.utils.escape_html(d.address || "")}</textarea>
+					</div>
+					<div class="santu-bill-addcust-actions">
+						<button type="button" class="santu-bill-modal-cancel">Cancel</button>
+						<button type="button" class="santu-bill-modal-save">Save</button>
+					</div>
+				</div>
+			`).show();
+
+			const close = () => $dd.hide().empty();
+			$dd.find(".santu-bill-modal-cancel").on("click", close);
+			$dd.find(".santu-bill-modal-save").on("click", () => {
+				const name = ($dd.find(".ac-name").val() || "").trim();
+				const phone = ($dd.find(".ac-phone").val() || "").trim();
+				const address = ($dd.find(".ac-address").val() || "").trim();
+				if (!name) {
+					frappe.show_alert({ message: __("Enter a customer name."), indicator: "orange" });
+					return;
+				}
+				const $btn = $dd.find(".santu-bill-modal-save").prop("disabled", true).text(__("Saving…"));
+				santu_sale_invoice.api
+					.update_customer_inline(customer_id, name, phone, address)
+					.then((r) => {
+						frappe.show_alert({ message: __("Customer updated"), indicator: "green" });
+						close();
+						self._pick_customer((r && r.party) || customer_id, name);
+					})
+					.catch(() => $btn.prop("disabled", false).text(__("Save")));
+			});
+
+			setTimeout(() => $dd.find(".ac-name").focus(), 60);
+		});
+	},
+
 	// Keeps Billing's own compact Vyapar-style modal look (2026-08-18: "jo ui
 	// h wo vyapar ka dalo" — the plain frappe.ui.Dialog from Sale Invoice
 	// didn't match). One free-text Address field (2026-08-27 direct
 	// request: "district & pin ka concept hata do, only address ka rakho,
 	// it can be anything jo bhaiya dale") — no village/pincode/district
 	// split or autocomplete any more.
+	// Renders right inside the existing customer dropdown, in the empty
+	// space already there under the search box — not a separate popup
+	// (2026-09-03 direct request: "add customer ke liye new window kyun
+	// khol rahe ho, same dialog me hi sab kuch ho jaye, niche kaafi space
+	// hai"). Was a `.santu-bill-modal-backdrop` appended to <body>.
 	_add_customer(prefill) {
 		const self = this;
-		$("#santu-bill-addcust-modal").remove();
-		const $m = $(`
-			<div id="santu-bill-addcust-modal" class="santu-bill-modal-backdrop">
-				<div class="santu-bill-modal">
-					<div class="santu-bill-modal-head">
-						<span>Add Customer</span>
-						<button type="button" class="santu-bill-modal-x">✕ <small>[Esc]</small></button>
+		const $dd = this.$root.find(".santu-bill-cust-dropdown");
+		$dd.empty().html(`
+			<div class="santu-bill-addcust-inline">
+				<div class="santu-bill-modal-grid">
+					<div class="santu-bill-modal-field">
+						<label>Customer Name<em>*</em></label>
+						<input type="text" class="ac-name" value="${frappe.utils.escape_html(prefill || "")}">
 					</div>
-					<div class="santu-bill-modal-body">
-						<div class="santu-bill-modal-grid">
-							<div class="santu-bill-modal-field">
-								<label>Customer Name<em>*</em></label>
-								<input type="text" class="ac-name" value="${frappe.utils.escape_html(prefill || "")}">
-							</div>
-							<div class="santu-bill-modal-field">
-								<label>Phone Number</label>
-								<input type="text" class="ac-phone" placeholder="Phone Number">
-							</div>
-						</div>
-						<div class="santu-bill-modal-field">
-							<label>Address</label>
-							<textarea class="ac-address" rows="3" placeholder="Kuch bhi likh sakte hain"></textarea>
-						</div>
-					</div>
-					<div class="santu-bill-modal-foot">
-						<button type="button" class="santu-bill-modal-save">Save</button>
-						<button type="button" class="santu-bill-modal-cancel">Cancel</button>
+					<div class="santu-bill-modal-field">
+						<label>Phone Number</label>
+						<input type="text" class="ac-phone" placeholder="Phone Number">
 					</div>
 				</div>
+				<div class="santu-bill-modal-field">
+					<label>Address</label>
+					<textarea class="ac-address" rows="2" placeholder="Kuch bhi likh sakte hain"></textarea>
+				</div>
+				<div class="santu-bill-addcust-actions">
+					<button type="button" class="santu-bill-modal-cancel">Cancel</button>
+					<button type="button" class="santu-bill-modal-save">Save</button>
+				</div>
 			</div>
-		`).appendTo("body");
+		`).show();
 
-		const close = () => {
-			$m.remove();
-			$(document).off("keydown.santu-bill-ac");
-		};
-		$m.find(".santu-bill-modal-x, .santu-bill-modal-cancel").on("click", close);
-		$m.on("click", (e) => {
-			if (e.target === $m[0]) close();
-		});
-		$(document).on("keydown.santu-bill-ac", (e) => {
-			if (e.key === "Escape") close();
-		});
+		const close = () => $dd.hide().empty();
+		$dd.find(".santu-bill-modal-cancel").on("click", close);
 
-		$m.find(".santu-bill-modal-save").on("click", () => {
-			const name = ($m.find(".ac-name").val() || "").trim();
-			const phone = ($m.find(".ac-phone").val() || "").trim();
-			const address = ($m.find(".ac-address").val() || "").trim();
+		$dd.find(".santu-bill-modal-save").on("click", () => {
+			const name = ($dd.find(".ac-name").val() || "").trim();
+			const phone = ($dd.find(".ac-phone").val() || "").trim();
+			const address = ($dd.find(".ac-address").val() || "").trim();
 			if (!name) {
 				frappe.show_alert({ message: __("Enter a customer name."), indicator: "orange" });
 				return;
@@ -1656,7 +1928,7 @@ window.santu_billing_page = {
 				.catch(() => frappe.dom.unfreeze());
 		});
 
-		setTimeout(() => $m.find(".ac-name").focus().select(), 60);
+		setTimeout(() => $dd.find(".ac-name").focus().select(), 60);
 	},
 
 	// ---------- save ----------
@@ -1800,6 +2072,7 @@ window.santu_billing_page = {
 		const b = this._bill();
 		if (kind === "draft") return this._save(true);
 		if (kind === "estimate") return this._convert_to_estimate();
+		if (kind === "challan") return this._save_as_challan();
 		if (kind === "bug") return this._report_bug(b);
 		if (kind === "note") return this._customer_note(b);
 		if (kind === "terms") {
@@ -2537,6 +2810,11 @@ window.santu_billing_page = {
 			this.render();
 		});
 		$r.find(".santu-bill-search").on("input", santu_sale_invoice.utils.debounce((e) => this._search($(e.target).val())));
+		// Typing over the name means whatever's showing below is about a
+		// DIFFERENT person now — stale info left on screen is worse than
+		// none, so it clears the moment they start typing (own listener,
+		// undebounced), not only once a new pick lands.
+		$r.find(".santu-bill-customer").on("input", () => this.$root.find(".santu-bill-cust-info").empty());
 		$r.find(".santu-bill-customer").on("input", santu_sale_invoice.utils.debounce((e) => this._cust_search($(e.target).val())));
 		$r.find(".santu-bill-customer").on("focus", () => this._cust_search($r.find(".santu-bill-customer").val()));
 
@@ -2569,7 +2847,15 @@ window.santu_billing_page = {
 			this._render_totals();
 		});
 		$r.find(".santu-bill-breakup").on("click", () => this._breakup());
-		$r.find(".santu-bill-fkeys button").on("click", (e) => this._action($(e.currentTarget).data("act")));
+		// The F-key actions live inside the same "More" dropdown as the rest
+		// (2026-09-03: had a separate "More Actions" button at first, merged
+		// into the one existing menu per direct follow-up request) — closing
+		// the menu on click matters here since these, unlike Draft/Convert/
+		// etc, open their own dialog right on top of it.
+		$r.find(".santu-bill-more-menu [data-act]").on("click", (e) => {
+			$r.find(".santu-bill-more-menu").hide();
+			this._action($(e.currentTarget).data("act"));
+		});
 		$r.find(".santu-bill-save").on("click", () => this._save());
 		$r.find(".santu-bill-more").on("click", (e) => {
 			e.stopPropagation();

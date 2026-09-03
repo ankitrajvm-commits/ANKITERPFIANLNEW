@@ -21,7 +21,7 @@ santu_sync.views = {
 			if (view === "backup_drive") return this._backup_drive($wrap, reload);
 			if (view === "restore_backup") return this._restore($wrap, reload);
 		} catch (e) {
-			$wrap.html(`<div class="santu-sync-error">${frappe.utils.escape_html(e.message || "Failed to load")}</div>`);
+			$wrap.html(`<div class="santu-sync-error">${frappe.utils.escape_html((e && e.message) || "Failed to load")}</div>`);
 		}
 	},
 
@@ -53,7 +53,7 @@ santu_sync.views = {
 			`);
 			const $act = $tr.find(".santu-sync-actions");
 			if (r.status === "Success" && actions.download) {
-				$act.append(`<button class="santu-sync-link-btn" data-a="dl">Download</button>`);
+				$act.append(`<button class="santu-sync-link-btn" data-a="dl">Export data</button>`);
 				$tr.find('[data-a="dl"]').on("click", () => window.open(santu_sync.api.downloadUrl(r.name), "_blank"));
 			}
 			if (actions.restore) {
@@ -206,9 +206,9 @@ santu_sync.views = {
 				<h3>Auto Backup Settings</h3>
 				<div class="santu-sync-form-grid">
 					<label><input type="checkbox" class="santu-sync-auto-en"> Enable Auto Backup</label>
-					<label>Frequency <select class="santu-sync-freq form-control"><option>Daily</option><option>Weekly</option><option>Custom</option></select></label>
+					<label>Frequency <select class="santu-sync-freq form-control"><option>Hourly</option><option>Daily</option><option>Weekly</option></select></label>
 					<label>Backup Time <input type="time" class="santu-sync-time form-control"></label>
-					<label>Retain <input type="number" class="santu-sync-retain form-control" min="1" max="100"></label>
+					<label>Retain <input type="number" class="santu-sync-retain form-control" min="1" max="720"></label>
 					<label><input type="checkbox" class="santu-sync-inc-files"> Include Files</label>
 				</div>
 				<button class="btn btn-primary santu-sync-save-settings">Save Settings</button>
@@ -251,8 +251,9 @@ santu_sync.views = {
 			<div class="santu-sync-hero santu-sync-hero-compact">
 				<div class="santu-sync-hero-icon">💾</div>
 				<h2>Backup To Computer</h2>
-				<p>Save a full copy of your shop's data — all bills, parties, items and photos — so nothing is lost.</p>
-				<button class="btn btn-primary santu-sync-primary-btn santu-sync-create-backup">Create Backup</button>
+				<p>Save or export a full copy of your shop's data — bills, parties, items and photos — on this computer.</p>
+				<button class="btn btn-primary santu-sync-primary-btn santu-sync-create-backup">Create Local Backup</button>
+				<p class="santu-sync-muted">Use <b>Export data</b> beside a successful backup to download the complete database file (.sql.gz).</p>
 			</div>
 			<div class="santu-sync-section"><h3>Backup History</h3><div class="santu-sync-history"></div></div>
 		`);
@@ -264,7 +265,7 @@ santu_sync.views = {
 				frappe.show_alert({ message: r.message || "Backup created successfully", indicator: "green" });
 				reload();
 			} catch (e) {
-				frappe.msgprint(e.message || "Backup failed");
+				frappe.msgprint((e && e.message) || "Backup failed");
 			} finally {
 				$btn.prop("disabled", false).text("Create Backup");
 			}
@@ -300,7 +301,7 @@ santu_sync.views = {
 				const url = await santu_sync.api.gdriveAuth();
 				if (url) window.open(url, "_blank");
 			} catch (e) {
-				frappe.msgprint(e.message || "Could not start Google authorization");
+				frappe.msgprint((e && e.message) || "Could not start Google authorization");
 			}
 		});
 		$wrap.find(".santu-sync-gd-upload").on("click", async () => {
@@ -309,7 +310,7 @@ santu_sync.views = {
 				frappe.show_alert({ message: "Backup upload queued", indicator: "green" });
 				reload();
 			} catch (e) {
-				frappe.msgprint(e.message || "Upload failed");
+				frappe.msgprint((e && e.message) || "Upload failed");
 			}
 		});
 	},

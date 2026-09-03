@@ -66,7 +66,14 @@ async function santu_qz_list_printers() {
 //   3. PDF        — open it on screen so there is always something to hand over.
 // ---------------------------------------------------------------------------
 
-const SANTU_PRINT_API = "santu_hardware.santu_hardware.print_service";
+// `var`, not `const` — this app_include_js file only ever loads once per
+// page in the normal case, but a `const` at top level throws "Can't create
+// duplicate variable" (a hard, blank-screen crash) if the script is ever
+// re-executed in the same document — seen 2026-08-31 on WhatsApp Connect,
+// 10 times in one session, never since (looked like a dev-server asset
+// rebuild racing an open page, not a reproducible app bug). `var` makes a
+// second execution a harmless no-op instead of a crash, whatever the cause.
+var SANTU_PRINT_API = "santu_hardware.santu_hardware.print_service";
 
 // Last rung: show the bill on screen so there is always something to hand
 // over. This used to be `window.open(blobUrl, "_blank")` — a bare PDF tab.
@@ -206,12 +213,12 @@ async function santu_print_bill_ladder(doctype, docname, opts = {}) {
 // Sales Invoice ke format se banne laga aur "Argument 'amount' should be of
 // type 'float'" dekar phat gaya (Quotation me paid_amount hota hi nahi).
 // Ab ek hi map, dono kaam usi se.
-const SANTU_THERMAL_FORMATS = {
+var SANTU_THERMAL_FORMATS = {
 	"Sales Invoice": "Santu Hardware Thermal Bill (Sales Invoice)",
 	"POS Invoice": "Santu Hardware Thermal Bill",
 	"Quotation": "Santu Hardware Thermal Estimate (Quotation)",
 };
-const SANTU_THERMAL_DOCTYPES = Object.keys(SANTU_THERMAL_FORMATS);
+var SANTU_THERMAL_DOCTYPES = Object.keys(SANTU_THERMAL_FORMATS);
 
 // What every screen calls. Runs the ladder above and gives the shop owner
 // one readable answer instead of a raw JS exception.
@@ -226,6 +233,16 @@ async function santu_print_thermal_bill(doctype, docname, opts = {}) {
 		frappe.set_route("print", doctype, docname);
 		return true;
 	}
+	// 2026-09-03 direct request: "thermal printing hamesha puch ke ho, sab
+	// jagah" — every screen that prints a thermal bill (Save & Print button,
+	// the auto-print setting, Reprint Last, WhatsApp Connect's print button,
+	// the transaction lists' print icons) funnels through this one function,
+	// so asking here once covers all of them instead of touching each call
+	// site separately and risking missing one.
+	const confirmed = await new Promise((resolve) => {
+		frappe.confirm(__("Thermal bill print karein?"), () => resolve(true), () => resolve(false));
+	});
+	if (!confirmed) return false;
 	try {
 		// Which rung answered decides what the operator is told. This used to
 		// say "Printed" in green whenever the ladder resolved — including the
@@ -268,3 +285,5 @@ async function santu_print_thermal_bill(doctype, docname, opts = {}) {
 //
 // What is left of QZ in this file is only the connector used to list
 // printers as a last-resort fallback. No bill travels through it.
+
+window.santu_print_thermal_bill = santu_print_thermal_bill;

@@ -29,6 +29,15 @@ const SANTU_DASH_PAY_ICON = `<svg width="18" height="18" viewBox="0 0 18 18" fil
 const SANTU_DEFAULT_CHART_RANGE = "This Month";
 
 function render_dashboard(page) {
+	// The sales chart's ResizeObserver + debounced redraw (further down)
+	// outlives the DOM it was watching if nobody stops it here — re-opening
+	// Dashboard removes the old .santu-dash below, but a resize timer already
+	// in flight from the PREVIOUS visit still fires afterwards and calls
+	// draw_sale_chart() on a container that's no longer in the document,
+	// which frappe.Chart's own DOM code throws "NotFoundError" on trying to
+	// manipulate (BUG-20260827-00329, 5x on this route, never caught before
+	// because nothing ever tore this down on navigation/reload).
+	santu_stop_watching_chart_resize();
 	$(page.body).find(".santu-dash").remove();
 	const $root = $(`<div class="santu-dash"></div>`).appendTo(page.body);
 	$root.html(`<div class="santu-dash-loading">Loading...</div>`);

@@ -210,7 +210,7 @@ santu_purchase.transactions = {
 		if (action === "share") {
 			const url = `${window.location.origin}/app/${frappe.router.slug(t.doctype)}/${encodeURIComponent(t.invoice_no)}`;
 			if (navigator.clipboard) {
-				navigator.clipboard.writeText(url).then(() => frappe.show_alert({ message: "Link copied", indicator: "green" }));
+				navigator.clipboard.writeText(url).then(() => frappe.show_alert({ message: "Link copied", indicator: "green" })).catch(() => frappe.show_alert({ message: "Could not copy link", indicator: "red" }));
 			} else {
 				frappe.msgprint(url);
 			}

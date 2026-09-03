@@ -77,6 +77,12 @@ window.santu_uom = (function () {
 	// Scaling both the same way (the old per-screen code did) turned 1 Kg at
 	// 1600 into 1000 g at 16 lakh.
 	function convert(row, new_uom, options) {
+		// "None" -- just clears the unit label, qty/rate are left exactly as
+		// they are (there's no factor to convert against).
+		if (!new_uom) {
+			row.uom = "";
+			return row;
+		}
 		const opts = options && options.length ? options : row.uom_options;
 		const old_cf = factor(opts, row.uom);
 		const new_cf = factor(opts, new_uom);
@@ -103,15 +109,21 @@ window.santu_uom = (function () {
 		opts = opts || {};
 		list(item_code, current_uom).then((options) => {
 			if (!$select || !$select.length || !options.length) return;
+			// Label shows the short form ("Nos" -> "Pcs") so it fits a narrow
+			// table column without overlapping the native select arrow; the
+			// option's real `value` stays the full uom name Frappe expects
+			// (2026-09-03: "unit me no jo hai wo overlap kar raha").
+			const none_html = opts.no_none ? "" : `<option value="">${__("None")}</option>`;
 			$select.html(
-				options
-					.map(
-						(o) =>
-							`<option value="${frappe.utils.escape_html(o.uom)}" ${o.uom === current_uom ? "selected" : ""}>${frappe.utils.escape_html(o.uom)}</option>`
-					)
-					.join("") + (opts.extra_html || "")
+				none_html +
+					options
+						.map(
+							(o) =>
+								`<option value="${frappe.utils.escape_html(o.uom)}" ${o.uom === current_uom ? "selected" : ""}>${frappe.utils.escape_html(abbr(o.uom))}</option>`
+						)
+						.join("") + (opts.extra_html || "")
 			);
-			$select.val(current_uom);
+			$select.val(current_uom || "");
 			if (opts.on_ready) opts.on_ready(options);
 		});
 		return $select;
@@ -142,5 +154,43 @@ window.santu_uom = (function () {
 		});
 	}
 
-	return { list, prime, factor, convert, dialog, fill_select, _cache: cache };
+	// Short forms for a unit shown in a table/row — "Nos" -> "Pcs", "Foot"
+	// -> "Ft", etc (2026-09-03 direct request: "item me sare nos ko pcs ya
+	// proper abbreviation se replace kr do"). Mirrors UOM_ABBR in
+	// api.py::uom_abbr exactly — that one runs server-side for printed
+	// bills, this one runs client-side for the on-screen Items/Stock lists;
+	// add a new unit in both places together, never just one.
+	const UOM_ABBR = {
+		nos: "Pcs",
+		piece: "Pcs",
+		pcs: "Pcs",
+		foot: "Ft",
+		feet: "Ft",
+		ft: "Ft",
+		meter: "Mtr",
+		metre: "Mtr",
+		mtr: "Mtr",
+		kg: "Kg",
+		kilogram: "Kg",
+		gram: "Gm",
+		gm: "Gm",
+		litre: "Ltr",
+		liter: "Ltr",
+		ltr: "Ltr",
+		box: "Box",
+		dozen: "Dzn",
+		pair: "Pair",
+		set: "Set",
+		bag: "Bag",
+		bundle: "Bdl",
+		roll: "Roll",
+		packet: "Pkt",
+		unit: "Unit",
+	};
+	function abbr(uom) {
+		if (!uom) return "";
+		return UOM_ABBR[String(uom).trim().toLowerCase()] || uom;
+	}
+
+	return { list, prime, factor, convert, dialog, fill_select, abbr, _cache: cache };
 })();

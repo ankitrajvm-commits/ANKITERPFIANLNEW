@@ -220,10 +220,15 @@
 	margin: 0 2px;
 }
 
-/* ---------- Privacy (screen blur) ---------- */
-body.santu-dash-privacy-active .santu-dash-main,
-body.santu-dash-privacy-active .santu-dash-widgets,
-body.santu-dash-privacy-active .page-content {
+/* ---------- Privacy (screen blur) ----------
+   `:not(.santu-dash-privacy-exempt)` is what keeps the billing/estimate/
+   return screens workable while Privacy is on — see PRIVACY_EXEMPT_ROUTES
+   in santu_topbar.js. Without it the blur landed on `.page-content`, which
+   is every page in the desk, so turning Privacy on made the shop unable to
+   bill anything. */
+body.santu-dash-privacy-active:not(.santu-dash-privacy-exempt) .santu-dash-main,
+body.santu-dash-privacy-active:not(.santu-dash-privacy-exempt) .santu-dash-widgets,
+body.santu-dash-privacy-active:not(.santu-dash-privacy-exempt) .page-content {
 	filter: blur(6px);
 	pointer-events: none;
 	user-select: none;
@@ -231,7 +236,7 @@ body.santu-dash-privacy-active .page-content {
 #santu-dash-privacy-overlay {
 	display: none;
 }
-body.santu-dash-privacy-active #santu-dash-privacy-overlay {
+body.santu-dash-privacy-active:not(.santu-dash-privacy-exempt) #santu-dash-privacy-overlay {
 	display: flex;
 	flex-direction: column;
 	align-items: center;

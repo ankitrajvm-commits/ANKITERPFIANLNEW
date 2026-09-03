@@ -1,9 +1,9 @@
 /* Keyboard se list me jo row chuni hui hai (2026-08-27 direct request).
  *
- * Rang neela rakha hai — CPVC ka pila aur "stock khatam" ka laal pehle se
- * matlab rakhte hain, isliye "abhi yahan ho" ke liye teesra, saaf alag rang.
- * Baayen kinare ki patti isliye ki pile CPVC row pe bhi turant dikh jaaye,
- * jahan sirf background badalna kam pad jaata.
+ * Rang neela rakha hai — CPVC ka pila, UPVC ka gulaabi aur "stock khatam" ka
+ * laal pehle se matlab rakhte hain, isliye "abhi yahan ho" ke liye ek aur,
+ * saaf alag rang. Baayen kinare ki patti isliye ki rangeen row pe bhi turant
+ * dikh jaaye, jahan sirf background badalna kam pad jaata.
  *
  * Class dobara likhi hai taaki har dropdown ke apne :hover rules se upar
  * rahe — CPVC wale rule ki tarah, wahi wajah. */
@@ -12,10 +12,15 @@
 	box-shadow: inset 3px 0 0 #2563eb;
 }
 
-/* CPVC row pilee hoti hai; keyboard se chunne par bhi wo pehchaan bani
+/* CPVC row pilee, UPVC gulaabi; keyboard se chunne par bhi wo pehchaan bani
    rahe, bas neele kinare ke saath — dono baat ek saath dikhti hain. */
 .santu-cpvc-dd-row.santu-kb-active.santu-kb-active {
 	background: #f3ecc4;
+	box-shadow: inset 3px 0 0 #2563eb;
+}
+
+.santu-upvc-dd-row.santu-kb-active.santu-kb-active {
+	background: #f6d7e2;
 	box-shadow: inset 3px 0 0 #2563eb;
 }
 
@@ -23,7 +28,8 @@
    nahi (aur thermal pe kaala block ban jaata). */
 @media print {
 	.santu-kb-active.santu-kb-active,
-	.santu-cpvc-dd-row.santu-kb-active.santu-kb-active {
+	.santu-cpvc-dd-row.santu-kb-active.santu-kb-active,
+	.santu-upvc-dd-row.santu-kb-active.santu-kb-active {
 		background: transparent !important;
 		box-shadow: none !important;
 	}

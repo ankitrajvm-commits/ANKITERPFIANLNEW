@@ -98,6 +98,16 @@ santu_stock.create_page = function () {
 			this.load();
 		});
 		$root.find(".santu-stock-only-low").prop("checked", this.state.only_low);
+		// Click the Running Low card itself instead of hunting for the
+		// checkbox (2026-09-03 direct request: "only low stock ko click
+		// karna pad raha hai, running low click karte hi dikhna chahiye").
+		// Delegated on the cards container, which gets emptied and
+		// rebuilt on every load() — a direct binding wouldn't survive that.
+		this.$cards.on("click", ".santu-stock-card-warn", () => {
+			this.state.only_low = true;
+			$root.find(".santu-stock-only-low").prop("checked", true);
+			this.load();
+		});
 		$root.find(".santu-stock-refresh").on("click", () => this.load());
 		$root.find(".santu-stock-add-btn").on("click", () => frappe.set_route("santu-add-item"));
 		$root.find(".santu-stock-more-btn").on("click", (e) => this.show_more_menu($(e.currentTarget)));
@@ -566,7 +576,7 @@ santu_stock.create_page = function () {
 					{
 						fieldtype: "HTML",
 						options: `<div style="margin-bottom:8px">${frappe.utils.escape_html(r.item_name || r.item_code)}<br>
-							<span style="color:var(--text-muted)">${__("Abhi")}: <b>${frappe.utils.escape_html(r.uom || "")}</b></span></div>`,
+							<span style="color:var(--text-muted)">${__("Abhi")}: <b>${frappe.utils.escape_html(santu_uom.abbr(r.uom) || "")}</b></span></div>`,
 					},
 					{
 						fieldtype: "Select",
@@ -578,7 +588,7 @@ santu_stock.create_page = function () {
 					{
 						fieldtype: "Float",
 						fieldname: "conversion_factor",
-						label: __("1 naya unit = kitne {0}?", [r.uom || ""]),
+						label: __("1 naya unit = kitne {0}?", [santu_uom.abbr(r.uom) || ""]),
 						description: __("Khali chhod dein to system khud samajhne ki koshish karega (jaise 1 Gram = 0.001 Kg)."),
 					},
 				],
@@ -621,7 +631,7 @@ santu_stock.create_page = function () {
 					fieldname: "head",
 					options: `<div style="font-size:15px;margin-bottom:4px"><b>${frappe.utils.escape_html(
 						row.item_name
-					)}</b></div><div style="color:var(--text-muted)">${__("Abhi system me")}: ${current} ${frappe.utils.escape_html(row.uom || "")}</div>`,
+					)}</b></div><div style="color:var(--text-muted)">${__("Abhi system me")}: ${current} ${frappe.utils.escape_html(santu_uom.abbr(row.uom) || "")}</div>`,
 				},
 				{
 					fieldtype: "Float",
@@ -844,9 +854,9 @@ santu_stock.create_page = function () {
 			// A dash, not "₹ 0.00": an item nobody has priced yet has no
 			// selling rate, and showing zero would read as "sells for nothing".
 			const dash = `<span class="santu-stock-dash">—</span>`;
-			const is_cpvc = santu_is_cpvc_item(r.item_code, r.item_name);
+			const row_hl = santu_item_row_class(r.item_code, r.item_name);
 			const $tr = $(`
-				<tr class="${r.low ? "santu-stock-row-low" : ""} ${is_cpvc ? "santu-cpvc-row" : ""}">
+				<tr class="${r.low ? "santu-stock-row-low" : ""} ${row_hl}">
 					<td class="santu-stock-td-idx">${idx + 1}</td>
 					<td class="santu-stock-td-item">
 						<div class="santu-stock-item-name santu-stock-field-edit" data-field="item_name" title="${__("Naam badalne ke liye dabaiye")}">${frappe.utils.escape_html(r.item_name)}</div>
@@ -857,7 +867,8 @@ santu_stock.create_page = function () {
 					     knowing if that's 90 pieces or 90 boxes. -->
 					<td class="santu-stock-td-num santu-stock-qty-edit" title="${__("Stock theek karne ke liye dabaiye")}">
 						<span class="${r.low ? "santu-stock-qty-low" : ""}">${format_number(r.qty, null, 0)}</span>
-						<span class="santu-stock-uom santu-stock-uom-edit" title="${__("Unit badalne ke liye dabaiye")}">${frappe.utils.escape_html(r.uom || "")}</span>
+						<span class="santu-stock-uom santu-stock-uom-edit" title="${__("Unit badalne ke liye dabaiye")}">${frappe.utils.escape_html(santu_uom.abbr(r.uom) || "")}</span>
+						${r.is_stock_item && flt(r.qty) <= 1 ? `<span class="santu-stock-critical-badge" title="${__("Bahut kam bacha hai — 1 ya usse kam")}">${__("Critical")}</span>` : ""}
 					</td>
 					<td class="santu-stock-td-num santu-stock-rate-edit" data-kind="purchase" title="${__("Purchase Rate badalne ke liye dabaiye")}">${r.cost_rate ? this._money(r.cost_rate) : dash}</td>
 					<td class="santu-stock-td-num santu-stock-rate-edit" data-kind="selling" title="${__("Selling Price badalne ke liye dabaiye")}">${r.sale_rate ? this._money(r.sale_rate) : dash}</td>
