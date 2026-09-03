@@ -3568,116 +3568,242 @@ def _customer_khata_html(data: dict) -> str:
 	customer/date range. Not a screenshot: this is real generated markup
 	(and, for the PDF/WhatsApp copy, run through wkhtmltopdf) — an actual
 	document, not a picture of one.
+
+	Laid out as the A4 SALE BILL, deliberately (2026-09-04 direct request:
+	"iska full ui change kro, jo sale hota hai uska a4 sheet wala utha kar
+	kaam kro uspe, logo ke saath wala, then uspe paste kro sare products
+	ko"). Same logo header, same Billed-To block, same #/Item/Qty/Rate/
+	Amount table, same totals/summary/signature/footer — so a customer who
+	has seen one of this shop's bills already knows how to read this. The
+	one structural difference a statement needs: the item table runs across
+	SEVERAL bills, so each bill gets a banded sub-header row (date + bill
+	no + that bill's total) and payments appear as their own banded row.
+
+	Every class name below is copied from the bill format on purpose; the
+	CSS is inlined here rather than shared because a Print Format's CSS
+	lives in its own DB record and this is a plain generated document.
 	"""
 	company = frappe.defaults.get_user_default("Company") or frappe.db.get_value("Company", {}, "name")
 	company_gstin = frappe.db.get_value("Company", company, "gstin") if company else None
+	company_website = frappe.db.get_value("Company", company, "website") if company else None
+	company_email = frappe.db.get_value("Company", company, "email") if company else None
 
-	def _items_cell(r):
-		# Every item on its own line, full name, full quantity — no "+N
-		# more" (2026-08-27 direct request: "Khata mein items ko truncate
-		# mat karo"). A plain <div> per item, not a comma-joined string:
-		# a table cell's height in HTML follows its content automatically,
-		# so a 12-item bill simply makes that one row taller — nothing is
-		# ever cut, and nothing has to shrink to fit.
-		items = r.get("items") or []
-		if not items:
-			return frappe.utils.escape_html(r.get("items_summary") or "")
-		# Per-piece rate AND that line's own total against each item, not
-		# just the quantity (2026-09-04 direct request: "uske samne
-		# individual ka price", then "thermal me individual item ka bill
-		# dikhna chahiye, aur a4 wale me bhi jo whatsapp pe jaye"). This is
-		# the copy that gets printed / PDF'd / WhatsApped, so it is the one
-		# a party actually holds when they ask for "saara bill" — it has to
-		# answer both "what did each thing cost?" and "what did that line
-		# come to?" without them opening every bill separately. Same
-		# qty x rate = amount shape the thermal khata already prints, so the
-		# two versions of the same statement agree.
-		#
-		# A TABLE, not flexbox. This HTML is rendered by wkhtmltopdf, whose
-		# WebKit predates flexbox entirely — `display:flex`/`gap`/`min-width`
-		# are silently ignored there, so the three spans collapsed straight
-		# into each other and the PDF read "2MM24 x 13.00312.00" (2026-09-04
-		# bug report: "nh aa raha individual price list pdf me"). It looked
-		# correct on screen and in the raw HTML, which is exactly why it got
-		# through. Tables are the one layout wkhtmltopdf is reliable at, so
-		# the columns are built with real <td> widths instead.
-		rows = "".join(
-			"<tr>"
-			f'<td class="ki-name">{frappe.utils.escape_html(it["item_name"])}</td>'
-			f'<td class="ki-calc">{frappe.utils.escape_html(str(it["qty"]))} x {flt(it.get("rate")):,.2f}</td>'
-			f'<td class="ki-amt">{flt(it.get("amount")):,.2f}</td>'
-			"</tr>"
-			for it in items
+	company_address, company_phone = "", None
+	addr_name = frappe.db.get_value(
+		"Dynamic Link",
+		{"link_doctype": "Company", "link_name": company, "parenttype": "Address"},
+		"parent",
+	)
+	if addr_name:
+		a = frappe.get_doc("Address", addr_name)
+		place = a.county or a.city or ""
+		company_address = ", ".join(
+			x for x in [a.address_line1, a.address_line2, place, a.state, a.pincode] if x
 		)
-		return f'<table class="khata-items">{rows}</table>'
+		company_phone = a.phone
 
-	rows_html = ""
-	for idx, r in enumerate(data["rows"], start=1):
-		rows_html += f"""
-		<tr>
-			<td>{idx}</td>
-			<td>{frappe.utils.format_date(r['date'], 'dd-MM-yyyy')}</td>
-			<td>{frappe.utils.escape_html(r['display_number'])}</td>
-			<td>{frappe.utils.escape_html(r['type'])}</td>
-			<td class="santu-khata-items-cell">{_items_cell(r)}</td>
-			<td class="santu-khata-num">{f"{r['debit']:,.2f}" if r['debit'] else ''}</td>
-			<td class="santu-khata-num">{f"{r['credit']:,.2f}" if r['credit'] else ''}</td>
-			<td class="santu-khata-num santu-khata-bal">{r['balance']:,.2f}</td>
-		</tr>"""
+	# Same logo the A4 bill uses, honouring the same setting.
+	logo_html = ""
+	try:
+		if frappe.db.get_single_value("Santu POS Settings", "show_logo_on_a4_bill"):
+			uri = get_a4_logo_data_uri()
+			if uri:
+				width = frappe.db.get_single_value("Santu POS Settings", "a4_logo_width") or 40
+				logo_html = (
+					f'<div style="margin-bottom:8px;"><img src="{uri}" '
+					f'style="width:{width}%; max-width:100%; height:auto;"></div>'
+				)
+	except Exception:
+		logo_html = ""
+	if not logo_html:
+		logo_html = f'<div class="santu-bill-shop-name">{frappe.utils.escape_html(company or "")}</div>'
+
+	cust = data.get("customer")
+	cust_mobile = frappe.db.get_value("Customer", cust, "mobile_no") if cust else None
+	cust_gstin = frappe.db.get_value("Customer", cust, "gstin") if cust else None
+	cust_place = party_village("Customer", cust) if cust else None
+
+	closing = flt(data.get("closing_balance"))
+	total_debit = sum(flt(r.get("debit")) for r in data.get("rows") or [])
+	total_credit = sum(flt(r.get("credit")) for r in data.get("rows") or [])
+
+	# One continuous item table across every bill in the period. A bill's
+	# own products sit under its banded header, numbered from 1 again so a
+	# line can be read back against that bill's own printed copy.
+	body_rows = ""
+	for r in data.get("rows") or []:
+		d_str = frappe.utils.format_date(r["date"], "dd-MM-yyyy")
+		label = f'{frappe.utils.escape_html(r["type"])} &nbsp;·&nbsp; {frappe.utils.escape_html(r["display_number"])}'
+		amount = flt(r.get("debit")) or flt(r.get("credit"))
+		sign = "" if flt(r.get("debit")) else "- "
+		body_rows += (
+			'<tr class="khata-band">'
+			f'<td colspan="3">{d_str} &nbsp;·&nbsp; {label}</td>'
+			f'<td class="num" colspan="2">{sign}\u20b9 {amount:,.2f}</td>'
+			"</tr>"
+		)
+		items = r.get("items") or []
+		if items:
+			for i, it in enumerate(items, start=1):
+				qty = frappe.utils.escape_html(str(it["qty"]))
+				uom = frappe.utils.escape_html(uom_abbr(it.get("uom")) or "")
+				body_rows += (
+					"<tr>"
+					f"<td>{i}</td>"
+					f'<td>{frappe.utils.escape_html(it["item_name"])}</td>'
+					f'<td class="num">{qty} {uom}</td>'
+					f'<td class="num">\u20b9 {flt(it.get("rate")):,.2f}</td>'
+					f'<td class="num">\u20b9 {flt(it.get("amount")):,.2f}</td>'
+					"</tr>"
+				)
+		elif r.get("items_summary"):
+			body_rows += (
+				'<tr><td></td><td colspan="4" class="khata-note">'
+				f'{frappe.utils.escape_html(r["items_summary"])}</td></tr>'
+			)
 
 	return f"""
 	<html><head><meta charset="utf-8"><style>
-		body {{ font-family: sans-serif; color: #1f2340; font-size: 12px; }}
-		h1 {{ font-size: 18px; margin-bottom: 2px; }}
-		.santu-khata-sub {{ color: #666; margin-bottom: 4px; }}
-		.santu-khata-balline {{ color: #333; margin-bottom: 14px; font-weight: 600; }}
-		table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
-		/* Repeats the header row on every PDF page a long statement spills
-		   onto — standard table semantics, wkhtmltopdf (and every browser)
-		   honours <thead> across a page break on its own; nothing custom
-		   needed beyond actually using the tag. */
+		body {{ font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; color: #111827; font-size: 13px; margin: 0; }}
+		table {{ border-collapse: collapse; }}
 		thead {{ display: table-header-group; }}
 		tr {{ page-break-inside: avoid; }}
-		th, td {{ border: 1px solid #ddd; padding: 6px 8px; text-align: left; font-size: 11px; vertical-align: top; }}
-		th {{ background: #f3f4f8; }}
-		.santu-khata-num {{ text-align: right; white-space: nowrap; }}
-		.santu-khata-bal {{ font-weight: 600; }}
-		.santu-khata-open, .santu-khata-close {{ font-weight: 600; }}
-		/* Items column: real content, real wrapping — never the reason a
-		   row gets clipped. Not a smaller font; the row just grows. */
-		/* Widened from 220px once each item grew two number columns beside
-		   it — at the old width the name was left ~56px and wkhtmltopdf
-		   broke it mid-word ("MALHOTR / A BEND"), 2026-09-04. */
-		.santu-khata-items-cell {{ white-space: normal; min-width: 300px; }}
-		/* Per-item lines are a real table on purpose — see _items_cell()'s
-		   own note: wkhtmltopdf has no flexbox, so this is what actually
-		   holds the three columns apart in the PDF. */
-		.khata-items {{ width: 100%; border-collapse: collapse; }}
-		.khata-items td {{ border: none; padding: 1px 0; font-size: 11px; vertical-align: top; }}
-		/* overflow-wrap, NOT word-break: only break a word when it genuinely
-		   cannot fit, so names wrap at their spaces instead of snapping
-		   mid-word. */
-		.khata-items td.ki-name {{ width: auto; overflow-wrap: break-word; }}
-		.khata-items td.ki-calc {{ width: 78px; text-align: right; white-space: nowrap; color: #555; padding-left: 8px; }}
-		.khata-items td.ki-amt {{ width: 62px; text-align: right; white-space: nowrap; font-weight: 600; padding-left: 8px; }}
+		.santu-bill-header-table {{ width: 100%; margin-bottom: 14px; }}
+		.santu-bill-header-table td {{ vertical-align: top; }}
+		.santu-bill-shop-name {{ font-size: 22px; font-weight: 700; color: #111827; margin: 0 0 4px 0; }}
+		.santu-bill-shop-meta {{ font-size: 12px; color: #4b5563; line-height: 1.5; }}
+		.santu-bill-title-block {{ text-align: right; }}
+		.santu-bill-title {{ font-size: 17px; font-weight: 700; letter-spacing: 0.06em; color: #3730a3; margin: 0 0 6px 0; }}
+		.santu-bill-meta-row {{ font-size: 12px; color: #374151; }}
+		.santu-bill-meta-row b {{ color: #111827; }}
+		.santu-bill-status-pill {{ display: inline-block; margin-top: 6px; padding: 2px 10px; border-radius: 3px;
+			font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }}
+		.santu-bill-status-paid {{ background: #dcfce7; color: #15803d; }}
+		.santu-bill-status-due {{ background: #fef2f2; color: #b91c1c; }}
+		.santu-bill-customer-table {{ width: 100%; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb;
+			padding: 8px 0; margin-bottom: 12px; }}
+		.santu-bill-customer-table td {{ vertical-align: top; width: 50%; padding: 8px 0; }}
+		.santu-bill-customer-label {{ font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+			text-transform: uppercase; color: #6b7280; margin-bottom: 3px; }}
+		.santu-bill-customer-name {{ font-size: 15px; font-weight: 600; }}
+		.santu-bill-customer-detail {{ font-size: 12px; color: #4b5563; }}
+		.santu-bill-items {{ width: 100%; border-collapse: collapse; margin-bottom: 4px; }}
+		.santu-bill-items thead th {{ text-align: left; font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+			text-transform: uppercase; color: #6b7280; border-bottom: 1.5px solid #111827; padding: 6px 4px; }}
+		.santu-bill-items thead th.num, .santu-bill-items tbody td.num {{ text-align: right; }}
+		.santu-bill-items tbody td {{ padding: 6px 4px; border-bottom: 1px solid #e5e7eb; font-size: 12.5px; }}
+		/* One bill's heading inside the shared item table. */
+		.khata-band td {{ background: #f3f4f6; font-weight: 700; font-size: 11.5px; color: #111827;
+			border-top: 1px solid #d1d5db; border-bottom: 1px solid #d1d5db; }}
+		.khata-note {{ color: #6b7280; font-style: italic; }}
+		.santu-bill-totals-table {{ margin-top: 10px; margin-left: auto; width: 300px; border-collapse: collapse; }}
+		.santu-bill-totals-table td {{ padding: 4px; font-size: 13px; color: #4b5563; }}
+		.santu-bill-totals-table td.value {{ text-align: right; }}
+		.santu-bill-totals-table tr.grand td {{ border-top: 2px solid #111827; padding-top: 10px;
+			font-size: 18px; font-weight: 700; color: #111827; }}
+		.santu-bill-totals-table tr.due td {{ color: #b91c1c; font-weight: 700; }}
+		.santu-bill-panels {{ width: 100%; border-collapse: collapse; margin-top: 18px; }}
+		.santu-bill-panels td {{ vertical-align: top; width: 50%; padding-right: 16px; }}
+		.santu-bill-panel {{ border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px 12px; }}
+		.santu-bill-panel-title {{ font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+			text-transform: uppercase; color: #6b7280; margin-bottom: 6px; }}
+		.santu-bill-panel-row {{ display: table; width: 100%; table-layout: fixed; font-size: 12px; padding: 2px 0; }}
+		.santu-bill-panel-row span {{ display: table-cell; }}
+		.santu-bill-panel-row span:last-child {{ text-align: right; font-weight: 600; }}
+		.santu-bill-panel-row.emphasis span:last-child {{ color: #b91c1c; }}
+		.santu-bill-panel-row.emphasis.ok span:last-child {{ color: #15803d; }}
+		.santu-bill-signature-block {{ margin-top: 40px; text-align: right; font-size: 11px; color: #6b7280; }}
+		.santu-bill-signature-line {{ border-top: 1px solid #9ca3af; display: inline-block;
+			padding-top: 6px; min-width: 200px; }}
+		.santu-bill-footer {{ margin-top: 24px; padding-top: 14px; border-top: 1px dashed #d1d5db;
+			text-align: center; font-size: 11px; color: #6b7280; }}
+		.santu-bill-footer .thanks {{ font-size: 13px; font-weight: 600; color: #3730a3; margin-bottom: 4px; }}
 		@media print {{ body {{ margin: 12px; }} }}
 	</style></head>
 	<body>
-		<h1>{frappe.utils.escape_html(company or "")}</h1>
-		{f'<div class="santu-khata-sub">GSTIN: {frappe.utils.escape_html(company_gstin)}</div>' if company_gstin else ""}
-		<div class="santu-khata-sub">Customer Statement — {frappe.utils.escape_html(data["customer_name"])}
-			&nbsp;|&nbsp; {frappe.utils.format_date(data["from_date"], "dd-MM-yyyy")} to {frappe.utils.format_date(data["to_date"], "dd-MM-yyyy")}</div>
-		<div class="santu-khata-balline">Opening Balance: Rs. {data["opening_balance"]:,.2f} &nbsp;|&nbsp; Closing Balance: Rs. {data["closing_balance"]:,.2f}</div>
-		<table>
+	<div class="santu-bill">
+		<table class="santu-bill-header-table">
+			<tr>
+				<td style="width: 60%">
+					{logo_html}
+					<div class="santu-bill-shop-meta">
+						{frappe.utils.escape_html(company_address or "")}<br>
+						{f"Phone: {frappe.utils.escape_html(company_phone)}<br>" if company_phone else ""}
+						{f"<b>GSTIN:</b> {frappe.utils.escape_html(company_gstin)}" if company_gstin else ""}
+					</div>
+				</td>
+				<td class="santu-bill-title-block" style="width: 40%">
+					<div class="santu-bill-title">KHATA STATEMENT</div>
+					<div class="santu-bill-meta-row"><b>Period:</b> {frappe.utils.format_date(data["from_date"], "dd-MM-yyyy")} to {frappe.utils.format_date(data["to_date"], "dd-MM-yyyy")}</div>
+					<div class="santu-bill-meta-row"><b>Printed:</b> {frappe.utils.format_date(frappe.utils.today(), "dd-MM-yyyy")}</div>
+					<span class="santu-bill-status-pill {'santu-bill-status-due' if closing > 0 else 'santu-bill-status-paid'}">
+						{"Balance Due" if closing > 0 else "All Clear"}
+					</span>
+				</td>
+			</tr>
+		</table>
+
+		<table class="santu-bill-customer-table">
+			<tr>
+				<td>
+					<div class="santu-bill-customer-label">Statement For</div>
+					<div class="santu-bill-customer-name">{frappe.utils.escape_html(data["customer_name"])}</div>
+					{f'<div class="santu-bill-customer-detail">Phone: {frappe.utils.escape_html(cust_mobile)}</div>' if cust_mobile else ""}
+					{f'<div class="santu-bill-customer-detail">GSTIN: {frappe.utils.escape_html(cust_gstin)}</div>' if cust_gstin else ""}
+					{f'<div class="santu-bill-customer-detail">{frappe.utils.escape_html(cust_place)}</div>' if cust_place else ""}
+				</td>
+				<td style="text-align:right;">
+					<div class="santu-bill-customer-label">Closing Balance</div>
+					<div class="santu-bill-customer-name" style="font-size:20px;color:{'#b91c1c' if closing > 0 else '#15803d'};">Rs. {closing:,.2f}</div>
+				</td>
+			</tr>
+		</table>
+
+		<table class="santu-bill-items">
 			<thead>
-				<tr><th>#</th><th>Date</th><th>Bill No.</th><th>Type</th><th>Items</th><th>Debit (Sale)</th><th>Credit (Paid)</th><th>Balance</th></tr>
+				<tr>
+					<th style="width: 6%">#</th>
+					<th style="width: 40%">Item</th>
+					<th class="num" style="width: 15%">Qty</th>
+					<th class="num" style="width: 18%">Rate</th>
+					<th class="num" style="width: 21%">Amount</th>
+				</tr>
 			</thead>
 			<tbody>
-				<tr><td colspan="7" class="santu-khata-open">Opening Balance</td><td class="santu-khata-num santu-khata-open">{data["opening_balance"]:,.2f}</td></tr>
-				{rows_html}
-				<tr><td colspan="7" class="santu-khata-close">Closing Balance</td><td class="santu-khata-num santu-khata-close">{data["closing_balance"]:,.2f}</td></tr>
+				<tr class="khata-band"><td colspan="4">Opening Balance</td><td class="num">\u20b9 {flt(data["opening_balance"]):,.2f}</td></tr>
+				{body_rows}
 			</tbody>
 		</table>
+
+		<table class="santu-bill-totals-table">
+			<tr><td>Total Sale</td><td class="value">\u20b9 {total_debit:,.2f}</td></tr>
+			<tr><td>Total Paid</td><td class="value">- \u20b9 {total_credit:,.2f}</td></tr>
+			<tr class="grand {'due' if closing > 0 else ''}"><td>Closing Balance</td><td class="value">Rs. {closing:,.2f}</td></tr>
+		</table>
+
+		<table class="santu-bill-panels">
+			<tr>
+				<td>
+					<div class="santu-bill-panel">
+						<div class="santu-bill-panel-title">Account Summary</div>
+						<div class="santu-bill-panel-row"><span>Opening Balance</span><span>Rs. {flt(data["opening_balance"]):,.2f}</span></div>
+						<div class="santu-bill-panel-row"><span>Total Sale</span><span>Rs. {total_debit:,.2f}</span></div>
+						<div class="santu-bill-panel-row"><span>Total Paid</span><span>Rs. {total_credit:,.2f}</span></div>
+						<div class="santu-bill-panel-row emphasis {'ok' if closing <= 0 else ''}"><span>Closing Balance</span><span>Rs. {closing:,.2f}</span></div>
+					</div>
+				</td>
+			</tr>
+		</table>
+
+		<div class="santu-bill-signature-block">
+			<div class="santu-bill-signature-line">For {frappe.utils.escape_html(company or "")}<br><span style="font-size:10px;">Authorised Signatory</span></div>
+		</div>
+
+		<div class="santu-bill-footer">
+			<div class="thanks">Thank you for shopping with {frappe.utils.escape_html(company or "")}!</div>
+			{f'{frappe.utils.escape_html(company_website or "")}{" &nbsp;|&nbsp; " if company_website and company_email else ""}{frappe.utils.escape_html(company_email or "")}' if (company_website or company_email) else ""}
+		</div>
+	</div>
 	</body></html>
 	"""
 
