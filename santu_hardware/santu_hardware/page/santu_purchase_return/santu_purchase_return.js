@@ -69,6 +69,18 @@ window.santu_purchase_return_page = {
 			if (parsed && Array.isArray(parsed.tabs) && parsed.tabs.length) {
 				this.tabs = parsed.tabs;
 				this.tabs.forEach(t => { t.items = t.items || []; });
+				// A tab left open overnight kept yesterday's date and saved
+				// with it silently (2026-09-04: Purchase Return showed 03/09
+				// on the 4th). Billing has always rolled a still-unsaved draft
+				// forward to today on restore; this screen did not, so the same
+				// guard is applied here rather than leaving the four
+				// santu-bill-* screens disagreeing about it.
+				const today = frappe.datetime.get_today();
+				this.tabs.forEach((t) => {
+					if (!t.editing && !t.saved && t.posting_date && t.posting_date < today) {
+						t.posting_date = today;
+					}
+				});
 				this.active_id =
 					parsed.active_id && this.tabs.some((t) => t.id === parsed.active_id) ? parsed.active_id : this.tabs[0].id;
 			}
@@ -134,6 +146,13 @@ window.santu_purchase_return_page = {
 	render() {
 		if (!this.tabs.length) this._new_ret(false);
 		const b = this._bill();
+		// Same roll-forward as _load(), for a tab that was already open when
+		// the date changed (on_page_show re-renders, it does not reload).
+		const today = frappe.datetime.get_today();
+		if (!b.editing && !b.saved && b.posting_date && b.posting_date < today) {
+			b.posting_date = today;
+			this._persist();
+		}
 		$(this.page.body).html(`
 			<div class="santu-bill">
 				<div class="santu-bill-tabbar">

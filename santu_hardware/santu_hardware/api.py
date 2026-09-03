@@ -228,8 +228,22 @@ def receive_stock_simple(item_code: str, qty: float, rate: float = None):
 			"allow_zero_valuation_rate": 1 if not basic_rate else 0,
 		},
 	)
-	doc.insert()
-	doc.submit()
+	# With no rate typed, allow_zero_valuation_rate above is set by THIS
+	# function on purpose -- and ERPNext then msgprints "Item rate has been
+	# updated to zero as Allow Zero Valuation Rate is checked for item X"
+	# at the operator, once from insert() and again from submit(). Two
+	# popups of raw accounting English about a flag they never set and
+	# cannot act on, on a screen written so "class 7 ka baccha bhi samajh
+	# jaye" (2026-09-04 bug report). Muted here rather than left to leak.
+	# frappe.throw() still raises through a mute, so a real failure is
+	# unaffected -- only informational msgprints are swallowed.
+	prev_mute = frappe.flags.mute_messages
+	frappe.flags.mute_messages = True
+	try:
+		doc.insert()
+		doc.submit()
+	finally:
+		frappe.flags.mute_messages = prev_mute
 
 	if rate_given:
 		_set_buying_price(item_code, basic_rate)
@@ -3568,10 +3582,34 @@ def _customer_khata_html(data: dict) -> str:
 		items = r.get("items") or []
 		if not items:
 			return frappe.utils.escape_html(r.get("items_summary") or "")
-		return "".join(
-			f'<div class="santu-khata-item-line">{frappe.utils.escape_html(it["item_name"])} x{frappe.utils.escape_html(str(it["qty"]))}</div>'
+		# Per-piece rate AND that line's own total against each item, not
+		# just the quantity (2026-09-04 direct request: "uske samne
+		# individual ka price", then "thermal me individual item ka bill
+		# dikhna chahiye, aur a4 wale me bhi jo whatsapp pe jaye"). This is
+		# the copy that gets printed / PDF'd / WhatsApped, so it is the one
+		# a party actually holds when they ask for "saara bill" — it has to
+		# answer both "what did each thing cost?" and "what did that line
+		# come to?" without them opening every bill separately. Same
+		# qty x rate = amount shape the thermal khata already prints, so the
+		# two versions of the same statement agree.
+		#
+		# A TABLE, not flexbox. This HTML is rendered by wkhtmltopdf, whose
+		# WebKit predates flexbox entirely — `display:flex`/`gap`/`min-width`
+		# are silently ignored there, so the three spans collapsed straight
+		# into each other and the PDF read "2MM24 x 13.00312.00" (2026-09-04
+		# bug report: "nh aa raha individual price list pdf me"). It looked
+		# correct on screen and in the raw HTML, which is exactly why it got
+		# through. Tables are the one layout wkhtmltopdf is reliable at, so
+		# the columns are built with real <td> widths instead.
+		rows = "".join(
+			"<tr>"
+			f'<td class="ki-name">{frappe.utils.escape_html(it["item_name"])}</td>'
+			f'<td class="ki-calc">{frappe.utils.escape_html(str(it["qty"]))} x {flt(it.get("rate")):,.2f}</td>'
+			f'<td class="ki-amt">{flt(it.get("amount")):,.2f}</td>'
+			"</tr>"
 			for it in items
 		)
+		return f'<table class="khata-items">{rows}</table>'
 
 	rows_html = ""
 	for idx, r in enumerate(data["rows"], start=1):
@@ -3607,8 +3645,21 @@ def _customer_khata_html(data: dict) -> str:
 		.santu-khata-open, .santu-khata-close {{ font-weight: 600; }}
 		/* Items column: real content, real wrapping — never the reason a
 		   row gets clipped. Not a smaller font; the row just grows. */
-		.santu-khata-items-cell {{ white-space: normal; word-break: break-word; min-width: 220px; }}
-		.santu-khata-item-line {{ padding: 1px 0; }}
+		/* Widened from 220px once each item grew two number columns beside
+		   it — at the old width the name was left ~56px and wkhtmltopdf
+		   broke it mid-word ("MALHOTR / A BEND"), 2026-09-04. */
+		.santu-khata-items-cell {{ white-space: normal; min-width: 300px; }}
+		/* Per-item lines are a real table on purpose — see _items_cell()'s
+		   own note: wkhtmltopdf has no flexbox, so this is what actually
+		   holds the three columns apart in the PDF. */
+		.khata-items {{ width: 100%; border-collapse: collapse; }}
+		.khata-items td {{ border: none; padding: 1px 0; font-size: 11px; vertical-align: top; }}
+		/* overflow-wrap, NOT word-break: only break a word when it genuinely
+		   cannot fit, so names wrap at their spaces instead of snapping
+		   mid-word. */
+		.khata-items td.ki-name {{ width: auto; overflow-wrap: break-word; }}
+		.khata-items td.ki-calc {{ width: 78px; text-align: right; white-space: nowrap; color: #555; padding-left: 8px; }}
+		.khata-items td.ki-amt {{ width: 62px; text-align: right; white-space: nowrap; font-weight: 600; padding-left: 8px; }}
 		@media print {{ body {{ margin: 12px; }} }}
 	</style></head>
 	<body>
@@ -3711,16 +3762,33 @@ def _customer_khata_thermal_html(data: dict) -> str:
 		items = r.get("items") or []
 		items_html = ""
 		if items:
+			# Laid out exactly like the POS thermal bill's own item table —
+			# same #/Item/Qty/Rate/Amount columns, same widths, same
+			# display:table cells (2026-09-04 direct request: "jo thermal
+			# nikal raha wo bill jaisa nikalo, use POS bill ki tarah hi
+			# format ka set kro"). One statement should not invent a second
+			# way of printing an item line when the counter already reads
+			# bills in that shape all day.
 			item_lines = "".join(
-				f'<div class="t-khata-item">'
-				f'<div class="t-khata-item-name">{item_idx}. {frappe.utils.escape_html(it["item_name"])}</div>'
-				f'<div class="t-khata-item-calc">'
-				f'<span>{frappe.utils.escape_html(str(it["qty"]))} x {flt(it.get("rate")):,.2f}</span>'
-				f'<span>{flt(it.get("amount")):,.2f}</span>'
-				f"</div></div>"
+				'<div class="t-khata-item-row">'
+				f'<span class="t-col-idx">{item_idx}</span>'
+				f'<span class="t-col-item">{frappe.utils.escape_html(it["item_name"])}</span>'
+				f'<span class="t-col-qty">{frappe.utils.escape_html(str(it["qty"]))} {frappe.utils.escape_html(uom_abbr(it.get("uom")) or "")}</span>'
+				f'<span class="t-col-rate">{flt(it.get("rate")):,.2f}</span>'
+				f'<span class="t-col-amt">{flt(it.get("amount")):,.2f}</span>'
+				"</div>"
 				for item_idx, it in enumerate(items, start=1)
 			)
-			items_html = f'<div class="t-khata-items-wrap">{item_lines}</div>'
+			items_head = (
+				'<div class="t-khata-items-head">'
+				'<span class="t-col-idx">#</span>'
+				'<span class="t-col-item">Item</span>'
+				'<span class="t-col-qty">Qty</span>'
+				'<span class="t-col-rate">Rate</span>'
+				'<span class="t-col-amt">Amount</span>'
+				"</div>"
+			)
+			items_html = f'<div class="t-khata-items-wrap">{items_head}{item_lines}</div>'
 
 		rows_markup.append(f"""
 		<div class="t-khata-row-block">
@@ -3781,18 +3849,24 @@ body {{
 .t-row > span:first-child {{ float: left; max-width: 60%; }}
 .t-row > span:last-child {{ float: right; text-align: right; }}
 .t-khata-row-block {{ padding: 3px 0; border-bottom: 1px dotted #ccc; clear: both; }}
-.t-khata-items-wrap {{ padding-left: 6px; margin: 1px 0 2px; }}
-.t-khata-item {{ font-size: 9.5px; color: #444; margin-bottom: 1px; }}
-.t-khata-item-name {{ line-height: 1.25; }}
-/* qty x rate on the left, line total on the right — the rate has to sit on
-   its own line under the name: item names here run long enough that putting
-   both on one line wrapped mid-number on a 72mm roll. */
-.t-khata-item-calc {{
-	display: flex;
-	justify-content: space-between;
-	padding-left: 10px;
-	color: #666;
+.t-khata-items-wrap {{ margin: 1px 0 2px; }}
+/* The POS thermal bill's own item table, reused verbatim: display:table
+   cells (NOT flexbox — wkhtmltopdf has none) and the same column widths,
+   so a khata line and a bill line read identically on the roll. */
+.t-khata-items-head, .t-khata-item-row {{
+	display: table;
+	width: 100%;
+	table-layout: fixed;
+	margin: 0.4mm 0;
 }}
+.t-khata-items-head span, .t-khata-item-row span {{ display: table-cell; vertical-align: top; }}
+.t-khata-items-head {{ font-weight: 700; font-size: 9px; padding-bottom: 0.5mm; border-bottom: 1px dotted #bbb; }}
+.t-khata-item-row {{ font-size: 9px; color: #333; }}
+.t-col-idx {{ width: 9%; padding-right: 1.2mm; }}
+.t-col-item {{ width: 37%; white-space: normal; overflow-wrap: break-word; word-break: break-word; padding-right: 1mm; }}
+.t-col-qty {{ width: 12%; text-align: center; }}
+.t-col-rate {{ width: 20%; text-align: right; }}
+.t-col-amt {{ width: 22%; text-align: right; }}
 </style>
 </head>
 <body>
@@ -3846,7 +3920,13 @@ def _thermal_khata_pdf_bytes(customer: str, from_date: str = None, to_date: str 
 	rows_count = len(data.get("rows") or [])
 	items_count = sum(len(r.get("items") or []) for r in (data.get("rows") or []))
 	logo_extra = 24 if settings.get("show_logo_on_bill") else 0
-	page_height = max(160 + rows_count * 16 + items_count * 5 + logo_extra, 120)
+	# rows_count allowance went 16 -> 20: each transaction block now carries
+	# its own #/Item/Qty/Rate/Amount header row (2026-09-04, matching the POS
+	# bill's item table). Items themselves went from two printed lines to one,
+	# so the per-item 5 stays comfortably over-generous — which is the point,
+	# see the note on page_height further up: too tall wastes a little roll,
+	# too short silently cuts the end off the statement.
+	page_height = max(160 + rows_count * 20 + items_count * 5 + logo_extra, 120)
 
 	html = scrub_urls(html)
 	html, options = read_options_from_html(html)

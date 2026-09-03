@@ -109,6 +109,30 @@ window.santu_uom = (function () {
 		opts = opts || {};
 		list(item_code, current_uom).then((options) => {
 			if (!$select || !$select.length || !options.length) return;
+			// Two different UOM records can share one short form -- this shop's
+			// list has both "Nos" and "Pcs", and abbr() maps BOTH to "Pcs". That
+			// put two identical-looking "Pcs" rows in the dropdown with no way to
+			// tell them apart, and picking the wrong one silently swapped a
+			// stock_uom="Nos" item over to the unrelated "Pcs" record (caught
+			// 2026-09-03 testing an Estimate: the screen said Pcs, the saved
+			// Quotation line said uom="Pcs" where the sale had correctly saved
+			// "Nos"). Collapse each short form to a single entry, always keeping
+			// the row's own current unit so $select.val() below still matches.
+			// Pass 1: pick one winner per short form -- the row's own unit if
+			// it is in the group, otherwise the first one offered.
+			const winner = {};
+			options.forEach((o) => {
+				const label = abbr(o.uom);
+				if (!(label in winner) || o.uom === current_uom) winner[label] = o;
+			});
+			// Pass 2: emit in the server's original order, one per label.
+			const emitted = {};
+			const final_options = options.filter((o) => {
+				const label = abbr(o.uom);
+				if (emitted[label]) return false;
+				emitted[label] = true;
+				return true;
+			}).map((o) => winner[abbr(o.uom)]);
 			// Label shows the short form ("Nos" -> "Pcs") so it fits a narrow
 			// table column without overlapping the native select arrow; the
 			// option's real `value` stays the full uom name Frappe expects
@@ -116,7 +140,7 @@ window.santu_uom = (function () {
 			const none_html = opts.no_none ? "" : `<option value="">${__("None")}</option>`;
 			$select.html(
 				none_html +
-					options
+					final_options
 						.map(
 							(o) =>
 								`<option value="${frappe.utils.escape_html(o.uom)}" ${o.uom === current_uom ? "selected" : ""}>${frappe.utils.escape_html(abbr(o.uom))}</option>`

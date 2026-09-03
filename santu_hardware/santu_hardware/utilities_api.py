@@ -74,6 +74,36 @@ def _fold_size_into_item_name(headers: list, rows: list) -> tuple:
 	return [h for h in headers if h != size_header], rows
 
 
+def _drop_dead_columns(headers, rows):
+	"""Throw away columns that carry nothing.
+
+	A spreadsheet exported from somewhere else routinely has a spacer column
+	between two real ones — no header text, no values, but openpyxl still
+	reports it, so it arrived here as a header of "" (2026-09-03: a supplier's
+	CPVC sheet came through as Item Name / Size / MRP / SP / "" / Source&nbsp;/&nbsp;Note).
+	An unnamed column then drew a dropdown with a blank label on the Map
+	Columns screen — a control the operator cannot possibly answer — and,
+	because it could never be mapped, it also blocked the one-click path that
+	skips mapping entirely when every column is already understood.
+
+	Dropped only when the column is genuinely dead: no header AND no value in
+	any row. A blank header over real data is still handed to the operator to
+	map, since that is a real column someone forgot to label.
+	"""
+	dead = []
+	for h in headers:
+		if str(h or "").strip():
+			continue
+		if all(str(r.get(h, "") or "").strip() == "" for r in rows):
+			dead.append(h)
+	if not dead:
+		return headers, rows
+	for r in rows:
+		for h in dead:
+			r.pop(h, None)
+	return [h for h in headers if h not in dead], rows
+
+
 def _parse_tabular_file(file_url: str):
 	fname, content = _read_uploaded_file(file_url)
 	lower = (fname or "").lower()
@@ -87,12 +117,15 @@ def _parse_tabular_file(file_url: str):
 		data = []
 		for row in rows[1:]:
 			data.append({headers[i]: (row[i] if i < len(row) else "") for i in range(len(headers))})
+		headers, data = _drop_dead_columns(headers, data)
 		return _fold_size_into_item_name(headers, data)
 	if lower.endswith(".csv"):
 		text = content.decode("utf-8-sig", errors="replace")
 		reader = csv.DictReader(io.StringIO(text))
 		headers = reader.fieldnames or []
-		return _fold_size_into_item_name(list(headers), list(reader))
+		rows = list(reader)
+		headers, rows = _drop_dead_columns(list(headers), rows)
+		return _fold_size_into_item_name(headers, rows)
 	frappe.throw("Unsupported file type. Upload .xlsx, .xls or .csv")
 
 
@@ -146,7 +179,25 @@ def parse_items_import_file(file_url: str):
 		alias_field = ITEM_IMPORT_FIELD_ALIASES.get(h.strip().lower())
 		if alias_field:
 			suggested[h] = alias_field
-	return {"headers": headers, "rows": rows[:500], "total_rows": len(rows), "suggested_mapping": suggested}
+	# Columns that are commentary, not item data. A supplier's sheet almost
+	# always carries one ("Source / Note", "Remarks", …) and there is no field
+	# to map it to — but it used to count as "unmapped", which forced the Map
+	# Columns screen even when Item Name / MRP / SP had all been understood
+	# on their own, losing the one-click import (2026-09-03 request: "1 click
+	# me kaam karao"). The caller treats these as already handled instead of
+	# making the operator answer a dropdown whose only sane answer is Skip.
+	ignorable = [
+		h
+		for h in headers
+		if h not in suggested and re.search(r"\b(note|notes|source|remark|remarks|comment|comments)\b", h, re.IGNORECASE)
+	]
+	return {
+		"headers": headers,
+		"rows": rows[:500],
+		"total_rows": len(rows),
+		"suggested_mapping": suggested,
+		"ignorable_headers": ignorable,
+	}
 
 
 @frappe.whitelist()

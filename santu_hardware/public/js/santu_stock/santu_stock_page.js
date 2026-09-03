@@ -430,6 +430,17 @@ santu_stock.create_page = function () {
 					row[key] = kind === "purchase" ? res.cost_rate ?? value : value;
 					frappe.show_alert({ message: __("{0} update ho gaya", [label]), indicator: "green" });
 					render_value();
+					// The Stock Value / Sale Value / Running Low cards are
+					// computed server-side across the whole filtered set, so
+					// editing a rate here left them showing the OLD totals until
+					// someone hit Refresh — a ₹1 -> ₹25 change kept Sale Value at
+					// ₹819 when it was really ₹891 (found 2026-09-04 testing this
+					// screen). Re-reading is what the Refresh button itself does,
+					// so the cards can never disagree with the rate just saved;
+					// a purchase-rate edit also books a Stock Reconciliation
+					// server-side, which moves Stock Value for reasons only the
+					// server can total up.
+					this.load();
 				})
 				.catch((err) => {
 					saving = false;
@@ -856,7 +867,7 @@ santu_stock.create_page = function () {
 			const dash = `<span class="santu-stock-dash">—</span>`;
 			const row_hl = santu_item_row_class(r.item_code, r.item_name);
 			const $tr = $(`
-				<tr class="${r.low ? "santu-stock-row-low" : ""} ${row_hl}">
+				<tr class="${row_hl}">
 					<td class="santu-stock-td-idx">${idx + 1}</td>
 					<td class="santu-stock-td-item">
 						<div class="santu-stock-item-name santu-stock-field-edit" data-field="item_name" title="${__("Naam badalne ke liye dabaiye")}">${frappe.utils.escape_html(r.item_name)}</div>

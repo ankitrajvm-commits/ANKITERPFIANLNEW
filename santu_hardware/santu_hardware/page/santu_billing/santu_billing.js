@@ -959,7 +959,10 @@ window.santu_billing_page = {
 			const row_hl = santu_item_row_class(r.item_code, r.item_name);
 			const $tr = $(`
 				<tr class="santu-bill-tr ${r.id === b.selected_row ? "is-selected" : ""} ${r.id === reveal_row_id ? "santu-bill-row-new" : ""} ${row_hl}" data-row="${r.id}">
-					<td class="c-idx">${i + 1}</td>
+					<td class="c-idx">
+						<span class="santu-bill-idx-num">${i + 1}</span>
+						<button type="button" class="santu-bill-idx-del" title="${__("Hatao")}">🗑</button>
+					</td>
 					<td class="c-code">${frappe.utils.escape_html(r.item_code || "-")}</td>
 					<td class="c-name santu-bill-editable" title="${__("Badalne ke liye dabaiye")}">${frappe.utils.escape_html(r.item_name)}${
 						r.batch_no ? `<span class="santu-bill-batch-tag">${frappe.utils.escape_html(r.batch_no)}</span>` : ""
@@ -989,20 +992,39 @@ window.santu_billing_page = {
 					}</td>
 					<td class="c-disc santu-bill-editable" title="${__("Badalne ke liye dabaiye")}">${format_number(r.discount || 0, null, 2)}</td>
 					<td class="c-total">${format_number(this._row_total(r), null, 2)}</td>
-					<td class="c-del"><button type="button" class="santu-bill-del-btn" title="${__("Hatao")}">✕</button></td>
+					<td class="c-del">
+						<!-- Push this row's rate to the item's master Selling Price
+						     (2026-09-03 direct request, the follow-up once this
+						     button actually had a job: "abhi jo price likha hua hai
+						     sale me wo master price me update ho jaye"). The ✕ that
+						     used to sit next to it is gone (2026-09-03 direct
+						     request: "ye cross feature hata do") — deleting a row is
+						     the # column's job now, via the hover swap. -->
+						<button type="button" class="santu-bill-tick-btn" title="${__("Ye rate master price me save karo")}">✓</button>
+					</td>
 				</tr>
 			`);
 			$tr.on("click", () => {
 				b.selected_row = r.id;
 				this._render_rows();
 			});
-			$tr.find(".santu-bill-del-btn").on("click", (e) => {
+			const remove_this_row = (e) => {
 				e.stopPropagation();
 				b.items = b.items.filter((x) => x.id !== r.id);
 				b.selected_row = b.items.length ? b.items[b.items.length - 1].id : null;
 				this._persist_soon();
 				this._render_rows();
+			};
+			$tr.find(".santu-bill-tick-btn").on("click", (e) => {
+				e.stopPropagation();
+				this._push_rate_to_master(r);
 			});
+			// Delete lives in the # column now, via the hover swap
+			// (2026-09-03 direct request) — the ✕ that used to sit next to
+			// the tick was removed the same day ("ye cross feature hata do").
+			// Hover swap itself is pure CSS (.santu-bill-idx-num/-del), this
+			// just makes the swapped-in button do something.
+			$tr.find(".santu-bill-idx-del").on("click", remove_this_row);
 			// A real dropdown right in the row — no F6 + separate dialog
 			// (2026-09-03 direct request, repeatedly: "item ki unit me
 			// dropdown daal do, default uska added unit ho, use change kar
@@ -2206,7 +2228,119 @@ window.santu_billing_page = {
 			this.$root.find(".santu-bill-customer").focus();
 			return;
 		}
-		this._check_backdated_warning(b, (allow_backdate) => this._proceed_save(b, t, allow_backdate, as_draft));
+		this._check_backdated_warning(b, (allow_backdate) =>
+			this._check_stock_warning(b, () => this._proceed_save(b, t, allow_backdate, as_draft))
+		);
+	},
+
+	// Nothing anywhere used to stop a bill going out for stock the shop does
+	// not have: `available_qty` was read only to colour the "Available: N"
+	// label, save_sale_invoice never checked it, and Stock Settings has
+	// allow_negative_stock ON, so ERPNext raised nothing either -- a 0-qty
+	// item sold 2 pcs in silence and the Bin just went to -2 (2026-09-03 bug
+	// report: "0 pcs item tha bina warning ke sell ho gya 2 pcs").
+	//
+	// This warns rather than blocks on purpose: at a counter the goods are
+	// often physically on the shelf before anyone enters them, and refusing
+	// the sale outright would stop a real customer being billed. The operator
+	// has to acknowledge it, which is what was missing -- it can no longer
+	// happen without someone seeing it.
+	_check_stock_warning(b, on_proceed) {
+		// available_qty rides in the row's OWN unit (santu_uom.convert scales
+		// it alongside qty), so these are directly comparable. A null means
+		// the screen never learned the stock -- don't invent a warning for it.
+		const short = (b.items || []).filter(
+			(r) => r.available_qty != null && flt(r.qty) > flt(r.available_qty)
+		);
+		if (!short.length) return on_proceed();
+
+		const rows = short
+			.map((r) => {
+				const unit = frappe.utils.escape_html(santu_uom.abbr(r.uom) || "");
+				const have = format_number(flt(r.available_qty), null, 0);
+				const want = format_number(flt(r.qty), null, 0);
+				return `<tr>
+					<td style="padding:4px 10px 4px 0;">${frappe.utils.escape_html(r.item_name || r.item_code)}</td>
+					<td style="padding:4px 10px;text-align:right;color:#b91c1c;font-weight:600;white-space:nowrap;">${have} ${unit}</td>
+					<td style="padding:4px 0 4px 10px;text-align:right;font-weight:600;white-space:nowrap;">${want} ${unit}</td>
+				</tr>`;
+			})
+			.join("");
+
+		const d = new frappe.ui.Dialog({
+			title: `<span style="color:#b91c1c;font-weight:700;">⚠️ ${__("Stock kam hai")}</span>`,
+			fields: [
+				{
+					fieldtype: "HTML",
+					fieldname: "stock_warn",
+					options: `
+						<div style="font-size:14px;line-height:1.6;color:#374151;padding:6px 0;">
+							<p style="margin-bottom:10px;">${__("In saaman ka stock bill se kam hai:")}</p>
+							<table style="width:100%;border-collapse:collapse;margin-bottom:12px;">
+								<tr style="border-bottom:1px solid #e5e7eb;">
+									<th style="text-align:left;padding:4px 10px 4px 0;font-size:12px;color:#6b7280;">${__("Saaman")}</th>
+									<th style="text-align:right;padding:4px 10px;font-size:12px;color:#6b7280;">${__("Stock me")}</th>
+									<th style="text-align:right;padding:4px 0 4px 10px;font-size:12px;color:#6b7280;">${__("Bill me")}</th>
+								</tr>
+								${rows}
+							</table>
+							<p style="margin:0;color:#92400e;background:#fef3c7;padding:10px 12px;border-radius:6px;border:1px solid #fde68a;">
+								👉 ${__("Phir bhi bill banana hai? Stock minus me chala jayega.")}
+							</p>
+						</div>
+					`,
+				},
+			],
+			primary_action_label: __("Haan, bill banao"),
+			primary_action: () => {
+				d.hide();
+				on_proceed();
+			},
+			secondary_action_label: __("Nahi, ruko"),
+			secondary_action: () => d.hide(),
+		});
+		d.show();
+	},
+
+	// Tick button (2026-09-03 direct request, the follow-up once it had a
+	// job): pushes whatever rate is on THIS bill row into the item's real
+	// Standard Selling price — update_item_rate is the exact same call
+	// Stock Summary's own "Selling Price" edit already uses, so a change
+	// here is visible on the very next sale for every screen, not a
+	// billing-only fudge.
+	//
+	// Item Price stores one rate for the item's stock unit, but this row can
+	// be sitting in ANY unit the operator switched it to (Box, Dozen, ...).
+	// santu_uom.convert() scales rate BY conversion_factor when moving
+	// stock-unit -> this unit (1 pc @ 10 -> 1 box of 25 @ 250), so dividing
+	// back out gets the stock-unit rate regardless of which unit is showing
+	// right now — without this, ticking a row mid-Box would overwrite the
+	// per-piece master price with the per-box number.
+	_push_rate_to_master(r) {
+		const cf = flt(r.conversion_factor) || 1;
+		const master_rate = flt(r.rate) / cf;
+		const unit_note = cf !== 1 ? __(" ({0} har {1} me se)", [format_number(master_rate, null, 2), r.uom]) : "";
+		frappe.confirm(
+			__("{0} ka selling price ₹{1} kar diya jaaye?{2}", [
+				frappe.utils.escape_html(r.item_name || r.item_code),
+				format_number(master_rate, null, 2),
+				unit_note,
+			]),
+			() => {
+				frappe.dom.freeze(__("Saving…"));
+				frappe
+					.xcall("santu_hardware.santu_hardware.api.update_item_rate", {
+						item_code: r.item_code,
+						kind: "selling",
+						rate: master_rate,
+					})
+					.then(() => {
+						frappe.dom.unfreeze();
+						frappe.show_alert({ message: __("Master price update ho gaya."), indicator: "green" });
+					})
+					.catch(() => frappe.dom.unfreeze());
+			}
+		);
 	},
 
 	_proceed_save(b, t, allow_backdate, as_draft) {

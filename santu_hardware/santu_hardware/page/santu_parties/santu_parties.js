@@ -465,7 +465,19 @@ function open_party_khata_dialog(row) {
 							<td>${frappe.utils.escape_html(r.type)}</td>
 							<td class="santu-khata-items">${
 								(r.items && r.items.length)
-									? r.items.map((it) => `<div class="santu-khata-item-line">${frappe.utils.escape_html(it.item_name)} x${frappe.utils.escape_html(String(it.qty))}</div>`).join("")
+									// Per-piece rate AND that line's own total against
+									// each item, not just the quantity (2026-09-04
+									// direct request: "uske samne individual ka
+									// price", then "individual item ka bill dikhna
+									// chahiye"). Same qty x rate = amount shape the
+									// printed/WhatsApped copy uses, so what is on
+									// screen and what the party receives match.
+									? r.items
+											.map(
+												(it) =>
+													`<div class="santu-khata-item-line"><span class="santu-khata-item-name">${frappe.utils.escape_html(it.item_name)}</span><span class="santu-khata-item-calc">${frappe.utils.escape_html(String(it.qty))} x ${money(it.rate)}</span><span class="santu-khata-item-amt">${money(it.amount)}</span></div>`
+											)
+											.join("")
 									: frappe.utils.escape_html(r.items_summary || "")
 							}</td>
 							<td class="santu-khata-num">${r.debit ? money(r.debit) : ""}</td>

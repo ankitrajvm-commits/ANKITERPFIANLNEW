@@ -233,16 +233,13 @@ async function santu_print_thermal_bill(doctype, docname, opts = {}) {
 		frappe.set_route("print", doctype, docname);
 		return true;
 	}
-	// 2026-09-03 direct request: "thermal printing hamesha puch ke ho, sab
-	// jagah" — every screen that prints a thermal bill (Save & Print button,
-	// the auto-print setting, Reprint Last, WhatsApp Connect's print button,
-	// the transaction lists' print icons) funnels through this one function,
-	// so asking here once covers all of them instead of touching each call
-	// site separately and risking missing one.
-	const confirmed = await new Promise((resolve) => {
-		frappe.confirm(__("Thermal bill print karein?"), () => resolve(true), () => resolve(false));
-	});
-	if (!confirmed) return false;
+	// A confirm dialog used to sit here ("thermal printing hamesha puch ke
+	// ho, sab jagah", 2026-09-03) — reverted the same day: every caller of
+	// this function is already an explicit print action (Save & Print
+	// button, Reprint Last, a print icon), so asking again on top of that
+	// was just a redundant click on every single sale ("SALE KE TIME PE
+	// PRINTING TO HOGI HI, ISME PRINTING KA MAT PUCHNA... YE TO PRINT
+	// HOGA HI").
 	try {
 		// Which rung answered decides what the operator is told. This used to
 		// say "Printed" in green whenever the ladder resolved — including the

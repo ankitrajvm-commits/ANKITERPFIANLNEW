@@ -7,7 +7,7 @@
 	// Bump whenever NAV_ITEMS changes shape — build_sidebar() reuses an
 	// already-rendered sidebar when this matches, so without a bump an open
 	// tab keeps the old menu.
-	const SIDEBAR_NAV_VERSION = "vyapar-match-28";
+	const SIDEBAR_NAV_VERSION = "vyapar-match-29";
 
 	// Nav glyphs are real icon files now, not emoji: emoji render differently
 	// on every OS (this shop is used from both a Mac and a phone) and sat at
@@ -29,6 +29,12 @@
 	const SIDEBAR_COLLAPSE_KEY = "santu_sidebar_collapsed";
 
 	const PURCHASE_CHILDREN = [
+		// Quick "maal aaya, turant chadha do" flow — was reachable only via
+		// the top-bar "+ Receive Stock" button, not from the sidebar at all
+		// (2026-09-03 direct request: "ek Purchase parent bana do, usme sari
+		// functionality daal do" — pulling every purchase-side entry point
+		// into this one group, top-level, matching Sale's own prominence).
+		{ view: "receive_stock", label: "Receive Stock", redirect: "santu-receive-stock" },
 		{ view: "bills", label: "Purchase Bills", route: "santu-purchase" },
 		{ view: "payment_out", label: "Payment-Out", route: "santu-purchase", quickadd: { run: () => window.santu_open_collect_payment({ party_type: "Supplier" }) } },
 		{ view: "expenses", label: "Expenses", route: "santu-purchase", quickadd: { run: () => frappe.set_route("santu-expense") } },
@@ -40,16 +46,28 @@
 		// (also route-only, no quickadd) — its own view already has a
 		// visible "+ Add Purchase Order" button.
 		{ view: "purchase_order", label: "Purchase Order", route: "santu-purchase" },
-		// Purchase Return moved to its own "Return" group, alongside Sales
-		// Return (2026-08-18 direct request) — see NAV_ITEMS below.
+		// Purchase Return itself stays living in the "Return" group
+		// alongside Sales Return (2026-08-18 direct request: a return is
+		// neither a sale nor a purchase in the operator's head) — this is a
+		// second entry point to the SAME screen/view, not a duplicate
+		// feature, so both groups can open it without contradicting that
+		// earlier decision.
+		{
+			view: "purchase_return",
+			label: "Purchase Return / Dr. Note",
+			route: "santu-purchase",
+			storageView: "santu_purchase_view",
+			quickadd: { run: () => frappe.set_route("santu-purchase-return") },
+		},
 	];
 
-	// Nested one level inside "More" (2026-08-18 direct request: "purchase
-	// and expense ko hata kr more me daal do") — Sale stays top-level since
-	// it is the more frequent daily action; Purchase & Expense is reachable
-	// one extra tap down. `type: "group"` on a child (not just a top-level
-	// NAV_ITEMS entry) is what build_group() below recurses on to render a
-	// full nested accordion instead of a plain leaf button.
+	// Top-level, alongside Sale (2026-09-03 direct request, reversing the
+	// 2026-08-18 move that had nested this one level inside "More" — see
+	// PURCHASE_CHILDREN's own comment above for the exact wording). `type:
+	// "group"` on a child (not just a top-level NAV_ITEMS entry) is what
+	// build_group() below recurses on to render a full nested accordion
+	// instead of a plain leaf button; used here as a top-level NAV_ITEMS
+	// entry directly.
 	const PURCHASE_GROUP = {
 		type: "group",
 		key: "purchase",
@@ -60,8 +78,22 @@
 		defaultView: "bills",
 		route: "santu-purchase",
 		changeEvent: "santu-purchase-view-change",
-		isActive: () => get_route()[0] === "santu-purchase",
-		getView: () => sessionStorage.getItem("santu_purchase_view") || "bills",
+		isActive: () => {
+			const r = get_route();
+			return (
+				r[0] === "santu-purchase" ||
+				r[0] === "santu-receive-stock" ||
+				r[0] === "santu-purchase-order" ||
+				r[0] === "santu-purchase-return"
+			);
+		},
+		getView: () => {
+			const r = get_route();
+			if (r[0] === "santu-receive-stock") return "receive_stock";
+			if (r[0] === "santu-purchase-order") return "purchase_order";
+			if (r[0] === "santu-purchase-return") return "purchase_return";
+			return sessionStorage.getItem("santu_purchase_view") || "bills";
+		},
 		children: PURCHASE_CHILDREN,
 	};
 
@@ -178,6 +210,7 @@
 				},
 			],
 		},
+		PURCHASE_GROUP,
 		{
 			type: "group",
 			key: "grow",
@@ -274,11 +307,7 @@
 			no_default_nav: true,
 			storageExpanded: "santu_more_sidebar_expanded",
 			route: "santu-cash-bank",
-			// Also "active" while inside Purchase & Expense — it now lives
-			// nested one level down inside this group, not as its own
-			// top-level entry, so the group needs to stay highlighted/open
-			// state-aware for it the same way it already is for Cash & Bank.
-			isActive: () => get_route()[0] === "santu-cash-bank" || get_route()[0] === "santu-purchase",
+			isActive: () => get_route()[0] === "santu-cash-bank",
 			getView: () => (get_route()[0] === "santu-cash-bank" ? "cash_bank" : null),
 			children: [
 				{ view: "cash_bank", label: "Cash & Bank", redirect: "santu-cash-bank" },
@@ -306,7 +335,6 @@
 				// suppliers in it, kept here rather than deleted for whenever
 				// that's actually needed again.
 				{ route: "santu-parties", label: "All Parties (Customers & Suppliers)" },
-				PURCHASE_GROUP,
 				// Moved out of Utilities (2026-08-18 direct request). Each
 				// carries its own `storageView` — a leaf living inside a
 				// DIFFERENT group than the page it routes to needs that, since

@@ -348,7 +348,18 @@ santu_utilities.views = {
 				// re-upload, e.g. Item Name/Size/MRP/SP) — skip straight to
 				// the review screen instead of making the user re-pick
 				// dropdowns they'd just pick the same way again.
-				const all_mapped = data.headers.length > 0 && data.headers.every((h) => !!state.mapping[h]);
+				//
+				// A pure-commentary column ("Source / Note", "Remarks") counts
+				// as handled: there is no field it could map to, so leaving it
+				// out of this test used to drag the operator through the Map
+				// Columns screen for a dropdown whose only answer is Skip
+				// (2026-09-03: a supplier's CPVC sheet with a trailing
+				// "Source / Note" column lost the one-click path for that
+				// reason alone).
+				const ignorable = data.ignorable_headers || [];
+				const all_mapped =
+					data.headers.length > 0 &&
+					data.headers.every((h) => !!state.mapping[h] || ignorable.includes(h));
 				if (all_mapped && !state._mapping_reviewed) {
 					state.step = "validate";
 					this._render_excel_import($wrap, state, onBack);

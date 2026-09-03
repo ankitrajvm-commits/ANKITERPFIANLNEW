@@ -80,6 +80,18 @@
 	display: grid;
 	grid-template-columns: 340px 1fr;
 	flex: 1;
+	/* Same trap the billing screen hit: a flex child defaults to
+	   min-height: auto, which refuses to shrink below its content's
+	   natural height. A long conversation's natural height easily runs
+	   past the viewport, so without this the whole grid grew to fit every
+	   message (measured 1732px inside an 888px window) instead of being
+	   capped to it -- .santu-wa-messages' own overflow-y: auto then had
+	   nothing to actually scroll AGAINST, so it reported itself correctly
+	   scrolled to the bottom of an oversized box that was simply clipped
+	   by the page around it, hiding the newest messages until scrolled
+	   further (2026-09-03 bug report: "28 August ka msg nahi dikh raha
+	   screen pe"). */
+	min-height: 0;
 	overflow: hidden;
 }
 
@@ -88,6 +100,7 @@
 	border-right: 1px solid #e9edef;
 	display: flex;
 	flex-direction: column;
+	min-height: 0;
 }
 
 .santu-wa-chat-list-header {
@@ -193,6 +206,10 @@
 .santu-wa-chat-panel {
 	display: flex;
 	flex-direction: column;
+	/* A grid item defaults to min-height: auto same as a flex item does --
+	   without this it also refuses to shrink to the grid row's actual
+	   height, which is the other half of the min-height:0 fix above. */
+	min-height: 0;
 	overflow: hidden;
 	position: relative;
 	background-color: #efeae2;

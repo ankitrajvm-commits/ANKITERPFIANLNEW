@@ -505,8 +505,42 @@
 	color: #475569;
 	font-size: 12px;
 }
+/* Name, then "qty x rate", then that line's amount — three columns that
+   line up so they can be read straight down (2026-09-04 direct request:
+   "uske samne individual ka price" / "individual item ka bill dikhna
+   chahiye"). Matches the printed and WhatsApped copy exactly. */
 .santu-khata-item-line {
 	padding: 1px 0;
+	display: flex;
+	gap: 10px;
+	align-items: baseline;
+}
+/* Long names wrap rather than run into the qty x rate column next to them
+   — without this "MALHOTRA COUNCIL BOX" collided with "20 x 65.00" and
+   read as one word. A khata is a formal statement, so the name wraps in
+   full instead of being cut with an ellipsis. */
+.santu-khata-item-name {
+	flex: 1;
+	min-width: 0;
+	/* The .santu-khata-items cell around this sets white-space: nowrap, and
+	   overflow-wrap cannot break text that is told never to wrap — so the
+	   name has to opt back in explicitly. The rate/amount columns keep
+	   nowrap on purpose: a number must never split across lines. */
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+.santu-khata-item-calc {
+	white-space: nowrap;
+	text-align: right;
+	min-width: 78px;
+	color: #64748b;
+}
+.santu-khata-item-amt {
+	white-space: nowrap;
+	text-align: right;
+	min-width: 62px;
+	color: #0f172a;
+	font-weight: 600;
 }
 .santu-khata-num { text-align: right; font-weight: 500;}
 .santu-khata-balance { font-weight: 700; color: #0f172a; }

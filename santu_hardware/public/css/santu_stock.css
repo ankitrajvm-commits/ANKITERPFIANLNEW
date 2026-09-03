@@ -496,15 +496,16 @@
 }
 
 /* Low stock is the one thing on this screen that needs acting on, so it is
-   the only thing that gets colour on the quantity itself. */
-.santu-stock-row-low {
-	background: #fffaf5;
-}
-
-.santu-stock-row-low:hover {
-	background: #fff4ea;
-}
-
+   the only thing that gets colour on the quantity itself.
+ *
+ * The row BACKGROUND used to be tinted too (#fffaf5), which broke that rule
+ * and collided with Item Colour Rules: a row's background is supposed to mean
+ * "someone chose this colour for this item", so an item nobody had set a rule
+ * for still came up yellow just for being low on stock — indistinguishable
+ * from a rule misfiring (2026-09-03 bug report: "ye yellow apne aap aa gya
+ * item me, aisa colour diffuse q ho raha"). Low stock now shows only where
+ * this comment always said it should: the quantity, plus the Critical badge
+ * below. Row backgrounds are left entirely to Item Colour Rules. */
 .santu-stock-qty-low {
 	color: #d1671f;
 	font-weight: 600;

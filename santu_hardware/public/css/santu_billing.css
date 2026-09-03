@@ -288,7 +288,26 @@
 .santu-bill-grid tbody tr:hover { background: #f8fafc; }
 .santu-bill-grid tbody tr.is-selected { background: #eff6ff; }
 /* CPVC ka pila aur UPVC ka gulaabi rang santu_item_highlight.css me hai — sab screens ek saath */
-.c-idx { width: 46px; }
+.c-idx { width: 46px; text-align: center; }
+/* Serial number by default; swaps to a delete button on hover (2026-09-03
+   direct request: "1 no ke jagah pe delete wala dabba daal do, jaise hover
+   ho to wo dabba dikhe warna serial no dikhe"). Both sit in the same cell,
+   one hidden at a time -- no layout jump when the swap happens. */
+.santu-bill-idx-del {
+	display: none;
+	border: none;
+	background: transparent;
+	color: #e11d48;
+	font-size: 14px;
+	line-height: 1;
+	cursor: pointer;
+	padding: 4px 6px;
+	border-radius: 6px;
+	transition: background 0.15s;
+}
+.santu-bill-idx-del:hover { background: #ffe4e6; }
+.santu-bill-grid tbody tr:hover .santu-bill-idx-num { display: none; }
+.santu-bill-grid tbody tr:hover .santu-bill-idx-del { display: inline-block; }
 /* Hidden for now (2026-09-03 direct request: "item code ka concept abhi k
    liye hide kr de, gst wagerah nh kr rahe, kafi space le raha hai") — this
    file loads globally, so one rule here hides the ITEM CODE column
@@ -324,19 +343,26 @@
 	outline: none;
 }
 .c-rate, .c-disc, .c-tax, .c-total { width: 130px; }
-.c-del { width: 52px; text-align: center; }
-.santu-bill-del-btn {
+/* Was 80px to fit the tick AND the delete cross side by side; the cross
+   is gone (2026-09-03 direct request: "ye cross feature hata do" — delete
+   lives in the # column now, via the hover swap), so this is back down to
+   one button's width. */
+.c-del { width: 44px; text-align: center; white-space: nowrap; }
+/* Pushes the row's rate to the item's master Selling Price
+   (2026-09-03 direct request: "abhi jo price likha hua hai sale me wo
+   master price me update ho jaye" — see _push_rate_to_master). */
+.santu-bill-tick-btn {
 	border: none;
 	background: transparent;
-	color: #e11d48;
-	font-size: 18px;
+	color: #16a34a;
+	font-size: 16px;
 	line-height: 1;
 	cursor: pointer;
-	padding: 6px 10px;
+	padding: 6px 8px;
 	border-radius: 6px;
 	transition: background 0.15s;
 }
-.santu-bill-del-btn:hover { background: #ffe4e6; }
+.santu-bill-tick-btn:hover { background: #dcfce7; }
 .santu-bill-gridfoot {
 	margin-top: auto;
 	border-top: 1px solid #e2e8f0;

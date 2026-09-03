@@ -209,10 +209,14 @@ function render_receive_stock(page) {
 			received_today.unshift({ item_name: selected_item.item_name, qty });
 			render_today();
 
+			// Short form, same as the search results above already use —
+			// this one screen said "9 Nos" where every other screen in the
+			// app says "9 Pcs" (2026-09-04).
+			const uom_short = frappe.utils.escape_html(santu_uom.abbr(selected_item.stock_uom) || "");
 			$root.find(".santu-receive-success-text").html(`
 				<b>${frappe.utils.escape_html(selected_item.item_name)}</b><br>
-				+${qty} ${frappe.utils.escape_html(selected_item.stock_uom || "")} added.<br>
-				Total stock now: <b>${result.new_qty}</b> ${frappe.utils.escape_html(selected_item.stock_uom || "")}
+				+${qty} ${uom_short} added.<br>
+				Total stock now: <b>${result.new_qty}</b> ${uom_short}
 			`);
 			show_step($success_step);
 		} catch (e) {

@@ -63,7 +63,22 @@ window.santu_payment_entry_page = {
 				this.render();
 				this._select_party(opts.party);
 			} else {
-				if (!this.tabs.length) this._new_bill(false);
+				// _load() above restores whatever tab was last left saved, and
+				// that tab carries its own direction. Without honouring
+				// opts.party_type here, asking for Payment-Out while ANY saved
+				// Payment-In tab existed silently opened Payment In instead —
+				// which is every time after the screen has been used once, so
+				// the sidebar's own Payment-Out entry reliably opened the wrong
+				// direction (2026-09-04). apply_route_options(), the path taken
+				// when this screen is ALREADY open, always starts a fresh bill
+				// in the asked-for direction; do the same here so both entry
+				// points behave identically and no in-progress receipt is lost.
+				if (!this.tabs.length) {
+					this._new_bill(false);
+					if (opts.party_type) this._payment().party_type = opts.party_type;
+				} else if (opts.party_type && this._payment().party_type !== opts.party_type) {
+					this._new_bill(true).party_type = opts.party_type;
+				}
 				this.render();
 			}
 			if (opts.amount) {

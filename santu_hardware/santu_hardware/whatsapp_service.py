@@ -173,7 +173,23 @@ def send_chat_message(
 		from santu_hardware.santu_hardware.smart_connect_bridge import _resolve_send_phone
 
 		send_phone = _resolve_send_phone(phone)
+		# WhatsApp caps an image/document CAPTION at 1024 characters -- a real
+		# platform limit, not ours to raise. A full bill (item list + payment
+		# breakdown + account balance) routinely runs past that, and cramming
+		# it into the caption meant WhatsApp silently cut it off mid-sentence
+		# on the customer's phone even though our own chat log still showed
+		# the complete text (2026-09-03 bug report: "whatsapp message kt gya
+		# h, full nh dikh raha" -- the customer's copy, not this admin
+		# view). Anything over the cap now goes out as its own text message
+		# (limit 4096, plenty of room) BEFORE the attachment, which then
+		# carries only a short caption instead of repeating the whole body.
+		WHATSAPP_CAPTION_LIMIT = 1024
 		if attachment_bytes and attachment_filename:
+			if len(body) > WHATSAPP_CAPTION_LIMIT:
+				provider.send_text(send_phone, body)
+				caption = attachment_filename
+			else:
+				caption = body
 			# .png/.jpg attachments (the thermal bill, 2026-08-19) go through
 			# send_image so WhatsApp shows an inline picture in the chat —
 			# send_document always renders as a document bubble no matter
@@ -183,9 +199,9 @@ def send_chat_message(
 			if is_image:
 				ext = attachment_filename.rsplit(".", 1)[-1].lower()
 				mimetype = "image/jpeg" if ext in ("jpg", "jpeg") else "image/png"
-				result = provider.send_image(send_phone, attachment_bytes, caption=body[:1024], mimetype=mimetype)
+				result = provider.send_image(send_phone, attachment_bytes, caption=caption[:WHATSAPP_CAPTION_LIMIT], mimetype=mimetype)
 			else:
-				result = provider.send_document(send_phone, attachment_bytes, attachment_filename, caption=body[:1024])
+				result = provider.send_document(send_phone, attachment_bytes, attachment_filename, caption=caption[:WHATSAPP_CAPTION_LIMIT])
 		else:
 			result = provider.send_text(send_phone, body)
 

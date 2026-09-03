@@ -596,7 +596,19 @@ santu_wa_connect.loadMessages = async function (phone) {
 		}
 	});
 
-	$msgs.scrollTop($msgs[0].scrollHeight);
+	// Scrolling to scrollHeight right here measures the panel BEFORE the
+	// browser has laid out what was just appended -- PDF cards in
+	// particular still need a reflow -- so it landed short of the true
+	// bottom, hiding the newest message(s) until the operator scrolled
+	// manually (2026-09-03 bug report: "28 August ka msg nahi dikh raha
+	// screen pe" -- it was rendered, just above the fold because this
+	// scroll fired one frame too early). Re-applying it after the browser's
+	// own next paint (and once more after images/fonts settle) catches the
+	// final height instead of a stale one.
+	const scroll_to_bottom = () => $msgs.scrollTop($msgs[0].scrollHeight);
+	scroll_to_bottom();
+	requestAnimationFrame(scroll_to_bottom);
+	setTimeout(scroll_to_bottom, 150);
 	$msgs.find(".wa-retry").on("click", function () {
 		santu_wa_connect.api.retry($(this).data("chat")).then(() => santu_wa_connect.loadMessages(phone));
 	});
