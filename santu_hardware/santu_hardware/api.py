@@ -3627,6 +3627,39 @@ def _customer_khata_html(data: dict) -> str:
 	total_debit = sum(flt(r.get("debit")) for r in data.get("rows") or [])
 	total_credit = sum(flt(r.get("credit")) for r in data.get("rows") or [])
 
+	# "Kis date tak kitna dena hai" (2026-09-04 direct request) — a closing
+	# balance alone gives the party no deadline. Each still-unpaid bill is
+	# listed with its own due date, and anything already past that date is
+	# called out, so the statement answers "by when" as well as "how much".
+	# Only printed when something is actually owed.
+	schedule_panel = ""
+	if cust and closing > 0:
+		sched = get_party_payment_schedule("Customer", cust)
+		if sched["rows"]:
+			sched_rows = "".join(
+				'<div class="santu-bill-panel-row{}">'
+				'<span>{} &nbsp;·&nbsp; {}{}</span>'
+				"<span>Rs. {:,.2f}</span></div>".format(
+					" emphasis" if r["overdue"] else "",
+					frappe.utils.escape_html(r["display_number"]),
+					frappe.utils.format_date(r["due_date"], "dd-MM-yyyy") if r["due_date"] else "-",
+					" (baaki hai)" if r["overdue"] else "",
+					r["pending"],
+				)
+				for r in sched["rows"]
+			)
+			overdue_note = (
+				f'<div class="santu-bill-panel-note">Rs. {sched["overdue"]:,.2f} ki date nikal chuki hai.</div>'
+				if sched["overdue"] > 0
+				else ""
+			)
+			schedule_panel = (
+				'<div class="santu-bill-panel">'
+				'<div class="santu-bill-panel-title">Kab Kitna Dena Hai</div>'
+				f"{sched_rows}{overdue_note}"
+				"</div>"
+			)
+
 	# One continuous item table across every bill in the period. A bill's
 	# own products sit under its banded header, numbered from 1 again so a
 	# line can be read back against that bill's own printed copy.
@@ -3712,6 +3745,8 @@ def _customer_khata_html(data: dict) -> str:
 		.santu-bill-panel-row span:last-child {{ text-align: right; font-weight: 600; }}
 		.santu-bill-panel-row.emphasis span:last-child {{ color: #b91c1c; }}
 		.santu-bill-panel-row.emphasis.ok span:last-child {{ color: #15803d; }}
+		.santu-bill-panel-note {{ margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e5e7eb;
+			font-size: 11px; color: #b91c1c; font-weight: 600; }}
 		.santu-bill-signature-block {{ margin-top: 40px; text-align: right; font-size: 11px; color: #6b7280; }}
 		.santu-bill-signature-line {{ border-top: 1px solid #9ca3af; display: inline-block;
 			padding-top: 6px; min-width: 200px; }}
@@ -3792,6 +3827,7 @@ def _customer_khata_html(data: dict) -> str:
 						<div class="santu-bill-panel-row emphasis {'ok' if closing <= 0 else ''}"><span>Closing Balance</span><span>Rs. {closing:,.2f}</span></div>
 					</div>
 				</td>
+				<td>{schedule_panel}</td>
 			</tr>
 		</table>
 
@@ -3870,6 +3906,33 @@ def _customer_khata_thermal_html(data: dict) -> str:
 
 	total_debit = sum(flt(r.get("debit")) for r in data.get("rows", []))
 	total_credit = sum(flt(r.get("credit")) for r in data.get("rows", []))
+
+	# "Kis date tak kitna dena hai" on the roll too (2026-09-04) — same rows
+	# the A4 statement prints, so the slip handed over the counter and the
+	# PDF sent on WhatsApp give the party the same deadlines.
+	schedule_html = ""
+	_cust = data.get("customer")
+	if _cust and flt(data.get("closing_balance")) > 0:
+		_s = get_party_payment_schedule("Customer", _cust)
+		if _s["rows"]:
+			_lines = "".join(
+				'<div class="t-row t-sm"><span>{}{}</span><span>Rs. {:,.2f}</span></div>'.format(
+					frappe.utils.format_date(r["due_date"], "dd-MM-yy") if r["due_date"] else "-",
+					f' #{frappe.utils.escape_html(r["display_number"])}',
+					r["pending"],
+				)
+				for r in _s["rows"]
+			)
+			_od = (
+				f'<div class="t-center t-sm t-bold">Rs. {_s["overdue"]:,.2f} ki date nikal chuki hai</div>'
+				if _s["overdue"] > 0
+				else ""
+			)
+			schedule_html = (
+				'<div class="t-center t-bold t-sm">KAB KITNA DENA HAI</div>'
+				f"{_lines}{_od}"
+				'<div class="t-dash"></div>'
+			)
 
 	rows_markup = []
 	for idx, r in enumerate(data.get("rows", []), start=1):
@@ -4024,7 +4087,7 @@ body {{
 	<div class="t-dash"></div>
 	<div class="t-row t-bold t-lg"><span>CLOSING BALANCE</span><span>Rs. {data["closing_balance"]:,.2f}</span></div>
 	<div class="t-dash"></div>
-
+	{schedule_html}
 	<div class="t-center t-sm" style="margin-top: 6px;">Thank you for shopping with us!</div>
 </div>
 </body>
@@ -8158,6 +8221,74 @@ def get_party_net_due(party_type: str, party: str):
 	# replaces always allowed. Only an actual credit note or a genuinely
 	# overpaid advance makes it negative.
 	return {"total_due": invoice_total - advance}
+
+
+@frappe.whitelist()
+def get_party_payment_schedule(party_type: str, party: str):
+	"""Which bill is due on which date, and how much of it is still to come
+	— "kis date tak kitna payment dena hai" (2026-09-04 direct request).
+
+	A party asking to clear their baaki wants the deadlines, not one lump
+	number. Each still-unpaid bill is listed by its own due date, oldest
+	first, so the answer is "is date tak itna" per bill rather than a single
+	total with no timeline attached.
+
+	Two things this has to reconcile. A bill carries its own
+	`outstanding_amount`, but a payment taken the lump-sum way
+	(create_payment_entry, 2026-09-03) never touches any one bill — it sits
+	as an unallocated advance against the PARTY. Summing the bills alone
+	would therefore overstate what is really left. So any advance on file is
+	applied here oldest-bill-first, purely for this display, and the rows
+	always add up to get_party_net_due's single number — the two can never
+	disagree on screen.
+	"""
+	if not party:
+		return {"rows": [], "total": 0.0, "overdue": 0.0}
+
+	doctype = "Sales Invoice" if party_type == "Customer" else "Purchase Invoice"
+	party_field = "customer" if party_type == "Customer" else "supplier"
+	company = frappe.defaults.get_user_default("Company")
+
+	filters = {party_field: party, "docstatus": 1, "outstanding_amount": (">", 0)}
+	if company:
+		filters["company"] = company
+	fields = ["name", "posting_date", "due_date", "grand_total", "outstanding_amount"]
+	if doctype == "Sales Invoice":
+		fields.append("santu_bill_no")
+
+	bills = frappe.get_all(doctype, filters=filters, fields=fields, order_by="due_date asc, posting_date asc")
+
+	# Oldest bill gets the advance first — the same order money is applied
+	# in when someone hands over cash "against the old ones".
+	advance = _party_advance_total(party_type, party, company)
+	today = getdate(frappe.utils.today())
+
+	rows = []
+	for b in bills:
+		pending = flt(b.outstanding_amount)
+		if advance > 0:
+			used = min(advance, pending)
+			pending -= used
+			advance -= used
+		if pending <= 0:
+			continue
+		due = b.get("due_date") or b.get("posting_date")
+		rows.append({
+			"doctype": doctype,
+			"name": b.name,
+			"display_number": bill_label(b.get("santu_bill_no")) if doctype == "Sales Invoice" else (b.name),
+			"posting_date": str(b.posting_date) if b.posting_date else None,
+			"due_date": str(due) if due else None,
+			"grand_total": flt(b.grand_total),
+			"pending": pending,
+			"overdue": bool(due and getdate(due) < today),
+		})
+
+	return {
+		"rows": rows,
+		"total": sum(r["pending"] for r in rows),
+		"overdue": sum(r["pending"] for r in rows if r["overdue"]),
+	}
 
 
 _INVOICE_VIEW_ITEM_DOCTYPES = (
