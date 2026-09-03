@@ -7,7 +7,7 @@
 	// Bump whenever NAV_ITEMS changes shape — build_sidebar() reuses an
 	// already-rendered sidebar when this matches, so without a bump an open
 	// tab keeps the old menu.
-	const SIDEBAR_NAV_VERSION = "vyapar-match-30";
+	const SIDEBAR_NAV_VERSION = "vyapar-match-31";
 
 	// Nav glyphs are real icon files now, not emoji: emoji render differently
 	// on every OS (this shop is used from both a Mac and a phone) and sat at
@@ -35,23 +35,12 @@
 		// functionality daal do" — pulling every purchase-side entry point
 		// into this one group, top-level, matching Sale's own prominence).
 		{ view: "receive_stock", label: "Receive Stock", redirect: "santu-receive-stock" },
-		// Straight to the mahajan list, with the Add dialog reachable there
-		// (2026-09-04). Buying-side work starts with "who did I buy from",
-		// and that list previously had no entry point of its own at all.
-		{
-			view: "suppliers",
-			label: "Mahajan (Suppliers)",
-			run: () => {
-				frappe.route_options = { party_type: "Supplier" };
-				frappe.set_route("santu-parties");
-			},
-			quickadd: {
-				run: () => {
-					frappe.route_options = { party_type: "Supplier", add_new: 1 };
-					frappe.set_route("santu-parties");
-				},
-			},
-		},
+		// A "Mahajan (Suppliers)" entry sat here for a few hours on
+		// 2026-09-04, opening santu-parties pre-filtered to Supplier. Removed
+		// the same day ("parties and purchase me 2 same hai, use 1 kr de"):
+		// Parties itself lists mahajans now behind its own Sab/Customer/
+		// Mahajan picker, so this was a second door into the identical
+		// screen. Parties is the one place parties live.
 		{ view: "bills", label: "Purchase Bills", route: "santu-purchase" },
 		{ view: "payment_out", label: "Payment-Out", route: "santu-purchase", quickadd: { run: () => window.santu_open_collect_payment({ party_type: "Supplier" }) } },
 		{ view: "expenses", label: "Expenses", route: "santu-purchase", quickadd: { run: () => frappe.set_route("santu-expense") } },

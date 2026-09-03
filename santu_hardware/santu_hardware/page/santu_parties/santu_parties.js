@@ -131,7 +131,15 @@ const santu_parties_page = {
 			this.reload_list();
 		});
 
-		$root.find(".santu-parties-add-btn").on("click", () => this.open_add_party());
+		// Adding while the Mahajan tab is showing means adding a mahajan —
+		// the dialog opens on that type instead of making the operator set
+		// a dropdown that contradicts the list they are looking at. This is
+		// what removed the need for a separate supplier entry under
+		// Purchase & Expense (2026-09-04: "parties and purchase me 2 same
+		// hai, use 1 kr de").
+		$root.find(".santu-parties-add-btn").on("click", () =>
+			this.open_add_party((this.filter && this.filter.party_type) || null)
+		);
 	},
 
 	// Called once a party is actually created, by either dialog below —
@@ -298,11 +306,6 @@ const santu_parties_page = {
 		}
 		this.update_locked_copy();
 		this.sync_typebar();
-		// Purchase & Expense's "Mahajan" quick-add routes here asking for the
-		// Add dialog straight away, already set to Supplier (2026-09-04).
-		if (opts.add_new && !this.locked_party_type) {
-			setTimeout(() => this.open_add_party(opts.party_type), 0);
-		}
 		// A specific party can also be handed in — used where something used
 		// to jump to the native Customer/Supplier form.
 		const focus = opts.party || null;
