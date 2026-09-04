@@ -219,8 +219,21 @@ def parse_items_import_file_from_pdf(file_url: str):
 			"HSN Code": r.get("gst_hsn_code") or "",
 			"Stock Unit (UOM)": r.get("stock_uom") or "Nos",
 			"Purchase Price": r.get("valuation_rate") or "",
+			# Only a real MRP/selling column from the PDF lands here. On a
+			# purchase bill the only number available is what the SHOP PAID,
+			# and copying that into the selling price would have the counter
+			# selling at cost (2026-09-04: every row of a real Janta Cement
+			# bill came back with Purchase Price == Selling Price).
 			"Selling Price (MRP)": r.get("standard_rate") or "",
-			"Item Code": r.get("item_code") or "",
+			# Deliberately blank. The extractor fuzzy-matches descriptions
+			# against the catalogue at a loose threshold, which is fine on
+			# the Upload-Bill screen where the row is reviewed against the
+			# item name — but here the item code decides WHICH EXISTING ITEM
+			# gets its price rewritten, with nobody checking. That same real
+			# bill matched "FEVICOL MARINE NF 5KG" to GRIPPO-FEVICOL-
+			# ADHESIVE-5KG, and "...10KG" to a 1KG item. Left empty, the
+			# importer keys on the item NAME instead, which is exact.
+			"Item Code": "",
 			"Opening Stock": r.get("opening_stock") or "",
 		}
 		for r in extracted_items
@@ -305,7 +318,7 @@ def import_items_valid(rows: str):
 	rows = frappe.parse_json(rows) if isinstance(rows, str) else rows
 	company = frappe.defaults.get_user_default("Company")
 	warehouse = default_selling_warehouse(company)
-	created, failed = [], []
+	created, updated, failed = [], [], []
 
 	for entry in rows:
 		data = entry.get("data") if isinstance(entry, dict) else entry
@@ -316,17 +329,49 @@ def import_items_valid(rows: str):
 				# same way quick_create_item does (api.py), not frappe.scrub's
 				# lowercase/underscore slug of the name, which isn't a usable
 				# item number (2026-08-25 bug: bulk-imported items had "no
-				# item number"). Collision-safe with a numeric suffix, same
-				# as the quick-create flow.
-				slug = re.sub(r"[^A-Za-z0-9]+", "-", data.get("item_name") or "").strip("-").upper() or "ITEM"
-				item_code = slug
-				suffix = 1
-				while frappe.db.exists("Item", item_code):
-					suffix += 1
-					item_code = f"{slug}-{suffix}"
-			elif frappe.db.exists("Item", item_code):
-				failed.append({"item_code": item_code, "error": "Already exists"})
+				# item number").
+				item_code = re.sub(r"[^A-Za-z0-9]+", "-", data.get("item_name") or "").strip("-").upper() or "ITEM"
+
+			# An item that is already in the catalogue gets its prices
+			# refreshed — it is NOT duplicated.
+			#
+			# This used to append "-2", "-3"... until the code was free, so
+			# re-importing a supplier's price list silently created a twin of
+			# every item. Confirmed 2026-09-04 on the real Supreme list: the
+			# shop already had 'SUPREME CPVC REDUCER 1"x 3/4"' and the import
+			# added 'SUPREME CPVC REDUCER 1" x 3/4"' beside it — the same
+			# product, the names differing by one space, both slugging to the
+			# same item code. A price list is re-imported every time the
+			# supplier revises rates, so this is the normal case, not the
+			# edge case: updating is what the shop actually wants.
+			if frappe.db.exists("Item", item_code):
+				existing = frappe.get_doc("Item", item_code)
+				touched = False
+				for field, key in (
+					("standard_rate", "standard_rate"),
+					("valuation_rate", "valuation_rate"),
+					("custom_mrp", "custom_mrp"),
+				):
+					if data.get(key) not in (None, ""):
+						existing.set(field, flt(data.get(key)))
+						touched = True
+				for field, key in (("brand", "brand"), ("description", "description")):
+					if data.get(key):
+						existing.set(field, data.get(key))
+						touched = True
+				hsn = data.get("hsn_code") or data.get("gst_hsn_code")
+				if hsn:
+					existing.gst_hsn_code = hsn
+					touched = True
+				if touched:
+					existing.save(ignore_permissions=True)
+				if data.get("standard_rate") not in (None, ""):
+					_upsert_item_price(
+						existing.name, "Standard Selling", flt(data.get("standard_rate")), selling=1
+					)
+				updated.append(existing.name)
 				continue
+
 			item = frappe.new_doc("Item")
 			item.item_code = item_code
 			item.item_name = data.get("item_name")
@@ -363,7 +408,13 @@ def import_items_valid(rows: str):
 			failed.append({"item_code": data.get("item_code"), "error": str(e)})
 
 	frappe.db.commit()
-	return {"created": created, "failed": failed, "created_count": len(created)}
+	return {
+		"created": created,
+		"updated": updated,
+		"failed": failed,
+		"created_count": len(created),
+		"updated_count": len(updated),
+	}
 
 
 @frappe.whitelist()

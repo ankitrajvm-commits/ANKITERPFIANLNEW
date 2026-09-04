@@ -7,7 +7,7 @@
 	// Bump whenever NAV_ITEMS changes shape — build_sidebar() reuses an
 	// already-rendered sidebar when this matches, so without a bump an open
 	// tab keeps the old menu.
-	const SIDEBAR_NAV_VERSION = "vyapar-match-31";
+	const SIDEBAR_NAV_VERSION = "vyapar-match-32";
 
 	// Nav glyphs are real icon files now, not emoji: emoji render differently
 	// on every OS (this shop is used from both a Mac and a phone) and sat at
@@ -52,19 +52,12 @@
 		// (also route-only, no quickadd) — its own view already has a
 		// visible "+ Add Purchase Order" button.
 		{ view: "purchase_order", label: "Purchase Order", route: "santu-purchase" },
-		// Purchase Return itself stays living in the "Return" group
-		// alongside Sales Return (2026-08-18 direct request: a return is
-		// neither a sale nor a purchase in the operator's head) — this is a
-		// second entry point to the SAME screen/view, not a duplicate
-		// feature, so both groups can open it without contradicting that
-		// earlier decision.
-		{
-			view: "purchase_return",
-			label: "Purchase Return / Dr. Note",
-			route: "santu-purchase",
-			storageView: "santu_purchase_view",
-			quickadd: { run: () => frappe.set_route("santu-purchase-return") },
-		},
+		// Purchase Return is NOT listed here. It lives in the "Return" group
+		// beside Sales Return, where Ankit asked for it on 2026-08-18 ("a
+		// return is neither a sale nor a purchase in the operator's head").
+		// It used to appear in both groups as a convenience second door;
+		// 2026-09-04 he asked for the duplicate to go, so there is now
+		// exactly one place in the sidebar that opens it.
 	];
 
 	// Top-level, alongside Sale (2026-09-03 direct request, reversing the

@@ -1182,9 +1182,19 @@ window.santu_billing_page = {
 		this.$root.find(".santu-bill-baakirow").toggle(t.remaining > 0);
 		const $note = this.$root.find(".santu-bill-baaki-note");
 		if (t.remaining > 0 && b.amount_received != null) {
-			$note.show().text(__("Remaining ₹ {0} will be added to the customer's account", [format_number(t.remaining, null, 2)]));
+			// Baaki has to land on somebody. With no party picked the old
+			// wording promised it would go "to the customer's account" — which
+			// customer? — and the counter only found out at Save, where the
+			// bill is refused (2026-09-04). Say it up front instead, while
+			// there is still something to do about it.
+			$note.show().text(
+				b.customer
+					? __("Remaining ₹ {0} will be added to the customer's account", [format_number(t.remaining, null, 2)])
+					: __("₹ {0} baaki rahega — pehle grahak chuniye, warna bill save nahi hoga.", [format_number(t.remaining, null, 2)])
+			);
+			$note.toggleClass("is-warning", !b.customer);
 		} else {
-			$note.hide().empty();
+			$note.hide().empty().removeClass("is-warning");
 		}
 
 		// Auto mode (nothing typed yet): keep the field showing the live
@@ -1754,6 +1764,10 @@ window.santu_billing_page = {
 		this.$root.find(".santu-bill-customer").val(label);
 		this.$root.find(".santu-bill-cust-dropdown").hide().empty();
 		this._render_customer_info(name);
+		// The baaki note reads b.customer ("pehle grahak chuniye..."), so it
+		// has to be redrawn the moment a party is picked — otherwise the
+		// warning stays on screen after the thing it asks for is done.
+		this._render_totals();
 		this._persist_soon();
 	},
 
@@ -2384,7 +2398,12 @@ window.santu_billing_page = {
 						item_name: r.item_name,
 						qty: r.qty,
 						rate: r.rate,
-						uom: r.uom,
+						// Falls back to the item's own stock unit if the row has none.
+						// Only a draft saved back when the unit dropdown still offered
+						// "None" can be in that state, and without this the counter
+						// just gets "Sales Invoice Item Row #1: Value missing for:
+						// UOM" with no way to fix it (2026-09-04).
+						uom: r.uom || r.stock_uom,
 						// Without this the server has to look the factor up
 						// itself; sending what the row actually used keeps the
 						// bill and the stock ledger in step even if the item's
@@ -2478,7 +2497,12 @@ window.santu_billing_page = {
 					item_name: r.item_name,
 					qty: r.qty,
 					rate: r.rate,
-					uom: r.uom,
+					// Falls back to the item's own stock unit if the row has none.
+					// Only a draft saved back when the unit dropdown still offered
+					// "None" can be in that state, and without this the counter
+					// just gets "Sales Invoice Item Row #1: Value missing for:
+					// UOM" with no way to fix it (2026-09-04).
+					uom: r.uom || r.stock_uom,
 					batch_no: r.batch_no || null,
 					discount_amount: r.discount || 0,
 				})),
@@ -2822,7 +2846,12 @@ window.santu_billing_page = {
 						item_name: r.item_name,
 						qty: r.qty,
 						rate: r.rate,
-						uom: r.uom,
+						// Falls back to the item's own stock unit if the row has none.
+						// Only a draft saved back when the unit dropdown still offered
+						// "None" can be in that state, and without this the counter
+						// just gets "Sales Invoice Item Row #1: Value missing for:
+						// UOM" with no way to fix it (2026-09-04).
+						uom: r.uom || r.stock_uom,
 						// Without this the server has to look the factor up
 						// itself; sending what the row actually used keeps the
 						// bill and the stock ledger in step even if the item's
@@ -2900,7 +2929,12 @@ window.santu_billing_page = {
 						item_name: r.item_name,
 						qty: r.qty,
 						rate: r.rate,
-						uom: r.uom,
+						// Falls back to the item's own stock unit if the row has none.
+						// Only a draft saved back when the unit dropdown still offered
+						// "None" can be in that state, and without this the counter
+						// just gets "Sales Invoice Item Row #1: Value missing for:
+						// UOM" with no way to fix it (2026-09-04).
+						uom: r.uom || r.stock_uom,
 						// Send the factor the row actually used, same reason
 						// Chalan Banao does: the item's UOM table may be edited
 						// between adding the row and saving.

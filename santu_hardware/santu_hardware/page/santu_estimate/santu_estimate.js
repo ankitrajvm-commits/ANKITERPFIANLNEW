@@ -144,7 +144,11 @@ window.santu_estimate_page = {
 						item_name: r.item_name,
 						item_name: r.item_name || r.item_code,
 						qty: r.qty,
-						uom: r.uom,
+						// Falls back to the item's own stock unit if the row has none —
+						// only a draft saved while the unit dropdown still offered "None"
+						// can be, and without it the screen shows raw ERPNext jargon
+						// ("Row #1: Value missing for: UOM") with no way to fix it.
+						uom: r.uom || r.stock_uom,
 						uom_options: r.uom_options && r.uom_options.length ? r.uom_options : [{ uom: r.uom, conversion_factor: 1 }],
 						rate: r.rate,
 						discount: 0,
@@ -1106,7 +1110,11 @@ window.santu_estimate_page = {
 						item_name: r.item_name,
 						qty: r.qty,
 						rate: r.rate,
-						uom: r.uom,
+						// Falls back to the item's own stock unit if the row has none —
+						// only a draft saved while the unit dropdown still offered "None"
+						// can be, and without it the screen shows raw ERPNext jargon
+						// ("Row #1: Value missing for: UOM") with no way to fix it.
+						uom: r.uom || r.stock_uom,
 						discount_amount: r.discount || 0,
 					})),
 		};

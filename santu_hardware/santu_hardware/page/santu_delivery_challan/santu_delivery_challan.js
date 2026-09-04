@@ -824,7 +824,11 @@ window.santu_delivery_challan_page = {
 						item_name: r.item_name,
 						qty: r.qty,
 						rate: r.rate,
-						uom: r.uom,
+						// Falls back to the item's own stock unit if the row has none —
+						// only a draft saved while the unit dropdown still offered "None"
+						// can be, and without it the screen shows raw ERPNext jargon
+						// ("Row #1: Value missing for: UOM") with no way to fix it.
+						uom: r.uom || r.stock_uom,
 						discount_percentage: r.discount_percentage || 0,
 						discount_amount: r.discount_amount || 0,
 					})),

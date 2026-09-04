@@ -484,22 +484,49 @@ function open_party_khata_dialog(row) {
 		// far (2026-09-03: the Supplier side is new — "tracking" was the ask,
 		// not yet a statement to hand someone). The on-screen ledger below is
 		// identical for both.
-		primary_action_label: is_supplier ? null : __("Download PDF"),
-		primary_action: is_supplier
-			? null
-			: () => {
-					window.open(
-						frappe.urllib.get_full_url(
-							`/api/method/santu_hardware.santu_hardware.api.download_customer_khata?customer=${encodeURIComponent(row.party)}&from_date=${encodeURIComponent(state.from_date)}&to_date=${encodeURIComponent(state.to_date)}`
-						),
-						"_blank"
-					);
-				},
+		// Both sides get the PDF now (2026-09-04). A mahajan's statement is
+		// every bit as much "a statement to hand someone" as a customer's —
+		// it is how the shop settles up with them — and the endpoint behind
+		// it renders from the same template.
+		primary_action_label: __("Download PDF"),
+		primary_action: () => {
+			const method = is_supplier
+				? "santu_hardware.santu_hardware.api.download_supplier_khata"
+				: "santu_hardware.santu_hardware.api.download_customer_khata";
+			const key = is_supplier ? "supplier" : "customer";
+			window.open(
+				frappe.urllib.get_full_url(
+					`/api/method/${method}?${key}=${encodeURIComponent(row.party)}&from_date=${encodeURIComponent(state.from_date)}&to_date=${encodeURIComponent(state.to_date)}`
+				),
+				"_blank"
+			);
+		},
+	});
+
+	// The endpoints take `customer` or `supplier` — same three values either
+	// way, so the key is decided once here rather than at four call sites.
+	const khata_args = () => ({
+		[is_supplier ? "supplier" : "customer"]: row.party,
+		from_date: state.from_date,
+		to_date: state.to_date,
 	});
 
 	const render_khata = () => {
 		const $wrap = d.fields_dict.khata_html.$wrapper;
 		$wrap.html(`<div class="santu-khata-loading">${__("Loading…")}</div>`);
+		// Which bill is due on which date, alongside the running khata
+		// (2026-09-04 direct request: "ye daal de kis date tak kitna payment
+		// dena hai supplier ko"). The khata's Credit column already answers
+		// "kab kitna de diya gya"; this is the other half — what is still to
+		// come and by when. Fetched for suppliers AND customers: the schedule
+		// existed only inside the customer's printed PDF before, never on
+		// screen for either side.
+		const schedule_promise = frappe
+			.xcall("santu_hardware.santu_hardware.api.get_party_payment_schedule", {
+				party_type: is_supplier ? "Supplier" : "Customer",
+				party: row.party,
+			})
+			.catch(() => null);
 		frappe
 			.xcall(
 				is_supplier
@@ -509,8 +536,9 @@ function open_party_khata_dialog(row) {
 					? { supplier: row.party, from_date: state.from_date, to_date: state.to_date }
 					: { customer: row.party, from_date: state.from_date, to_date: state.to_date }
 			)
-			.then((data) => {
+			.then(async (data) => {
 				const money = (v) => format_currency_plain(v || 0);
+				const sched = await schedule_promise;
 				const rows_html = data.rows.length
 					? data.rows
 							.map(
@@ -545,7 +573,42 @@ function open_party_khata_dialog(row) {
 							.join("")
 					: `<tr><td colspan="8" class="santu-khata-empty">${__("Is date range me koi lena-dena nahi hai.")}</td></tr>`;
 
+				// Only when something is actually pending — a party who owes
+				// nothing should not be shown an empty "dena hai" box.
+				const sched_rows = (sched && sched.rows) || [];
+				const sched_html = sched_rows.length
+					? `
+					<div class="santu-khata-due">
+						<div class="santu-khata-due-head">
+							<span>${is_supplier ? __("Kab Kitna Dena Hai") : __("Kab Kitna Lena Hai")}</span>
+							<b>${money(sched.total)}</b>
+						</div>
+						<table class="santu-khata-due-table">
+							<thead><tr>
+								<th>${__("Bill No.")}</th>
+								<th>${__("Bill Date")}</th>
+								<th>${__("Dene Ki Date")}</th>
+								<th class="santu-khata-num">${__("Baaki")}</th>
+							</tr></thead>
+							<tbody>
+								${sched_rows
+									.map(
+										(r) => `<tr class="${r.overdue ? "santu-khata-due-late" : ""}">
+											<td>${frappe.utils.escape_html(r.display_number || "")}</td>
+											<td>${r.posting_date ? frappe.datetime.str_to_user(r.posting_date) : ""}</td>
+											<td>${r.due_date ? frappe.datetime.str_to_user(r.due_date) : ""}${r.overdue ? ` <span class="santu-khata-due-tag">${__("Date nikal gayi")}</span>` : ""}</td>
+											<td class="santu-khata-num">${money(r.pending)}</td>
+										</tr>`
+									)
+									.join("")}
+							</tbody>
+						</table>
+						${sched.overdue ? `<div class="santu-khata-due-foot">${__("Date nikal chuki hai:")} <b>${money(sched.overdue)}</b></div>` : ""}
+					</div>`
+					: "";
+
 				$wrap.html(`
+					${sched_html}
 					<div class="santu-khata-table-wrap">
 						<table class="santu-khata-table">
 							<thead>
@@ -589,12 +652,6 @@ function open_party_khata_dialog(row) {
 		render_khata();
 	});
 
-	if (is_supplier) {
-		d.show();
-		render_khata();
-		return;
-	}
-
 	// Print and WhatsApp, alongside Download PDF — a Dialog only has one
 	// built-in primary/secondary pair, so these two are appended to the
 	// footer by hand rather than forcing both into that one slot.
@@ -609,11 +666,12 @@ function open_party_khata_dialog(row) {
 			// out (2026-08-29). After 8s we stop waiting and fall through to
 			// the browser print below, which always works.
 			const res = await Promise.race([
-				frappe.xcall("santu_hardware.santu_hardware.print_service.print_customer_khata", {
-					customer: row.party,
-					from_date: state.from_date,
-					to_date: state.to_date,
-				}),
+				frappe.xcall(
+					is_supplier
+						? "santu_hardware.santu_hardware.print_service.print_supplier_khata"
+						: "santu_hardware.santu_hardware.print_service.print_customer_khata",
+					khata_args()
+				),
 				new Promise((_, reject) =>
 					setTimeout(() => reject(new Error("thermal-print-timeout")), 8000)
 				),
@@ -635,11 +693,12 @@ function open_party_khata_dialog(row) {
 		}
 		w.document.write(`<p style="font-family:sans-serif;padding:24px;">${__("Loading…")}</p>`);
 		frappe
-			.xcall("santu_hardware.santu_hardware.api.get_customer_khata_print_html", {
-				customer: row.party,
-				from_date: state.from_date,
-				to_date: state.to_date,
-			})
+			.xcall(
+				is_supplier
+					? "santu_hardware.santu_hardware.api.get_supplier_khata_print_html"
+					: "santu_hardware.santu_hardware.api.get_customer_khata_print_html",
+				khata_args()
+			)
 			.then((html) => {
 				w.document.open();
 				w.document.write(html);
@@ -663,11 +722,12 @@ function open_party_khata_dialog(row) {
 				}
 				frappe.dom.freeze(__("Sending…"));
 				frappe
-					.xcall("santu_hardware.santu_hardware.whatsapp_connect_api.send_customer_khata", {
-						customer: row.party,
-						from_date: state.from_date,
-						to_date: state.to_date,
-					})
+					.xcall(
+						is_supplier
+							? "santu_hardware.santu_hardware.whatsapp_connect_api.send_supplier_khata"
+							: "santu_hardware.santu_hardware.whatsapp_connect_api.send_customer_khata",
+						khata_args()
+					)
 					.then((r) => {
 						frappe.dom.unfreeze();
 						if (r && r.ok === false) {

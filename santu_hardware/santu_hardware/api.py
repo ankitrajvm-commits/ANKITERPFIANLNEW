@@ -114,7 +114,7 @@ def fix_stock(item_code: str, new_qty: float, reason: str):
 	multi-item bulk-reconciliation form that a single fix doesn't need.
 	"""
 	if not item_code or new_qty in (None, "") or not reason:
-		frappe.throw(_("Item, new quantity, and reason are all required."))
+		frappe.throw(_("Saaman, nayi qty aur wajah — teeno bharna zaroori hai."))
 
 	warehouse = default_selling_warehouse()
 	if not warehouse:
@@ -201,7 +201,7 @@ def receive_stock_simple(item_code: str, qty: float, rate: float = None):
 	physical stock onto the shelf/into the count right away.
 	"""
 	if not item_code or not qty or flt(qty) <= 0:
-		frappe.throw(_("Item and a quantity greater than zero are required."))
+		frappe.throw(_("Saaman chuniye aur qty zero se zyada daaliye."))
 
 	warehouse = default_selling_warehouse()
 	if not warehouse:
@@ -622,22 +622,50 @@ def get_dashboard_data():
 
 	warehouse = default_selling_warehouse()
 
+	# Counter sales in this shop are saved as Sales Invoice, not POS Invoice
+	# — save_sale_invoice has always created Sales Invoice, and the site has
+	# zero POS Invoices. Reading POS Invoice alone meant Home showed
+	# "today's sale Rs 0" no matter how much was sold (2026-09-04). Both are
+	# summed so a future POS Invoice still counts; a Sales Invoice produced
+	# by consolidating POS Invoices is skipped so it cannot be counted twice.
 	today_sales = flt(
 		frappe.db.sql(
-			"select sum(grand_total) from `tabPOS Invoice` where docstatus = 1 and posting_date = %s",
-			(today(),),
+			"""
+			select sum(grand_total) from (
+				select grand_total from `tabPOS Invoice`
+				where docstatus = 1 and posting_date = %(d)s
+					and ifnull(consolidated_invoice, '') = ''
+				union all
+				select grand_total from `tabSales Invoice`
+				where docstatus = 1 and posting_date = %(d)s
+					and ifnull(is_consolidated, 0) = 0
+			) x
+			""",
+			{"d": today()},
 		)[0][0]
 	)
 
+	# Same correction as today_sales: the payment rows that matter here hang
+	# off Sales Invoice, not POS Invoice.
 	today_collection = flt(
 		frappe.db.sql(
 			"""
-			select sum(pay.amount)
-			from `tabSales Invoice Payment` pay
-			inner join `tabPOS Invoice` inv on inv.name = pay.parent
-			where inv.docstatus = 1 and inv.posting_date = %s and pay.parenttype = 'POS Invoice'
+			select sum(amt) from (
+				select pay.amount as amt
+				from `tabSales Invoice Payment` pay
+				inner join `tabPOS Invoice` inv on inv.name = pay.parent
+				where inv.docstatus = 1 and inv.posting_date = %(d)s
+					and pay.parenttype = 'POS Invoice'
+				union all
+				select pay.amount as amt
+				from `tabSales Invoice Payment` pay
+				inner join `tabSales Invoice` inv on inv.name = pay.parent
+				where inv.docstatus = 1 and inv.posting_date = %(d)s
+					and pay.parenttype = 'Sales Invoice'
+					and ifnull(inv.is_consolidated, 0) = 0
+			) x
 			""",
-			(today(),),
+			{"d": today()},
 		)[0][0]
 	)
 
@@ -767,12 +795,18 @@ def get_dashboard_data():
 	# sales graph.
 	daily_rows = frappe.db.sql(
 		"""
-		select posting_date, sum(grand_total) as total
-		from `tabPOS Invoice`
-		where docstatus = 1 and posting_date >= date_sub(%s, interval 13 day)
+		select posting_date, sum(grand_total) as total from (
+			select posting_date, grand_total from `tabPOS Invoice`
+			where docstatus = 1 and posting_date >= date_sub(%(d)s, interval 13 day)
+				and ifnull(consolidated_invoice, '') = ''
+			union all
+			select posting_date, grand_total from `tabSales Invoice`
+			where docstatus = 1 and posting_date >= date_sub(%(d)s, interval 13 day)
+				and ifnull(is_consolidated, 0) = 0
+		) x
 		group by posting_date
 		""",
-		(today(),),
+		{"d": today()},
 		as_dict=True,
 	)
 	daily_totals = {str(row.posting_date): flt(row.total) for row in daily_rows}
@@ -983,13 +1017,20 @@ def get_low_stock_items():
 	# One grouped query for sales pace instead of one query per item —
 	# the per-item loop below already hits Item Reorder/Bin per item
 	# (unavoidable, different table each), so at least this one is batched.
+	# Reads Sales Invoice Item as well as POS Invoice Item: this shop's
+	# counter sales are Sales Invoices, so a POS-only query returned nothing
+	# and every item looked like it had sold zero in the last fortnight —
+	# the low-stock alerts had no idea which items actually move
+	# (2026-09-04, same POS-vs-Sales mix-up as the Home screen's cards).
 	sales_rows = frappe.db.sql(
 		"""
-		select item_code, sum(qty) as total_qty
-		from `tabPOS Invoice Item`
-		where item_code in %(item_codes)s
-			and docstatus = 1
-			and creation >= %(since)s
+		select item_code, sum(qty) as total_qty from (
+			select item_code, qty from `tabPOS Invoice Item`
+			where item_code in %(item_codes)s and docstatus = 1 and creation >= %(since)s
+			union all
+			select item_code, qty from `tabSales Invoice Item`
+			where item_code in %(item_codes)s and docstatus = 1 and creation >= %(since)s
+		) x
 		group by item_code
 		""",
 		{"item_codes": item_codes, "since": add_days(today(), -14)},
@@ -3202,6 +3243,21 @@ def get_customer_all_bills(customer: str):
 	return rows
 
 
+def receipt_label(payment_name: str) -> str:
+	"""A payment receipt's number as the counter says it out loud.
+
+	ERPNext names these "ACC-PAY-2026-00156". That string is meaningless to
+	anyone in the shop and, worse, this khata is what gets printed and sent
+	to the customer on WhatsApp — the same reason sale bills never show
+	their "SINV-..." docname and use a plain 1-2-3 counter instead
+	(2026-09-04). Falls back to the raw name if it is not in that shape.
+	"""
+	if not payment_name:
+		return ""
+	m = re.search(r"(\d+)\s*$", str(payment_name))
+	return str(int(m.group(1))) if m else str(payment_name)
+
+
 def _khata_sequence(doctype, name, creation, amended_from, _cache={}):
 	"""When this sale actually happened, for ordering the khata.
 
@@ -3361,7 +3417,7 @@ def get_customer_khata(customer: str, from_date: str = None, to_date: str = None
 				"_seq": str(r.get("creation") or ""),
 				"doctype": "Payment Entry",
 				"voucher_no": r["name"],
-				"display_number": r["name"],
+				"display_number": receipt_label(r["name"]),
 				"type": "Payment In",
 				"items": [],
 				"items_summary": r.get("mode_of_payment") or "",
@@ -3516,7 +3572,7 @@ def get_supplier_khata(supplier: str, from_date: str = None, to_date: str = None
 				"_seq": str(r.get("creation") or ""),
 				"doctype": "Payment Entry",
 				"voucher_no": r["name"],
-				"display_number": r["name"],
+				"display_number": receipt_label(r["name"]),
 				"type": "Payment Out",
 				"items": [],
 				"items_summary": r.get("mode_of_payment") or "",
@@ -3559,6 +3615,20 @@ def get_supplier_khata(supplier: str, from_date: str = None, to_date: str = None
 		"rows": rows,
 	}
 
+
+
+def _khata_party(data: dict):
+	"""(party_type, party, party_name) out of a khata payload.
+
+	get_customer_khata and get_supplier_khata return the same shape apart
+	from their id/name keys, so one adapter lets the A4 and thermal builders
+	render either side without a second copy of each template
+	(2026-09-04: the supplier khata could not be printed, PDF'd or sent on
+	WhatsApp at all — those four endpoints were Customer-only).
+	"""
+	if data.get("supplier"):
+		return "Supplier", data.get("supplier"), data.get("supplier_name") or data.get("supplier")
+	return "Customer", data.get("customer"), data.get("customer_name") or data.get("customer")
 
 
 def _customer_khata_html(data: dict) -> str:
@@ -3618,14 +3688,26 @@ def _customer_khata_html(data: dict) -> str:
 	if not logo_html:
 		logo_html = f'<div class="santu-bill-shop-name">{frappe.utils.escape_html(company or "")}</div>'
 
-	cust = data.get("customer")
-	cust_mobile = frappe.db.get_value("Customer", cust, "mobile_no") if cust else None
-	cust_gstin = frappe.db.get_value("Customer", cust, "gstin") if cust else None
-	cust_place = party_village("Customer", cust) if cust else None
+	_ptype, cust, _pname = _khata_party(data)
+	cust_mobile = frappe.db.get_value(_ptype, cust, "mobile_no") if cust else None
+	cust_gstin = frappe.db.get_value(_ptype, cust, "gstin") if cust else None
+	cust_place = party_village(_ptype, cust) if cust else None
 
 	closing = flt(data.get("closing_balance"))
 	total_debit = sum(flt(r.get("debit")) for r in data.get("rows") or [])
 	total_credit = sum(flt(r.get("credit")) for r in data.get("rows") or [])
+
+	# A mahajan's statement is the mirror of a customer's: the debits are
+	# what the SHOP bought, not what it sold, and "thank you for shopping"
+	# reads wrong on a document going to a supplier (2026-09-04).
+	_is_supplier = _ptype == "Supplier"
+	debit_label = "Total Purchase" if _is_supplier else "Total Sale"
+	statement_for_label = "Mahajan" if _is_supplier else "Statement For"
+	footer_thanks = (
+		f"{company or ''} — dhanyavaad!"
+		if _is_supplier
+		else f"Thank you for shopping with {company or ''}!"
+	)
 
 	# "Kis date tak kitna dena hai" (2026-09-04 direct request) — a closing
 	# balance alone gives the party no deadline. Each still-unpaid bill is
@@ -3634,7 +3716,7 @@ def _customer_khata_html(data: dict) -> str:
 	# Only printed when something is actually owed.
 	schedule_panel = ""
 	if cust and closing > 0:
-		sched = get_party_payment_schedule("Customer", cust)
+		sched = get_party_payment_schedule(_ptype, cust)
 		if sched["rows"]:
 			sched_rows = "".join(
 				'<div class="santu-bill-panel-row{}">'
@@ -3781,8 +3863,8 @@ def _customer_khata_html(data: dict) -> str:
 		<table class="santu-bill-customer-table">
 			<tr>
 				<td>
-					<div class="santu-bill-customer-label">Statement For</div>
-					<div class="santu-bill-customer-name">{frappe.utils.escape_html(data["customer_name"])}</div>
+					<div class="santu-bill-customer-label">{statement_for_label}</div>
+					<div class="santu-bill-customer-name">{frappe.utils.escape_html(_pname or "")}</div>
 					{f'<div class="santu-bill-customer-detail">Phone: {frappe.utils.escape_html(cust_mobile)}</div>' if cust_mobile else ""}
 					{f'<div class="santu-bill-customer-detail">GSTIN: {frappe.utils.escape_html(cust_gstin)}</div>' if cust_gstin else ""}
 					{f'<div class="santu-bill-customer-detail">{frappe.utils.escape_html(cust_place)}</div>' if cust_place else ""}
@@ -3811,7 +3893,7 @@ def _customer_khata_html(data: dict) -> str:
 		</table>
 
 		<table class="santu-bill-totals-table">
-			<tr><td>Total Sale</td><td class="value">\u20b9 {total_debit:,.2f}</td></tr>
+			<tr><td>{debit_label}</td><td class="value">\u20b9 {total_debit:,.2f}</td></tr>
 			<tr><td>Total Paid</td><td class="value">- \u20b9 {total_credit:,.2f}</td></tr>
 			<tr class="grand {'due' if closing > 0 else ''}"><td>Closing Balance</td><td class="value">Rs. {closing:,.2f}</td></tr>
 		</table>
@@ -3822,7 +3904,7 @@ def _customer_khata_html(data: dict) -> str:
 					<div class="santu-bill-panel">
 						<div class="santu-bill-panel-title">Account Summary</div>
 						<div class="santu-bill-panel-row"><span>Opening Balance</span><span>Rs. {flt(data["opening_balance"]):,.2f}</span></div>
-						<div class="santu-bill-panel-row"><span>Total Sale</span><span>Rs. {total_debit:,.2f}</span></div>
+						<div class="santu-bill-panel-row"><span>{debit_label}</span><span>Rs. {total_debit:,.2f}</span></div>
 						<div class="santu-bill-panel-row"><span>Total Paid</span><span>Rs. {total_credit:,.2f}</span></div>
 						<div class="santu-bill-panel-row emphasis {'ok' if closing <= 0 else ''}"><span>Closing Balance</span><span>Rs. {closing:,.2f}</span></div>
 					</div>
@@ -3836,7 +3918,7 @@ def _customer_khata_html(data: dict) -> str:
 		</div>
 
 		<div class="santu-bill-footer">
-			<div class="thanks">Thank you for shopping with {frappe.utils.escape_html(company or "")}!</div>
+			<div class="thanks">{frappe.utils.escape_html(footer_thanks)}</div>
 			{f'{frappe.utils.escape_html(company_website or "")}{" &nbsp;|&nbsp; " if company_website and company_email else ""}{frappe.utils.escape_html(company_email or "")}' if (company_website or company_email) else ""}
 		</div>
 	</div>
@@ -3877,6 +3959,42 @@ def get_customer_khata_print_html(customer: str, from_date: str = None, to_date:
 	return _customer_khata_thermal_html(data)
 
 
+# ---- the same four things, for a mahajan ----
+# The supplier khata could be read on screen but not printed, downloaded or
+# sent — the Parties dialog returned early for suppliers, before the Print /
+# WhatsApp / Download PDF buttons were even built, and none of the endpoints
+# behind them existed (2026-09-04). The A4 and thermal builders take a plain
+# data dict and now resolve the party through _khata_party(), so both sides
+# share one template; only these thin wrappers are new.
+
+
+def _supplier_khata_pdf_bytes(supplier: str, from_date: str = None, to_date: str = None):
+	"""(pdf_bytes, filename, data) — mirrors _customer_khata_pdf_bytes."""
+	from frappe.utils.pdf import get_pdf
+
+	data = get_supplier_khata(supplier, from_date, to_date)
+	html = _customer_khata_html(data)
+	pdf_bytes = get_pdf(html)
+	filename = f"{data['supplier_name']}-khata-{data['from_date']}-to-{data['to_date']}.pdf".replace(" ", "-")
+	return pdf_bytes, filename, data
+
+
+@frappe.whitelist()
+def download_supplier_khata(supplier: str, from_date: str = None, to_date: str = None):
+	"""Browser-downloadable PDF of one mahajan's khata."""
+	pdf_bytes, filename, _data = _supplier_khata_pdf_bytes(supplier, from_date, to_date)
+	frappe.local.response.filename = filename
+	frappe.local.response.filecontent = pdf_bytes
+	frappe.local.response.type = "download"
+
+
+@frappe.whitelist()
+def get_supplier_khata_print_html(supplier: str, from_date: str = None, to_date: str = None):
+	"""Mahajan khata formatted for 80mm / 72mm thermal printer roll."""
+	data = get_supplier_khata(supplier, from_date, to_date)
+	return _customer_khata_thermal_html(data)
+
+
 def _customer_khata_thermal_html(data: dict) -> str:
 	"""Customer Khata rendered in 80mm / 72mm thermal receipt roll layout."""
 	company = frappe.defaults.get_user_default("Company") or frappe.db.get_value("Company", {}, "name") or "Santu Hardware"
@@ -3895,7 +4013,8 @@ def _customer_khata_thermal_html(data: dict) -> str:
 		company_address = ", ".join(p for p in [(caddr.address_line1 or "").strip(), (caddr.address_line2 or "").strip(), company_place, caddr.state or "", caddr.pincode or ""] if p)
 		company_phone = caddr.phone
 
-	customer_mobile = frappe.db.get_value("Customer", data["customer"], "mobile_no")
+	_ptype, _pid, _pname = _khata_party(data)
+	customer_mobile = frappe.db.get_value(_ptype, _pid, "mobile_no") if _pid else None
 
 	bill_logo = None
 	if settings.get("show_logo_on_bill"):
@@ -3911,9 +4030,9 @@ def _customer_khata_thermal_html(data: dict) -> str:
 	# the A4 statement prints, so the slip handed over the counter and the
 	# PDF sent on WhatsApp give the party the same deadlines.
 	schedule_html = ""
-	_cust = data.get("customer")
+	_cust = _pid
 	if _cust and flt(data.get("closing_balance")) > 0:
-		_s = get_party_payment_schedule("Customer", _cust)
+		_s = get_party_payment_schedule(_ptype, _cust)
 		if _s["rows"]:
 			_lines = "".join(
 				'<div class="t-row t-sm"><span>{}{}</span><span>Rs. {:,.2f}</span></div>'.format(
@@ -4000,7 +4119,7 @@ def _customer_khata_thermal_html(data: dict) -> str:
 <html>
 <head>
 <meta charset="utf-8">
-<title>Khata — {frappe.utils.escape_html(data["customer_name"])}</title>
+<title>Khata — {frappe.utils.escape_html(_pname or "")}</title>
 <style>
 @page {{
 	margin: 0;
@@ -4069,7 +4188,7 @@ body {{
 	<div class="t-center t-bold t-lg">KHATA STATEMENT</div>
 	<div class="t-dash"></div>
 
-	<div class="t-row"><span>Customer:</span><span class="t-bold">{frappe.utils.escape_html(data["customer_name"])}</span></div>
+	<div class="t-row"><span>{"Mahajan" if _ptype == "Supplier" else "Customer"}:</span><span class="t-bold">{frappe.utils.escape_html(_pname or "")}</span></div>
 	{f'<div class="t-row"><span>Phone:</span><span>{frappe.utils.escape_html(customer_mobile)}</span></div>' if customer_mobile else ""}
 	<div class="t-row t-sm"><span>Period:</span><span>{frappe.utils.format_date(data["from_date"], "dd-MM-yy")} to {frappe.utils.format_date(data["to_date"], "dd-MM-yy")}</span></div>
 	<div class="t-row t-sm"><span>Printed:</span><span>{now_str}</span></div>
@@ -4094,8 +4213,12 @@ body {{
 </html>"""
 
 
-def _thermal_khata_pdf_bytes(customer: str, from_date: str = None, to_date: str = None) -> bytes:
-	"""Renders thermal PDF bytes sized for 80mm / 72mm roll."""
+def _thermal_khata_pdf_bytes(customer: str, from_date: str = None, to_date: str = None, party_type: str = "Customer") -> bytes:
+	"""Renders thermal PDF bytes sized for 80mm / 72mm roll.
+
+	`party_type` lets the same roll be produced for a mahajan (2026-09-04);
+	the data shape and the template are identical either way, only the
+	fetcher differs."""
 	import pdfkit
 	from frappe.utils.pdf import cleanup, get_cookie_options, inline_private_images, read_options_from_html, scrub_urls
 
@@ -4103,7 +4226,11 @@ def _thermal_khata_pdf_bytes(customer: str, from_date: str = None, to_date: str 
 	paper_width = flt((settings.paper_width or "80mm").replace("mm", "")) or 80
 	printable_width = {80: 72.0, 58: 48.0}.get(int(paper_width), max(paper_width - 8, 40))
 
-	data = get_customer_khata(customer, from_date, to_date)
+	data = (
+		get_supplier_khata(customer, from_date, to_date)
+		if party_type == "Supplier"
+		else get_customer_khata(customer, from_date, to_date)
+	)
 	html = _customer_khata_thermal_html(data)
 
 	rows_count = len(data.get("rows") or [])
@@ -4172,7 +4299,7 @@ def add_manual_due(customer: str, amount: float, note: str = None):
 	if not customer:
 		frappe.throw(_("Customer is required."))
 	if amount <= 0:
-		frappe.throw(_("Please enter a valid amount."))
+		frappe.throw(_("Sahi amount daaliye."))
 
 	item_code = "PURANA-BAKI"
 	if not frappe.db.exists("Item", item_code):
@@ -6750,9 +6877,9 @@ def _save_sale_invoice(invoice_json: str, submit: int = 0, amended_from: str = N
 	payments = data.get("payments") or []
 
 	if not customer:
-		frappe.throw(_("Please select a customer."))
+		frappe.throw(_("Grahak chuniye."))
 	if not items:
-		frappe.throw(_("Please add at least one item."))
+		frappe.throw(_("Kam se kam ek saaman daaliye."))
 
 	if not frappe.db.exists("Customer", customer):
 		frappe.throw(_("Customer {0} not found.").format(customer))
@@ -6822,10 +6949,10 @@ def _save_sale_invoice(invoice_json: str, submit: int = 0, amended_from: str = N
 	for row in items:
 		qty = flt(row.get("qty"))
 		if qty <= 0:
-			frappe.throw(_("Please enter a valid quantity for {0}.").format(row.get("item_code")))
+			frappe.throw(_("{0} ki qty sahi daaliye.").format(row.get("item_code")))
 		rate = flt(row.get("rate"))
 		if rate < 0:
-			frappe.throw(_("Please enter a valid rate for {0}.").format(row.get("item_code")))
+			frappe.throw(_("{0} ka rate sahi daaliye.").format(row.get("item_code")))
 
 		# Per-line discount, folded into the rate rather than passed through.
 		# Both screens show a line discount and send `rate` alongside
@@ -7248,7 +7375,7 @@ def edit_submitted_sale_invoice(invoice_name: str, invoice_json: str):
 	data = json.loads(invoice_json) if isinstance(invoice_json, str) else invoice_json
 	new_items = data.get("items") or []
 	if not new_items:
-		frappe.throw(_("A bill needs at least one item."))
+		frappe.throw(_("Bill me kam se kam ek saaman hona chahiye."))
 
 	old_total = flt(old_doc.grand_total)
 	data["posting_date"] = old_doc.posting_date.isoformat() if hasattr(old_doc.posting_date, "isoformat") else str(old_doc.posting_date)
@@ -7819,9 +7946,9 @@ def save_purchase_invoice(invoice_json: str, submit: int = 0):
 	payments = data.get("payments") or []
 
 	if not supplier:
-		frappe.throw(_("Please select a supplier."))
+		frappe.throw(_("Mahajan chuniye."))
 	if not items:
-		frappe.throw(_("Please add at least one item."))
+		frappe.throw(_("Kam se kam ek saaman daaliye."))
 
 	company = data.get("company") or frappe.defaults.get_user_default("Company")
 	warehouse = data.get("warehouse") or default_selling_warehouse(company)
@@ -7872,10 +7999,10 @@ def save_purchase_invoice(invoice_json: str, submit: int = 0):
 	for row in items:
 		qty = flt(row.get("qty"))
 		if qty <= 0:
-			frappe.throw(_("Please enter a valid quantity for {0}.").format(row.get("item_code")))
+			frappe.throw(_("{0} ki qty sahi daaliye.").format(row.get("item_code")))
 		rate = flt(row.get("rate"))
 		if rate < 0:
-			frappe.throw(_("Please enter a valid rate for {0}.").format(row.get("item_code")))
+			frappe.throw(_("{0} ka rate sahi daaliye.").format(row.get("item_code")))
 
 		item_row = {
 			"item_code": row.get("item_code"),
@@ -8255,6 +8382,13 @@ def get_party_payment_schedule(party_type: str, party: str):
 	fields = ["name", "posting_date", "due_date", "grand_total", "outstanding_amount"]
 	if doctype == "Sales Invoice":
 		fields.append("santu_bill_no")
+	else:
+		# The supplier's OWN printed bill number, not our internal
+		# "PINV-00023" docname — that docname means nothing to anyone
+		# holding the paper bill (same reason a sale bill never shows its
+		# SINV name). Falls back to the docname when a bill was entered
+		# without one.
+		fields.append("bill_no")
 
 	bills = frappe.get_all(doctype, filters=filters, fields=fields, order_by="due_date asc, posting_date asc")
 
@@ -8276,7 +8410,11 @@ def get_party_payment_schedule(party_type: str, party: str):
 		rows.append({
 			"doctype": doctype,
 			"name": b.name,
-			"display_number": bill_label(b.get("santu_bill_no")) if doctype == "Sales Invoice" else (b.name),
+			"display_number": (
+				bill_label(b.get("santu_bill_no"))
+				if doctype == "Sales Invoice"
+				else (b.get("bill_no") or b.name)
+			),
 			"posting_date": str(b.posting_date) if b.posting_date else None,
 			"due_date": str(due) if due else None,
 			"grand_total": flt(b.grand_total),
@@ -8476,9 +8614,9 @@ def save_quotation(quotation_json: str, submit: int = 1):
 	items = data.get("items") or []
 
 	if not customer:
-		frappe.throw(_("Please select a customer."))
+		frappe.throw(_("Grahak chuniye."))
 	if not items:
-		frappe.throw(_("Please add at least one item."))
+		frappe.throw(_("Kam se kam ek saaman daaliye."))
 
 	company = data.get("company") or frappe.defaults.get_user_default("Company")
 
@@ -8510,10 +8648,10 @@ def save_quotation(quotation_json: str, submit: int = 1):
 	for row in items:
 		qty = flt(row.get("qty"))
 		if qty <= 0:
-			frappe.throw(_("Please enter a valid quantity for {0}.").format(row.get("item_code")))
+			frappe.throw(_("{0} ki qty sahi daaliye.").format(row.get("item_code")))
 		rate = flt(row.get("rate"))
 		if rate < 0:
-			frappe.throw(_("Please enter a valid rate for {0}.").format(row.get("item_code")))
+			frappe.throw(_("{0} ka rate sahi daaliye.").format(row.get("item_code")))
 
 		doc.append(
 			"items",
@@ -8571,9 +8709,9 @@ def save_sales_order(order_json: str, submit: int = 1):
 	items = data.get("items") or []
 
 	if not customer:
-		frappe.throw(_("Please select a customer."))
+		frappe.throw(_("Grahak chuniye."))
 	if not items:
-		frappe.throw(_("Please add at least one item."))
+		frappe.throw(_("Kam se kam ek saaman daaliye."))
 
 	company = data.get("company") or frappe.defaults.get_user_default("Company")
 	transaction_date = data.get("posting_date") or frappe.utils.today()
@@ -8599,10 +8737,10 @@ def save_sales_order(order_json: str, submit: int = 1):
 	for row in items:
 		qty = flt(row.get("qty"))
 		if qty <= 0:
-			frappe.throw(_("Please enter a valid quantity for {0}.").format(row.get("item_code")))
+			frappe.throw(_("{0} ki qty sahi daaliye.").format(row.get("item_code")))
 		rate = flt(row.get("rate"))
 		if rate < 0:
-			frappe.throw(_("Please enter a valid rate for {0}.").format(row.get("item_code")))
+			frappe.throw(_("{0} ka rate sahi daaliye.").format(row.get("item_code")))
 
 		doc.append(
 			"items",
@@ -8701,7 +8839,7 @@ def save_party_transfer(transfer_json: str, submit: int = 1):
 	if from_type == to_type and from_party == to_party:
 		frappe.throw(_("Pick two different parties — a transfer to the same party does nothing."))
 	if amount <= 0:
-		frappe.throw(_("Enter an amount greater than zero."))
+		frappe.throw(_("Amount zero se zyada daaliye."))
 
 	company = data.get("company") or frappe.defaults.get_user_default("Company")
 	posting_date = data.get("posting_date") or frappe.utils.today()
@@ -8805,9 +8943,9 @@ def save_expense(expense_json: str, submit: int = 1):
 
 	valid_rows = [r for r in rows if r.get("expense_account") and flt(r.get("amount")) > 0]
 	if not valid_rows:
-		frappe.throw(_("Add at least one expense category with an amount."))
+		frappe.throw(_("Kam se kam ek kharch category aur uska amount daaliye."))
 	if not mode_of_payment:
-		frappe.throw(_("Select how this was paid."))
+		frappe.throw(_("Ye paisa kaise diya gaya, wo chuniye."))
 
 	company = data.get("company") or frappe.defaults.get_user_default("Company")
 	posting_date = data.get("posting_date") or frappe.utils.today()
@@ -8959,9 +9097,9 @@ def save_purchase_return(return_json: str, submit: int = 1):
 	items = data.get("items") or []
 
 	if not supplier:
-		frappe.throw(_("Please select a supplier."))
+		frappe.throw(_("Mahajan chuniye."))
 	if not items:
-		frappe.throw(_("Please add at least one item."))
+		frappe.throw(_("Kam se kam ek saaman daaliye."))
 
 	company = data.get("company") or frappe.defaults.get_user_default("Company")
 	warehouse = data.get("warehouse") or default_selling_warehouse(company)
@@ -9009,10 +9147,10 @@ def save_purchase_return(return_json: str, submit: int = 1):
 	for row in items:
 		qty = flt(row.get("qty"))
 		if qty <= 0:
-			frappe.throw(_("Please enter a valid quantity for {0}.").format(row.get("item_code")))
+			frappe.throw(_("{0} ki qty sahi daaliye.").format(row.get("item_code")))
 		rate = flt(row.get("rate"))
 		if rate < 0:
-			frappe.throw(_("Please enter a valid rate for {0}.").format(row.get("item_code")))
+			frappe.throw(_("{0} ka rate sahi daaliye.").format(row.get("item_code")))
 
 		cf = _conversion_factor_for(row.get("item_code"), row.get("uom"), row.get("conversion_factor"))
 		wh = row.get("warehouse") or warehouse
@@ -9299,9 +9437,9 @@ def save_sales_return(return_json: str, submit: int = 1):
 	items = data.get("items") or []
 
 	if not customer:
-		frappe.throw(_("Please select a customer."))
+		frappe.throw(_("Grahak chuniye."))
 	if not items:
-		frappe.throw(_("Please add at least one item."))
+		frappe.throw(_("Kam se kam ek saaman daaliye."))
 
 	company = data.get("company") or frappe.defaults.get_user_default("Company")
 	warehouse = data.get("warehouse") or default_selling_warehouse(company)
@@ -9357,10 +9495,10 @@ def save_sales_return(return_json: str, submit: int = 1):
 	for row in items:
 		qty = flt(row.get("qty"))
 		if qty <= 0:
-			frappe.throw(_("Please enter a valid quantity for {0}.").format(row.get("item_code")))
+			frappe.throw(_("{0} ki qty sahi daaliye.").format(row.get("item_code")))
 		rate = flt(row.get("rate"))
 		if rate < 0:
-			frappe.throw(_("Please enter a valid rate for {0}.").format(row.get("item_code")))
+			frappe.throw(_("{0} ka rate sahi daaliye.").format(row.get("item_code")))
 
 		item_row = {
 			"item_code": row.get("item_code"),
@@ -9478,9 +9616,9 @@ def save_delivery_note(challan_json: str, submit: int = 1):
 	items = data.get("items") or []
 
 	if not customer:
-		frappe.throw(_("Please select a customer."))
+		frappe.throw(_("Grahak chuniye."))
 	if not items:
-		frappe.throw(_("Please add at least one item."))
+		frappe.throw(_("Kam se kam ek saaman daaliye."))
 
 	company = data.get("company") or frappe.defaults.get_user_default("Company")
 	raw_posting_date = data.get("posting_date")
@@ -9516,10 +9654,10 @@ def save_delivery_note(challan_json: str, submit: int = 1):
 	for row in items:
 		qty = flt(row.get("qty"))
 		if qty <= 0:
-			frappe.throw(_("Please enter a valid quantity for {0}.").format(row.get("item_code")))
+			frappe.throw(_("{0} ki qty sahi daaliye.").format(row.get("item_code")))
 		rate = flt(row.get("rate"))
 		if rate < 0:
-			frappe.throw(_("Please enter a valid rate for {0}.").format(row.get("item_code")))
+			frappe.throw(_("{0} ka rate sahi daaliye.").format(row.get("item_code")))
 
 		# Line discount folded into the rate, exactly the way
 		# _save_sale_invoice does it — see the long comment there. Passing
@@ -9597,9 +9735,9 @@ def save_purchase_order(order_json: str, submit: int = 1):
 	items = data.get("items") or []
 
 	if not supplier:
-		frappe.throw(_("Please select a supplier."))
+		frappe.throw(_("Mahajan chuniye."))
 	if not items:
-		frappe.throw(_("Please add at least one item."))
+		frappe.throw(_("Kam se kam ek saaman daaliye."))
 
 	company = data.get("company") or frappe.defaults.get_user_default("Company")
 	transaction_date = data.get("posting_date") or frappe.utils.today()
@@ -9625,10 +9763,10 @@ def save_purchase_order(order_json: str, submit: int = 1):
 	for row in items:
 		qty = flt(row.get("qty"))
 		if qty <= 0:
-			frappe.throw(_("Please enter a valid quantity for {0}.").format(row.get("item_code")))
+			frappe.throw(_("{0} ki qty sahi daaliye.").format(row.get("item_code")))
 		rate = flt(row.get("rate"))
 		if rate < 0:
-			frappe.throw(_("Please enter a valid rate for {0}.").format(row.get("item_code")))
+			frappe.throw(_("{0} ka rate sahi daaliye.").format(row.get("item_code")))
 
 		doc.append(
 			"items",
@@ -9684,20 +9822,23 @@ def _validate_credit_customer(customer_name: str, outstanding: float):
 	# is a placeholder — no real name, no village, nobody you could actually
 	# go and collect from. Cash sales to them are fine; baaki is not, until
 	# someone fills the details in (2026-08-16 direct request).
+	# Both messages are in Hinglish, like every other message the counter
+	# sees. These two were the only ones left in English, and they are the
+	# ones that STOP a sale — the worst place to hand the person at the
+	# counter a sentence they cannot read (2026-09-04).
 	if re.match(r"^customer\s+\d+$", (cust.customer_name or "").strip(), re.IGNORECASE):
 		frappe.throw(
 			_(
-				"{0} was created from a phone number alone, so {1} cannot be left as baaki. "
-				"Open the party and fill in their name and village first."
+				"{0} sirf phone number se bana hai, isliye {1} baaki nahi chhod sakte. "
+				"Party kholkar unka naam aur gaon bhariye, phir bill banaiye."
 			).format(cust.customer_name, frappe.utils.fmt_money(outstanding, currency="INR"))
 		)
 
 	if not cust.mobile_no and not cust.customer_primary_address:
 		frappe.throw(
 			_(
-				"{0} has no phone number and no address on file, so {1} cannot be left "
-				"as baaki. Open the party and add a phone number or an address, then "
-				"make this sale again."
+				"{0} ka na phone number hai na address, isliye {1} baaki nahi chhod sakte. "
+				"Party kholkar phone number ya address daaliye, phir ye bill banaiye."
 			).format(cust.customer_name, frappe.utils.fmt_money(outstanding, currency="INR"))
 		)
 
@@ -9984,7 +10125,175 @@ def _extract_pdf_pages(file_url: str) -> list:
 	file_path = file_doc.get_full_path()
 
 	reader = pypdf.PdfReader(file_path)
-	return [page.extract_text(extraction_mode="layout") or "" for page in reader.pages]
+	pages = [page.extract_text(extraction_mode="layout") or "" for page in reader.pages]
+
+	# A bill that was photographed or scanned carries no text layer at all —
+	# pypdf returns empty strings for every page and the shop just got "is
+	# PDF me koi item list identify nahi ho paya" (2026-09-04). Fall back to
+	# reading the pixels. Only when there is genuinely nothing to read: OCR
+	# is slow and less accurate than a real text layer, so a normal
+	# supplier PDF must never take this path.
+	if not any(p.strip() for p in pages):
+		ocr_pages = _ocr_pdf_pages(file_path)
+		if any(p.strip() for p in ocr_pages):
+			return ocr_pages
+	return pages
+
+
+# Tesseract + pdftoppm, both installed via Homebrew (2026-09-04). Called
+# through subprocess rather than a Python binding so there is no extra
+# dependency in the bench env and a missing binary degrades to "no text"
+# instead of an ImportError at page load.
+_OCR_BIN = "/opt/homebrew/bin/tesseract"
+_PDFTOPPM_BIN = "/opt/homebrew/bin/pdftoppm"
+
+
+def _ocr_available() -> bool:
+	import shutil
+
+	return bool(shutil.which(_OCR_BIN) and shutil.which(_PDFTOPPM_BIN))
+
+
+def _clean_ocr_text(text: str) -> str:
+	"""Turn tesseract's rendering of a table's ruled lines back into spaces.
+
+	A GST bill is a bordered table, and OCR reads those borders as
+	punctuation, so a perfectly-read row arrives as
+
+	    1| FEVICOL HEATX NF 24X200ML 35061000] 18%) 8 CASE| 2,753.51) ...
+
+	The row parser expects columns separated by whitespace and matched none
+	of these, so a scanned bill produced 0 items even though every figure on
+	it had been read correctly (2026-09-04).
+
+	A pipe is never part of a product name, so those always go. A closing
+	bracket only goes when it follows a NUMBER or a percentage and a space
+	follows it — that is a cell edge. Brackets that belong to the goods
+	stay: "ROFF STARLIKE[NEUTRAL 1KG]" and "FEVICOL MR (20GM)" both end on a
+	letter, not a digit, and survive untouched.
+	"""
+	if not text:
+		return text
+	text = text.replace("|", " ").replace("¦", " ")
+	# A closing bracket right after a number/percentage, with a space, a
+	# slash or another bracket behind it, is a cell edge — "35061000]",
+	# "18%)", "1)/". Brackets that belong to the goods end on a letter
+	# ("FEVICOL MR (20GM)", "ROFF STARLIKE[NEUTRAL 1KG]") and are kept.
+	text = re.sub(r"([\d%])[\]\)\}]+(?=[\s/]|$)", r"\1 ", text)
+	# A slash after a run of 3+ digits is a cell edge too — HSN codes are
+	# 4-8 digits ("35061000/"). Sizes written as fractions have one or two
+	# digits before the slash ('3/4"', '1 1/2"'), so they are left alone.
+	text = re.sub(r"(\d{3,})\s*/+", r"\1 ", text)
+	# ...and after a percentage: "18 %/10 CASE".
+	text = re.sub(r"(%)\s*/+", r"\1 ", text)
+	# A lone slash sitting against a word is the left edge of the
+	# description cell: "1 /FEVICOL MARINE" -> "1 FEVICOL MARINE".
+	text = re.sub(r"(?<=\s)/+(?=[A-Za-z])", " ", text)
+	# OCR runs the quantity into its unit when the cell rule between them is
+	# faint: "3CASE" -> "3 CASE". Packaging units only — KG/LTR/ML are left
+	# alone because in these bills they are nearly always part of the goods'
+	# own size ("STARLIKE[NEUTRAL 1KG]", "HEATX NF 6X2LT"), not a quantity.
+	text = re.sub(r"(\d)(CASE|CASES|PCS|NOS|BOX|BOXES|PKT|BAG|BDL)\b", r"\1 \2", text, flags=re.I)
+	# Odd marks tesseract leaves where a cell rule crossed the row —
+	# "&8 CASE!" is really "| 8 CASE |".
+	text = re.sub(r"(?<=\s)[&!¥§](?=\s*\d)", " ", text)
+	text = re.sub(r"([A-Za-z])[!¡](?=\s)", r"\1 ", text)
+	return text
+
+
+# A GST invoice row as OCR leaves it. The normal parser recovers columns by
+# splitting on runs of 2+ spaces, which a text-layer PDF guarantees and a
+# scan does not — OCR spacing is whatever the pixels suggested, so that
+# parser found nothing on a photographed bill even when every figure had
+# been read correctly (2026-09-04). This one ignores spacing and anchors on
+# structure instead: description, then an HSN code, then an optional GST%,
+# then the quantity, then the run of money columns. The last money value is
+# the line Amount and the one before it is the net Rate — the same
+# right-to-left reading the layout parser uses, and the same choice of the
+# tax-exclusive Rate over "Rate (Incl. of Tax)".
+_OCR_MONEY = r"[\d,]+\.\d{2}"
+_OCR_GST_ROW = re.compile(
+	r"^\s*(?:\d{1,3}\s+)?"
+	r"(?P<desc>\S.*?)\s+"
+	r"(?P<hsn>\d{4,8})\b[^\dA-Za-z]{0,3}\s*"
+	r"(?:\d{1,2}\s*%\s*)?"
+	r"(?P<qty>\d[\d,]*(?:\.\d+)?)\s*"
+	r"(?P<unit>[A-Za-z]{2,10})?\s+"
+	r"(?P<tail>(?:" + _OCR_MONEY + r"|[A-Za-z]{2,10}|\s)+)$"
+)
+
+
+def _parse_ocr_gst_row(line: str):
+	"""(description, qty, rate, hsn) from an OCR'd GST invoice row, or None.
+
+	Deliberately demanding — an HSN code AND at least two money columns —
+	so it cannot invent rows out of a totals or address line. Verified
+	against a real Janta Cement bill re-rendered as an image-only PDF:
+	the totals ("CGST 2,930.89", "Less : Round Off (-)0.18") correctly
+	match nothing.
+	"""
+	m = _OCR_GST_ROW.match(line)
+	if not m:
+		return None
+	nums = [flt(x.replace(",", "")) for x in re.findall(_OCR_MONEY, m.group("tail"))]
+	if len(nums) < 2:
+		return None
+	desc = re.sub(r"\s+", " ", m.group("desc")).strip(" .-")
+	if len(desc) < 3:
+		return None
+	qty = flt(m.group("qty").replace(",", ""))
+	rate = nums[-2]
+	if qty <= 0 or rate <= 0:
+		return None
+	return desc, qty, rate, m.group("hsn")
+
+
+def _ocr_pdf_pages(file_path: str, max_pages: int = 12) -> list:
+	"""Read a scanned/photographed PDF page by page with OCR.
+
+	Rendered at 300dpi greyscale — below ~200dpi tesseract starts losing the
+	small print these bills use for rates. Capped at `max_pages` because a
+	page takes a second or two and nobody photographs a 50-page bill; the
+	cap keeps a pathological upload from hanging the request.
+	"""
+	import glob
+	import os
+	import subprocess
+	import tempfile
+
+	if not _ocr_available():
+		return []
+
+	out = []
+	tmpdir = tempfile.mkdtemp(prefix="santu-ocr-")
+	try:
+		prefix = os.path.join(tmpdir, "page")
+		subprocess.run(
+			[_PDFTOPPM_BIN, "-r", "300", "-gray", "-png", "-l", str(max_pages), file_path, prefix],
+			capture_output=True,
+			timeout=180,
+			check=False,
+		)
+		for img in sorted(glob.glob(prefix + "*.png")):
+			res = subprocess.run(
+				# --psm 6: "a single uniform block of text". A bill is a
+				# table, and tesseract's default page segmentation tries to
+				# find columns and scrambles the row order.
+				[_OCR_BIN, img, "stdout", "--psm", "6"],
+				capture_output=True,
+				text=True,
+				timeout=120,
+				check=False,
+			)
+			out.append(_clean_ocr_text(res.stdout or ""))
+	except Exception:
+		frappe.log_error(title="Upload Supplier Bill: OCR failed", message=frappe.get_traceback())
+		return []
+	finally:
+		import shutil as _sh
+
+		_sh.rmtree(tmpdir, ignore_errors=True)
+	return out
 
 
 def _normalize_whitespace(text: str) -> str:
@@ -10408,6 +10717,51 @@ def _parse_gst_layout_row(line: str):
 	return desc, qty, rate, hsn
 
 
+# Size/pack tokens as suppliers actually print them on these bills —
+# "5KG", "500GM", "1LT", "100ML", "24X200ML", "12X1KG", "4X5KG PAIL".
+# 2026-09-04 direct request: "size kya hia, qty kya hia md all" — the size
+# was always sitting inside the description text, never pulled out as its
+# own field, so the review grid had no column to show or correct it in.
+#
+# Deliberately conservative unit list: bare "M" and "L" are left out
+# because a name like "FEVICOL MR" or "PU-11 CLEAR" would otherwise read
+# its own letters as a unit. Missing a size the user can type beats
+# inventing one on every second row.
+_ITEM_SIZE_RE = re.compile(
+	r"(?<![A-Za-z0-9])"
+	r"(?:(\d+(?:\.\d+)?)\s*[Xx*]\s*)?"          # optional pack multiplier: 24X…
+	r"(\d+(?:\.\d+)?)\s*"
+	# Order matters: longer units first, so "1KG" matches KG and never
+	# falls through to a bare "G". Bare "G" stays last for "12X450G".
+	r"(KGS|KG|GMS|GRAM|GM|LTR|LTS|LT|ML|MM|CM|MTR|INCH|G)"
+	r"(?![A-Za-z])",
+	re.IGNORECASE,
+)
+
+
+def _extract_item_size(description: str):
+	"""Pull the printed pack/size token out of a bill's description text,
+	e.g. "FEVICOL HEATX NF 24X200ML" -> "24X200ML", "MARINE NF 5KG" ->
+	"5KG". Returns None when the line carries no recognisable size.
+
+	Takes the LAST match in the line: these descriptions read
+	brand-then-variant-then-size, so a leading numeral is far more often
+	part of a product name ("M-SEAL 1K PU") than the pack size.
+	"""
+	if not description:
+		return None
+	matches = list(_ITEM_SIZE_RE.finditer(description))
+	if not matches:
+		return None
+	pack, value, unit = matches[-1].groups()
+	value = value.rstrip("0").rstrip(".") if "." in value else value
+	size = f"{value}{unit.upper()}"
+	if pack:
+		pack = pack.rstrip("0").rstrip(".") if "." in pack else pack
+		size = f"{pack}X{size}"
+	return size
+
+
 def _guess_item_rows(text: str):
 	"""Heuristic line-item extraction, two layouts tried per line (GST
 	tax-invoice column layout first, then a plain description/qty/rate/
@@ -10427,10 +10781,26 @@ def _guess_item_rows(text: str):
 		if any(keyword in lowered for keyword in _BILL_NON_ITEM_KEYWORDS):
 			continue
 
-		parsed = _parse_gst_layout_row(line) or _parse_simple_row(line.strip())
+		# Third fallback for scanned bills — see _parse_ocr_gst_row. Tried
+		# last so a normal text-layer PDF never reaches it.
+		parsed = (
+			_parse_gst_layout_row(line)
+			or _parse_simple_row(line.strip())
+			or _parse_ocr_gst_row(line)
+		)
 		if not parsed:
 			continue
 		desc, qty, rate, hsn = parsed
+
+		# Some suppliers' PDFs are tab-separated rather than space-aligned,
+		# and the raw description then arrives as "UltraTech\tCement\tBag
+		# \t50kg". That string was previously carried straight through into
+		# the review grid AND into `_auto_create_stock_item`, so a bill like
+		# that permanently created Items with tabs baked into their names.
+		# Collapse every run of whitespace before the description is used
+		# for anything — matching included, since the tabs also skewed the
+		# fuzzy score against the catalog.
+		desc = re.sub(r"\s+", " ", desc).strip()
 
 		best_code, best_score = None, 0.0
 		for item in items:
@@ -10446,6 +10816,8 @@ def _guess_item_rows(text: str):
 			"qty": qty,
 			"rate": rate,
 			"hsn": hsn,
+			"size": _extract_item_size(desc),
+			"amount": flt(flt(qty) * flt(rate), 2),
 		})
 
 	return rows
@@ -10677,6 +11049,11 @@ def _parse_one_bill(text: str) -> dict:
 				"qty": row["qty"],
 				"rate": row["rate"],
 				"hsn": row.get("hsn"),
+				# 2026-09-04: surfaced as their own fields so the review
+				# grid can show the size the bill printed and the line
+				# total, instead of leaving both buried in the description.
+				"size": row.get("size"),
+				"amount": row.get("amount"),
 				"uom": row.get("uom"),
 				"conversion_factor": _conversion_factor_for(row.get("item_code"), row.get("uom"), row.get("conversion_factor")),
 			}

@@ -362,97 +362,117 @@ def run_test_suite():
 	# ------------------------------------------------------------
 	# 8. AUTOMATIC TEARDOWN & CLEANUP
 	# ------------------------------------------------------------
+	# The suite only ever removes documents tied to ITS OWN fixtures, named
+	# exactly. The previous version discovered them with LIKE "%Test%" and
+	# deleted ledger rows by voucher_no alone. Both are unsafe on a live
+	# shop DB:
+	#   * a real item, customer or supplier whose name merely CONTAINS
+	#     "test" would be deleted outright, along with its stock ledger,
+	#     Bin and Item Price rows;
+	#   * document names are REUSED after a delete, so "DELETE FROM
+	#     `tabGL Entry` WHERE voucher_no = ..." can wipe the ledger of an
+	#     older, unrelated document that once held the same name. Verified
+	#     2026-09-04: the rows carrying voucher_no MAT-STE-00458 belonged to
+	#     AP-ACRYLIC-PUTTY-5KG and two other real items, not to the test
+	#     item at all.
+	# Every deletion below is therefore keyed to an exact fixture name, and
+	# ledger rows are removed only when the row itself belongs to a fixture
+	# item or fixture party.
+	TEST_ITEMS = ["TEST-PIPE-1IN", "TEST-PVC-PIPE-1-INCH"]
+	TEST_CUSTOMERS = ["Test Ramesh Khata"]
+	TEST_SUPPLIERS = ["Test Tata Steel Supplier"]
+	TEST_PARTIES = TEST_CUSTOMERS + TEST_SUPPLIERS
+
+	def _drop_doc(doctype, name, ledger_tables=()):
+		"""Delete one fixture document and the ledger rows it actually
+		posted.
+
+		Rows are matched on voucher_type + voucher_no AND created no earlier
+		than the document itself. The timestamp is the load-bearing part:
+		document names are REUSED after a delete, so an older, unrelated
+		document may have left rows carrying this same voucher_no and type.
+		Those rows predate this document and are therefore left alone.
+		Filtering on party/item instead does NOT work — a Sales Invoice's
+		income and stock GL rows carry no party at all, so they would be
+		skipped, leaving the books unbalanced (verified 2026-09-04: doing
+		exactly that stranded 17 GL rows and put Cash & Bank out by Rs 400).
+		"""
+		try:
+			created = frappe.db.get_value(doctype, name, "creation")
+			for t in ledger_tables:
+				if created:
+					frappe.db.sql(
+						f"""DELETE FROM `tab{t}` WHERE voucher_type = %s
+						    AND voucher_no = %s AND creation >= %s""",
+						(doctype, name, created))
+			frappe.db.sql(f"UPDATE `tab{doctype}` SET docstatus = 2 WHERE name = %s", (name,))
+			frappe.delete_doc(doctype, name, force=1, ignore_permissions=True)
+		except Exception:
+			pass
+
 	try:
-		# Clean test sales invoices
-		sinvs = frappe.db.sql_list("SELECT name FROM `tabSales Invoice` WHERE customer LIKE %s", ("%Test%",))
-		for inv_name in sinvs:
-			try:
-				frappe.db.sql("DELETE FROM `tabGL Entry` WHERE voucher_no = %s", (inv_name,))
-				frappe.db.sql("DELETE FROM `tabStock Ledger Entry` WHERE voucher_no = %s", (inv_name,))
-				frappe.db.sql("DELETE FROM `tabPayment Ledger Entry` WHERE voucher_no = %s", (inv_name,))
-				frappe.db.sql("DELETE FROM `tabSales Invoice Item` WHERE parent = %s", (inv_name,))
-				frappe.db.sql("DELETE FROM `tabSales Invoice Payment` WHERE parent = %s", (inv_name,))
-				frappe.db.sql("UPDATE `tabSales Invoice` SET docstatus = 2 WHERE name = %s", (inv_name,))
-				frappe.delete_doc("Sales Invoice", inv_name, force=1, ignore_permissions=True)
-			except Exception:
-				pass
+		for inv_name in frappe.db.sql_list(
+			"SELECT name FROM `tabSales Invoice` WHERE customer IN %s", (tuple(TEST_CUSTOMERS),)):
+			_drop_doc("Sales Invoice", inv_name,
+				("GL Entry", "Stock Ledger Entry", "Payment Ledger Entry"))
 
-		# Clean test delivery notes
-		dns = frappe.db.sql_list("SELECT name FROM `tabDelivery Note` WHERE customer LIKE %s", ("%Test%",))
-		for dn_name in dns:
-			try:
-				frappe.db.sql("DELETE FROM `tabStock Ledger Entry` WHERE voucher_no = %s", (dn_name,))
-				frappe.db.sql("DELETE FROM `tabDelivery Note Item` WHERE parent = %s", (dn_name,))
-				frappe.db.sql("UPDATE `tabDelivery Note` SET docstatus = 2 WHERE name = %s", (dn_name,))
-				frappe.delete_doc("Delivery Note", dn_name, force=1, ignore_permissions=True)
-			except Exception:
-				pass
+		for dn_name in frappe.db.sql_list(
+			"SELECT name FROM `tabDelivery Note` WHERE customer IN %s", (tuple(TEST_CUSTOMERS),)):
+			# A Delivery Note posts GL (COGS / Stock In Hand) as well as SLE.
+			_drop_doc("Delivery Note", dn_name, ("GL Entry", "Stock Ledger Entry"))
 
-		# Clean test quotations
-		qtns = frappe.db.sql_list("SELECT name FROM `tabQuotation` WHERE party_name LIKE %s", ("%Test%",))
-		for qtn_name in qtns:
-			try:
-				frappe.db.sql("DELETE FROM `tabQuotation Item` WHERE parent = %s", (qtn_name,))
-				frappe.db.sql("UPDATE `tabQuotation` SET docstatus = 2 WHERE name = %s", (qtn_name,))
-				frappe.delete_doc("Quotation", qtn_name, force=1, ignore_permissions=True)
-			except Exception:
-				pass
+		for qtn_name in frappe.db.sql_list(
+			"SELECT name FROM `tabQuotation` WHERE party_name IN %s", (tuple(TEST_CUSTOMERS),)):
+			_drop_doc("Quotation", qtn_name)
 
-		# Clean test purchase invoices
-		pinvs = frappe.db.sql_list("SELECT name FROM `tabPurchase Invoice` WHERE supplier LIKE %s", ("%Test%",))
-		for pinv_name in pinvs:
-			try:
-				frappe.db.sql("DELETE FROM `tabGL Entry` WHERE voucher_no = %s", (pinv_name,))
-				frappe.db.sql("DELETE FROM `tabStock Ledger Entry` WHERE voucher_no = %s", (pinv_name,))
-				frappe.db.sql("DELETE FROM `tabPayment Ledger Entry` WHERE voucher_no = %s", (pinv_name,))
-				frappe.db.sql("DELETE FROM `tabPurchase Invoice Item` WHERE parent = %s", (pinv_name,))
-				frappe.db.sql("UPDATE `tabPurchase Invoice` SET docstatus = 2 WHERE name = %s", (pinv_name,))
-				frappe.delete_doc("Purchase Invoice", pinv_name, force=1, ignore_permissions=True)
-			except Exception:
-				pass
+		for pinv_name in frappe.db.sql_list(
+			"SELECT name FROM `tabPurchase Invoice` WHERE supplier IN %s", (tuple(TEST_SUPPLIERS),)):
+			_drop_doc("Purchase Invoice", pinv_name,
+				("GL Entry", "Stock Ledger Entry", "Payment Ledger Entry"))
 
-		# Clean test payment entries
-		payments = frappe.db.sql_list("SELECT name FROM `tabPayment Entry` WHERE party LIKE %s", ("%Test%",))
-		for pay_name in payments:
-			try:
-				frappe.db.sql("DELETE FROM `tabGL Entry` WHERE voucher_no = %s", (pay_name,))
-				frappe.db.sql("DELETE FROM `tabPayment Ledger Entry` WHERE voucher_no = %s", (pay_name,))
-				frappe.db.sql("UPDATE `tabPayment Entry` SET docstatus = 2 WHERE name = %s", (pay_name,))
-				frappe.delete_doc("Payment Entry", pay_name, force=1, ignore_permissions=True)
-			except Exception:
-				pass
+		for pay_name in frappe.db.sql_list(
+			"SELECT name FROM `tabPayment Entry` WHERE party IN %s", (tuple(TEST_PARTIES),)):
+			_drop_doc("Payment Entry", pay_name, ("GL Entry", "Payment Ledger Entry"))
 
-		# Clean dynamic links & contacts
-		frappe.db.sql("DELETE FROM `tabDynamic Link` WHERE link_name LIKE %s", ("%Test%",))
-		contacts = frappe.db.sql_list("SELECT name FROM `tabContact` WHERE name LIKE %s", ("%Test%",))
-		for c_name in contacts:
+		# Stock Entries created for the fixture item (quick_create_item posts
+		# an opening Material Receipt). These must go BEFORE the Item itself:
+		# cancelling a Stock Entry loads its Item, so deleting the Item first
+		# leaves a submitted entry that can never be cancelled
+		# ("'NoneType' object has no attribute 'has_serial_no'", 2026-09-04).
+		for se_name in frappe.db.sql_list(
+			"""SELECT DISTINCT parent FROM `tabStock Entry Detail` WHERE item_code IN %s""",
+			(tuple(TEST_ITEMS),)):
+			# Same for a Stock Entry: Stock Adjustment / Stock In Hand GL rows.
+			_drop_doc("Stock Entry", se_name, ("GL Entry", "Stock Ledger Entry"))
+
+		# Look the contacts up FIRST: deleting the Dynamic Links before
+		# reading them leaves nothing to find, and the contacts survive.
+		fixture_contacts = frappe.db.sql_list(
+			"""SELECT DISTINCT parent FROM `tabDynamic Link`
+			   WHERE parenttype='Contact' AND link_name IN %s""", (tuple(TEST_PARTIES),))
+		frappe.db.sql("DELETE FROM `tabDynamic Link` WHERE link_name IN %s", (tuple(TEST_PARTIES),))
+		for c_name in fixture_contacts:
 			try:
 				frappe.delete_doc("Contact", c_name, force=1, ignore_permissions=True)
 			except Exception:
 				pass
 
-		# Clean test parties
-		customers = frappe.db.sql_list("SELECT name FROM `tabCustomer` WHERE name LIKE %s OR customer_name LIKE %s", ("%Test%", "%Test%"))
-		for c in customers:
-			frappe.db.sql("DELETE FROM `tabGL Entry` WHERE party = %s", (c,))
-			frappe.db.sql("DELETE FROM `tabPayment Ledger Entry` WHERE party = %s", (c,))
-			try:
-				frappe.delete_doc("Customer", c, force=1, ignore_permissions=True)
-			except Exception:
-				pass
+		for party_dt, names in (("Customer", TEST_CUSTOMERS), ("Supplier", TEST_SUPPLIERS)):
+			for pname in names:
+				if not frappe.db.exists(party_dt, pname):
+					continue
+				frappe.db.sql("DELETE FROM `tabGL Entry` WHERE party = %s AND party_type = %s",
+					(pname, party_dt))
+				frappe.db.sql("DELETE FROM `tabPayment Ledger Entry` WHERE party = %s AND party_type = %s",
+					(pname, party_dt))
+				try:
+					frappe.delete_doc(party_dt, pname, force=1, ignore_permissions=True)
+				except Exception:
+					pass
 
-		suppliers = frappe.db.sql_list("SELECT name FROM `tabSupplier` WHERE name LIKE %s OR supplier_name LIKE %s", ("%Test%", "%Test%"))
-		for s in suppliers:
-			frappe.db.sql("DELETE FROM `tabGL Entry` WHERE party = %s", (s,))
-			frappe.db.sql("DELETE FROM `tabPayment Ledger Entry` WHERE party = %s", (s,))
-			try:
-				frappe.delete_doc("Supplier", s, force=1, ignore_permissions=True)
-			except Exception:
-				pass
-
-		# Clean test items
-		test_items = frappe.db.sql_list("SELECT name FROM `tabItem` WHERE name LIKE %s OR item_name LIKE %s", ("%TEST%", "%Test%"))
-		for it in test_items:
+		for it in TEST_ITEMS:
+			if not frappe.db.exists("Item", it):
+				continue
 			frappe.db.sql("DELETE FROM `tabStock Ledger Entry` WHERE item_code = %s", (it,))
 			frappe.db.sql("DELETE FROM `tabBin` WHERE item_code = %s", (it,))
 			frappe.db.sql("DELETE FROM `tabItem Price` WHERE item_code = %s", (it,))

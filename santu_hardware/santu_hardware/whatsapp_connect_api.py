@@ -238,6 +238,36 @@ def send_customer_khata(customer: str, from_date: str = None, to_date: str = Non
 
 
 @frappe.whitelist()
+def send_supplier_khata(supplier: str, from_date: str = None, to_date: str = None, custom_message: str = None):
+	"""The same statement, for a mahajan (2026-09-04). Same PDF, same
+	provider and logging path as the customer version — a supplier's khata
+	simply had no way out of the app before this."""
+	_require_access()
+	from santu_hardware.santu_hardware.api import _supplier_khata_pdf_bytes
+	from santu_hardware.santu_hardware.transaction_message_service import get_party_phone
+
+	phone = get_party_phone("Supplier", supplier)
+	if not phone:
+		frappe.throw("Is mahajan ka WhatsApp number nahi mila. Parties screen mein number add karo.")
+	pdf_bytes, filename, data = _supplier_khata_pdf_bytes(supplier, from_date, to_date)
+	body = custom_message or (
+		f"Khata Statement — {data['supplier_name']}\n"
+		f"{data['from_date']} to {data['to_date']}\n"
+		f"Opening: Rs. {data['opening_balance']:.2f}  |  Closing: Rs. {data['closing_balance']:.2f}\n\n"
+		f"Santu Hardware"
+	)
+	return send_chat_message(
+		phone,
+		body,
+		party_type="Supplier",
+		party_name=supplier,
+		message_type="Statement",
+		attachment_bytes=pdf_bytes,
+		attachment_filename=filename,
+	)
+
+
+@frappe.whitelist()
 def get_reminder_preview(party_type: str, party_name: str):
 	_require_access()
 	return {"message": get_payment_reminder_message(party_type, party_name)}

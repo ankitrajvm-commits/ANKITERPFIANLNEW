@@ -815,3 +815,64 @@
 .santu-parties-more-menu .santu-parties-more-item:hover { background: #f8fafc; opacity: 1; }
 .santu-parties-more-menu .santu-parties-more-danger { color: #ef4444; }
 .santu-parties-more-menu .santu-parties-more-danger:hover { background: #fef2f2; }
+
+/* "Kab kitna dena/lena hai" — the payment schedule above the running
+   khata (2026-09-04 request). Deliberately a distinct block, not another
+   khata row: it answers a different question (what is still to come, by
+   when) than the ledger below it (what already happened). */
+.santu-khata-due {
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	margin-bottom: 14px;
+	overflow: hidden;
+	background: #fff;
+}
+.santu-khata-due-head {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 8px 12px;
+	background: #f8fafc;
+	border-bottom: 1px solid #e2e8f0;
+	font-weight: 600;
+	font-size: 13px;
+}
+.santu-khata-due-head b {
+	font-size: 15px;
+}
+.santu-khata-due-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 12px;
+}
+.santu-khata-due-table th,
+.santu-khata-due-table td {
+	padding: 6px 12px;
+	border-bottom: 1px solid #f1f5f9;
+	text-align: left;
+}
+.santu-khata-due-table th {
+	color: #64748b;
+	font-weight: 600;
+}
+.santu-khata-due-table .santu-khata-num {
+	text-align: right;
+}
+.santu-khata-due-table tbody tr:last-child td {
+	border-bottom: 0;
+}
+.santu-khata-due-late td {
+	background: #fef2f2;
+}
+.santu-khata-due-tag {
+	color: #b91c1c;
+	font-weight: 600;
+	font-size: 11px;
+}
+.santu-khata-due-foot {
+	padding: 7px 12px;
+	border-top: 1px solid #e2e8f0;
+	background: #fef2f2;
+	color: #b91c1c;
+	font-size: 12px;
+}

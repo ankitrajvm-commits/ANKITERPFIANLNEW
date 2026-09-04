@@ -162,8 +162,16 @@ const santu_purchase_pos = {
 				tab.items.push({
 					id: santu_purchase_invoice.utils.uid(),
 					item_code: r.item_code,
-					item_name: r.item_name,
-					item_name: row.item_name || r.item_name || r.item_code,
+					// `description` is what the bill itself printed, and for a row
+					// that matched nothing in the catalog it is the only name there
+					// is (2026-09-04) — without it such a row rendered blank, throwing
+					// away the one thing the PDF was read for. A matched row still
+					// prefers the catalog's own name. (The duplicate `item_name` key
+					// this replaces was dead — the second silently won.)
+					item_name: row.item_name || r.item_name || r.description || r.item_code,
+					// Size as the bill printed it ("24X200ML", "5KG"), carried as
+					// its own field rather than left buried inside the name.
+					size: r.size || null,
 					qty: r.qty,
 					// Box for a pack-sized item read off a bill (2026-08-17:
 					// "200ml ka 24 pcs, same for all") — this is what makes
@@ -659,6 +667,10 @@ const santu_purchase_pos = {
 							<button type="button" class="santu-si2-item-edit" title="${__("Naam, category, HSN edit karein")}">✎</button>
 						</div>
 						<div class="santu-si2-item-sub">
+							<!-- Size exactly as the supplier's bill printed it (2026-09-04
+							     direct request: "size kya hia, qty kya hia md all"). Shown
+							     only when the PDF actually carried one — never guessed. -->
+							${row.size ? `<span class="santu-si2-item-size">${frappe.utils.escape_html(row.size)}</span>` : ""}
 							${row.available_qty != null ? `<span class="${row.available_qty <= 0 ? "santu-si2-stock-out" : row.available_qty <= 5 ? "santu-si2-stock-low" : "santu-si2-stock-ok"}">In Stock: ${row.available_qty} ${frappe.utils.escape_html(santu_uom.abbr(row.uom) || "")}</span>` : ""}
 							<!-- Per-row, not just the page-wide scanner: an item read
 							     off a PDF bill or picked from search very often has no
@@ -1562,7 +1574,11 @@ const santu_purchase_pos = {
 				item_name: r.item_name,
 				qty: r.qty,
 				rate: r.rate,
-				uom: r.uom,
+				// Falls back to the item's own stock unit if the row has none —
+				// only a draft saved while the unit dropdown still offered "None"
+				// can be, and without it the screen shows raw ERPNext jargon
+				// ("Row #1: Value missing for: UOM") with no way to fix it.
+				uom: r.uom || r.stock_uom,
 				discount_percentage: r.discount_percentage || 0,
 				discount_amount: r.discount_amount || 0,
 				item_tax_template: r.item_tax_template || null,

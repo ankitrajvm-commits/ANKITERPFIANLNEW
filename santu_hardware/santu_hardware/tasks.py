@@ -38,6 +38,36 @@ def run_auto_backup_check():
 	except Exception:
 		frappe.log_error(title="Auto backup failed", message=frappe.get_traceback())
 
+	_push_backup_off_site()
+
+
+def _push_backup_off_site():
+	"""Send the backup to Google Drive as well, once it is connected.
+
+	Every backup this shop has ever taken sits on the same Mac as the
+	database it is protecting (location "Local Server"). A dead disk or a
+	stolen machine takes the shop's whole ledger with it, and the hourly
+	job never touched the Drive integration even though the code for it was
+	already here (2026-09-04).
+
+	Silent no-op until someone finishes the Google sign-in — that step needs
+	the shop's own Google account and cannot be automated. Once the refresh
+	token exists this starts working on the next hourly run with nothing
+	else to switch on. Never allowed to break the local backup: the upload
+	is best-effort and its failure is logged, not raised.
+	"""
+	try:
+		gd = frappe.get_single("Google Drive")
+		if not frappe.utils.cint(gd.enable):
+			return
+		if not gd.get_password("refresh_token", raise_exception=False):
+			return
+		from frappe.integrations.doctype.google_drive.google_drive import take_backup
+
+		take_backup()
+	except Exception:
+		frappe.log_error(title="Off-site (Google Drive) backup failed", message=frappe.get_traceback())
+
 
 # The counter runs roughly 8am–10pm. A snapshot outside those hours would
 # only duplicate the nightly full backup.

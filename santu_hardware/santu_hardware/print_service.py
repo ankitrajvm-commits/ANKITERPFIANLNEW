@@ -797,9 +797,13 @@ def escpos_khata_bytes(customer: str, from_date: str = None, to_date: str = None
 	return b"".join(lines)
 
 
-@frappe.whitelist()
-def print_customer_khata(customer: str, from_date: str = None, to_date: str = None):
-	"""Print Customer Khata through the thermal ladder: CUPS -> USB -> Screen."""
+# Not whitelisted: internal only. The two public wrappers below are the
+# entry points, so a browser cannot pass an arbitrary party_type in.
+def _print_party_khata(party_type: str, customer: str, from_date: str = None, to_date: str = None):
+	"""Print a party's khata through the thermal ladder: CUPS -> USB -> Screen.
+
+	Shared by customers and mahajans (2026-09-04) — the ladder, the job
+	logging and the fallbacks are identical, only the party side differs."""
 	import os
 	import subprocess
 	import tempfile
@@ -807,14 +811,14 @@ def print_customer_khata(customer: str, from_date: str = None, to_date: str = No
 
 	job = None
 	try:
-		job = create_print_job("Customer", customer)
+		job = create_print_job(party_type, customer)
 	except Exception:
 		job = None
 
 	# Rung 1: CUPS (Native Thermal Printer Queue)
 	try:
 		queue = _cups_queue_name()
-		pdf = _thermal_khata_pdf_bytes(customer, from_date, to_date)
+		pdf = _thermal_khata_pdf_bytes(customer, from_date, to_date, party_type=party_type)
 		if pdf and len(pdf) > 500:
 			path = None
 			try:
@@ -868,3 +872,15 @@ def print_customer_khata(customer: str, from_date: str = None, to_date: str = No
 		record_print_attempt(job, "PDF", 1)
 	return {"ok": True, "method": "PDF"}
 
+
+
+@frappe.whitelist()
+def print_customer_khata(customer: str, from_date: str = None, to_date: str = None):
+	"""Print a customer's khata on the thermal roll."""
+	return _print_party_khata("Customer", customer, from_date, to_date)
+
+
+@frappe.whitelist()
+def print_supplier_khata(supplier: str, from_date: str = None, to_date: str = None):
+	"""Print a mahajan's khata on the thermal roll."""
+	return _print_party_khata("Supplier", supplier, from_date, to_date)

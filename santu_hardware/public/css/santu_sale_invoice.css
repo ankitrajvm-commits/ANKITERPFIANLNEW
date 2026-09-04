@@ -234,27 +234,78 @@ body[data-route="santu-sale-invoice"] .page-content {
 	flex-shrink: 0;
 	user-select: none;
 }
-/* The toolbar sits on a dark slate bar and these icons ship as mid-grey, so
-   lift them rather than shipping a second recoloured copy of each file. */
+/* These icons ship as mid-grey. On the DARK tab bar they need lifting; on
+   the light bar they do not — see the two-bar note on .santu-si2-icon-btn
+   just below. */
 .santu-si2-ico.is-on-dark {
 	filter: brightness(1.9);
 }
 
+/* Toolbar buttons: cost-price lock, calculator, sale return.
+
+   These live in two different tab bars, and that is the whole problem this
+   block solves. Four screens (Purchase, Sales Order, Purchase Order,
+   Delivery Challan) use .santu-si2-tabbar, which is dark slate #1f2937 —
+   the base rule below is for those. The other four (Billing, Estimate, and
+   both Returns) use .santu-bill-tabbar, which is light #f1f5f9; they only
+   ever inherited the dark styling, so Ankit saw three heavy near-black
+   blocks floating on a pale strip (2026-09-04).
+
+   Rather than one compromise that looks mediocre on both, the base stays
+   dark-bar and the light bar gets a proper override. Verified against the
+   live background of all eight screens, not assumed. */
 .santu-si2-icon-btn {
-	width: 30px;
-	height: 30px;
+	width: 32px;
+	height: 32px;
 	border: 1px solid #4b5563;
 	background: #374151;
 	color: #e5e7eb;
-	font-size: 16px;
+	font-size: 15px;
+	line-height: 1;
 	cursor: pointer;
-	border-radius: 8px;
+	border-radius: 9px;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
+	transition: background 0.12s ease, border-color 0.12s ease;
 }
 .santu-si2-icon-btn:hover {
 	background: #4b5563;
+}
+.santu-si2-icon-btn:focus-visible {
+	outline: 2px solid #60a5fa;
+	outline-offset: 1px;
+}
+
+/* --- the same buttons on the light tab bar --- */
+.santu-bill-tabbar .santu-si2-icon-btn {
+	border-color: #d8dee9;
+	background: #fff;
+	color: #475569;
+}
+.santu-bill-tabbar .santu-si2-icon-btn:hover {
+	background: #f1f5f9;
+	border-color: #b9c2d0;
+}
+.santu-bill-tabbar .santu-si2-icon-btn:active {
+	background: #e2e8f0;
+}
+.santu-bill-tabbar .santu-si2-icon-btn:focus-visible {
+	outline-color: #2563eb;
+}
+/* Cancels the dark-bar lift and darkens the artwork instead, so all three
+   glyphs carry the same weight against white. */
+.santu-bill-tabbar .santu-si2-icon-btn:not(.is-on) .santu-si2-ico,
+.santu-bill-tabbar .santu-si2-icon-btn:not(.is-on) .santu-si2-ico.is-on-dark {
+	filter: brightness(0.55);
+}
+/* :not(.is-on) on both — the cost-price lock turns solid blue when cost is
+   showing and its icon is inverted to white further down this file. Without
+   the guard, hovering the switched-on lock darkened that white icon back
+   into the blue and it vanished. */
+.santu-bill-tabbar .santu-si2-icon-btn:not(.is-on):hover .santu-si2-ico,
+.santu-bill-tabbar .santu-si2-icon-btn:not(.is-on):hover .santu-si2-ico.is-on-dark {
+	filter: brightness(0.35);
 }
 
 /* ---------- Header (Sale | Credit / Cash) ---------- */
@@ -785,6 +836,18 @@ body[data-route="santu-sale-invoice"] .page-content {
 	gap: 10px;
 	font-size: 12px;
 	margin-top: 2px;
+}
+/* Pack/size read straight off an uploaded supplier bill ("24X200ML").
+   Deliberately quiet — it sits beside the stock figure as a fact from the
+   PDF, not as another thing competing for attention on the row. */
+.santu-si2-item-size {
+	color: #475569;
+	background: #f1f5f9;
+	border: 1px solid #e2e8f0;
+	border-radius: 4px;
+	padding: 0 5px;
+	font-weight: 600;
+	white-space: nowrap;
 }
 .santu-si2-stock-ok {
 	color: #16a34a;

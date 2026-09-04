@@ -137,17 +137,26 @@ window.santu_uom = (function () {
 			// table column without overlapping the native select arrow; the
 			// option's real `value` stays the full uom name Frappe expects
 			// (2026-09-03: "unit me no jo hai wo overlap kar raha").
-			const none_html = opts.no_none ? "" : `<option value="">${__("None")}</option>`;
+			// No "None" option. Every one of these documents (Sales Invoice,
+			// Quotation, Delivery Note, Purchase Invoice, the returns...)
+			// REQUIRES a UOM on every row, so picking "None" could only ever
+			// produce a row that refuses to save -- and what the counter saw
+			// was raw ERPNext jargon: "Sales Invoice Item Row #1: Value
+			// missing for: UOM. Could not save bill." (2026-09-04). The
+			// option was shown on all eight screens; the `no_none` flag that
+			// was supposed to suppress it was never passed by any caller.
 			$select.html(
-				none_html +
-					final_options
+				final_options
 						.map(
 							(o) =>
 								`<option value="${frappe.utils.escape_html(o.uom)}" ${o.uom === current_uom ? "selected" : ""}>${frappe.utils.escape_html(abbr(o.uom))}</option>`
 						)
 						.join("") + (opts.extra_html || "")
 			);
-			$select.val(current_uom || "");
+			// A row whose unit is somehow blank (an old saved draft from when
+			// "None" was selectable) falls back to the first real unit rather
+			// than showing an empty box that cannot be saved.
+			$select.val(current_uom || (final_options[0] && final_options[0].uom) || "");
 			if (opts.on_ready) opts.on_ready(options);
 		});
 		return $select;

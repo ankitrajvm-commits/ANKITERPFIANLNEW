@@ -553,7 +553,15 @@ santu_utilities.views = {
 				if (!selected.length) return;
 				frappe.confirm(`Import ${selected.length} items?`, async () => {
 					const r = await santu_utilities.api.importItemsValid(selected);
-					frappe.msgprint(`Imported ${r.created_count} items. ${r.failed.length ? r.failed.length + " failed." : ""}`);
+					// Says both halves: a re-imported price list mostly UPDATES
+					// existing items rather than adding new ones, and the shop
+					// needs to see that it refreshed rates instead of silently
+					// doing nothing.
+					const _parts = [];
+					if (r.created_count) _parts.push(`${r.created_count} naye item jude`);
+					if (r.updated_count) _parts.push(`${r.updated_count} item ke rate update hue`);
+					if (r.failed.length) _parts.push(`${r.failed.length} nahi ho paye`);
+					frappe.msgprint(_parts.length ? _parts.join(", ") + "." : "Kuch import nahi hua.");
 					state.step = "upload";
 					state.method = null;
 					onBack();

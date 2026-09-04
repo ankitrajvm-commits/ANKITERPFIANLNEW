@@ -185,8 +185,17 @@
 	cursor: pointer;
 	transition: background 0.15s;
 }
+/* Translucent, NOT an opaque near-white.
+   These cells (item name, rate, discount) sit inside a row whose colour is
+   data-driven — pale pink for UPVC, yellow for CPVC, blue when selected. An
+   opaque #f8fafc hover painted straight over that tint, so moving the mouse
+   onto the item name punched a white hole through the middle of a pink row
+   while the cells either side stayed pink (Ankit, 2026-09-04). A translucent
+   darkening composites over whatever is underneath, so the row keeps its
+   colour and the hover still reads on a plain white row too.
+   Rule: never give a cell inside these rows an opaque background. */
 .santu-bill-editable:hover {
-	background: #f8fafc;
+	background: rgba(15, 23, 42, 0.06);
 }
 
 .santu-bill-inline-input {
@@ -479,6 +488,12 @@
 	font-weight: 500;
 	color: #64748b;
 	margin-top: 4px;
+}
+/* Same slot, but this is a blocker not an FYI: without a party the bill
+   cannot be saved at all, so it reads as a warning rather than a note. */
+.santu-bill-baaki-note.is-warning {
+	color: #b91c1c;
+	font-weight: 600;
 }
 
 .santu-bill-tabbar .santu-si2-toolbar {

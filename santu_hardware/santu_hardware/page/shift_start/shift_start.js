@@ -5,6 +5,26 @@ frappe.pages["shift-start"].on_page_load = function (wrapper) {
 		single_column: true,
 	});
 	$(page.wrapper).find(".page-head .page-actions").hide();
+	this.santu_page = page;
+	santu_shift_start_load(page);
+};
+
+// Every visit, not just the first. on_page_load fires once, when Frappe
+// first builds the page; on a later visit the container is already in the
+// DOM and only on_page_show runs. Without this, coming back to Who's
+// Billing? showed a completely blank screen — worst of all in THIS shop,
+// where no Staff Member is configured, so the very first visit redirects
+// straight to billing and never renders the grid, leaving the page empty
+// for every visit after that (2026-09-04, found by opening all 36 screens
+// twice each). santu-sale-invoice already pairs both hooks the same way.
+frappe.pages["shift-start"].on_page_show = function () {
+	if (this.santu_page) santu_shift_start_load(this.santu_page);
+};
+
+function santu_shift_start_load(page) {
+	// Re-rendered from scratch on each visit, so revisiting never stacks a
+	// second grid of the same staff under the first.
+	$(page.body).empty();
 
 	frappe.db
 		.get_list("Staff Member", {
@@ -23,7 +43,7 @@ frappe.pages["shift-start"].on_page_load = function (wrapper) {
 			}
 			render_shift_start_grid(page, staff);
 		});
-};
+}
 
 function render_shift_start_grid(page, staff) {
 	const $container = $(`<div class="santu-shift-start-grid"></div>`).appendTo(page.body);

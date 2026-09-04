@@ -144,7 +144,11 @@ def _parse_tier1_gst_rows(file_url: str) -> List[Dict[str, Any]]:
 				"gst_hsn_code": hsn,
 				"stock_uom": "Nos",
 				"valuation_rate": rate,
-				"standard_rate": rate,
+				# A GST purchase invoice prints what the shop PAID. That is a
+				# cost, not a selling price — filling standard_rate with it
+				# made every imported item sell at cost (2026-09-04). Left
+				# empty so the shop sets its own rate.
+				"standard_rate": None,
 				"tax_rate": None,
 				"opening_stock": qty,
 			})
@@ -247,7 +251,9 @@ def _parse_tier2_pdfplumber_tables(file_path: str) -> List[Dict[str, Any]]:
 								"gst_hsn_code": _guess_hsn(name, hsn),
 								"stock_uom": _normalize_uom(uom),
 								"valuation_rate": final_rate,
-								"standard_rate": mrp or final_rate,
+								# Same rule: only a genuine MRP column becomes the
+								# selling price; the invoice's own rate never does.
+								"standard_rate": mrp or None,
 								"tax_rate": None,
 								"opening_stock": qty,
 							})
