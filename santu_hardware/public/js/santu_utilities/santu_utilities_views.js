@@ -172,6 +172,50 @@ santu_utilities.views = {
 		const $form = $wrap.find(".santu-shop-profile");
 		const read = (name) => ($form.find(`[name="${name}"]`).val() || "").trim();
 
+		// Shared by the Save button and the logo upload below, so a logo
+		// persists the moment it is picked rather than needing a second,
+		// separate Save click that nothing on screen says is still required.
+		//
+		// Before this, uploading a logo only swapped the on-screen preview —
+		// the picture behind "Add Logo" — while the actual saved value in
+		// the database never changed. Refreshing the page re-read that
+		// unchanged database value and the new logo appeared to vanish
+		// (2026-09-04: "logo upload nh ho rha... refresh krne se cancel ho
+		// jaa raha hai"). It hadn't cancelled; it had simply never been
+		// saved, and nothing on screen said a Save was still needed.
+		function save_profile(overrides = {}) {
+			const company_name = read("company_name");
+			if (!company_name) {
+				frappe.show_alert({ message: "Business Name is required", indicator: "red" });
+				return Promise.reject();
+			}
+			const payload = {
+				company: p.name,
+				company_name,
+				phone_no: read("phone_no"),
+				email: read("email"),
+				gstin: read("gstin").toUpperCase(),
+				website: read("website"),
+				address: read("address"),
+				city: read("city"),
+				state: read("state"),
+				pincode: read("pincode"),
+				company_logo: read("company_logo"),
+				...overrides,
+			};
+			frappe.dom.freeze(__("Saving…"));
+			return frappe
+				.xcall("santu_hardware.santu_hardware.api.update_shop_profile", payload)
+				.then(() => {
+					frappe.dom.unfreeze();
+					frappe.show_alert({ message: "Saved", indicator: "green" });
+				})
+				.catch((e) => {
+					frappe.dom.unfreeze();
+					throw e;
+				});
+		}
+
 		$form.find(".santu-shop-logo-btn").on("click", () => {
 			new frappe.ui.FileUploader({
 				allow_multiple: false,
@@ -179,36 +223,19 @@ santu_utilities.views = {
 				on_success(file) {
 					$form.find("[name=company_logo]").val(file.file_url);
 					$form.find(".santu-shop-logo").html(`<img class="santu-shop-logo-img" src="${esc(file.file_url)}" alt="">`);
+					// company_logo wasn't in the form's own reactive state
+					// (read() pulls it straight off the hidden input, which is
+					// already updated above), so no extra plumbing is needed —
+					// just save right away.
+					save_profile().catch(() => {
+						frappe.msgprint(__("Logo select ho gaya par save nahi ho paya. Save button dabaiye."));
+					});
 				},
 			});
 		});
 
 		$form.find(".santu-shop-save").on("click", () => {
-			const company_name = read("company_name");
-			if (!company_name) {
-				frappe.show_alert({ message: "Business Name is required", indicator: "red" });
-				return;
-			}
-			frappe.dom.freeze(__("Saving…"));
-			frappe
-				.xcall("santu_hardware.santu_hardware.api.update_shop_profile", {
-					company: p.name,
-					company_name,
-					phone_no: read("phone_no"),
-					email: read("email"),
-					gstin: read("gstin").toUpperCase(),
-					website: read("website"),
-					address: read("address"),
-					city: read("city"),
-					state: read("state"),
-					pincode: read("pincode"),
-					company_logo: read("company_logo"),
-				})
-				.then(() => {
-					frappe.dom.unfreeze();
-					frappe.show_alert({ message: "Saved", indicator: "green" });
-				})
-				.catch(() => frappe.dom.unfreeze());
+			save_profile().catch(() => {});
 		});
 	},
 

@@ -12090,16 +12090,38 @@ def _company_address_fields(company: str) -> dict:
 
 
 def _save_company_address(company: str, data: dict):
+	"""Update the shop's one Billing Address, or create it the first time.
+
+	A blank/omitted field means "leave this alone", not "reset it" — an
+	existing address is never allowed to fall back to the hardcoded
+	defaults (company name, "Patna", "Bihar"). Those defaults exist only
+	to seed a brand-new address that has nothing to fall back to yet.
+	Confirmed live 2026-09-04: a diagnostic call that passed city/state/
+	pincode as None silently overwrote a real address ("Main Road
+	Ishuwapur", pincode 841411) down to "Patna" with no pincode — every
+	field defaulted independently, with nothing to say the request hadn't
+	actually meant to touch them.
+	"""
 	name = _company_address_name(company)
+	existing = frappe.get_doc("Address", name) if name and frappe.db.exists("Address", name) else None
+
+	def field(key, addr_field, default):
+		v = (data.get(key) or "").strip()
+		if v:
+			return v
+		if existing is not None:
+			return existing.get(addr_field) or default
+		return default
+
 	values = {
-		"address_line1": (data.get("address") or "").strip() or company,
-		"address_line2": (data.get("address_line2") or "").strip() or None,
-		"city": (data.get("city") or "").strip() or "Patna",
-		"state": (data.get("state") or "").strip() or "Bihar",
-		"pincode": (data.get("pincode") or "").strip() or None,
+		"address_line1": field("address", "address_line1", company),
+		"address_line2": field("address_line2", "address_line2", None),
+		"city": field("city", "city", "Patna"),
+		"state": field("state", "state", "Bihar"),
+		"pincode": field("pincode", "pincode", None),
 		"country": "India",
 	}
-	if name and frappe.db.exists("Address", name):
+	if existing is not None:
 		for k, v in values.items():
 			frappe.db.set_value("Address", name, k, v)
 		return name
