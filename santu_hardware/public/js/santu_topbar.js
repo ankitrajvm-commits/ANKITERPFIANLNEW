@@ -351,7 +351,11 @@
 				},
 			},
 			{ label: "Reports", action: () => frappe.set_route("santu-reports") },
-			{ label: "Log out", action: () => frappe.app.logout() },
+			// Renamed from "Log out": clicking this no longer ends the real
+			// Frappe session — it just re-locks the app behind the PIN screen
+			// (frappe.app.logout is overridden in santu_app_lock.js). Calling
+			// it "Log out" would have promised something it no longer does.
+			{ label: "Lock App", action: () => frappe.app.logout() },
 		];
 		show_dropdown($anchor, items);
 	}

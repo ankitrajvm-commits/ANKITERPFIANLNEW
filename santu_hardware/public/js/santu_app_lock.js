@@ -41,14 +41,14 @@
 		}
 	}
 
-	function show_lock_screen() {
+	function show_lock_screen(message) {
 		const overlay = document.createElement("div");
 		overlay.id = "santu-applock-overlay";
 		overlay.innerHTML = `
 			<div class="santu-applock-card">
 				<div class="santu-applock-logo">🔒</div>
 				<div class="santu-applock-title">Santu Hardware</div>
-				<div class="santu-applock-sub">PIN daaliye</div>
+				<div class="santu-applock-sub">${message ? message.replace(/</g, "&lt;") : "PIN daaliye"}</div>
 				<input type="password" inputmode="numeric" autocomplete="off"
 					maxlength="8" class="santu-applock-input" placeholder="••••">
 				<div class="santu-applock-error"></div>
@@ -117,11 +117,119 @@
 			});
 	}
 
-	if (window.frappe && frappe.ready) {
-		frappe.ready(boot);
-	} else {
-		document.addEventListener("DOMContentLoaded", boot);
+	// ---------- replace Frappe's own login/logout surface ----------
+	// Direct request (2026-09-04): "Frappe ka normal username + password
+	// login system frontend par use nahi karna hai... single global PIN".
+	//
+	// The shop's browser already stays signed in to one real Frappe
+	// session for days at a time (System Settings > Session Expiry,
+	// extended further below) — this PIN was never meant to replace that
+	// session, only to sit in front of it, the way a phone's lock screen
+	// sits in front of an already-signed-in Google account. Signing all
+	// the way out would mean the NEXT unlock needs Frappe's real
+	// username/password form, which is exactly what this was asked to
+	// remove. So "Log out" (both the custom More-menu one in
+	// santu_topbar.js and Frappe's own native avatar-menu one — both call
+	// this same function) is repointed to just re-lock: it clears the
+	// unlocked flag and shows the PIN screen again, without ever calling
+	// the real logout endpoint or touching the session cookie.
+	//
+	// `handle_session_expired` (frappe/public/js/frappe/desk.js) is the
+	// one place ANY API call funnels into when the server reports the
+	// session really has expired — the case this can't paper over, since
+	// there is no valid session left to sit in front of. Rather than let
+	// that fall through to Frappe's real /login page, it shows the PIN
+	// screen with an explanatory message instead: still no
+	// username/password form on screen, even though unlocking here can't
+	// restore API access by itself (the shop would need an admin to sign
+	// in for real). That trade-off is the honest one — there's no PIN
+	// that regenerates a dead server-side session.
+	// Plain information screen: no PIN input, because there's nothing valid
+	// to check it against (no PIN configured). Used only for the genuine
+	// session-expired case with App Lock off, where doing nothing would
+	// leave the shop staring at a silently broken app with zero
+	// explanation — but a real username/password form is exactly what was
+	// asked to disappear, so this is the honest middle ground.
+	function show_message_screen(message) {
+		const overlay = document.createElement("div");
+		overlay.id = "santu-applock-overlay";
+		overlay.innerHTML = `
+			<div class="santu-applock-card">
+				<div class="santu-applock-logo">⚠️</div>
+				<div class="santu-applock-title">Santu Hardware</div>
+				<div class="santu-applock-sub">${message.replace(/</g, "&lt;")}</div>
+				<button type="button" class="santu-applock-btn santu-applock-retry">Dobara Try Karein</button>
+			</div>
+		`;
+		document.body.appendChild(overlay);
+		overlay.style.visibility = "visible";
+		overlay.querySelector(".santu-applock-retry").addEventListener("click", () => location.reload());
 	}
+
+	function relock(message) {
+		// Guard against a dead-end screen: if no PIN is actually configured
+		// (App Lock turned off, or session-expired firing before anyone has
+		// ever set one up), showing the PIN prompt would trap the shop on a
+		// screen nothing can unlock. Confirm a PIN really exists first.
+		frappe
+			.xcall(`${API}.get_app_lock_status`)
+			.then((res) => {
+				document.getElementById("santu-applock-overlay")?.remove();
+				if (!res || !res.enabled) {
+					if (message) {
+						// Session-expired path with no PIN configured: explain,
+						// don't silently do nothing and don't show Frappe's
+						// real login form either.
+						document.documentElement.style.visibility = "hidden";
+						show_message_screen(
+							message + " (App Lock abhi set nahi hai — Utilities > Cost Price Lock se PIN set karein.)"
+						);
+					} else {
+						frappe.msgprint(
+							__("App Lock abhi set nahi hai — Utilities > Cost Price Lock se pehle ek PIN set kariye.")
+						);
+					}
+					return;
+				}
+				try {
+					sessionStorage.removeItem(SESSION_KEY);
+				} catch (e) {
+					/* ignore */
+				}
+				document.documentElement.style.visibility = "hidden";
+				show_lock_screen(message);
+			})
+			.catch(() => {
+				// Can't even ask — same fail-open principle as boot(): do
+				// nothing rather than risk an unrecoverable lock.
+			});
+	}
+
+	function wire_frappe_app_overrides() {
+		if (!window.frappe || !frappe.app) return false;
+		frappe.app.logout = function () {
+			relock();
+		};
+		frappe.app.handle_session_expired = function () {
+			relock("Session dobara shuru karne ke liye ek baar Admin se sign in karwaiye.");
+		};
+		return true;
+	}
+
+	// `frappe.ready` does not exist as a public hook on this Frappe version
+	// (confirmed live 2026-09-04 — it is `undefined`, not a function), so
+	// boot() runs off DOMContentLoaded like any plain page script. Wiring
+	// the logout/session-expired overrides can't wait for any DOM event at
+	// all though: frappe.app itself is only created inside desk.js's own
+	// `$(document).ready` handler, whose relative firing order against this
+	// one isn't something to depend on. Poll for it instead — cheap, and
+	// self-cancelling the moment frappe.app shows up.
+	document.addEventListener("DOMContentLoaded", boot);
+	(function poll_for_frappe_app() {
+		if (wire_frappe_app_overrides()) return;
+		const iv = setInterval(() => wire_frappe_app_overrides() && clearInterval(iv), 200);
+		setTimeout(() => clearInterval(iv), 15000);
+	})();
 
 	// ---------- settings dialog, used from Utilities > Cost Price Lock ----------
 	window.santu_app_lock = {
