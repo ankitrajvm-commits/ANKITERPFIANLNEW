@@ -1,0 +1,74 @@
+/* App Login PIN overlay (santu_app_lock.js). Loaded as its own small file
+   rather than folded into an existing one, since it has to work even if
+   the rest of Desk's styling hasn't finished loading yet — the overlay
+   itself sets its own layout inline-equivalent rules here, not relying on
+   any shared design-system variables. */
+#santu-applock-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 999999;
+	background: #0f172a;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+.santu-applock-card {
+	width: 280px;
+	text-align: center;
+	color: #e2e8f0;
+}
+.santu-applock-logo {
+	font-size: 40px;
+	margin-bottom: 8px;
+}
+.santu-applock-title {
+	font-size: 20px;
+	font-weight: 700;
+	color: #fff;
+}
+.santu-applock-sub {
+	font-size: 13px;
+	color: #94a3b8;
+	margin: 4px 0 20px;
+}
+.santu-applock-input {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 12px 14px;
+	font-size: 22px;
+	letter-spacing: 6px;
+	text-align: center;
+	border-radius: 10px;
+	border: 1px solid #334155;
+	background: #1e293b;
+	color: #fff;
+	outline: none;
+}
+.santu-applock-input:focus {
+	border-color: #2563eb;
+}
+.santu-applock-error {
+	min-height: 18px;
+	color: #f87171;
+	font-size: 12px;
+	margin: 8px 0;
+}
+.santu-applock-btn {
+	width: 100%;
+	padding: 11px;
+	border: none;
+	border-radius: 10px;
+	background: #2563eb;
+	color: #fff;
+	font-size: 15px;
+	font-weight: 600;
+	cursor: pointer;
+}
+.santu-applock-btn:hover {
+	background: #1d4ed8;
+}
+.santu-applock-btn:disabled {
+	opacity: 0.6;
+	cursor: default;
+}

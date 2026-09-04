@@ -12705,6 +12705,79 @@ def check_privacy_mode_pin(pin: str):
 	return {"ok": bool(_verify_pin_hash(pin, stored))}
 
 
+# --- App Lock ---------------------------------------------------------
+# A second, separate PIN from Privacy Mode's. Privacy Mode gates seeing
+# COST PRICE for staff who are otherwise already using the app; this one
+# gates using the app AT ALL, on the shared shop computer, before anyone
+# is let in. Deliberately its own hash/settings field rather than reusing
+# Privacy Mode's PIN — someone who knows the app-open PIN (which is shown
+# to any staff working the counter) should not thereby also know the
+# cost-price PIN, and changing one must never silently change the other.
+# Reuses the same pbkdf2 hash/verify helpers as Privacy Mode (2026-09-04
+# direct request: "isme login krne ke liye PIN set kr do").
+
+
+@frappe.whitelist(allow_guest=True)
+def get_app_lock_status():
+	"""What the boot-time lock screen needs before it asks for anything.
+
+	allow_guest: this must answer even before the browser has a logged-in
+	session — the whole point is to gate access before Frappe's own login,
+	on a shared machine that normally just stays signed in. Reads via
+	frappe.db.get_single_value rather than frappe.get_single: a Guest has
+	no role on Santu POS Settings, and get_single would enforce that and
+	throw PermissionError instead of answering.
+	"""
+	enabled = cint(frappe.db.get_single_value("Santu POS Settings", "app_lock_enabled"))
+	pin_hash = frappe.db.get_single_value("Santu POS Settings", "app_lock_pin_hash")
+	return {"enabled": bool(enabled) and bool(pin_hash)}
+
+
+@frappe.whitelist()
+def set_app_lock_pin(new_pin: str, current_pin: str = None, enabled: int = 1):
+	"""Set, change, or turn off the app-open PIN. System Manager only —
+	this is the master lock for the shared computer, not something any
+	staff login should be able to silently change."""
+	if "System Manager" not in frappe.get_roles():
+		frappe.throw(_("Only a System Manager can change the app login PIN."))
+
+	settings = _privacy_settings()
+
+	if not cint(enabled):
+		settings.app_lock_enabled = 0
+		settings.save(ignore_permissions=True)
+		frappe.db.commit()
+		return {"ok": True}
+
+	new_pin = (new_pin or "").strip()
+	if not new_pin.isdigit() or not (4 <= len(new_pin) <= 8):
+		frappe.throw(_("The PIN must be 4 to 8 digits."))
+	if len(set(new_pin)) == 1 or new_pin in ("1234", "12345", "123456", "4321"):
+		frappe.throw(_("Please choose a less obvious PIN — not all the same digit, and not 1234."))
+
+	existing = settings.get("app_lock_pin_hash")
+	if existing and not _verify_pin_hash(current_pin or "", existing):
+		frappe.throw(_("The current PIN is wrong."))
+
+	settings.app_lock_pin_hash = _encode_pin_hash(new_pin)
+	settings.app_lock_enabled = 1
+	settings.save(ignore_permissions=True)
+	frappe.db.commit()
+	return {"ok": True}
+
+
+@frappe.whitelist(allow_guest=True)
+def check_app_lock_pin(pin: str):
+	"""Yes/no for the entered app-open PIN. allow_guest for the same reason
+	as get_app_lock_status — the lock screen runs before any session, same
+	permission-free read as it uses too."""
+	stored = frappe.db.get_single_value("Santu POS Settings", "app_lock_pin_hash")
+	enabled = cint(frappe.db.get_single_value("Santu POS Settings", "app_lock_enabled"))
+	if not stored or not enabled:
+		return {"ok": False, "reason": "not_set"}
+	return {"ok": bool(_verify_pin_hash(pin, stored))}
+
+
 # --- Touch ID -------------------------------------------------------------
 # WebAuthn with a platform authenticator. The Mac's Secure Enclave holds the
 # private key and the fingerprint never leaves the machine — all the server

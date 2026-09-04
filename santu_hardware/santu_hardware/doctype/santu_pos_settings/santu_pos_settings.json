@@ -39,7 +39,10 @@
   "privacy_mode_section",
   "privacy_mode_pin",
   "privacy_pin_hash",
-  "privacy_touch_id_credentials"
+  "privacy_touch_id_credentials",
+  "app_lock_section",
+  "app_lock_enabled",
+  "app_lock_pin_hash"
  ],
  "fields": [
   {
@@ -254,6 +257,26 @@
    "hidden": 1,
    "label": "Registered Touch ID devices",
    "read_only": 1
+  },
+  {
+   "fieldname": "app_lock_section",
+   "fieldtype": "Section Break",
+   "label": "App Login PIN"
+  },
+  {
+   "fieldname": "app_lock_enabled",
+   "fieldtype": "Check",
+   "label": "Ask for PIN when the app opens",
+   "default": "0",
+   "description": "Poora app kholte hi ek PIN maanga jayega, jab tak sahi PIN na daala jaye tab tak kuch nazar nahi aayega."
+  },
+  {
+   "fieldname": "app_lock_pin_hash",
+   "fieldtype": "Data",
+   "label": "App Lock PIN (hashed)",
+   "hidden": 1,
+   "read_only": 1,
+   "description": "Salted hash of the app login PIN. The PIN itself is never stored."
   }
  ],
  "icon": "fa fa-shield",

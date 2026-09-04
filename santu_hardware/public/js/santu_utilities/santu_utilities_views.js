@@ -1752,7 +1752,7 @@ santu_utilities.views = {
 	async render_cost_price_lock($wrap) {
 		const render = async () => {
 			$wrap.html(`<div class="santu-shop-profile-loading">Checking Privacy Status…</div>`);
-			const s = await window.santu_privacy.status();
+			const [s, al] = await Promise.all([window.santu_privacy.status(), window.santu_app_lock.status()]);
 			
 			$wrap.html(`
 				<div class="santu-pm-container">
@@ -1800,6 +1800,37 @@ santu_utilities.views = {
 							</div>
 						</div>
 					</div>
+
+					<div class="santu-pm-card" style="margin-top:16px;">
+						<div class="santu-pm-head">
+							<div class="santu-pm-title">
+								<h2>App Login PIN</h2>
+								<p>App khulte hi ye PIN maanga jayega, jab tak sahi PIN na daalo tab tak kuch nazar nahi aayega — dukaan ke computer ko lock rakhne ke liye.</p>
+							</div>
+						</div>
+
+						<div class="santu-pm-body">
+							<div class="santu-pm-list-modern">
+								<div class="santu-pm-row-modern ${al.enabled ? 'is-enabled' : ''}">
+									<div class="santu-pm-info">
+										<div class="santu-pm-icon">🔐</div>
+										<div class="santu-pm-details">
+											<h4>App Lock</h4>
+											<span class="santu-pm-status ${al.enabled ? 'ok' : 'warn'}">
+												${al.enabled ? '✅ On — PIN maanga jayega' : '⚠️ Off — koi bhi seedha aa sakta hai'}
+											</span>
+										</div>
+									</div>
+									<button class="btn ${al.enabled ? 'btn-default' : 'btn-primary'} btn-sm santu-applock-set-pin">
+										${al.enabled ? 'Change PIN' : 'Turn On'}
+									</button>
+								</div>
+								${al.enabled
+									? '<button class="btn btn-default btn-sm santu-applock-turn-off" style="margin-top:8px;">Turn Off App Lock</button>'
+									: ''}
+							</div>
+						</div>
+					</div>
 				</div>
 			`);
 
@@ -1808,6 +1839,21 @@ santu_utilities.views = {
 			});
 			$wrap.find(".santu-privacy-add-touch").on("click", async () => {
 				if (await window.santu_privacy.register_touch_id()) render();
+			});
+			$wrap.find(".santu-applock-set-pin").on("click", async () => {
+				if (await window.santu_app_lock.set_pin_dialog(al.enabled)) render();
+			});
+			$wrap.find(".santu-applock-turn-off").on("click", () => {
+				frappe.confirm(__("App Lock band kar dein? Ab bina PIN ke koi bhi app khol sakega."), async () => {
+					await window.santu_app_lock.disable();
+					try {
+						sessionStorage.removeItem("santu_applock_unlocked");
+					} catch (e) {
+						/* ignore */
+					}
+					frappe.show_alert({ message: __("App Lock band ho gaya"), indicator: "orange" });
+					render();
+				});
 			});
 		};
 		render();
