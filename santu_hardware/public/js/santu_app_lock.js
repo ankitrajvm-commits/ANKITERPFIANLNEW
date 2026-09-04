@@ -93,7 +93,23 @@
 		$input.addEventListener("keydown", (e) => {
 			if (e.key === "Enter") attempt();
 		});
-		setTimeout(() => $input.focus(), 50);
+
+		// Try the fingerprint first, same as /santu_unlock — a re-lock
+		// (via "Lock App") should feel exactly as fast to get back into as
+		// the very first unlock did. Falls straight through to the PIN box
+		// on any cancel/failure/not-set-up.
+		(async () => {
+			if (window.santu_app_lock_webauthn && santu_app_lock_webauthn.available()) {
+				const ok = await santu_app_lock_webauthn.tryLogin();
+				if (ok) {
+					mark_unlocked();
+					overlay.remove();
+					reveal();
+					return;
+				}
+			}
+			$input.focus();
+		})();
 	}
 
 	function boot() {

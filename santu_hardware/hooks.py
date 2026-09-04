@@ -220,6 +220,7 @@ app_include_js = _LiveAssets([
 	# Very first: it hides the page before there is anything worth seeing,
 	# then decides whether to ask for a PIN before showing it (2026-09-04
 	# direct request: "isme login krne ke liye PIN set kr do").
+	f"/assets/santu_hardware/js/santu_app_lock_webauthn.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/santu_app_lock.js?v={SANTU_ASSET_VERSION}",
 	# First, so it is listening before anything else can throw.
 	f"/assets/santu_hardware/js/santu_error_capture.js?v={SANTU_ASSET_VERSION}",

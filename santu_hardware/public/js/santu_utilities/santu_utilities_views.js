@@ -1825,6 +1825,24 @@ santu_utilities.views = {
 										${al.enabled ? 'Change PIN' : 'Turn On'}
 									</button>
 								</div>
+
+								<div class="santu-pm-row-modern ${al.touch_id_devices ? 'is-enabled' : ''}">
+									<div class="santu-pm-info">
+										<div class="santu-pm-icon">👆</div>
+										<div class="santu-pm-details">
+											<h4>Fingerprint (Touch ID)</h4>
+											<span class="santu-pm-status ${al.touch_id_devices ? 'ok' : 'warn'}">
+												${al.touch_id_devices ? `✅ ${al.touch_id_devices} device(s) active` : '⚠️ Not Set Up'}
+											</span>
+										</div>
+									</div>
+									<button class="btn btn-default btn-sm santu-applock-add-touch" ${al.enabled ? '' : 'disabled'}>
+										Add this Mac
+									</button>
+								</div>
+								${!al.enabled
+									? '<div style="margin-top:10px; color:#f59e0b; font-size:13px; font-weight:500;">Note: PIN On kariye pehle — fingerprint uska shortcut hai.</div>'
+									: ''}
 								${al.enabled
 									? '<button class="btn btn-default btn-sm santu-applock-turn-off" style="margin-top:8px;">Turn Off App Lock</button>'
 									: ''}
@@ -1842,6 +1860,9 @@ santu_utilities.views = {
 			});
 			$wrap.find(".santu-applock-set-pin").on("click", async () => {
 				if (await window.santu_app_lock.set_pin_dialog(al.enabled)) render();
+			});
+			$wrap.find(".santu-applock-add-touch").on("click", async () => {
+				if (await window.santu_app_lock_webauthn.register()) render();
 			});
 			$wrap.find(".santu-applock-turn-off").on("click", () => {
 				frappe.confirm(__("App Lock band kar dein? Ab bina PIN ke koi bhi app khol sakega."), async () => {

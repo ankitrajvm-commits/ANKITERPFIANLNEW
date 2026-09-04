@@ -12730,7 +12730,14 @@ def get_app_lock_status():
 	"""
 	enabled = cint(frappe.db.get_single_value("Santu POS Settings", "app_lock_enabled"))
 	pin_hash = frappe.db.get_single_value("Santu POS Settings", "app_lock_pin_hash")
-	return {"enabled": bool(enabled) and bool(pin_hash)}
+	creds = frappe.parse_json(
+		frappe.db.get_single_value("Santu POS Settings", "app_lock_touch_id_credentials") or "[]"
+	)
+	return {
+		"enabled": bool(enabled) and bool(pin_hash),
+		"touch_id_devices": len(creds),
+		"touch_id_names": [c.get("label") for c in creds],
+	}
 
 
 @frappe.whitelist()
@@ -12755,12 +12762,20 @@ def set_app_lock_pin(new_pin: str, current_pin: str = None, enabled: int = 1):
 	if len(set(new_pin)) == 1 or new_pin in ("1234", "12345", "123456", "4321"):
 		frappe.throw(_("Please choose a less obvious PIN — not all the same digit, and not 1234."))
 
+	# System Manager can reset without the current PIN — same as
+	# set_privacy_pin — otherwise a forgotten PIN has no recovery path
+	# short of editing the database directly.
 	existing = settings.get("app_lock_pin_hash")
-	if existing and not _verify_pin_hash(current_pin or "", existing):
+	if existing and "System Manager" not in frappe.get_roles() and not _verify_pin_hash(current_pin or "", existing):
 		frappe.throw(_("The current PIN is wrong."))
 
 	settings.app_lock_pin_hash = _encode_pin_hash(new_pin)
 	settings.app_lock_enabled = 1
+	# Changing the PIN retires every fingerprint too — same rule as
+	# set_privacy_pin. Whoever changed it is usually doing so because the
+	# old PIN got out, and a fingerprint registered under the old PIN
+	# would otherwise still walk straight in.
+	settings.app_lock_touch_id_credentials = "[]"
 	settings.save(ignore_permissions=True)
 	frappe.db.commit()
 	return {"ok": True}
@@ -12776,6 +12791,187 @@ def check_app_lock_pin(pin: str):
 	if not stored or not enabled:
 		return {"ok": False, "reason": "not_set"}
 	return {"ok": bool(_verify_pin_hash(pin, stored))}
+
+
+@frappe.whitelist(allow_guest=True)
+def pin_login(pin: str):
+	"""Turn a correct app-open PIN into a real, cookie-based Frappe session
+	— the missing piece that made the native Mac app shell (santu_app_lock.js
+	only runs inside an ALREADY-authenticated Desk page, so it can do nothing
+	for a brand new WKWebView with no session cookie at all) fall through to
+	Frappe's own real username/password /login page. Direct correction,
+	2026-09-04: "maine bola tha na ki username and password concept hata kar
+	pin system lao" — this closes that exact gap.
+
+	Called only from www/santu_unlock.html, the guest-accessible page the
+	native app's WebView loads FIRST, before ever touching /app. On success
+	this establishes the session cookie in the browser/WebView that called
+	it, and that page then redirects to /app, which is now authenticated —
+	the same account (Administrator) every browser tab on this one shared
+	shop computer already uses, just reached without ever showing a
+	password field.
+
+	Refuses outright if App Lock has no PIN configured yet: there would be
+	nothing valid to check the entered PIN against, and login_as() must
+	never run on an unverified guess. Setting the PIN up in the first
+	place still happens the ordinary way — Utilities > Cost Price Lock,
+	from a browser tab that already has a real session — this endpoint
+	only ever hands out a session it does not also have to bootstrap.
+	"""
+	stored = frappe.db.get_single_value("Santu POS Settings", "app_lock_pin_hash")
+	enabled = cint(frappe.db.get_single_value("Santu POS Settings", "app_lock_enabled"))
+	if not stored or not enabled:
+		frappe.throw(
+			_(
+				"App Lock PIN abhi set nahi hai. Pehle kisi browser mein normal login karke "
+				"Utilities > Cost Price Lock se PIN set kariye, uske baad ye app kaam karega."
+			)
+		)
+	if not _verify_pin_hash(pin, stored):
+		frappe.throw(_("Galat PIN."))
+
+	frappe.local.login_manager.login_as("Administrator")
+	return {"ok": True}
+
+
+# --- App Lock fingerprint (Touch ID) ---------------------------------------
+# Same WebAuthn machinery Privacy Mode already uses (_issue_challenge,
+# _take_challenge, _check_client_data, _b64url_decode, _relying_party_id —
+# all defined below, generic, not privacy-specific) — reused rather than
+# copied, so a future fix to the crypto/replay checks fixes both locks at
+# once. The one real difference: Privacy Mode's credentials are scoped to
+# frappe.session.user, because different staff already logged in use it.
+# App Lock authenticates BEFORE anyone is logged in — there is no user yet
+# to scope to — so its credential list is a single shared list on Santu POS
+# Settings, exactly like the PIN itself is a single shared PIN, not a
+# per-user one.
+#
+# Registration only ever happens from an already-authenticated Settings
+# screen (System Manager only); login happens from the guest /santu_unlock
+# page, same trust boundary as pin_login — a correct signature is exactly
+# as strong a proof as a correct PIN, so it ends the same way: a real
+# session via login_as().
+
+
+@frappe.whitelist()
+def app_lock_touch_id_register_options():
+	if not frappe.db.get_single_value("Santu POS Settings", "app_lock_pin_hash"):
+		frappe.throw(_("Pehle App Lock PIN set kariye — fingerprint uska shortcut hai, replacement nahi."))
+	if "System Manager" not in frappe.get_roles():
+		frappe.throw(_("Sirf System Manager fingerprint unlock set kar sakta hai."))
+	import base64
+
+	return {
+		"challenge": _issue_challenge("app_lock_register"),
+		"rp": {"id": _relying_party_id(), "name": "Santu Hardware"},
+		"user": {
+			"id": base64.urlsafe_b64encode(b"santu-hardware-app-lock").decode().rstrip("="),
+			"name": "Santu Hardware",
+			"displayName": "Santu Hardware — App Lock",
+		},
+		# -7 is ES256, which is what the Secure Enclave produces.
+		"pubKeyCredParams": [{"type": "public-key", "alg": -7}],
+		"timeout": PRIVACY_CHALLENGE_TTL * 1000,
+	}
+
+
+@frappe.whitelist()
+def app_lock_touch_id_register_finish(credential_id: str, public_key: str, client_data: str, label: str = None):
+	"""Store the public key this Mac just generated, after re-checking context."""
+	import json as _json
+
+	if "System Manager" not in frappe.get_roles():
+		frappe.throw(_("Sirf System Manager fingerprint unlock set kar sakta hai."))
+	_check_client_data(_b64url_decode(client_data), "app_lock_register", "webauthn.create")
+
+	try:
+		from cryptography.hazmat.primitives.serialization import load_der_public_key
+
+		load_der_public_key(_b64url_decode(public_key))
+	except Exception:
+		frappe.throw(_("Is device ne aisi key bheji jo padhi nahi ja saki. PIN use kariye."))
+
+	settings = frappe.get_single("Santu POS Settings")
+	creds = frappe.parse_json(settings.get("app_lock_touch_id_credentials") or "[]")
+	creds = [c for c in creds if c.get("id") != credential_id]
+	creds.append({
+		"id": credential_id,
+		"public_key": public_key,
+		"label": label or "This Mac",
+		"added_on": frappe.utils.now(),
+	})
+	settings.app_lock_touch_id_credentials = _json.dumps(creds)
+	settings.save(ignore_permissions=True)
+	frappe.db.commit()
+	return {"ok": True, "devices": len(creds)}
+
+
+@frappe.whitelist(allow_guest=True)
+def app_lock_touch_id_login_options():
+	"""allow_guest — same reason as pin_login: called from /santu_unlock,
+	before any session exists."""
+	enabled = cint(frappe.db.get_single_value("Santu POS Settings", "app_lock_enabled"))
+	creds = frappe.parse_json(
+		frappe.db.get_single_value("Santu POS Settings", "app_lock_touch_id_credentials") or "[]"
+	)
+	if not enabled or not creds:
+		return {"available": False}
+	return {
+		"available": True,
+		"challenge": _issue_challenge("app_lock_login"),
+		"rpId": _relying_party_id(),
+		"allowCredentials": [{"type": "public-key", "id": c["id"]} for c in creds],
+		"timeout": PRIVACY_CHALLENGE_TTL * 1000,
+	}
+
+
+@frappe.whitelist(allow_guest=True)
+def app_lock_touch_id_login_finish(credential_id: str, authenticator_data: str, client_data: str, signature: str):
+	"""Verify the assertion, then hand out a real session — the fingerprint
+	equivalent of pin_login(). Only a genuine signature over our own
+	just-issued challenge, from a device whose public key we already hold,
+	ever reaches login_as()."""
+	import hashlib
+
+	from cryptography.exceptions import InvalidSignature
+	from cryptography.hazmat.primitives import hashes
+	from cryptography.hazmat.primitives.asymmetric import ec
+	from cryptography.hazmat.primitives.serialization import load_der_public_key
+
+	enabled = cint(frappe.db.get_single_value("Santu POS Settings", "app_lock_enabled"))
+	if not enabled:
+		frappe.throw(_("App Lock abhi set nahi hai."))
+
+	client_data_bytes = _b64url_decode(client_data)
+	_check_client_data(client_data_bytes, "app_lock_login", "webauthn.get")
+
+	creds = frappe.parse_json(
+		frappe.db.get_single_value("Santu POS Settings", "app_lock_touch_id_credentials") or "[]"
+	)
+	cred = next((c for c in creds if c.get("id") == credential_id), None)
+	if not cred:
+		frappe.throw(_("Ye device fingerprint unlock ke liye register nahi hai."))
+
+	auth_data = _b64url_decode(authenticator_data)
+	if len(auth_data) < 33:
+		frappe.throw(_("Fingerprint reader se poora jawab nahi mila."))
+	flags = auth_data[32]
+	if not (flags & 0x01) or not (flags & 0x04):
+		frappe.throw(_("Fingerprint is device par confirm nahi hua."))
+	if auth_data[:32] != hashlib.sha256(_relying_party_id().encode()).digest():
+		frappe.throw(_("Ye request kisi anjaan jagah se aayi."))
+
+	signed = auth_data + hashlib.sha256(client_data_bytes).digest()
+	try:
+		key = load_der_public_key(_b64url_decode(cred["public_key"]))
+		key.verify(_b64url_decode(signature), signed, ec.ECDSA(hashes.SHA256()))
+	except InvalidSignature:
+		frappe.throw(_("Fingerprint match nahi hua."))
+	except Exception:
+		frappe.throw(_("Fingerprint check poora nahi ho paya. PIN use kariye."))
+
+	frappe.local.login_manager.login_as("Administrator")
+	return {"ok": True}
 
 
 # --- Touch ID -------------------------------------------------------------

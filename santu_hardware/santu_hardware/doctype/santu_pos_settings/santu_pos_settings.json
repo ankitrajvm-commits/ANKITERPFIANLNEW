@@ -42,7 +42,8 @@
   "privacy_touch_id_credentials",
   "app_lock_section",
   "app_lock_enabled",
-  "app_lock_pin_hash"
+  "app_lock_pin_hash",
+  "app_lock_touch_id_credentials"
  ],
  "fields": [
   {
@@ -277,6 +278,14 @@
    "hidden": 1,
    "read_only": 1,
    "description": "Salted hash of the app login PIN. The PIN itself is never stored."
+  },
+  {
+   "fieldname": "app_lock_touch_id_credentials",
+   "fieldtype": "Long Text",
+   "label": "Registered App Lock Fingerprint Devices",
+   "hidden": 1,
+   "read_only": 1,
+   "description": "Public keys of devices allowed to unlock the app with a fingerprint. Public keys only \u2014 no fingerprint data ever leaves the Mac."
   }
  ],
  "icon": "fa fa-shield",

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Santu Hardware</title>
+	<style>
+		html, body {
+			margin: 0;
+			height: 100%;
+			background: #0f172a;
+			font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+		}
+		.wrap {
+			height: 100%;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+		}
+		.card {
+			width: 280px;
+			text-align: center;
+			color: #e2e8f0;
+		}
+		.logo { font-size: 40px; margin-bottom: 8px; }
+		.title { font-size: 20px; font-weight: 700; color: #fff; }
+		.sub { font-size: 13px; color: #94a3b8; margin: 4px 0 20px; }
+		input {
+			width: 100%;
+			box-sizing: border-box;
+			padding: 12px 14px;
+			font-size: 22px;
+			letter-spacing: 6px;
+			text-align: center;
+			border-radius: 10px;
+			border: 1px solid #334155;
+			background: #1e293b;
+			color: #fff;
+			outline: none;
+		}
+		input:focus { border-color: #2563eb; }
+		.error { min-height: 18px; color: #f87171; font-size: 12px; margin: 8px 0; }
+		button {
+			width: 100%;
+			padding: 11px;
+			border: none;
+			border-radius: 10px;
+			background: #2563eb;
+			color: #fff;
+			font-size: 15px;
+			font-weight: 600;
+			cursor: pointer;
+		}
+		button:hover { background: #1d4ed8; }
+		button:disabled { opacity: 0.6; cursor: default; }
+	</style>
+	<script src="/assets/santu_hardware/js/santu_app_lock_webauthn.js"></script>
+</head>
+<body>
+	<div class="wrap">
+		<div class="card">
+			<div class="logo">🔒</div>
+			<div class="title">Santu Hardware</div>
+			<div class="sub" id="sub-text">PIN daaliye (ya fingerprint try ho raha hai…)</div>
+			<input type="password" inputmode="numeric" autocomplete="off" maxlength="8" id="pin-input" placeholder="••••">
+			<div class="error" id="error-text"></div>
+			<button type="button" id="unlock-btn">Unlock</button>
+		</div>
+	</div>
+
+	<script>
+		// The Jinja-rendered token from get_context() — santu_app_lock_webauthn.js
+		// reads this for its own guest-side POSTs, since there is no session
+		// cookie yet to pull one out of.
+		window.SANTU_CSRF_TOKEN = "{{ csrf_token }}";
+
+		// Standalone page, no Frappe desk assets loaded here — a plain fetch
+		// against the whitelisted method, exactly like santu_app_lock.js does
+		// for check_app_lock_pin. On success the server has already set the
+		// session cookie on THIS response; redirecting to /app in the same
+		// window carries it straight in, no separate cookie plumbing needed.
+		const input = document.getElementById("pin-input");
+		const btn = document.getElementById("unlock-btn");
+		const errorText = document.getElementById("error-text");
+
+		// The Jinja-rendered token from get_context() — this page has no
+		// session cookie yet to read one back out of.
+		const CSRF_TOKEN = "{{ csrf_token }}";
+		function getCsrfToken() {
+			return CSRF_TOKEN;
+		}
+
+		async function attempt() {
+			const pin = input.value.trim();
+			if (!pin) return;
+			btn.disabled = true;
+			errorText.textContent = "";
+			try {
+				const res = await fetch("/api/method/santu_hardware.santu_hardware.api.pin_login", {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						"X-Frappe-CSRF-Token": getCsrfToken(),
+					},
+					body: JSON.stringify({ pin }),
+				});
+				const data = await res.json().catch(() => ({}));
+				if (res.ok && data && data.message && data.message.ok) {
+					// Same sessionStorage flag santu_app_lock.js checks on
+					// every Desk page load — without setting it here, /app
+					// would immediately ask for the PIN a second time right
+					// after this page just collected it once.
+					try {
+						sessionStorage.setItem("santu_applock_unlocked", "1");
+					} catch (e) {
+						/* ignore */
+					}
+					window.location.href = "/app";
+					return;
+				}
+				errorText.textContent =
+					(data && data.exception && data.exception.split(":").pop().trim()) ||
+					(data && data._server_messages && "Galat PIN.") ||
+					"Galat PIN. Dobara try kariye.";
+				input.value = "";
+				input.focus();
+			} catch (e) {
+				errorText.textContent = "Kuch gadbad hui. Dobara try kariye.";
+			}
+			btn.disabled = false;
+		}
+
+		btn.addEventListener("click", attempt);
+		input.addEventListener("keydown", (e) => {
+			if (e.key === "Enter") attempt();
+		});
+
+		// Fingerprint first, PIN as the fallback that is always right there
+		// waiting — never a separate mode the person has to switch into.
+		// A cancelled/failed Touch ID prompt just leaves the PIN box
+		// focused, exactly as if fingerprint had never been tried.
+		(async () => {
+			const subText = document.getElementById("sub-text");
+			if (window.santu_app_lock_webauthn && santu_app_lock_webauthn.available()) {
+				const ok = await santu_app_lock_webauthn.tryLogin();
+				if (ok) {
+					try {
+						sessionStorage.setItem("santu_applock_unlocked", "1");
+					} catch (e) {
+						/* ignore */
+					}
+					window.location.href = "/app";
+					return;
+				}
+			}
+			subText.textContent = "PIN daaliye";
+			input.focus();
+		})();
+	</script>
+</body>
+</html>
