@@ -1067,6 +1067,14 @@
 	max-width: 800px;
 	overflow: hidden;
 }
+/* The Customer-wise Points table (Customer/Phone/Points/Value/Expire
+   Kab/Pending) needs real room -- capped at the same 800px every plain
+   settings card uses, it looked cramped and lost in a sea of empty space
+   on a wide screen (2026-09-08 direct request: "iska UI thik kr, idhar
+   udhar h"). Widened for this screen only -- every other Utilities screen
+   built from the same .santu-pm-card keeps its narrower, form-appropriate
+   width. */
+.santu-loyalty-container .santu-pm-card { max-width: 1100px; }
 .santu-pm-head {
 	padding: 24px 28px;
 	border-bottom: 1px solid #f1f5f9;
@@ -1610,3 +1618,18 @@
 }
 
 
+
+/* "AI se Excel theek karwao" — the prompt that lets someone fix their own
+   sheet without this app being driven from an AI session (2026-09-05). */
+.santu-import-prompt-bar {
+	margin-top: 14px;
+	padding-top: 12px;
+	border-top: 1px dashed #e5e7eb;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+.santu-import-prompt-bar .santu-utilities-muted {
+	font-size: 12px;
+}

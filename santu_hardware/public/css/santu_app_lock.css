@@ -72,3 +72,28 @@
 	opacity: 0.6;
 	cursor: default;
 }
+
+/* Fingerprint, as a button rather than only an automatic prompt. The sheet
+   that pops up on its own can be dismissed or can time out; without this
+   there was then no way back to it short of reloading the whole app
+   (2026-09-05). Deliberately quieter than Unlock — the PIN is still the
+   thing that unlocks; the fingerprint is only a shortcut to it. */
+.santu-applock-fp {
+	width: 100%;
+	margin-top: 10px;
+	padding: 10px;
+	border-radius: 10px;
+	background: #1e293b;
+	border: 1px solid #334155;
+	color: #e2e8f0;
+	font-size: 14px;
+	font-weight: 600;
+	cursor: pointer;
+}
+.santu-applock-fp:hover {
+	background: #273449;
+}
+.santu-applock-fp:disabled {
+	opacity: 0.6;
+	cursor: default;
+}

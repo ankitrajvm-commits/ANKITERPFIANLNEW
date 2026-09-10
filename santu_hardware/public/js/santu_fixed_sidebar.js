@@ -274,6 +274,9 @@
 				{ view: "shop_profile", label: "Shop Profile", route: "santu-utilities" },
 				{ view: "payment_modes", label: "Payment Modes", route: "santu-utilities" },
 				{ view: "cost_price_lock", label: "Cost Price Lock", route: "santu-utilities" },
+				// 2026-09-06 direct request: "utility me loyality wala add kr
+				// de ... conversion ratio v daal dena jo mai change kr saku".
+				{ view: "loyalty_points", label: "Loyalty Points", route: "santu-utilities" },
 				{ view: "barcode_generator", label: "Barcode Generator", route: "santu-utilities" },
 				// 2026-09-03 direct request: "agar mai koi v saaman ko new
 				// colour dena chahu to wo ho jaye ... item name start with
@@ -288,6 +291,11 @@
 				// item ko utility ka child banao") — reverses the 2026-08-18
 				// move that had pulled it out.
 				{ view: "import_items", label: "Import Items", route: "santu-utilities" },
+				// The Export screen was built and wired into the view
+				// dispatcher, but no menu entry ever pointed at it -- so the
+				// one way to get the catalogue out as an Excel file was
+				// unreachable (2026-09-07: "utilities me export items nh hai").
+				{ view: "export_items", label: "Export Items", route: "santu-utilities" },
 				{ view: "bug_report", label: "Bug Report", route: "santu-utilities" },
 				{ view: "feature_workbook", label: "Feature Workbook", redirect: "santu-feature-workbook" },
 				{ view: "recycle_bin", label: "Recycle Bin", redirect: "santu-recycle-bin" },

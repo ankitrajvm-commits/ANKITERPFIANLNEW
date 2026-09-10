@@ -548,7 +548,11 @@ const santu_purchase_pos = {
 				</div>
 				<div class="santu-si2-actionbar-right">
 					<button type="button" class="santu-si2-btn" data-action="share">Share ▾</button>
-					<button type="button" class="santu-si2-btn" data-action="save_print">Save &amp; Print</button>
+					<!-- Same three actions every other document screen has, and
+					     the same rule: pressing one IS the answer, nothing asks
+					     again afterwards (2026-09-07). -->
+					<button type="button" class="santu-si2-btn" data-action="save_whatsapp">💬 Send WhatsApp</button>
+					<button type="button" class="santu-si2-btn" data-action="save_print">🖨️ Save &amp; Print</button>
 					<button type="button" class="santu-si2-btn santu-si2-btn-primary" data-action="save">Save <span class="santu-si2-kbd">Ctrl+S</span></button>
 				</div>
 			</div>
@@ -647,7 +651,7 @@ const santu_purchase_pos = {
 	},
 
 	// ---------- items ----------
-	_render_items() {
+	_render_items({ reveal_row_id = null } = {}) {
 		const tab = this._active_tab();
 		const $tbody = this.$root.find(".santu-si2-table tbody");
 		$tbody.empty();
@@ -659,7 +663,7 @@ const santu_purchase_pos = {
 		tab.items.forEach((row, idx) => {
 			const row_hl = santu_item_row_class(row.item_code, row.item_name);
 			const $tr = $(`
-				<tr data-row="${row.id}" class="${row_hl}">
+				<tr data-row="${row.id}" class="${row.id === reveal_row_id ? "santu-bill-row-new" : ""} ${row_hl}">
 					<td class="santu-si2-col-idx">${idx + 1}</td>
 					<td class="santu-si2-col-item">
 						<div class="santu-si2-item-name">
@@ -728,6 +732,10 @@ const santu_purchase_pos = {
 
 		this._bind_item_row_events();
 		this._recalc_totals();
+		// Naya row apne aap dikhe -- niche se dhoondhna na pade. In screens
+		// ka grid apne scroll box me nahi hai, isliye helper khud page ko
+		// scroll karta hai (santu_scroll_row_into_view ka fallback).
+		if (reveal_row_id) window.santu_scroll_row_into_view(this.$root, { row_id: reveal_row_id });
 	},
 
 	_item_search(q, $anchor) {
@@ -832,7 +840,7 @@ const santu_purchase_pos = {
 		const existing = tab.items.find((r) => r.item_code === item_code);
 		if (existing) {
 			existing.qty = (Number(existing.qty) || 0) + 1;
-			this._recompute_row(existing).then(() => this._render_items());
+			this._recompute_row(existing).then(() => this._render_items({ reveal_row_id: existing.id }));
 			return;
 		}
 
@@ -861,7 +869,7 @@ const santu_purchase_pos = {
 			};
 			tab.items.push(new_row);
 			this._save_debounced();
-			this._render_items();
+			this._render_items({ reveal_row_id: new_row.id });
 		});
 	},
 
@@ -1518,7 +1526,7 @@ const santu_purchase_pos = {
 			window.santu_open_invoice_view("Purchase Invoice", tab.saved_invoice.name);
 			return;
 		}
-		if (action === "save" || action === "save_print" || action === "submit_draft") {
+		if (action === "save" || action === "save_print" || action === "save_whatsapp" || action === "submit_draft") {
 			this._save_purchase(tab, action);
 			return;
 		}
@@ -1598,9 +1606,17 @@ const santu_purchase_pos = {
 				this._save_debounced();
 				frappe.show_alert({ message: __("Saved {0}", [r.name]), indicator: "green" });
 				this._render_body();
-				if (action === "save_print") {
-					frappe.set_route("print", "Purchase Invoice", r.name);
-				}
+				// One shared path with Billing/Estimate/the returns: prints
+				// straight away, sends straight away, and a plain Save does
+				// neither. Purchase Invoice has no thermal layout, so the
+				// print falls through to the normal print view exactly as it
+				// did before -- just via the one helper now.
+				santu_save_buttons.after_save(
+					"Purchase Invoice",
+					r.name,
+					action === "save_print" ? "print" : action === "save_whatsapp" ? "whatsapp" : null,
+					{ has_party: !!tab.supplier }
+				);
 			})
 			.catch((err) => {
 				frappe.dom.unfreeze();

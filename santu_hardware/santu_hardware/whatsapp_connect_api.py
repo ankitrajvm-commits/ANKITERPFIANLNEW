@@ -221,7 +221,7 @@ def send_customer_khata(customer: str, from_date: str = None, to_date: str = Non
 		frappe.throw("No WhatsApp number for this customer.")
 	pdf_bytes, filename, data = _customer_khata_pdf_bytes(customer, from_date, to_date)
 	body = custom_message or (
-		f"Khata Statement — {data['customer_name']}\n"
+		f"Account Statement — {data['customer_name']}\n"
 		f"{data['from_date']} to {data['to_date']}\n"
 		f"Opening: Rs. {data['opening_balance']:.2f}  |  Closing: Rs. {data['closing_balance']:.2f}\n\n"
 		f"Santu Hardware"
@@ -251,7 +251,7 @@ def send_supplier_khata(supplier: str, from_date: str = None, to_date: str = Non
 		frappe.throw("Is mahajan ka WhatsApp number nahi mila. Parties screen mein number add karo.")
 	pdf_bytes, filename, data = _supplier_khata_pdf_bytes(supplier, from_date, to_date)
 	body = custom_message or (
-		f"Khata Statement — {data['supplier_name']}\n"
+		f"Account Statement — {data['supplier_name']}\n"
 		f"{data['from_date']} to {data['to_date']}\n"
 		f"Opening: Rs. {data['opening_balance']:.2f}  |  Closing: Rs. {data['closing_balance']:.2f}\n\n"
 		f"Santu Hardware"

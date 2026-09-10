@@ -152,6 +152,77 @@ def mirror_error_log(doc, method=None):
 	)
 
 
+def capture_failed_response(response=None, request=None):
+	"""`after_request` hook: record any 5xx the shop actually hit.
+
+	This exists because of a real hole found on 2026-09-07. Ankit hit a 500
+	"Uncaught Server Exception" page (a MariaDB 1020 write conflict on
+	`tabsessions` while /app was building its CSRF token) and it was recorded
+	NOWHERE -- not in Error Log, not in the bench logs, not as a bug report.
+	Two reasons, and this closes both:
+
+	  * The browser capture (santu_error_capture.js) never ran, because the
+	    page it lives on is the page that failed to load.
+	  * The Error Log mirror below never fired either: the failing statement
+	    left the request's transaction aborted, so the write that would have
+	    recorded it could not go through.
+
+	Frappe calls this hook from `application()`'s `finally`, so it runs even
+	when the request blew up. `frappe.db.rollback()` first is the load-bearing
+	part -- it clears that aborted transaction, which is exactly what stopped
+	the error being saved the first time.
+
+	Never raises: Frappe logs and swallows anything thrown here, and a bug
+	recorder that breaks the response would be worse than the bug.
+	"""
+	try:
+		status = getattr(response, "status_code", None)
+		if not status or int(status) < 500:
+			return
+		if not getattr(frappe.local, "db", None):
+			return
+
+		path = getattr(request, "path", "") or ""
+		# The bench's own health checks and asset 404s are noise, not bugs.
+		if path.startswith(("/assets/", "/files/", "/api/method/ping")):
+			return
+
+		# THE important line: the request that just failed may have left its
+		# transaction aborted, and every write below would fail too.
+		try:
+			frappe.db.rollback()
+		except Exception:
+			return
+
+		import traceback as _tb
+
+		trace = ""
+		exc = getattr(frappe.local, "_santu_last_exception", None) or None
+		try:
+			trace = _tb.format_exc()
+			if "NoneType: None" in trace:
+				trace = ""
+		except Exception:
+			trace = ""
+
+		messages = []
+		for m in (getattr(frappe.local, "message_log", None) or [])[:3]:
+			messages.append(str(m)[:300])
+
+		title = f"HTTP {status} on {path}" if path else f"HTTP {status}"
+		record_bug(
+			title=title,
+			message=" | ".join(messages) or f"The page at {path} failed to build.",
+			traceback=trace or (str(exc) if exc else ""),
+			source="Server",
+			route=path,
+		)
+		frappe.db.commit()
+	except Exception:
+		# Deliberately silent -- see the docstring.
+		pass
+
+
 @frappe.whitelist()
 def report_browser_errors(errors):
 	"""Endpoint for santu_error_capture.js. Accepts a batch."""

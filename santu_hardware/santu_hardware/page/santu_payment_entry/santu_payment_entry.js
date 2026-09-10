@@ -81,11 +81,23 @@ window.santu_payment_entry_page = {
 				}
 				this.render();
 			}
+			// `_render_body` was never a method on this page — every caller
+			// that hands santu_open_collect_payment an `amount` (Customer
+			// Dues, Sale/Purchase row actions, Purchase Invoice's collect
+			// button, and now Parties' own Payment In/Out) hit this and
+			// threw silently on every single use. It only ever "looked"
+			// fine because _select_party's own resolution — which fires
+			// right alongside this — happens to repaint the same input a
+			// moment later with its own (usually identical) total_outstanding
+			// figure. Caught 2026-09-06 wiring up Parties' button. The two
+			// calls _select_party's callback already makes are the correct
+			// ones: paint the field, then refresh the totals strip below it.
 			if (opts.amount) {
 				const b = this._payment();
 				b.amount = flt(opts.amount);
 				b.amount_touched = true;
-				this._render_body();
+				this.$root.find(".santu-pay-amount").val(b.amount || "");
+				this._render_totals();
 			}
 		});
 	},
@@ -99,7 +111,8 @@ window.santu_payment_entry_page = {
 		if (opts.amount) {
 			b.amount = flt(opts.amount);
 			b.amount_touched = true;
-			this._render_body();
+			this.$root.find(".santu-pay-amount").val(b.amount || "");
+			this._render_totals();
 		}
 	},
 
@@ -398,6 +411,24 @@ window.santu_payment_entry_page = {
 		const details = this._is_in(b) ? api.customer_details(name) : api.supplier_details(name);
 		details.then((d) => {
 			b.party_details = d;
+			// Every caller that opens this screen with a party ALREADY
+			// chosen (santu_open_collect_payment — Parties, Customer Dues,
+			// Sale/Purchase pages, the topbar mega-menu) hands over only the
+			// docname, never a display label, and this was the one path
+			// into a party that never set b.party_label at all — only
+			// _pick_party (the dropdown click) did. The search box read
+			// "Search by Name/Phone" while the party was, underneath,
+			// completely selected (invoices loaded, amount prefilled) —
+			// looked broken, was not (2026-09-06, caught wiring up Parties'
+			// own Payment In/Out button). Guarded on b still being the
+			// active bill: this resolves after a real network round trip,
+			// and the operator may have switched tabs by the time it lands.
+			if (!b.party_label) {
+				b.party_label = d.customer_name || d.supplier_name || d.name || name;
+				if (this._payment() === b) {
+					this.$root.find(".santu-bill-customer").val(b.party_label);
+				}
+			}
 			this._persist_soon();
 		});
 

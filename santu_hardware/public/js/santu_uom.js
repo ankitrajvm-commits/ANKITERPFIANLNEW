@@ -105,34 +105,42 @@ window.santu_uom = (function () {
 	// server answers, without holding up the table's first draw.
 	// opts.extra_html keeps a screen's own trailing entry (Purchase Invoice's
 	// "+ Naya Unit") from being wiped when the real list lands.
+	// Two different UOM records can share one short form -- this shop's list
+	// has both "Nos" and "Pcs", and abbr() maps BOTH to "Pcs". That put two
+	// identical-looking "Pcs" rows in a dropdown with no way to tell them
+	// apart, and picking the wrong one silently swapped a stock_uom="Nos"
+	// item over to the unrelated "Pcs" record (caught 2026-09-03 testing an
+	// Estimate: the screen said Pcs, the saved Quotation line said uom="Pcs"
+	// where the sale had correctly saved "Nos"). Collapse each short form to
+	// a single entry, always keeping the row's own current unit so a later
+	// $select.val() still matches.
+	//
+	// Lifted out of fill_select on 2026-09-07 so the Stock Summary's "Unit
+	// badlein" dialog can use the same collapse -- it built its own <select>
+	// by hand and so still offered both "Pcs" rows, the exact bug this fixes.
+	function dedupe_by_abbr(options, current_uom) {
+		// Pass 1: pick one winner per short form -- the row's own unit if it
+		// is in the group, otherwise the first one offered.
+		const winner = {};
+		(options || []).forEach((o) => {
+			const label = abbr(o.uom);
+			if (!(label in winner) || o.uom === current_uom) winner[label] = o;
+		});
+		// Pass 2: emit in the server's original order, one per label.
+		const emitted = {};
+		return (options || []).filter((o) => {
+			const label = abbr(o.uom);
+			if (emitted[label]) return false;
+			emitted[label] = true;
+			return true;
+		}).map((o) => winner[abbr(o.uom)]);
+	}
+
 	function fill_select($select, item_code, current_uom, opts) {
 		opts = opts || {};
 		list(item_code, current_uom).then((options) => {
 			if (!$select || !$select.length || !options.length) return;
-			// Two different UOM records can share one short form -- this shop's
-			// list has both "Nos" and "Pcs", and abbr() maps BOTH to "Pcs". That
-			// put two identical-looking "Pcs" rows in the dropdown with no way to
-			// tell them apart, and picking the wrong one silently swapped a
-			// stock_uom="Nos" item over to the unrelated "Pcs" record (caught
-			// 2026-09-03 testing an Estimate: the screen said Pcs, the saved
-			// Quotation line said uom="Pcs" where the sale had correctly saved
-			// "Nos"). Collapse each short form to a single entry, always keeping
-			// the row's own current unit so $select.val() below still matches.
-			// Pass 1: pick one winner per short form -- the row's own unit if
-			// it is in the group, otherwise the first one offered.
-			const winner = {};
-			options.forEach((o) => {
-				const label = abbr(o.uom);
-				if (!(label in winner) || o.uom === current_uom) winner[label] = o;
-			});
-			// Pass 2: emit in the server's original order, one per label.
-			const emitted = {};
-			const final_options = options.filter((o) => {
-				const label = abbr(o.uom);
-				if (emitted[label]) return false;
-				emitted[label] = true;
-				return true;
-			}).map((o) => winner[abbr(o.uom)]);
+			const final_options = dedupe_by_abbr(options, current_uom);
 			// Label shows the short form ("Nos" -> "Pcs") so it fits a narrow
 			// table column without overlapping the native select arrow; the
 			// option's real `value` stays the full uom name Frappe expects
@@ -225,5 +233,5 @@ window.santu_uom = (function () {
 		return UOM_ABBR[String(uom).trim().toLowerCase()] || uom;
 	}
 
-	return { list, prime, factor, convert, dialog, fill_select, abbr, _cache: cache };
+	return { list, prime, factor, convert, dialog, fill_select, abbr, dedupe_by_abbr, _cache: cache };
 })();

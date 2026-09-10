@@ -176,23 +176,36 @@
 		// raw Python traceback whenever a doctype had no matching layout.
 		let available_formats = [];
 
+		// Every document this shop prints, thermal or A4, has a slot here
+		// (2026-09-05 direct request: "jitne v a4 and thermal print hote
+		// hai, sabhi ke sabhi whaa pe template hone chahiye"). Purchase
+		// Order had an A4 layout but no way to see or pick it, and Khata
+		// Statement — the statement handed to a customer — was missing from
+		// the library altogether.
 		const docTypes = [
 			{ value: "Sales Invoice", label: "Invoice / Credit Note" },
 			{ value: "Quotation", label: "Estimate / Quotation" },
 			{ value: "Delivery Note", label: "Delivery Challan" },
 			{ value: "Purchase Invoice", label: "Purchase Invoice / Debit Note" },
+			{ value: "Purchase Order", label: "Purchase Order" },
 			{ value: "Payment Entry", label: "Payment In / Out" },
+			{ value: "Khata Statement", label: "Account Statement" },
 		];
+
+		// The khata is generated markup, not a Print Format (a statement
+		// spans many bills), so it previews through its own page instead of
+		// /printview. Same iframe, same shape of URL.
+		const KHATA_DOCTYPE = "Khata Statement";
 
 		const libraries = {
 			"Thermal Invoice Library": {
 				title: "Thermal Invoice Library",
 				desc: "Select a thermal bill layout. The live preview updates immediately. Set as Default to apply to actual prints.",
 				templates: [
-					{ id: "Standard Bill", name: "Standard Bill", desc: "Everything: items, totals, khata summary and Scan & Pay QR." },
-					{ id: "Compact Bill", name: "Compact Bill", desc: "Smaller type, no QR, no khata block. Saves roll on long bills." },
+					{ id: "Standard Bill", name: "Standard Bill", desc: "Everything: items, totals, account summary and Scan & Pay QR." },
+					{ id: "Compact Bill", name: "Compact Bill", desc: "Smaller type, no QR, no account block. Saves roll on long bills." },
 					{ id: "Detailed Bill", name: "Detailed Bill", desc: "Adds item code under each name, a discount column and payment split." },
-					{ id: "Simple Cash Bill", name: "Simple Cash Bill", desc: "No customer, no khata. Just items and total for a walk-in." },
+					{ id: "Simple Cash Bill", name: "Simple Cash Bill", desc: "No customer, no running account. Just items and total for a walk-in." },
 					{ id: "Customer Copy", name: "Customer Copy", desc: "Standard bill stamped CUSTOMER COPY." },
 					{ id: "Duplicate / Office Copy", name: "Duplicate / Office Copy", desc: "Stamped DUPLICATE, with item codes and a signature line." },
 					{ id: "Bill + Payment Receipt", name: "Bill + Payment Receipt", desc: "Standard bill plus a mode-wise payment receipt and change returned." },
@@ -216,6 +229,41 @@
 			},
 		};
 
+		// Only the Sales Invoice has eleven hand-built thermal layouts. Every
+		// other document has exactly one, and listing all eleven cards
+		// against a Purchase Order suggested a choice that does not exist —
+		// whichever one was clicked, the same single layout appeared. Each
+		// document now shows the layouts it actually has (2026-09-05).
+		const SINGLE_LAYOUTS = {
+			"Thermal Invoice Library": {
+				"Quotation": { id: "Thermal Estimate", name: "Thermal Estimate", desc: "Roll-width estimate — items, quantities and the total. No dues, no QR." },
+				"Delivery Note": { id: "Thermal Challan", name: "Thermal Challan", desc: "Items and quantities only, no rates, with a signature line for whoever takes delivery." },
+				"Purchase Invoice": { id: "Thermal Purchase Bill", name: "Thermal Purchase Bill", desc: "A mahajan's bill on the roll — items, total, what was paid and what is left." },
+				"Purchase Order": { id: "Thermal Purchase Order", name: "Thermal Purchase Order", desc: "The order slip for a mahajan — items, quantities and the date goods are needed." },
+				"Payment Entry": { id: "Thermal Payment Receipt", name: "Thermal Payment Receipt", desc: "Money in or out, how it was paid, and what the party still owes after it." },
+				// Two cards, not one — the standard roll (every item of every
+				// bill) and a compact one that drops the item lines and keeps
+				// just the money (2026-09-06 direct request: "isme ek compact
+				// version v bana do"). A party with a lot of history is most
+				// of what a khata roll actually costs in paper, and this is
+				// the one place that saving is worth offering as a choice
+				// rather than a global setting.
+				"Khata Statement": [
+					{ id: "Thermal Khata", name: "Thermal Account Statement", desc: "The running account on the roll — every bill's items, every payment, with the balance." },
+					{ id: "Thermal Khata (Compact)", name: "Thermal Account Statement (Compact)", desc: "Same account, no item lines — just dates, bill numbers and the money. Saves roll on a long history." },
+				],
+			},
+			"WhatsApp Library": {
+				"Khata Statement": { id: "A4 Khata", name: "A4 Account Statement", desc: "The full A4 statement, laid out as the sale bill, with every item of every bill listed." },
+			},
+		};
+
+		function templates_for(lib_name, dt) {
+			const only = (SINGLE_LAYOUTS[lib_name] || {})[dt];
+			if (!only) return libraries[lib_name].templates;
+			return Array.isArray(only) ? only : [only];
+		}
+
 		// default_templates[library][doctype] = template_id
 		let default_templates = { "Thermal Invoice Library": {}, "WhatsApp Library": {} };
 		let active_doc_type = { "Thermal Invoice Library": "Sales Invoice", "WhatsApp Library": "Sales Invoice" };
@@ -224,6 +272,14 @@
 
 		async function fetch_latest_doc(doctype) {
 			if (latest_docs[doctype]) return latest_docs[doctype];
+
+			// The khata has no document of its own to point at — the
+			// preview page picks the party itself. A truthy marker is all
+			// the caller needs so it stops saying "koi bill bana hi nahi".
+			if (doctype === KHATA_DOCTYPE) {
+				latest_docs[doctype] = { doctype: KHATA_DOCTYPE, name: KHATA_DOCTYPE };
+				return latest_docs[doctype];
+			}
 
 			let invoices = await frappe.db.get_list(doctype, { limit: 1, filters: { docstatus: 1 }, order_by: "creation desc" });
 			if (invoices.length) {
@@ -247,11 +303,25 @@
 			// print go through the identical path. `&style=` never worked -- a
 			// print format cannot read it -- which is why every template used to
 			// preview the same bill.
+			//
+			// The two lists are kept strictly apart. The thermal list used to
+			// include "Santu Hardware Challan (Delivery Note)" -- an A4
+			// format -- so picking a thermal layout for a Delivery Note
+			// previewed, and would have printed, a full A4 sheet on the roll
+			// (2026-09-05). A thermal slot may only ever resolve to a thermal
+			// format, and an A4 slot only to an A4 one; where one genuinely
+			// does not exist the panel says so instead of quietly showing the
+			// other kind.
 			const candidates = lib === "Thermal Invoice Library"
 				? [`Santu Thermal - ${style}`, "Santu Hardware Thermal Bill (Sales Invoice)",
-				   "Santu Hardware Thermal Estimate (Quotation)", "Santu Hardware Challan (Delivery Note)",
-				   "Santu Hardware Thermal Purchase Bill", "Santu Hardware Thermal Payment Receipt", "Santu Hardware Thermal Bill"]
-				: [`Santu A4 - WhatsApp (${dt})`, `Santu Hardware Bill (${dt})`, "Santu Hardware Bill", "Santu Hardware Purchase Bill", "Santu Hardware Payment Receipt"];
+				   "Santu Hardware Thermal Estimate (Quotation)",
+				   "Santu Hardware Thermal Challan (Delivery Note)",
+				   "Santu Hardware Thermal Purchase Bill",
+				   "Santu Hardware Thermal Purchase Order",
+				   "Santu Hardware Thermal Payment Receipt", "Santu Hardware Thermal Bill"]
+				: [`Santu A4 - WhatsApp (${dt})`, `Santu Hardware Bill (${dt})`, "Santu Hardware Bill",
+				   "Santu Hardware Challan (Delivery Note)", "Santu Hardware Purchase Bill",
+				   "Santu Hardware Purchase Order", "Santu Hardware Payment Receipt"];
 			return candidates.find((name) =>
 				available_formats.some((f) => f.name === name && f.doc_type === dt)
 			) || null;
@@ -263,12 +333,27 @@
 			const doc = latest_docs[dt];
 			const style = active_preview_template[lib];
 			if (!doc) return "";
+			if (dt === KHATA_DOCTYPE) {
+				const layout = lib === "Thermal Invoice Library" ? "thermal" : "a4";
+				const compact = style === "Thermal Khata (Compact)" ? 1 : 0;
+				// A whitelisted method returning a bare document — NOT a www
+				// page. Frappe wraps a www page in the whole website template
+				// (navbar, footer, website bundle) and the khata markup is
+				// itself a complete <!doctype html>, so the iframe was loading
+				// a full website page with a second document nested inside it
+				// (2026-09-05).
+				// Cache-buster: the browser happily reuses a previous response
+				// for the same URL, so the "Live Preview" kept showing an old
+				// rendering of a template that had since changed — which is
+				// the one thing a preview must never do (2026-09-05).
+				return `/api/method/santu_hardware.santu_hardware.khata_preview.khata_preview?party_type=Customer&layout=${layout}&compact=${compact}&_=${Date.now()}`;
+			}
 			const format = resolve_format(lib, dt, style);
 			if (!format) return "";
 			// `/api/method/frappe.utils.print_and_email.printview` does not exist
 			// on this Frappe version -- it answered 417 and the panel rendered the
 			// traceback as the "bill". `/printview` is the real endpoint.
-			return `/printview?doctype=${encodeURIComponent(doc.doctype)}&name=${encodeURIComponent(doc.name)}&format=${encodeURIComponent(format)}&no_letterhead=1`;
+			return `/printview?doctype=${encodeURIComponent(doc.doctype)}&name=${encodeURIComponent(doc.name)}&format=${encodeURIComponent(format)}&no_letterhead=1&_=${Date.now()}`;
 		}
 
 		async function boot() {
@@ -323,7 +408,7 @@
 						</div>
 
 						<div class="santu-prn-templates-grid">
-							${lib.templates.map((t) => `
+							${templates_for(lib_name, dt).map((t) => `
 								<div class="santu-prn-template-card ${t.id === active_preview ? "active" : ""}" data-lib="${lib_name}" data-id="${t.id}">
 									<div class="santu-prn-template-name">${t.name}</div>
 									<div class="santu-prn-template-desc">${t.desc}</div>
@@ -480,7 +565,7 @@
 				} catch (err) {
 					e.target.checked = !e.target.checked;
 					show_logo = show_logo ? 0 : 1;
-					frappe.msgprint({ title: __("Could not save"), message: err.message || String(err), indicator: "red" });
+					frappe.msgprint({ title: __("Could not save"), message: (err && err.message) || String(err), indicator: "red" });
 				}
 			});
 
@@ -493,7 +578,7 @@
 				} catch (err) {
 					e.target.checked = !e.target.checked;
 					show_logo_a4 = show_logo_a4 ? 0 : 1;
-					frappe.msgprint({ title: __("Could not save"), message: err.message || String(err), indicator: "red" });
+					frappe.msgprint({ title: __("Could not save"), message: (err && err.message) || String(err), indicator: "red" });
 				}
 			});
 
@@ -503,8 +588,14 @@
 				active_doc_type[lib] = dt;
 				previewing_library = lib;
 
-				// set active preview to default for this doctype, or fallback
-				active_preview_template[lib] = default_templates[lib][dt] || libraries[lib].templates[0].id;
+				// Set active preview to this doctype's default, or its first
+				// REAL layout — falling back to the Sales Invoice style list
+				// left a Purchase Order highlighting "Standard Bill", a card
+				// that is not even on screen for it.
+				const choices = templates_for(lib, dt);
+				const saved = default_templates[lib][dt];
+				active_preview_template[lib] =
+					(saved && choices.some((t) => t.id === saved) && saved) || choices[0].id;
 
 				await fetch_latest_doc(dt);
 				render();
@@ -527,12 +618,24 @@
 
 				const $btn = $(this).prop("disabled", true).text(__("Printing…"));
 				try {
-					await frappe.xcall("santu_hardware.santu_hardware.api.print_thermal_bill", {
-						doctype: doc.doctype,
-						name: doc.name,
-						printer: settings.printer_name,
-					});
-					frappe.show_alert({ message: __("Template test printed."), indicator: "blue" });
+					// This used to call a server method (api.print_thermal_bill)
+					// that never existed, so every "Test Print Template" click
+					// threw "has no attribute 'print_thermal_bill'" (2026-09-07
+					// bug report). window.santu_print_thermal_bill is the one
+					// real print path every other button in the app already
+					// uses (Save & Print, Reprint, the print icon everywhere) --
+					// it runs the actual CUPS/USB/PDF ladder and reports back
+					// what really happened, instead of a fake success.
+					//
+					// It always prints the shop's currently SAVED default
+					// template for this doctype, not necessarily the card being
+					// previewed here -- picking a specific non-default layout to
+					// physically test isn't wired up (the USB rung renders its
+					// own raw ESC/POS bytes, entirely separate from these Print
+					// Format records, so there's no single place to plug an
+					// override into both paths safely). Set the card as Default
+					// first, then Test Print, to try a specific layout on paper.
+					await window.santu_print_thermal_bill(doc.doctype, doc.name);
 				} catch (e) {
 					frappe.msgprint({ title: __("Print Failed"), message: (e && e.message) || String(e), indicator: "red" });
 				}

@@ -14,8 +14,18 @@ def run_auto_backup_check():
 	if not next_run:
 		from santu_hardware.santu_hardware.backup_service import compute_next_backup_time
 
-		settings.next_backup_on = compute_next_backup_time(settings)
-		settings.save(ignore_permissions=True)
+		# Targeted write, not a full .save() of the Single — see the long
+		# note in backup_service.create_site_backup: every Single in the
+		# site shares `tabSingles`, and rewriting all of this one's rows
+		# from a background job collided with whatever the counter was
+		# doing and threw 1020 (BUG-20260905-00581).
+		frappe.db.set_value(
+			"Santu Backup Settings",
+			None,
+			"next_backup_on",
+			compute_next_backup_time(settings),
+			update_modified=False,
+		)
 		return
 
 	if get_datetime(now_datetime()) < get_datetime(next_run):

@@ -124,6 +124,15 @@ def create_site_backup(backup_type: str = "Manual", include_files: bool = True, 
 
 	try:
 		odb = new_backup(force=True, ignore_files=not include_files)
+		# The dump takes a minute or two. Whatever transaction was open when
+		# it started is now holding a read view from BEFORE that minute, and
+		# under REPEATABLE READ every later statement is judged against it —
+		# so even READING `tabSingles` afterwards raises 1020 "Record has
+		# changed since last read" if anyone touched any Single meanwhile.
+		# Committing here ends that stale view; everything below then works
+		# off a fresh one. Nothing is lost by committing: the dump is already
+		# written to disk and the log row was committed before it started.
+		frappe.db.commit()
 		db_path = odb.backup_path_db
 		files_path = odb.backup_path_files if include_files else None
 		private_path = odb.backup_path_private_files if include_files else None
@@ -147,14 +156,38 @@ def create_site_backup(backup_type: str = "Manual", include_files: bool = True, 
 		if not verified:
 			raise Exception(f"Backup could not be verified: {verify_note}")
 
+		# Written with db_set_value, NOT settings.save().
+		#
+		# EVERY Single doctype in the site shares one physical table,
+		# `tabSingles` — Santu POS Settings, Website Settings, this one, all
+		# of them, one row per field. A full .save() rewrites every one of
+		# this Single's rows, and it does so at the END of a backup that has
+		# just spent a minute or two dumping the database. Any other process
+		# touching ANY Single in that window (the counter changing a POS
+		# setting, a print job, the branding hook) collided with it and
+		# MariaDB threw 1020 "Record has changed since last read in table
+		# 'tabsingles'" — the backup then reported Failed and, worse, the
+		# except branch below tried the very same full save again and blew
+		# up a second time (BUG-20260905-00580 / 00581: the nightly backup
+		# was silently not running).
+		#
+		# Targeted field updates touch only the three rows that actually
+		# changed, and the settings are re-read FRESH here rather than
+		# carried across the whole dump.
 		settings = frappe.get_single("Santu Backup Settings")
 		if backup_type != "Snapshot":
 			# Snapshots run on their own 2-hourly clock and must not move the
 			# nightly full backup's schedule or masquerade as it.
-			settings.last_backup_on = now_datetime()
-			settings.last_backup_status = "Success"
-			settings.next_backup_on = compute_next_backup_time(settings)
-			settings.save(ignore_permissions=True)
+			frappe.db.set_value(
+				"Santu Backup Settings",
+				None,
+				{
+					"last_backup_on": now_datetime(),
+					"last_backup_status": "Success",
+					"next_backup_on": compute_next_backup_time(settings),
+				},
+				update_modified=False,
+			)
 
 		_cleanup_old_backups(cint(settings.retention_count) or 10)
 		frappe.db.commit()
@@ -163,9 +196,12 @@ def create_site_backup(backup_type: str = "Manual", include_files: bool = True, 
 	except Exception as e:
 		log.db_set({"status": "Failed", "error_message": str(e)[:500], "verified": 0})
 		if backup_type != "Snapshot":
-			settings = frappe.get_single("Santu Backup Settings")
-			settings.last_backup_status = "Failed"
-			settings.save(ignore_permissions=True)
+			# Same targeted write as the success path — recording a FAILURE
+			# must never be the thing that throws (it was: the full save
+			# hit the same tabSingles collision and buried the real error).
+			frappe.db.set_value(
+				"Santu Backup Settings", None, "last_backup_status", "Failed", update_modified=False
+			)
 		frappe.db.commit()
 		frappe.log_error(title="Santu Backup Failed", message=frappe.get_traceback())
 		raise

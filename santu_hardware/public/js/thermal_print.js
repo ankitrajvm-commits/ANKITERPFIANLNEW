@@ -284,3 +284,60 @@ async function santu_print_thermal_bill(doctype, docname, opts = {}) {
 // printers as a last-resort fallback. No bill travels through it.
 
 window.santu_print_thermal_bill = santu_print_thermal_bill;
+
+// ---------------------------------------------------------------------------
+// Ask before printing.
+//
+// This REVERSES an earlier instruction, deliberately and on the record. On
+// 2026-08-xx the direct request was "SALE KE TIME PE PRINTING TO HOGI HI,
+// ISME PRINTING KA MAT PUCHNA... YE TO PRINT HOGA HI" — print without asking.
+// On 2026-09-05 that was changed, with the reason: a regular who takes goods
+// on credit again and again does not want a slip each time, he wants one
+// khata at the end. Printing every save burned a hundred slips of roll on
+// bills nobody asked for. "print ke pahle hamesa puche mere se then print ho."
+//
+// So: nothing prints by itself any more. The bill is ALREADY SAVED before
+// this dialog appears — declining costs nothing and loses nothing, which is
+// exactly why the safe default here is "don't print". A Print button
+// somewhere the operator actually pressed still prints straight away; only
+// the automatic after-a-save prints ask.
+async function santu_confirm_then_print(doctype, docname, opts = {}) {
+	const label = opts.bill_no ? `#${opts.bill_no}` : docname;
+	return new Promise((resolve) => {
+		const d = new frappe.ui.Dialog({
+			title: __("Bill save ho gaya"),
+			fields: [
+				{
+					fieldtype: "HTML",
+					options: `
+						<div style="font-size:15px;line-height:1.6;">
+							<div><b>${frappe.utils.escape_html(String(label))}</b> ${__("save ho gaya hai.")}</div>
+							<div style="margin-top:6px;color:#4b5563;">${__("Ab print karein?")}</div>
+							<div style="margin-top:10px;font-size:12.5px;color:#6b7280;">
+								${__("Nahi karenge to bhi bill safe hai — baad me Sale se kabhi bhi print kar sakte hain.")}
+							</div>
+						</div>`,
+				},
+			],
+			primary_action_label: __("Haan, print karo"),
+			primary_action: async () => {
+				d.hide();
+				await santu_print_thermal_bill(doctype, docname, opts);
+				resolve(true);
+			},
+			secondary_action_label: __("Nahi, abhi nahi"),
+			secondary_action: () => {
+				d.hide();
+				resolve(false);
+			},
+		});
+		// Escape / clicking away must mean "no", not "leave the caller hanging"
+		// — the WhatsApp offer runs after this resolves.
+		d.$wrapper.on("hidden.bs.modal", () => resolve(false));
+		d.show();
+		// Enter prints, because that is the common case; the operator still
+		// had to look at the dialog to press it.
+		setTimeout(() => d.get_primary_btn() && d.get_primary_btn().focus(), 150);
+	});
+}
+window.santu_confirm_then_print = santu_confirm_then_print;

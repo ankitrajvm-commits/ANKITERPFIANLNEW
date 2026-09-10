@@ -396,7 +396,7 @@ const santu_sales_order_page = {
 	},
 
 	// ---------- items (identical UX to Sale Invoice, no stock warnings) ----------
-	_render_items() {
+	_render_items({ reveal_row_id = null } = {}) {
 		const tab = this._active_tab();
 		const $tbody = this.$root.find(".santu-si2-table tbody");
 		$tbody.empty();
@@ -408,7 +408,7 @@ const santu_sales_order_page = {
 		tab.items.forEach((row, idx) => {
 			const row_hl = santu_item_row_class(row.item_code, row.item_name);
 			const $tr = $(`
-				<tr data-row="${row.id}" class="${row_hl}">
+				<tr data-row="${row.id}" class="${row.id === reveal_row_id ? "santu-bill-row-new" : ""} ${row_hl}">
 					<td class="santu-si2-col-idx">${idx + 1}</td>
 					<td class="santu-si2-col-item">
 						<div class="santu-si2-item-name">${frappe.utils.escape_html(row.item_name || row.item_code)}</div>
@@ -444,6 +444,10 @@ const santu_sales_order_page = {
 
 		this._bind_item_row_events();
 		this._recalc_totals();
+		// Naya row apne aap dikhe -- niche se dhoondhna na pade. In screens
+		// ka grid apne scroll box me nahi hai, isliye helper khud page ko
+		// scroll karta hai (santu_scroll_row_into_view ka fallback).
+		if (reveal_row_id) window.santu_scroll_row_into_view(this.$root, { row_id: reveal_row_id });
 	},
 
 	_item_search(q) {
@@ -532,7 +536,7 @@ const santu_sales_order_page = {
 		const existing = tab.items.find((r) => r.item_code === item_code);
 		if (existing) {
 			existing.qty = (Number(existing.qty) || 0) + 1;
-			this._render_items();
+			this._render_items({ reveal_row_id: existing.id });
 			this._save_debounced();
 			return;
 		}
@@ -553,7 +557,7 @@ const santu_sales_order_page = {
 			};
 			tab.items.push(new_row);
 			this._save_debounced();
-			this._render_items();
+			this._render_items({ reveal_row_id: new_row.id });
 		});
 	},
 

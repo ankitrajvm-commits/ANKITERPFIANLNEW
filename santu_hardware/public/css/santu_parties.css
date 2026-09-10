@@ -205,6 +205,44 @@
 	cursor: pointer;
 	transition: background 0.15s;
 }
+/* Taller only when there is a second line to show, so a party with no
+   phone or address on file does not leave a band of empty space. */
+.santu-parties-row.has-meta {
+	height: 66px;
+	align-items: center;
+}
+.santu-parties-row-main {
+	min-width: 0;
+	flex: 1 1 auto;
+	padding-right: 10px;
+}
+.santu-parties-row-meta {
+	display: flex;
+	align-items: center;
+	margin-top: 2px;
+	font-size: 11.5px;
+	line-height: 15px;
+	color: #7c8698;
+	min-width: 0;
+}
+.santu-parties-row-meta span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+/* The village can be long; the phone never is, so the village is the one
+   that gives up room. */
+.santu-parties-row-meta span:last-child { flex: 0 1 auto; }
+.santu-parties-row-meta span:first-child { flex: 0 0 auto; }
+.santu-parties-row-dot {
+	flex: 0 0 auto;
+	width: 3px;
+	height: 3px;
+	margin: 0 7px;
+	border-radius: 50%;
+	background: #c3cad6;
+}
+.santu-parties-row-active .santu-parties-row-meta { color: #64748b; }
 .santu-parties-row:last-child { border-bottom: none; }
 .santu-parties-row:hover { background: #f8fafc; }
 .santu-parties-row-active {
@@ -220,7 +258,6 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	padding-right: 8px;
 }
 .santu-parties-row-amount {
 	font-size: 14px;
@@ -766,6 +803,43 @@
 }
 .santu-parties-send-reminder-btn:active {
 	transform: scale(0.97);
+}
+
+/* Payment In / Payment Out — sits next to Send Reminder when there is a
+   balance, and alone (still visible) when the party is settled, so
+   collecting an advance from a paid-up customer needs no detour through a
+   different screen (2026-09-06). Neutral, not green: this button records
+   money moving in EITHER direction depending on party_type, unlike Send
+   Reminder which only ever chases what is owed. */
+.santu-parties-balance-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-shrink: 0;
+}
+.santu-parties-payment-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	background: #ffffff;
+	color: #1d4ed8 !important;
+	border: 1px solid #bfdbfe;
+	border-radius: 8px;
+	padding: 8px 16px;
+	font-size: 14px;
+	font-weight: 600;
+	cursor: pointer;
+	white-space: nowrap;
+	transition: background 0.15s ease, transform 0.08s ease;
+}
+.santu-parties-payment-btn:hover {
+	background: #eff6ff;
+}
+.santu-parties-payment-btn:active {
+	transform: scale(0.97);
+}
+.santu-parties-balance-clear .santu-parties-payment-btn {
+	margin-left: auto;
 }
 
 /* Party actions (Edit / Delete) behind a kebab menu — a bare red trash icon

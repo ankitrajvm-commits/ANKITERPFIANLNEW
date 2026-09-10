@@ -37,11 +37,21 @@ HARDWARE_HSN_MAP = [
 	(re.compile(r"\b(pvc|upvc|cpvc|swr|pipe|fitting|elbow|tee|socket|union|reducer|nipple|bushing|coupler|collar|bend)\b", re.I), "3917"),
 	(re.compile(r"\b(valve|ball valve|cock|bib cock|pillar cock|stop cock|tap|faucet|shower|nozzle)\b", re.I), "8481"),
 	(re.compile(r"\b(fevicol|adhesive|resin|sr998|marine|sh|heatx|bond|glue|araldite|kwik)\b", re.I), "3506"),
+	# "Birla Opus" is Birla's PAINT line -- it must be caught here, before the
+	# cement rule below, or every tin of it is classified as cement. That is
+	# not hypothetical: all 108 Birla Opus colours in this catalogue came out
+	# as 2523 (cement) on 2026-09-07, which would have put the wrong GST on
+	# every paint bill. Colour/size names ("Black 1L", "Brilliant White 4L")
+	# carry no paint word of their own, which is why the brand has to.
+	(re.compile(r"\bbirla\s*opus\b", re.I), "3209"),
 	(re.compile(r"\b(paint|primer|emulsion|distemper|enamel|varnish|thinner|stainer|apex|tractor)\b", re.I), "3209"),
 	(re.compile(r"\b(putty|sealant|silicone|grout|m-seal|waterproofing|dr\.?\s*fixit|roof|wall care)\b", re.I), "3214"),
 	(re.compile(r"\b(switch|socket|plug|mcb|db|holder|roma|anchor|havells|polycab|gang box)\b", re.I), "8538"),
 	(re.compile(r"\b(wire|cable|flex|copper|aluminium|casing|caping)\b", re.I), "8544"),
-	(re.compile(r"\b(cement|concrete|wallmaxx|jk|ultratech|birla|acc|ambuja)\b", re.I), "2523"),
+	# `birla` on its own used to sit in this list and swallowed Birla Opus
+	# paint into cement (see the rule above). Birla's cement is sold as
+	# "Birla Cement"/"Birla White", so match those, not the bare name.
+	(re.compile(r"\b(cement|concrete|wallmaxx|ultratech|acc|ambuja)\b|\bbirla\s+(cement|white|gold|samrat)\b|\bjk\s+(cement|lakshmi|super)\b", re.I), "2523"),
 	(re.compile(r"\b(brush|roller|broom|wiper|cleaning brush)\b", re.I), "9603"),
 	(re.compile(r"\b(tape|teflon|pvc tape|masking|abro|insulation tape)\b", re.I), "3919"),
 	(re.compile(r"\b(nail|screw|fastener|bolt|nut|washer|anchor bolt|drywall|wooden screw)\b", re.I), "7317"),
@@ -57,6 +67,14 @@ NON_ITEM_KEYWORDS = [
 	"consignee", "buyer", "seller", "place of supply", "state name", "state code", "pan no", "gstin",
 	"invoice no", "voucher no", "bill no", "dated", "delivery note", "mode /", "reference no",
 	"page ", "tax invoice", "bill of supply", "e-way bill", "ack no", "irn :", "thank you",
+	# Statement / khata furniture. OCR of a khata or a bill footer produces
+	# these as perfectly well-formed "name + number" lines, so without them
+	# "Closing Balance 650.00" imports as an item priced at Rs 650
+	# (2026-09-05, seen in the first OCR run).
+	"opening balance", "closing balance", "running balance", "total sale", "total paid",
+	"total qty", "total quantity", "balance due", "amount in words", "previous balance",
+	"kab kitna dena hai", "khata statement", "statement for", "transactions",
+	"main road", "phone:", "ph:", "period:", "printed:", "gstin:", "customer:", "pata:",
 ]
 
 
@@ -333,10 +351,134 @@ def extract_items_from_pdf(file_url: str) -> List[Dict[str, Any]]:
 	if len(items) >= 1:
 		return _deduplicate_items(items)
 
+	# Tier 4: OCR. Everything above assumes the PDF carries real text; a
+	# scanned bill or a phone photo carries none, and this used to be the
+	# point where the app simply told the shop to go and type it into Excel
+	# instead (2026-09-05: "sabme best ocr setup kr do"). macOS Vision reads
+	# the page in reading order, so the same line parser that handles a text
+	# rate card handles the OCR'd one — one parser, two sources.
+	items = _parse_tier4_ocr(file_path)
+	if len(items) >= 1:
+		return _deduplicate_items(items)
+
 	frappe.throw(
-		"Is PDF me koi item list ya rate card identify nahi ho paya. "
-		"Kripya check karein ki PDF me text/table maujood hai (scanned photo PDF ke liye Excel import use karein)."
+		"Is file me koi item list ya rate card padha nahi ja saka — OCR ke baad bhi. "
+		"Photo thoda saaf aur seedha ho (poora bill frame me, achhi roshni) to dobara try kariye."
 	)
+
+
+def _parse_tier4_ocr(file_path: str) -> List[Dict[str, Any]]:
+	"""Rows out of OCR text — a scanned bill, or a photo of one.
+
+	Runs the SAME row patterns the text tiers use, on text produced by
+	ocr_service instead of by a PDF text layer, so a scanned bill and a
+	digital one are understood by one set of rules rather than two that can
+	drift apart.
+	"""
+	from santu_hardware.santu_hardware.ocr_service import ocr_available, ocr_file
+
+	if not ocr_available():
+		return []
+	text = ocr_file(file_path)
+	if not text.strip():
+		return []
+	return _parse_lines_for_items(text.splitlines())
+
+
+def _parse_lines_for_items(lines: List[str]) -> List[Dict[str, Any]]:
+	"""Item rows out of already-extracted lines of text.
+
+	Two shapes, tried in order on each line:
+	  1. a full bill row  — name, qty, rate, amount (OCR of a supplier bill);
+	  2. a rate-card row  — name then a single price at the end.
+	Anything that reads as a total/tax/header row is dropped by
+	_is_non_item_row, same as everywhere else in this file.
+	"""
+	items: List[Dict[str, Any]] = []
+	num = r"[\d,]{1,12}(?:\.\d{1,2})?"
+	row_re = re.compile(
+		rf"^(?:\d{{1,3}}[.)]?\s+)?(?P<desc>.+?)\s+"
+		rf"(?P<qty>{num})\s*(?P<uom>[A-Za-z.]{{1,8}})?\s+"
+		rf"(?:rs\.?|inr|₹)?\s*(?P<rate>{num})\s+"
+		rf"(?:rs\.?|inr|₹)?\s*(?P<amount>{num})\s*$",
+		re.IGNORECASE,
+	)
+	price_re = re.compile(
+		rf"^(?:\d{{1,3}}[.)]?\s+)?(?P<desc>.+?)\s+(?:rs\.?|inr|₹)?\s*(?P<price>{num})\s*$",
+		re.IGNORECASE,
+	)
+
+	for raw in lines:
+		line = _clean_text(raw)
+		# OCR reads dotted/dashed column leaders as runs of = - . · — and
+		# they land between the very columns this has to split on. Stripped
+		# before matching, not after: with them in place "2 Pcs = 225.00
+		# 450.00" fails the row pattern and falls through to the rate-card
+		# pattern, which then takes the AMOUNT for the rate and leaves the
+		# qty glued to the item name (2026-09-05, first OCR run).
+		# ₹ is read as $, € or ? by every OCR engine there is — Vision gave
+		# all three on one bill. They sit exactly where a rate begins, so a
+		# currency glyph that is not "Rs" must go before the columns can be
+		# split (2026-09-05).
+		line = re.sub(r"[₹$€]+", " ", line)
+		# Any run of pure punctuation standing on its own between two
+		# columns. Listing the glyphs one by one was a losing game — on a
+		# single bill Vision produced = · ~ and ^ for the same dotted
+		# leader — so anything that is not a letter, a digit, or punctuation
+		# that belongs INSIDE an item name (. , / " ' ( ) [ ] -) is dropped
+		# when it stands alone.
+		line = re.sub(r"(?<=\s)[^\w\s.,/\"'()\[\]-]+(?=\s)", " ", line)
+		line = re.sub(r"(?<=\s)[-–—_~^*|]+(?=\s)", " ", line)
+		line = re.sub(r"\s{2,}", " ", line).strip()
+		if len(line) < 5 or _is_non_item_row(line):
+			continue
+
+		m = row_re.match(line)
+		if m:
+			desc = _clean_item_name(m.group("desc"))
+			rate = _parse_price_value(m.group("rate"))
+			if _looks_like_item_name(desc) and rate:
+				items.append(_ocr_item(desc, rate, m.group("uom")))
+				continue
+
+		m = price_re.match(line)
+		if m:
+			desc = _clean_item_name(m.group("desc"))
+			price = _parse_price_value(m.group("price"))
+			if _looks_like_item_name(desc) and price:
+				items.append(_ocr_item(desc, price, None))
+	return items
+
+
+# A date, a bill number, or a party line reads as a perfectly good "name +
+# number" row to the patterns above. None of them is an item.
+_DATEISH = re.compile(r"^\s*\d{1,4}[-/.]\d{1,2}([-/.]\d{1,4})?\b")
+
+
+def _looks_like_item_name(desc: str) -> bool:
+	if not desc or len(desc) < 3 or _is_non_item_row(desc):
+		return False
+	if not re.search(r"[A-Za-z]{2,}", desc):
+		return False
+	if _DATEISH.match(desc):
+		return False
+	# Mostly digits with a couple of stray letters — a bill number line, not
+	# a product ("09-2026 Sale 812").
+	letters = len(re.findall(r"[A-Za-z]", desc))
+	digits = len(re.findall(r"\d", desc))
+	return not (digits and letters < 6 and digits >= letters)
+
+
+def _ocr_item(desc: str, rate: float, uom: Optional[str]) -> Dict[str, Any]:
+	return {
+		"item_name": desc,
+		"item_code": "",
+		"gst_hsn_code": _guess_hsn(desc),
+		"stock_uom": _normalize_uom(uom or "Nos"),
+		"valuation_rate": rate,
+		"standard_rate": rate,
+		"source": "ocr",
+	}
 
 
 def _deduplicate_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

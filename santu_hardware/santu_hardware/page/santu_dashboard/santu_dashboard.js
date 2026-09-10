@@ -410,8 +410,23 @@ function render_widget_panel($panel, data) {
 }
 
 function build_active_widget(w, selected) {
+	// A stock-alert widget answers with numbers, not a link — the big count
+	// first, then what else is worth knowing underneath, so Home tells the
+	// story without anyone opening the page (2026-09-05).
+	const stock_alert =
+		w.key === "low_stock" && (w.count || w.critical_count || w.out_of_stock_count)
+			? `
+				<div class="santu-dash-w-value">${frappe.utils.escape_html(String(w.count || 0))} <span class="santu-dash-w-unit">running low</span></div>
+				<div class="santu-dash-w-subline">
+					${w.critical_count ? `<span class="santu-dash-w-chip is-critical">${w.critical_count} critical</span>` : ""}
+					${w.out_of_stock_count ? `<span class="santu-dash-w-chip is-out">${w.out_of_stock_count} khatam</span>` : ""}
+				</div>`
+			: null;
+
 	const value_html =
-		w.kind === "currency"
+		stock_alert !== null
+			? stock_alert
+			: w.kind === "currency"
 			? `<div class="santu-dash-w-value">₹ ${santu_dashboard_amount(w.value || 0)}</div>`
 			: `<div class="santu-dash-w-value">${frappe.utils.escape_html(w.text || "")}</div>`;
 

@@ -214,6 +214,24 @@ def escpos_bill_bytes(doctype: str, name: str, is_duplicate: bool = False) -> by
 
 	lines.append(_line().encode("ascii") + b"\n")
 	lines.append(ALIGN_CENTER)
+	# Reward points earned on THIS bill -- same line the HTML/CUPS bill
+	# carries, so a slip that fell back to this raw path is not silently
+	# missing something the customer was told to expect (2026-09-07: the
+	# reward line existed only in the Print Format HTML, so rung 2 printed
+	# bills without it). Never for an estimate: nothing is earned on one.
+	if not is_estimate:
+		try:
+			from santu_hardware.santu_hardware.api import get_customer_loyalty_summary
+
+			_loyalty = get_customer_loyalty_summary(doc.get("customer"), doctype, name) or {}
+			if _loyalty.get("enabled") and _loyalty.get("earned_this_bill"):
+				lines.append(
+					_ascii(f"Reward Pts Earned: {_loyalty['earned_this_bill']}").encode("ascii") + b"\n"
+				)
+		except Exception:
+			# A points lookup must never be the reason a fallback bill fails
+			# to print -- this rung exists precisely for when things break.
+			pass
 	if is_estimate:
 		# Saada hyphen: thermal printer sirf ASCII chhapta hai, em-dash "?"
 		# ban kar nikalta hai.
@@ -749,7 +767,7 @@ def escpos_khata_bytes(customer: str, from_date: str = None, to_date: str = None
 	if gstin:
 		lines.append(_ascii(f"GSTIN: {gstin}").encode("ascii") + b"\n")
 
-	lines += [BOLD_ON, b"** KHATA STATEMENT **\n", BOLD_OFF]
+	lines += [BOLD_ON, b"** ACCOUNT STATEMENT **\n", BOLD_OFF]
 
 	lines.append(ALIGN_LEFT)
 	lines.append(_line().encode("ascii") + b"\n")
@@ -799,11 +817,16 @@ def escpos_khata_bytes(customer: str, from_date: str = None, to_date: str = None
 
 # Not whitelisted: internal only. The two public wrappers below are the
 # entry points, so a browser cannot pass an arbitrary party_type in.
-def _print_party_khata(party_type: str, customer: str, from_date: str = None, to_date: str = None):
+def _print_party_khata(
+	party_type: str, customer: str, from_date: str = None, to_date: str = None, compact: bool = False
+):
 	"""Print a party's khata through the thermal ladder: CUPS -> USB -> Screen.
 
 	Shared by customers and mahajans (2026-09-04) — the ladder, the job
-	logging and the fallbacks are identical, only the party side differs."""
+	logging and the fallbacks are identical, only the party side differs.
+	`compact` drops the item breakdown per bill (2026-09-06) — see
+	api._customer_khata_thermal_html. Only Rung 1 (CUPS, the PDF renderer)
+	honours it; Rung 2's raw ESC/POS text is already terse and stays as is."""
 	import os
 	import subprocess
 	import tempfile
@@ -818,7 +841,7 @@ def _print_party_khata(party_type: str, customer: str, from_date: str = None, to
 	# Rung 1: CUPS (Native Thermal Printer Queue)
 	try:
 		queue = _cups_queue_name()
-		pdf = _thermal_khata_pdf_bytes(customer, from_date, to_date, party_type=party_type)
+		pdf = _thermal_khata_pdf_bytes(customer, from_date, to_date, party_type=party_type, compact=compact)
 		if pdf and len(pdf) > 500:
 			path = None
 			try:
@@ -827,7 +850,7 @@ def _print_party_khata(party_type: str, customer: str, from_date: str = None, to
 					path = fh.name
 
 				result = subprocess.run(
-					["lp", "-d", queue, "-o", "TmxPaperCut=CutPerJob", "-t", f"Khata-{customer}", path],
+					["lp", "-d", queue, "-o", "TmxPaperCut=CutPerJob", "-t", f"Account-{customer}", path],
 					capture_output=True,
 					text=True,
 					timeout=30,
@@ -875,12 +898,12 @@ def _print_party_khata(party_type: str, customer: str, from_date: str = None, to
 
 
 @frappe.whitelist()
-def print_customer_khata(customer: str, from_date: str = None, to_date: str = None):
+def print_customer_khata(customer: str, from_date: str = None, to_date: str = None, compact: int = 0):
 	"""Print a customer's khata on the thermal roll."""
-	return _print_party_khata("Customer", customer, from_date, to_date)
+	return _print_party_khata("Customer", customer, from_date, to_date, compact=bool(cint(compact)))
 
 
 @frappe.whitelist()
-def print_supplier_khata(supplier: str, from_date: str = None, to_date: str = None):
+def print_supplier_khata(supplier: str, from_date: str = None, to_date: str = None, compact: int = 0):
 	"""Print a mahajan's khata on the thermal roll."""
-	return _print_party_khata("Supplier", supplier, from_date, to_date)
+	return _print_party_khata("Supplier", supplier, from_date, to_date, compact=bool(cint(compact)))

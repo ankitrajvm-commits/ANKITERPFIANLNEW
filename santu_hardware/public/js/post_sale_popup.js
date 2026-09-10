@@ -11,10 +11,17 @@ frappe.ui.form.on("POS Invoice", {
 	},
 });
 
+// Nothing prints by itself any more — the operator is asked, every time.
+// The `auto_print` setting is deliberately no longer consulted here: it was
+// the switch that made a bill print silently on save, and that is exactly
+// what was burning a hundred slips on a customer who never wanted one
+// (2026-09-05). See santu_confirm_then_print in thermal_print.js for the
+// full reasoning, including the earlier instruction it reverses.
 async function santu_maybe_auto_print(doc) {
-	const settings = await frappe.db.get_doc("Santu POS Settings");
-	if (cint(settings.auto_print)) {
-		await santu_print_thermal_bill(doc.doctype, doc.name);
+	if (typeof santu_confirm_then_print === "function") {
+		await santu_confirm_then_print(doc.doctype, doc.name, {
+			bill_no: doc.santu_bill_no,
+		});
 	}
 }
 

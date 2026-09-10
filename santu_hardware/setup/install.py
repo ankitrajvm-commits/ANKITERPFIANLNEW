@@ -24,10 +24,10 @@ def after_install():
 	hide_commission_field()
 	set_default_print_format()
 
-	# Loyalty points switched off for now (2026-08-18 direct request) —
-	# see the matching comment in hooks.py's after_migrate list.
-	# from santu_hardware.santu_hardware.api import ensure_loyalty_setup
-	# ensure_loyalty_setup()
+	# Back on (2026-09-06 direct request) — see the matching entry in
+	# hooks.py's after_migrate list.
+	from santu_hardware.santu_hardware.api import ensure_loyalty_setup
+	ensure_loyalty_setup()
 	enforce_unique_supplier_bill_numbers()
 	enable_auto_backup()
 	pin_selling_warehouse()
@@ -191,11 +191,23 @@ def create_item_pricing_fields():
 				"description": "Off for a plain non-GST sale — no HSN is forced and no GST is worked out for this item.",
 			},
 			{
+				"fieldname": "custom_no_reward_points",
+				"label": "No Reward Points",
+				"fieldtype": "Check",
+				"default": "0",
+				"insert_after": "custom_gst_applicable",
+				"description": (
+					"On for an item that must not earn reward points — cement, "
+					"a Udhaar/Purana Baki adjustment line, anything sold at no "
+					"margin. The rest of the bill still earns normally."
+				),
+			},
+			{
 				"fieldname": "custom_sub_category",
 				"label": "Sub Category",
 				"fieldtype": "Link",
 				"options": "Item Group",
-				"insert_after": "custom_gst_applicable",
+				"insert_after": "custom_no_reward_points",
 				"description": "Optional second level under Category.",
 			},
 		]
@@ -336,6 +348,19 @@ def create_transaction_message_fields():
 				"insert_after": "status",
 				"read_only": 1,
 				"no_copy": 1,
+			},
+			{
+				# Set only on a bill that waited in the counter's offline queue.
+				# The counter generates the key BEFORE the first attempt, so a
+				# retry after a timeout (where the first attempt may actually
+				# have succeeded) can be recognised instead of billing twice.
+				"fieldname": "custom_offline_key",
+				"label": "Offline Key",
+				"fieldtype": "Data",
+				"insert_after": "custom_whatsapp_status",
+				"read_only": 1,
+				"no_copy": 1,
+				"unique": 1,
 			},
 			{
 				"fieldname": "custom_payment_summary_section",
@@ -501,8 +526,15 @@ def apply_santu_branding():
 		website.save(ignore_permissions=True)
 		changed = True
 
+	# SEED ONLY — never overwrite. The company logo is the one branding
+	# field the shop owner edits themselves, on Utilities > Shop Profile.
+	# This ran on EVERY `bench migrate` (after_migrate hook) and forced the
+	# bundled app logo back, so an uploaded logo silently reverted to "the
+	# same old logo" the next time the app was updated (2026-09-05 bug
+	# report). Same rule as _save_company_address: a default exists to fill
+	# an empty field, not to undo the owner's choice.
 	company = frappe.db.get_value("Company", {}, "name")
-	if company and frappe.db.get_value("Company", company, "company_logo") != SANTU_LOGO_PNG_URL:
+	if company and not frappe.db.get_value("Company", company, "company_logo"):
 		frappe.db.set_value("Company", company, "company_logo", SANTU_LOGO_PNG_URL)
 		changed = True
 

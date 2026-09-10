@@ -303,6 +303,11 @@ window.santu_delivery_challan_page = {
 				<div class="santu-si2-actionbar-left"></div>
 				<div class="santu-si2-actionbar-right">
 					<button type="button" class="santu-si2-btn" data-action="share">Share ▾</button>
+					<!-- Same three actions as every other document screen, same
+					     rule: the button pressed IS the answer, nothing asks
+					     again afterwards (2026-09-07). -->
+					<button type="button" class="santu-si2-btn" data-action="save_whatsapp">💬 Send WhatsApp</button>
+					<button type="button" class="santu-si2-btn" data-action="save_print">🖨️ Save &amp; Print</button>
 					<button type="button" class="santu-si2-btn santu-si2-btn-primary" data-action="save">Save <span class="santu-si2-kbd">Ctrl+S</span></button>
 				</div>
 			</div>
@@ -341,7 +346,7 @@ window.santu_delivery_challan_page = {
 	},
 
 	// ---------- items (identical UX to Sale Invoice, no stock warnings) ----------
-	_render_items() {
+	_render_items({ reveal_row_id = null } = {}) {
 		const tab = this._active_tab();
 		const $tbody = this.$root.find(".santu-si2-table tbody");
 		$tbody.empty();
@@ -353,7 +358,7 @@ window.santu_delivery_challan_page = {
 		tab.items.forEach((row, idx) => {
 			const row_hl = santu_item_row_class(row.item_code, row.item_name);
 			const $tr = $(`
-				<tr data-row="${row.id}" class="${row_hl}">
+				<tr data-row="${row.id}" class="${row.id === reveal_row_id ? "santu-bill-row-new" : ""} ${row_hl}">
 					<td class="santu-si2-col-idx">${idx + 1}</td>
 					<td class="santu-si2-col-item">
 						<div class="santu-si2-item-name">${frappe.utils.escape_html(row.item_name || row.item_code)}</div>
@@ -389,6 +394,10 @@ window.santu_delivery_challan_page = {
 
 		this._bind_item_row_events();
 		this._recalc_totals();
+		// Naya row apne aap dikhe -- niche se dhoondhna na pade. In screens
+		// ka grid apne scroll box me nahi hai, isliye helper khud page ko
+		// scroll karta hai (santu_scroll_row_into_view ka fallback).
+		if (reveal_row_id) window.santu_scroll_row_into_view(this.$root, { row_id: reveal_row_id });
 	},
 
 	_item_search(q) {
@@ -477,7 +486,7 @@ window.santu_delivery_challan_page = {
 		const existing = tab.items.find((r) => r.item_code === item_code);
 		if (existing) {
 			existing.qty = (Number(existing.qty) || 0) + 1;
-			this._render_items();
+			this._render_items({ reveal_row_id: existing.id });
 			this._save_debounced();
 			return;
 		}
@@ -498,7 +507,7 @@ window.santu_delivery_challan_page = {
 			};
 			tab.items.push(new_row);
 			this._save_debounced();
-			this._render_items();
+			this._render_items({ reveal_row_id: new_row.id });
 		});
 	},
 
@@ -778,8 +787,8 @@ window.santu_delivery_challan_page = {
 			window.santu_open_invoice_view("Delivery Note", tab.saved_challan.name);
 			return;
 		}
-		if (action === "save") {
-			this._save_challan(tab);
+		if (action === "save" || action === "save_print" || action === "save_whatsapp") {
+			this._save_challan(tab, action === "save_print" ? "print" : action === "save_whatsapp" ? "whatsapp" : null);
 			return;
 		}
 	},
@@ -802,7 +811,7 @@ window.santu_delivery_challan_page = {
 		return true;
 	},
 
-	_save_challan(tab) {
+	_save_challan(tab, after) {
 		if (!this._validate_before_save(tab)) return;
 
 		frappe.dom.freeze(__("Saving…"));
@@ -842,7 +851,10 @@ window.santu_delivery_challan_page = {
 				tab.saved_challan = r;
 				this._save_debounced();
 				frappe.show_alert({ message: __("Saved {0}", [r.name]), indicator: "green" });
-				window.santu_open_invoice_view("Delivery Note", r.name);
+				santu_save_buttons.after_save("Delivery Note", r.name, after, { has_party: !!tab.customer });
+				// The review view only opens on a plain Save -- it must not
+				// land on top of a print or a send the operator just asked for.
+				if (!after) window.santu_open_invoice_view("Delivery Note", r.name);
 			})
 			.catch(() => frappe.dom.unfreeze());
 	},

@@ -12,7 +12,23 @@ import frappe
 from frappe import _
 from frappe.utils import cint, flt, getdate, now_datetime, today
 
-from santu_hardware.santu_hardware.api import default_selling_warehouse
+from santu_hardware.santu_hardware.api import default_selling_warehouse, force_overwrite_item_unit
+
+
+def _ensure_brand_exists(brand_name):
+	"""A Brand is a plain Link field on Item -- an Excel sheet with a brand
+	nobody has typed into this shop before used to blow up the whole row
+	with "Could not find Brand: XYZ" (silently swallowed into `failed[]`,
+	so the item just never imported, with no obvious reason why). Same
+	auto-create convention Item screens already use for a new Brand/Category
+	typed on the fly (see EDITABLE_ITEM_FIELDS in api.py) -- a typo becomes a
+	new Brand row, not an import failure (2026-09-07 bug report: "brand
+	error for new brand in excel").
+	"""
+	brand_name = (brand_name or "").strip()
+	if brand_name and not frappe.db.exists("Brand", brand_name):
+		frappe.get_doc({"doctype": "Brand", "brand": brand_name}).insert(ignore_permissions=True)
+	return brand_name or None
 
 ITEM_IMPORT_FIELDS = {
 	"item_name": "Item Name",
@@ -212,6 +228,14 @@ def parse_items_import_file_from_pdf(file_url: str):
 	if not extracted_items:
 		frappe.throw("Is PDF me koi item list ya rate card identify nahi ho paya.")
 
+	# Label every line against the shop's own catalogue before it reaches the
+	# screen, so an item that already exists is not imported a second time
+	# under a slightly different spelling (2026-09-05). Only labels — nothing
+	# is merged or created here.
+	from santu_hardware.santu_hardware.item_matcher import match_extracted_items
+
+	extracted_items = match_extracted_items(extracted_items)
+
 	headers = ["Item Name", "HSN Code", "Stock Unit (UOM)", "Purchase Price", "Selling Price (MRP)", "Item Code", "Opening Stock"]
 	rows = [
 		{
@@ -355,10 +379,12 @@ def import_items_valid(rows: str):
 					if data.get(key) not in (None, ""):
 						existing.set(field, flt(data.get(key)))
 						touched = True
-				for field, key in (("brand", "brand"), ("description", "description")):
-					if data.get(key):
-						existing.set(field, data.get(key))
-						touched = True
+				if data.get("brand"):
+					existing.brand = _ensure_brand_exists(data.get("brand"))
+					touched = True
+				if data.get("description"):
+					existing.description = data.get("description")
+					touched = True
 				hsn = data.get("hsn_code") or data.get("gst_hsn_code")
 				if hsn:
 					existing.gst_hsn_code = hsn
@@ -379,7 +405,7 @@ def import_items_valid(rows: str):
 			item.stock_uom = data.get("stock_uom") or "Nos"
 			item.is_stock_item = 1
 			if data.get("brand"):
-				item.brand = data.get("brand")
+				item.brand = _ensure_brand_exists(data.get("brand"))
 			if data.get("hsn_code") or data.get("gst_hsn_code"):
 				item.gst_hsn_code = data.get("hsn_code") or data.get("gst_hsn_code")
 			if data.get("description"):
@@ -418,26 +444,55 @@ def import_items_valid(rows: str):
 
 
 @frappe.whitelist()
-def get_bulk_items(mode: str = "pricing", search: str = None, page: int = 1, page_size: int = 50):
+def get_bulk_item_brands():
+	"""Distinct brands actually in use, for the bulk-update screen's Brand
+	filter dropdown (2026-09-07 direct request: "search by brand, search by
+	name" -- the free-text box already matched brand as one of several
+	fields; this gives an explicit "browse this one brand" filter instead of
+	relying on typing the brand name into a blended search)."""
+	_require_manager()
+	return frappe.get_all(
+		"Item", filters={"disabled": 0, "brand": ["is", "set"]},
+		distinct=True, order_by="brand asc", pluck="brand",
+	)
+
+
+@frappe.whitelist()
+def get_bulk_items(mode: str = "pricing", search: str = None, page: int = 1, page_size: int = 50, search_by: str = None, brand: str = None):
+	"""`search_by` narrows the free-text box to one field ("name" or
+	"brand") instead of the blended name/code/hsn/brand match; `brand` is a
+	separate exact-match dropdown filter, usable together with a name
+	search (2026-09-07 direct request, Update Items In Bulk: "search by
+	brand, search by name")."""
 	_require_manager()
 	page, page_size = cint(page) or 1, min(cint(page_size) or 50, 500)
 	filters = {"disabled": 0}
+	if brand:
+		filters["brand"] = brand
 	or_filters = None
 	if search:
 		like = f"%{search}%"
-		or_filters = [
-			["item_name", "like", like],
-			["item_code", "like", like],
-			["gst_hsn_code", "like", like],
-			["brand", "like", like],
-		]
+		if search_by == "name":
+			or_filters = [["item_name", "like", like], ["item_code", "like", like]]
+		elif search_by == "brand":
+			or_filters = [["brand", "like", like]]
+		else:
+			or_filters = [
+				["item_name", "like", like],
+				["item_code", "like", like],
+				["gst_hsn_code", "like", like],
+				["brand", "like", like],
+			]
+	if or_filters:
+		brand_clause = "AND brand = %(brand)s" if brand else ""
+		field_clause = {
+			"name": "(item_name LIKE %(s)s OR item_code LIKE %(s)s)",
+			"brand": "(brand LIKE %(s)s)",
+		}.get(search_by, "(item_name LIKE %(s)s OR item_code LIKE %(s)s OR gst_hsn_code LIKE %(s)s OR brand LIKE %(s)s)")
 		total = frappe.db.sql(
-			"""SELECT COUNT(*) FROM `tabItem`
-			WHERE disabled = 0 AND (
-				item_name LIKE %(s)s OR item_code LIKE %(s)s
-				OR gst_hsn_code LIKE %(s)s OR brand LIKE %(s)s
-			)""",
-			{"s": like},
+			f"""SELECT COUNT(*) FROM `tabItem`
+			WHERE disabled = 0 {brand_clause} AND {field_clause}""",
+			{"s": like, "brand": brand},
 		)[0][0]
 	else:
 		total = frappe.db.count("Item", filters=filters)
@@ -448,6 +503,7 @@ def get_bulk_items(mode: str = "pricing", search: str = None, page: int = 1, pag
 		fields=[
 			"name", "item_name", "item_code", "item_group", "brand", "gst_hsn_code",
 			"standard_rate", "valuation_rate", "stock_uom", "description", "is_stock_item",
+			"custom_no_reward_points",
 		],
 		order_by="item_name asc",
 		limit_start=(page - 1) * page_size,
@@ -603,10 +659,21 @@ def bulk_update_items(updates: str):
 	for u in updates:
 		try:
 			name = u.get("name")
-			fields = u.get("fields") or {}
+			fields = dict(u.get("fields") or {})
 			if not name or not frappe.db.exists("Item", name):
 				failed.append({"name": name, "error": "Not found"})
 				continue
+			# Unit is a plain overwrite (2026-09-07 direct request: "update
+			# item in bulk se v unit change ho jaye") — same rule the POS
+			# billing row's tick and Stock Summary use, not a generic
+			# doc.set(): that path also rewrites the item's uoms table and
+			# Bin.stock_uom, which a bare field assignment would miss.
+			new_uom = fields.pop("stock_uom", None)
+			if new_uom:
+				unit_result = force_overwrite_item_unit(name, new_uom)
+				if unit_result.get("unit_error"):
+					failed.append({"name": name, "error": unit_result["unit_error"]})
+					continue
 			doc = frappe.get_doc("Item", name)
 			for k, v in fields.items():
 				if k == "barcode" and v:
@@ -1121,6 +1188,84 @@ def _deleted_doc_label(doctype: str, docname: str, data: str = None) -> str:
 			bill_no = None
 		return _("Bill {0}").format(bill_label(bill_no))
 	return docname
+
+
+def _deleted_doc_party(data: str = None) -> str:
+	"""Whose document was this — the name the shop would recognise.
+
+	Read out of the archived JSON, because the document itself is gone. A
+	bill number alone does not tell the shop what they are looking at
+	(2026-09-08 request: "recycle bin me customer name v likhe harek me");
+	the party name is what makes a row identifiable at a glance.
+	"""
+	import json as _json
+
+	try:
+		doc = _json.loads(data or "{}") or {}
+	except Exception:
+		return ""
+	# customer_name / supplier_name hold the readable form; customer / party
+	# hold the id. Item and other doctypes fall back to their own title.
+	for key in ("customer_name", "supplier_name", "party_name", "customer",
+	            "supplier", "party", "item_name", "title"):
+		val = doc.get(key)
+		if val and str(val).strip():
+			return str(val).strip()
+	return ""
+
+
+@frappe.whitelist()
+def get_recycle_bin_documents(doctype_filter: str = None, doctypes: str = None,
+                              search: str = None, limit: int = 50, start: int = 0):
+	"""Recycle Bin ki list — har row par padhne layak naam.
+
+	Built server-side rather than reading Deleted Document straight from the
+	browser, because both readable columns have to come out of the archived
+	JSON: the bill NUMBER (never the SINV docname — see api.bill_label) and
+	the party name. Sending every row's full JSON to the browser to do that
+	there would ship the whole deleted document, which is far heavier and
+	puts data on screen that nothing needs.
+	"""
+	frappe.only_for("System Manager")
+	limit = min(cint(limit) or 50, 200)
+	start = cint(start) or 0
+
+	conds = ["restored = 0"]
+	params = {}
+	if doctype_filter:
+		conds.append("deleted_doctype = %(dt)s")
+		params["dt"] = doctype_filter
+	else:
+		# Only the kinds the screen actually offers — the log also holds
+		# child rows and internal records nobody would ever restore by hand.
+		allowed = frappe.parse_json(doctypes) if doctypes else None
+		if allowed:
+			conds.append("deleted_doctype in %(dts)s")
+			params["dts"] = tuple(allowed)
+	rows = frappe.db.sql(
+		f"""select name, deleted_doctype, deleted_name, creation, owner, data
+		from `tabDeleted Document` where {' and '.join(conds)}
+		order by creation desc limit %(lim)s offset %(off)s""",
+		dict(params, lim=limit + 1, off=start),
+		as_dict=True,
+	)
+
+	out = []
+	q = (search or "").strip().lower()
+	for r in rows:
+		label = _deleted_doc_label(r.deleted_doctype, r.deleted_name, r.data)
+		party = _deleted_doc_party(r.data)
+		if q and q not in label.lower() and q not in party.lower() and q not in (r.deleted_name or "").lower():
+			continue
+		out.append({
+			"name": r.name,
+			"deleted_doctype": r.deleted_doctype,
+			"label": label,
+			"party": party,
+			"creation": str(r.creation),
+			"owner": r.owner,
+		})
+	return {"rows": out[:limit], "has_more": len(rows) > limit}
 
 
 @frappe.whitelist()

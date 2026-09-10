@@ -52,7 +52,7 @@
 			try {
 				preview = await frappe.xcall(`${TXN_API}.get_send_preview`, { doctype, name });
 			} catch (e) {
-				frappe.msgprint(e.message || __("Failed to load message preview"));
+				frappe.msgprint((e && e.message) || __("Failed to load message preview"));
 				return { ok: false };
 			}
 
@@ -86,7 +86,7 @@
 					return r;
 				} catch (e) {
 					frappe.dom.unfreeze();
-					frappe.msgprint(e.message || __("Send failed"));
+					frappe.msgprint((e && e.message) || __("Send failed"));
 					return { ok: false };
 				}
 			}
@@ -132,7 +132,14 @@
 							})
 							.catch((e) => {
 								frappe.dom.unfreeze();
-								frappe.msgprint(e.message || __("Send failed"));
+								// frappe.xcall rejects with undefined when the
+								// call fails before a response body exists (a
+								// dropped request, a server restart mid-send).
+								// Reading .message off that threw its own error
+								// on top of the real one, and THAT is what got
+								// reported (BUG-20260830-00389) — the operator
+								// never saw "Send failed" at all.
+								frappe.msgprint((e && e.message) || __("Send failed"));
 								resolve({ ok: false });
 							});
 					},

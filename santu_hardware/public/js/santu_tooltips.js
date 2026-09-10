@@ -26,7 +26,7 @@
 		"🗑": "Hataayein",
 		"🧮": "Calculator",
 		"🖨": "Print karein",
-		"📗": "Khata / ledger",
+		"📗": "Account / ledger",
 		"📄": "Document kholein",
 		"💰": "Paisa / payment",
 		"🔍": "Dhoondhein",

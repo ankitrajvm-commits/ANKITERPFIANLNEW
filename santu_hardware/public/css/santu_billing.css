@@ -395,6 +395,15 @@
 	box-sizing: border-box;
 	transition: all 0.2s;
 }
+/* Customer name specifically -- straining to read it was the direct
+   complaint (2026-09-07: "kafi chota me dikha raha hia and aankho pe jor
+   dalna pad raha hia"), so it gets a bigger, bolder, darker size step of
+   its own rather than the shared 14px every right-rail input uses. */
+.santu-bill-customer {
+	font-size: 17px;
+	font-weight: 600;
+	color: #0f172a;
+}
 .santu-bill-right input:focus,
 .santu-bill-right select:focus {
 	outline: none;
@@ -489,6 +498,29 @@
 	color: #64748b;
 	margin-top: 4px;
 }
+/* Reward points used on this bill — sits in the same totals column as the
+   change/baaki rows, so it reads as one continuous account of the money,
+   not a bolt-on. Green: it always makes the payable amount smaller. */
+.santu-bill-loyalty-line {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	font-size: 13.5px;
+	font-weight: 600;
+	color: #15803d;
+	padding: 6px 0;
+	border-top: 1px dashed #e2e8f0;
+}
+/* The "Use Reward Points" dialog's own summary — points held, what they
+   are worth, what this bill costs, and what can actually be used right
+   now, in that order, so the operator reads down the list and arrives at
+   the one number the Points field below is asking for. */
+.santu-bill-loyalty-info {
+	font-size: 13.5px;
+	line-height: 1.9;
+	color: #374151;
+}
+.santu-bill-loyalty-info div:first-child { font-size: 15px; margin-bottom: 4px; }
 /* Same slot, but this is a blocker not an FYI: without a party the bill
    cannot be saved at all, so it reads as a warning rather than a note. */
 .santu-bill-baaki-note.is-warning {
@@ -526,7 +558,15 @@
 	background: #e5e7eb;
 	margin: 6px 4px;
 }
-.santu-bill-save {
+/* The big button is whichever one sits directly in the save column, and the
+   two small ones are whatever is inside .santu-bill-save-row -- styled by
+   POSITION, not by which action it is. Save & Print took the big slot on
+   2026-09-07 ("save and print hamesa hi use hoga baar baar"); writing the
+   rules this way means swapping them again is a markup change only, with no
+   chance of a button ending up the wrong size. */
+.santu-bill-savecol > .santu-bill-save,
+.santu-bill-savecol > .santu-bill-save-print,
+.santu-bill-savecol > .santu-bill-save-whatsapp {
 	background: #10b981;
 	border: 1px solid #059669;
 	border-radius: 8px;
@@ -538,7 +578,45 @@
 	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 	transition: all 0.2s;
 }
-.santu-bill-save:hover { background: #059669; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+.santu-bill-savecol > .santu-bill-save:hover,
+.santu-bill-savecol > .santu-bill-save-print:hover,
+.santu-bill-savecol > .santu-bill-save-whatsapp:hover {
+	background: #059669;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+.santu-bill-save-row {
+	display: flex;
+	gap: 8px;
+}
+.santu-bill-save-row > button {
+	flex: 1 1 0;
+	border-radius: 8px;
+	padding: 12px 8px;
+	font-size: 13.5px;
+	font-weight: 600;
+	cursor: pointer;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+	transition: all 0.2s;
+	border: 1px solid transparent;
+}
+.santu-bill-save-row > .santu-bill-save {
+	background: #f0fdf4;
+	border-color: #bbf7d0;
+	color: #15803d;
+}
+.santu-bill-save-row > .santu-bill-save:hover { background: #dcfce7; border-color: #86efac; }
+.santu-bill-save-row > .santu-bill-save-print {
+	background: #eff6ff;
+	border-color: #bfdbfe;
+	color: #1d4ed8;
+}
+.santu-bill-save-row > .santu-bill-save-print:hover { background: #dbeafe; border-color: #93c5fd; }
+.santu-bill-save-row > .santu-bill-save-whatsapp {
+	background: #ecfdf5;
+	border-color: #a7f3d0;
+	color: #047857;
+}
+.santu-bill-save-row > .santu-bill-save-whatsapp:hover { background: #d1fae5; border-color: #6ee7b7; }
 .santu-bill-credit {
 	background: #ffffff;
 	border: 1px solid #e2e8f0;
@@ -1130,3 +1208,24 @@
 .santu-bill-more-menu button:hover {
 	background: #f2f4fa;
 }
+
+/* Ruke hue bill ki patti — counter par hamesha dikhe ki kuch baaki hai
+   (2026-09-08 Offline Billing). Neeche BAAYEIN kone me: daayein kone me ye
+   "Other/Credit Payments" button ke ooper aa jaati thi, aur billing ka koi
+   button dhakna sabse buri jagah hai. */
+#santu-offline-badge {
+	position: fixed;
+	left: 18px;
+	bottom: 18px;
+	z-index: 1050;
+	background: #b45309;
+	color: #ffffff;
+	font-size: 13px;
+	font-weight: 600;
+	padding: 9px 14px;
+	border-radius: 999px;
+	box-shadow: 0 6px 16px -4px rgba(0, 0, 0, 0.3);
+	cursor: pointer;
+	user-select: none;
+}
+#santu-offline-badge:hover { background: #92400e; }

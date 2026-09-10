@@ -37,8 +37,8 @@ santu_utilities.views = {
 							<label class="santu-utilities-method-card">
 								<input type="radio" name="import_method" value="pdf" />
 								<div class="method-icon">📄</div>
-								<h3>Import From PDF</h3>
-								<p>Upload a supplier's price list or catalogue PDF — items are auto-read and matched.</p>
+								<h3>Import From PDF / Photo</h3>
+								<p>Supplier ki rate list — PDF ho, scan ho, ya mobile se khinchi photo. OCR khud padhta hai aur items match karta hai.</p>
 							</label>
 						</div>
 						<div class="santu-utilities-or">OR</div>
@@ -348,15 +348,63 @@ santu_utilities.views = {
 				</div>
 				<div class="santu-utilities-card">
 					<h3>Upload ${is_pdf ? "PDF" : "Excel"} File</h3>
-					${is_pdf ? `<p class="santu-utilities-muted">Works best with a real (text) PDF price list or catalogue — not a scanned photo.</p>` : ""}
+					${is_pdf
+						? `<p class="santu-utilities-muted">Text wali PDF ho ya scan/photo — dono chalti hain. Scan ho to OCR khud padh leta hai (thoda time lagta hai).</p>`
+						: `<p class="santu-utilities-muted">.xlsx, .xls ya .csv. File gandi ho — columns idhar-udhar, "₹ 155", merged cells — to neeche wala button dabaiye.</p>`}
 					<div class="santu-utilities-upload-zone" id="santu-item-upload"></div>
+					<div class="santu-import-prompt-bar">
+						<button class="btn btn-default btn-sm santu-import-prompt-btn">
+							🤖 ${is_pdf ? "AI se file theek karwao" : "AI se Excel theek karwao"}
+						</button>
+						<span class="santu-utilities-muted">Prompt copy karke Claude/ChatGPT ko file ke saath de dijiye — wo file sahi format me bana dega.</span>
+					</div>
 				</div>
 			`);
 			$wrap.find(".santu-util-back").on("click", onBack);
+			// The rules this importer actually enforces, written out as a
+			// prompt the shop can hand to ANY assistant — because the app will
+			// not always be driven from a Claude session (2026-09-05: "hamesa
+			// to ye app claude se nh chalega naa"). Reads the uploaded file
+			// when there is one, so the prompt talks about THIS sheet.
+			$wrap.find(".santu-import-prompt-btn").on("click", async () => {
+				const r = await frappe.xcall(
+					"santu_hardware.santu_hardware.import_prompt.get_item_import_prompt",
+					{ file_url: state.file_url || null }
+				);
+				const d = new frappe.ui.Dialog({
+					title: __("Ye prompt AI ko dijiye"),
+					size: "large",
+					fields: [
+						{
+							fieldtype: "HTML",
+							options: `<p style="margin-bottom:8px;color:#4b5563;">
+								${r.read_file
+									? __("Aapki upload ki hui file padh li gayi hai — prompt me usi ke columns aur dikkatein likhi hain.")
+									: __("File pehle upload kar denge to prompt usi file ke hisaab se ban jayega.")}
+							</p>`,
+						},
+						{ fieldtype: "Code", fieldname: "prompt", label: __("Prompt"), options: "Text", default: r.prompt },
+					],
+					primary_action_label: __("Copy karo"),
+					primary_action: () => {
+						frappe.utils.copy_to_clipboard(r.prompt);
+						frappe.show_alert({ message: __("Copy ho gaya"), indicator: "green" });
+						d.hide();
+					},
+				});
+				d.show();
+			});
 			const uploader = new frappe.ui.FileUploader({
 				wrapper: $wrap.find("#santu-item-upload")[0],
 				allow_multiple: false,
-				restrictions: { allowed_file_types: is_pdf ? [".pdf"] : [".xlsx", ".xls", ".csv"] },
+				// Photos too, not just PDFs — OCR reads a phone picture of a
+				// mahajan's rate card as happily as a scanned page, and that
+				// picture is what the shop usually has (2026-09-05).
+				restrictions: {
+					allowed_file_types: is_pdf
+						? [".pdf", ".jpg", ".jpeg", ".png", ".heic", ".webp", ".tiff"]
+						: [".xlsx", ".xls", ".csv"],
+				},
 				on_success: (file) => {
 					state.file_url = file.file_url;
 					state.step = "map";
@@ -923,28 +971,77 @@ santu_utilities.views = {
 
 	/* ── 5. Bulk Update Items ────────────────────────────────── */
 	async render_bulk_update($wrap) {
-		const state = { mode: "pricing", search: "", page: 1, selected: new Set(), edits: {} };
+		// search_by: "all" (blended name/code/hsn/brand, the old default) /
+		// "name" / "brand" -- and a separate brand dropdown that narrows the
+		// list to exactly one brand, usable together with a name search
+		// (2026-09-07 direct request: "search by brand, search by name").
+		// One combined view instead of three Daam/Stock/Item Info radio
+		// modes -- switching modes used to lose the whole column layout AND
+		// forced re-picking the checkbox selection state was kept, but the
+		// operator still had to flip modes back and forth mid-edit to reach
+		// a field in a different bucket, then flip back (2026-09-07 direct
+		// request: "baar baar select karna pad raha hai, ek hi mein daam,
+		// stock and item info edit karne ka option do, mere upar depend
+		// karega ki main kya edit karu"). get_bulk_items already returns
+		// every field regardless of `mode` (mode was accepted but never
+		// read server-side) -- this only ever was a frontend column filter.
+		const state = { search: "", search_by: "all", brand: "", page: 1, selected: new Set(), edits: {} };
 		const PAGE_SIZE = 500;
+		let brand_options = null;
+		let uom_options = null;
 		const render = async () => {
+			// Every render fully replaces $wrap's HTML (including a "Loading…"
+			// placeholder swap mid-way through), which used to drop focus out
+			// of the search box on every keystroke -- typing one letter meant
+			// clicking back into the box before the next one (2026-09-07 bug
+			// report: "search ho jaa raha hai, phir se click krna pad rha
+			// hai"). Captured here, before the first DOM wipe, and restored
+			// once the final table HTML is in.
+			const $prev_search = $wrap.find(".santu-bulk-search");
+			const had_focus = $prev_search.length && document.activeElement === $prev_search[0];
+			const caret = had_focus ? $prev_search[0].selectionStart : null;
 			$wrap.html(`<div class="santu-utilities-loading">Loading items…</div>`);
-			const data = await santu_utilities.api.getBulkItems(state.mode, state.search, state.page, PAGE_SIZE);
-			const cols = state.mode === "pricing"
-				? ["item_name", "item_group", "gst_hsn_code", "valuation_rate", "standard_rate", "custom_min_selling_price", "custom_mrp"]
-				: state.mode === "stock"
-					? ["item_name", "warehouse", "actual_qty", "stock_uom"]
-					: ["item_name", "item_group", "brand", "gst_hsn_code", "barcode", "description", "custom_sub_category", "custom_rack_number", "custom_shelf_number", "custom_bin_location"];
+			if (!brand_options) {
+				brand_options = await santu_utilities.api.getBulkItemBrands();
+			}
+			// Unit is a dropdown, not free text -- a typo here would create a
+			// UOM that doesn't exist and force_overwrite_item_unit would
+			// reject it (2026-09-07: "update item in bulk se v unit change ho
+			// jaye", same rule as Stock Summary and the POS tick).
+			if (!uom_options) {
+				uom_options = await frappe.xcall("santu_hardware.santu_hardware.api.get_uom_list");
+			}
+			const data = await santu_utilities.api.getBulkItems(
+				"all", state.search, state.page, PAGE_SIZE,
+				state.search_by === "all" ? null : state.search_by,
+				state.brand || null
+			);
+			// Every field in one table: pricing (CP/SP/MRP), stock (godown/
+			// qty, read-only -- a real Stock Reconciliation is still what
+			// actually changes quantity), and item info (group/brand/HSN/
+			// barcode/description/rack-shelf-bin) together.
+			const cols = ["item_name", "item_group", "brand", "gst_hsn_code", "barcode",
+				"valuation_rate", "standard_rate", "custom_min_selling_price", "custom_mrp",
+				"warehouse", "actual_qty", "stock_uom",
+				"custom_no_reward_points",
+				"custom_sub_category", "custom_rack_number", "custom_shelf_number", "custom_bin_location",
+				"description"];
 
 
 			let html = `
 				<div class="santu-utilities-toolbar">
+					<select class="form-control santu-bulk-search-by" style="max-width:150px;">
+						<option value="all" ${state.search_by === "all" ? "selected" : ""}>Search: All</option>
+						<option value="name" ${state.search_by === "name" ? "selected" : ""}>Search by Name</option>
+						<option value="brand" ${state.search_by === "brand" ? "selected" : ""}>Search by Brand</option>
+					</select>
 					<input class="form-control santu-bulk-search" placeholder="Search by Item Name / Code / HSN / Brand" value="${frappe.utils.escape_html(state.search)}">
+					<select class="form-control santu-bulk-brand-filter" style="max-width:170px;">
+						<option value="">All Brands</option>
+						${(brand_options || []).map((b) => `<option value="${frappe.utils.escape_html(b)}" ${state.brand === b ? "selected" : ""}>${frappe.utils.escape_html(b)}</option>`).join("")}
+					</select>
 					<input type="text" class="form-control santu-bulk-scan" placeholder="📷 Scan barcode…" autocomplete="off">
 					<button type="button" class="btn btn-default santu-bulk-pdf-import">📄 Import from PDF</button>
-					<div class="santu-bulk-modes">
-						<label><input type="radio" name="bulk_mode" value="pricing" ${state.mode === "pricing" ? "checked" : ""}> Daam (CP/SP)</label>
-						<label><input type="radio" name="bulk_mode" value="stock" ${state.mode === "stock" ? "checked" : ""}> Stock</label>
-						<label><input type="radio" name="bulk_mode" value="info" ${state.mode === "info" ? "checked" : ""}> Item Info</label>
-					</div>
 				</div>
 				<div class="santu-utilities-toolbar">
 					<span><b>${state.selected.size}</b> items selected</span>
@@ -952,7 +1049,7 @@ santu_utilities.views = {
 				</div>
 				<div class="santu-utilities-table-wrap"><table class="santu-utilities-table santu-bulk-table"><thead><tr>
 					<th><input type="checkbox" class="santu-bulk-all"></th><th>#</th>`;
-			const col_labels = { item_name: "Item Name", item_group: "Group", gst_hsn_code: "HSN", valuation_rate: "Kharid Daam (CP)", standard_rate: "Bechne ka Daam (SP)", warehouse: "Godown", actual_qty: "Stock", stock_uom: "Unit", brand: "Brand", barcode: "Barcode", description: "Description", custom_min_selling_price: "Min Selling Price", custom_mrp: "MRP", custom_sub_category: "Sub Category", custom_rack_number: "Rack Number", custom_shelf_number: "Shelf Number", custom_bin_location: "Bin Location" };
+			const col_labels = { item_name: "Item Name", item_group: "Group", gst_hsn_code: "HSN", valuation_rate: "Kharid Daam (CP)", standard_rate: "Bechne ka Daam (SP)", warehouse: "Godown", actual_qty: "Stock", stock_uom: "Unit", brand: "Brand", barcode: "Barcode", description: "Description", custom_min_selling_price: "Min Selling Price", custom_mrp: "MRP", custom_sub_category: "Sub Category", custom_rack_number: "Rack Number", custom_shelf_number: "Shelf Number", custom_bin_location: "Bin Location", custom_no_reward_points: "Reward Nahi" };
 			cols.forEach((c) => { html += `<th>${col_labels[c] || c.replace(/_/g, " ")}</th>`; });
 			html += `</tr></thead><tbody>`;
 			data.items.forEach((it, idx) => {
@@ -967,6 +1064,22 @@ santu_utilities.views = {
 					// an unsaved edit the moment the row scrolls out of view.
 					const staged = state.edits[it.name];
 					const val = (staged && staged[c] !== undefined) ? staged[c] : (it[c] ?? "");
+					// A real tick-box, not a 0/1 to type -- this is the one
+					// column an operator sets by eye down a filtered list
+					// (2026-09-08: "reward point not applicable on item").
+					if (c === "custom_no_reward_points") {
+						html += `<td style="text-align:center;"><input type="checkbox" class="santu-bulk-edit santu-bulk-check" data-field="custom_no_reward_points" ${cint(val) ? "checked" : ""} style="width:16px; height:16px;"></td>`;
+						return;
+					}
+					if (c === "stock_uom") {
+						const known = (uom_options || []).some((u) => u.name === val);
+						let opts = !known && val ? `<option value="${frappe.utils.escape_html(val)}" selected>${frappe.utils.escape_html(val)}</option>` : "";
+						opts += (uom_options || [])
+							.map((u) => `<option value="${frappe.utils.escape_html(u.name)}" ${u.name === val ? "selected" : ""}>${frappe.utils.escape_html(u.uom_name)}</option>`)
+							.join("");
+						html += `<td><select class="form-control input-sm santu-bulk-edit" data-field="stock_uom">${opts}</select></td>`;
+						return;
+					}
 					const editable = ["valuation_rate", "standard_rate", "brand", "description", "gst_hsn_code", "barcode", "custom_min_selling_price", "custom_mrp", "custom_sub_category", "custom_rack_number", "custom_shelf_number", "custom_bin_location"].includes(c);
 					html += editable
 						? `<td><input class="form-control input-sm santu-bulk-edit" data-field="${c}" value="${frappe.utils.escape_html(String(val))}"></td>`
@@ -981,6 +1094,18 @@ santu_utilities.views = {
 					<button class="btn btn-default btn-sm santu-page-next" ${state.page * PAGE_SIZE >= data.total ? "disabled" : ""}>Next</button>
 				</div>`;
 			$wrap.html(html);
+			if (had_focus) {
+				const $inp = $wrap.find(".santu-bulk-search");
+				if ($inp.length) {
+					$inp.trigger("focus");
+					try {
+						$inp[0].setSelectionRange(caret, caret);
+					} catch (e) {
+						// setSelectionRange can throw on some input types; losing
+						// the caret position is harmless, losing focus is not.
+					}
+				}
+			}
 
 			const debouncedSearch = santu_utilities.utils.debounce(() => {
 				state.search = $wrap.find(".santu-bulk-search").val();
@@ -988,6 +1113,16 @@ santu_utilities.views = {
 				render();
 			}, 400);
 			$wrap.find(".santu-bulk-search").on("input", debouncedSearch);
+			$wrap.find(".santu-bulk-search-by").on("change", (e) => {
+				state.search_by = e.target.value;
+				state.page = 1;
+				render();
+			});
+			$wrap.find(".santu-bulk-brand-filter").on("change", (e) => {
+				state.brand = e.target.value;
+				state.page = 1;
+				render();
+			});
 
 			// Scan a barcode straight into the bulk-update list — finds the
 			// item, brings it into view (via the existing search filter) and
@@ -1052,7 +1187,6 @@ santu_utilities.views = {
 								if (!state.edits[m.item_code]) state.edits[m.item_code] = {};
 								if (m.rate != null) state.edits[m.item_code].valuation_rate = m.rate;
 							});
-							state.mode = "pricing";
 							state.search = "";
 							state.page = 1;
 							await render();
@@ -1067,11 +1201,6 @@ santu_utilities.views = {
 				});
 			});
 
-			$wrap.find('input[name="bulk_mode"]').on("change", function () {
-				state.mode = $(this).val();
-				state.page = 1;
-				render();
-			});
 			$wrap.find(".santu-bulk-all").on("change", function () {
 				const on = $(this).is(":checked");
 				$wrap.find(".santu-bulk-chk").prop("checked", on);
@@ -1089,7 +1218,10 @@ santu_utilities.views = {
 				const $tr = $(this).closest("tr");
 				const name = $tr.data("name");
 				if (!state.edits[name]) state.edits[name] = {};
-				state.edits[name][$(this).data("field")] = $(this).val();
+				// .val() on a checkbox is the literal string "on" whether it is
+				// ticked or not -- read the tick itself.
+				const $f = $(this);
+				state.edits[name][$f.data("field")] = $f.is(":checkbox") ? ($f.is(":checked") ? 1 : 0) : $f.val();
 			});
 			$wrap.find(".santu-page-prev").on("click", () => { state.page--; render(); });
 			$wrap.find(".santu-page-next").on("click", () => { state.page++; render(); });
@@ -1749,6 +1881,168 @@ santu_utilities.views = {
 		render();
 	},
 
+	/* ── Loyalty Points ─────────────────────────────────────── */
+	// Back on (2026-09-06 direct request: "utility me loyality wala add kr
+	// de, sara system... conversion ratio v daal dena jo mai change kr
+	// saku in rs"). Points were being earned this whole time — ERPNext
+	// earns them on every sale once a customer has a loyalty programme,
+	// independent of any screen existing to show them — this is the first
+	// place that ever showed the shop what had quietly built up, and the
+	// only place the ratio can be changed from.
+	async render_loyalty_points($wrap) {
+		const esc = frappe.utils.escape_html;
+		const money = (v) => "₹ " + frappe.utils.escape_html(format_number(v || 0, null, 2));
+		let cust_search = "";
+		const render = async () => {
+			$wrap.html(`<div class="santu-shop-profile-loading">Loading…</div>`);
+			const [s, customers] = await Promise.all([
+				frappe.xcall("santu_hardware.santu_hardware.api.get_loyalty_settings"),
+				frappe.xcall("santu_hardware.santu_hardware.api.get_loyalty_customers", { search: cust_search || null }),
+			]);
+			const today_str = frappe.datetime.get_today();
+			const days_left = (d) => d ? frappe.datetime.get_day_diff(d, today_str) : null;
+			const expiry_html = (d) => {
+				if (!d) return `<span style="color:#9ca3af;">—</span>`;
+				const dl = days_left(d);
+				const label = frappe.datetime.str_to_user(d);
+				if (dl <= 7) return `<span style="color:#dc2626; font-weight:600;">${esc(label)} (${dl}d)</span>`;
+				if (dl <= 30) return `<span style="color:#d97706;">${esc(label)} (${dl}d)</span>`;
+				return `<span style="color:#374151;">${esc(label)}</span>`;
+			};
+
+			$wrap.html(`
+				<div class="santu-pm-container santu-loyalty-container">
+					<div class="santu-utilities-summary-cards">
+						<div class="summary-card"><b>${s.customers_with_balance}</b><span>Customers With Points</span></div>
+						<div class="summary-card"><b>${format_number(s.outstanding_points, null, 0)}</b><span>Points Outstanding</span></div>
+						<div class="summary-card valid"><b>${money(s.outstanding_value)}</b><span>Worth If All Redeemed Today</span></div>
+						<div class="summary-card"><b>${money(s.redeemed_value)}</b><span>Redeemed So Far</span></div>
+					</div>
+
+					<div class="santu-shop-card">
+						<div class="santu-shop-head">
+							<div class="santu-shop-title">Loyalty Points</div>
+							<button type="button" class="santu-shop-save">Save</button>
+						</div>
+						<div class="santu-shop-body" style="display:block;">
+							<label class="santu-pm-check-row" style="display:flex; align-items:center; gap:10px; margin-bottom:18px;">
+								<input type="checkbox" class="santu-loyalty-enabled" ${s.enabled ? "checked" : ""} style="width:18px; height:18px;">
+								<span>
+									<b>Reward points chalu hain</b><br>
+									<span style="font-size:12px; color:#6b7280;">
+										Off karne se pehle se jama points kabhi nahi mitte — sirf counter par use karna band ho jaata hai. Points earn karna ERPNext ka apna kaam hai, is switch se nahi rukta.
+									</span>
+								</span>
+							</label>
+
+							<div class="santu-shop-row">
+								<label class="santu-shop-field">
+									<span>Rs Spent Per Point</span>
+									<input type="number" min="1" step="any" class="santu-loyalty-spend" value="${esc(s.spend_per_point)}">
+									<span style="font-size:11.5px; color:#6b7280; margin-top:2px;">Rs ${esc(s.spend_per_point)} ka bill = 1 point</span>
+								</label>
+								<label class="santu-shop-field">
+									<span>1 Point = Rs</span>
+									<input type="number" min="0" step="any" class="santu-loyalty-value" value="${esc(s.point_value)}">
+									<span style="font-size:11.5px; color:#6b7280; margin-top:2px;">1 point use karne par Rs ${esc(s.point_value)} ki chhoot</span>
+								</label>
+							</div>
+							<div class="santu-shop-row">
+								<label class="santu-shop-field">
+									<span>Points Expire After (Months)</span>
+									<input type="number" min="1" step="1" class="santu-loyalty-expiry" value="${esc(s.expiry_months)}">
+								</label>
+							</div>
+						</div>
+					</div>
+
+					<div class="santu-pm-card" style="margin-top:16px;">
+						<div class="santu-pm-head">
+							<div class="santu-pm-title">
+								<h2>Customer-wise Points</h2>
+								<p>Kis customer ke paas kitne points hain, aur kab expire ho rahe hain — sirf wahi jinke paas abhi kuch dikhane laayak hai.</p>
+							</div>
+						</div>
+						<div class="santu-pm-body" style="padding: 12px 20px 20px;">
+							<input type="text" class="form-control santu-loyalty-cust-search" placeholder="Naam ya phone se dhundo…" value="${esc(cust_search)}" style="max-width:280px; margin-bottom:14px;">
+							${!customers.length
+								? `<div style="color:#9ca3af; font-size:13px; padding:12px 0;">${cust_search ? "Koi match nahi mila." : "Abhi kisi customer ke paas active ya pending points nahi hain."}</div>`
+								: `<div class="santu-utilities-table-wrap"><table class="santu-utilities-table">
+									<thead><tr>
+										<th>Customer</th><th>Phone</th><th>Points</th><th>Value</th><th>Expire Kab</th><th>Pending</th>
+									</tr></thead>
+									<tbody>
+										${customers.map((c) => `
+											<tr>
+												<td>${esc(c.customer_name)}</td>
+												<td>${esc(c.mobile_no || "—")}</td>
+												<td><b>${format_number(c.points, null, 2)}</b></td>
+												<td>${money(c.value)}</td>
+												<td>${expiry_html(c.nearest_expiry)}</td>
+												<td>${c.pending_points
+													? `<span style="color:#d97706;">${format_number(c.pending_points, null, 2)} pending${c.pending_deadline ? ` (by ${esc(frappe.datetime.str_to_user(c.pending_deadline))})` : ""}</span>`
+													: `<span style="color:#9ca3af;">—</span>`
+												}</td>
+											</tr>
+										`).join("")}
+									</tbody>
+								</table></div>`
+							}
+						</div>
+					</div>
+
+					<div class="santu-pm-card" style="margin-top:16px;">
+						<div class="santu-pm-head">
+							<div class="santu-pm-title">
+								<h2>Kaam Kaise Karta Hai</h2>
+							</div>
+						</div>
+						<div class="santu-pm-body" style="padding: 4px 20px 20px;">
+							<ul style="margin:0; padding-left: 18px; font-size:13px; color:#4b5563; line-height:1.8;">
+								<li>Har sale par grahak ke points apne aap jud jaate hain — kuch alag se dabana nahi padta.</li>
+								<li>Billing screen par grahak chunne ke baad <b>More &rarr; Reward Points [F10]</b> se points use ho sakte hain.</li>
+								<li>Points ki value seedha bill ke payable amount se minus hoti hai — grand total wahi rehta hai jo bika, sirf jitna cash lena hai wo kam ho jaata hai.</li>
+								<li>Ratio badalne se pehle se jama points ki ginti nahi badalti, sirf naye bill par nayi ginti aur redeem karne pe nayi value lagti hai.</li>
+							</ul>
+						</div>
+					</div>
+				</div>
+			`);
+
+			// Refocus + restore the caret after render() replaces the DOM, same
+			// fix Update Items In Bulk needed (2026-09-07: typing lost focus on
+			// every keystroke because the whole table gets rebuilt on input).
+			$wrap.find(".santu-loyalty-cust-search").on("input", frappe.utils.debounce((e) => {
+				cust_search = e.target.value;
+				const caret = e.target.selectionStart;
+				render().then(() => {
+					const $again = $wrap.find(".santu-loyalty-cust-search");
+					$again.focus();
+					try { $again[0].setSelectionRange(caret, caret); } catch (err) {}
+				});
+			}, 300));
+
+			$wrap.find(".santu-shop-save").on("click", async () => {
+				const enabled = $wrap.find(".santu-loyalty-enabled").is(":checked") ? 1 : 0;
+				const spend_per_point = flt($wrap.find(".santu-loyalty-spend").val());
+				const point_value = flt($wrap.find(".santu-loyalty-value").val());
+				const expiry_months = cint($wrap.find(".santu-loyalty-expiry").val());
+				frappe.dom.freeze(__("Saving…"));
+				try {
+					await frappe.xcall("santu_hardware.santu_hardware.api.update_loyalty_settings", {
+						enabled, spend_per_point, point_value, expiry_months,
+					});
+					frappe.dom.unfreeze();
+					frappe.show_alert({ message: __("Saved"), indicator: "green" });
+					render();
+				} catch (e) {
+					frappe.dom.unfreeze();
+				}
+			});
+		};
+		render();
+	},
+
 	async render_cost_price_lock($wrap) {
 		const render = async () => {
 			$wrap.html(`<div class="santu-shop-profile-loading">Checking Privacy Status…</div>`);
@@ -1836,9 +2130,12 @@ santu_utilities.views = {
 											</span>
 										</div>
 									</div>
-									<button class="btn btn-default btn-sm santu-applock-add-touch" ${al.enabled ? '' : 'disabled'}>
-										Add this Mac
-									</button>
+									<div style="display:flex; gap:6px; align-items:center;">
+										<button class="btn btn-default btn-sm santu-applock-add-touch" ${al.enabled ? '' : 'disabled'}>
+											${al.touch_id_devices ? 'Dobara Set Karo' : 'Add this Mac'}
+										</button>
+										${al.touch_id_devices ? '<button class="btn btn-danger btn-sm santu-applock-forget-touch">Hata Do</button>' : ''}
+									</div>
 								</div>
 								${!al.enabled
 									? '<div style="margin-top:10px; color:#f59e0b; font-size:13px; font-weight:500;">Note: PIN On kariye pehle — fingerprint uska shortcut hai.</div>'
@@ -1863,6 +2160,17 @@ santu_utilities.views = {
 			});
 			$wrap.find(".santu-applock-add-touch").on("click", async () => {
 				if (await window.santu_app_lock_webauthn.register()) render();
+			});
+			// Revoking a fingerprint had no button at all — the only way to
+			// drop a trusted Mac was to change the PIN, which is a much
+			// bigger hammer than "not this machine any more" (2026-09-05).
+			$wrap.find(".santu-applock-forget-touch").on("click", () => {
+				frappe.confirm(__("Is Mac se fingerprint unlock hata dein? PIN waise hi chalta rahega."), async () => {
+					await frappe.xcall("santu_hardware.santu_hardware.api.app_lock_device_forget");
+					if (window.santu_app_lock_webauthn) await window.santu_app_lock_webauthn.nativeForget();
+					frappe.show_alert({ message: __("Fingerprint hata diya"), indicator: "orange" });
+					render();
+				});
 			});
 			$wrap.find(".santu-applock-turn-off").on("click", () => {
 				frappe.confirm(__("App Lock band kar dein? Ab bina PIN ke koi bhi app khol sakega."), async () => {

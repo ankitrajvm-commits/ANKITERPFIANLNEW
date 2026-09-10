@@ -219,7 +219,7 @@ function santu_prompt_customer_for_new_sale(frm) {
 				d.enable_primary_action();
 				frappe.msgprint({
 					title: __("Couldn't Set Customer"),
-					message: err.message || String(err),
+					message: (err && err.message) || String(err),
 					indicator: "red",
 				});
 				return;

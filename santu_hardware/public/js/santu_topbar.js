@@ -1004,26 +1004,57 @@ window.santu_scroll_row_into_view = function ($root, opts = {}) {
 	// The POS grid is rebuilt synchronously, but it must be measured after
 	// layout. requestAnimationFrame is the browser's post-frame callback.
 	requestAnimationFrame(() => {
+		// Matched on data-row alone, NOT on `.santu-bill-tr`. Only Billing
+		// puts that class on its rows -- Estimate, Sales Return and Purchase
+		// Return all called this function and it silently found nothing, so
+		// a newly added item never came into view and the operator had to
+		// scroll down for it by hand (2026-09-08 report: "Estimate me item
+		// add krne pr niche se scroll krna par raha h").
 		const rowSelector = opts.row_id
-			? `.santu-bill-tr[data-row="${CSS.escape(String(opts.row_id))}"]`
-			: ".santu-bill-tr.is-selected";
+			? `tr[data-row="${CSS.escape(String(opts.row_id))}"]`
+			: "tr[data-row].is-selected";
 		const $target = $root.find(rowSelector).first();
-		const $wrap = opts.wrapper || $root.find(".santu-bill-gridscroll").first();
-		if (!$target.length || !$wrap.length) return;
+		if (!$target.length) return;
 
-		const wrap = $wrap[0];
-		const wrapRect = wrap.getBoundingClientRect();
-		const targetRect = $target[0].getBoundingClientRect();
+		const row = $target[0];
 		const padding = 10;
-		const top = targetRect.top - wrapRect.top + wrap.scrollTop;
-		const bottom = top + targetRect.height;
-		let nextTop = null;
+		const $wrap = opts.wrapper || $root.find(".santu-bill-gridscroll").first();
+		const wrap = $wrap.length ? $wrap[0] : null;
+		// A wrapper that is not actually scrolling is not the thing to move.
+		// Under the stacked layout (@media max-width: 1200px) .santu-bill is
+		// height:auto, so the grid box grows to fit every row and the PAGE
+		// scrolls instead -- the old code measured the row as "already
+		// visible inside the wrapper", moved nothing, and the operator was
+		// left scrolling the page by hand for a row that had just been added
+		// (2026-09-08: "item add krne pr niche chala ja raha hai or usko
+		// dekhne ke liye scroll krna par raha hai").
+		const wrap_scrolls = !!wrap && wrap.scrollHeight > wrap.clientHeight + 1;
 
-		if (top < wrap.scrollTop + padding) {
-			nextTop = Math.max(0, top - padding);
-		} else if (bottom > wrap.scrollTop + wrap.clientHeight - padding) {
-			nextTop = Math.max(0, bottom - wrap.clientHeight + padding);
+		if (wrap_scrolls) {
+			const wrapRect = wrap.getBoundingClientRect();
+			const targetRect = row.getBoundingClientRect();
+			const top = targetRect.top - wrapRect.top + wrap.scrollTop;
+			const bottom = top + targetRect.height;
+			let nextTop = null;
+			if (top < wrap.scrollTop + padding) {
+				nextTop = Math.max(0, top - padding);
+			} else if (bottom > wrap.scrollTop + wrap.clientHeight - padding) {
+				nextTop = Math.max(0, bottom - wrap.clientHeight + padding);
+			}
+			if (nextTop !== null) wrap.scrollTo({ top: nextTop, behavior: "smooth" });
 		}
-		if (nextTop !== null) wrap.scrollTo({ top: nextTop, behavior: "smooth" });
+
+		// Wrapper theek bhi ho jaye tab bhi wo khud page ke neeche ho sakta
+		// hai. Isliye ek frame baad dekhte hain ki row sach me AANKHON ke
+		// saamne hai ya nahi -- aur nahi hai to page ko le aate hain.
+		requestAnimationFrame(() => {
+			const r = row.getBoundingClientRect();
+			const viewH = window.innerHeight || document.documentElement.clientHeight;
+			const above = r.top < padding;
+			const below = r.bottom > viewH - padding;
+			if (above || below) {
+				row.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+			}
+		});
 	});
 };

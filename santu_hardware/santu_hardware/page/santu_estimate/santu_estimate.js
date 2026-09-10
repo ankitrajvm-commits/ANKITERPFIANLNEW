@@ -279,8 +279,7 @@ window.santu_estimate_page = {
 							<button type="button" data-act="remarks">Remarks <b>[F12]</b></button>
 						</div>
 					</div>
-						<button type="button" class="santu-bill-save">Save &amp; Share Estimate <span class="santu-bill-kbd">Ctrl+S</span></button>
-						<button type="button" class="santu-bill-print-est" title="${__("Estimate ka thermal parcha chhapo — WhatsApp nahi bhejega")}">Save &amp; Print Estimate <span class="santu-bill-kbd">Ctrl+P</span></button>
+						${santu_save_buttons.html({ save_label: __("Save Estimate"), kbd: "Ctrl+P" })}
 					</div>
 					</div>
 				</div>
@@ -391,7 +390,7 @@ window.santu_estimate_page = {
 		frappe.confirm(__("This estimate has items. Close anyway?"), drop);
 	},
 
-	_render_rows() {
+	_render_rows({ reveal_row_id = null } = {}) {
 		const b = this._bill();
 		const privacy_on = typeof santu_is_privacy_mode_active === "function" && santu_is_privacy_mode_active();
 		if (privacy_on) this._fetch_costs(b);
@@ -399,7 +398,7 @@ window.santu_estimate_page = {
 		b.items.forEach((r, i) => {
 			const row_hl = santu_item_row_class(r.item_code, r.item_name);
 			const $tr = $(`
-				<tr class="${r.id === b.selected_row ? "is-selected" : ""} ${row_hl}" data-row="${r.id}">
+				<tr class="${r.id === b.selected_row ? "is-selected" : ""} ${r.id === reveal_row_id ? "santu-bill-row-new" : ""} ${row_hl}" data-row="${r.id}">
 					<td class="c-idx">${i + 1}</td>
 					<td class="c-code">${frappe.utils.escape_html(r.item_code || "-")}</td>
 					<td class="c-name santu-bill-editable" title="${__("Badalne ke liye dabaiye")}">${frappe.utils.escape_html(r.item_name)}</td>
@@ -474,9 +473,10 @@ window.santu_estimate_page = {
 			$tb.append($tr);
 		});
 		this._render_totals();
-		// Newly added rows land at the bottom; bring the selected one back into
-		// view so the operator sees it go in without scrolling.
-		window.santu_scroll_row_into_view(this.$root);
+		// Sirf naya (ya abhi badla hua) row hi view me laaya jaata hai. Har
+		// render par scroll karna galat hai -- qty/rate badalne par bhi list
+		// hilne lagti hai. Billing bhi yahi karta hai.
+		if (reveal_row_id) window.santu_scroll_row_into_view(this.$root, { row_id: reveal_row_id });
 	},
 
 	_inline_edit($cell, type, current, apply) {
@@ -777,8 +777,11 @@ window.santu_estimate_page = {
 			const existing = b.items.find((r) => r.item_code === item_code);
 			if (existing) {
 				existing.qty += 1;
+				b.selected_row = existing.id;
 				this._persist_soon();
-				this._render_rows();
+				// Wahi item dobara scan hua to uski qty badhi -- wo row bhi
+				// dikhni chahiye, warna lagta hai kuch hua hi nahi.
+				this._render_rows({ reveal_row_id: existing.id });
 				return;
 			}
 			b.items.push({
@@ -793,7 +796,8 @@ window.santu_estimate_page = {
 			});
 			b.selected_row = b.items[b.items.length - 1].id;
 			this._persist_soon();
-			this._render_rows();
+			// Naya row apne aap dikhe -- niche se dhoondhna na pade.
+			this._render_rows({ reveal_row_id: b.selected_row });
 		});
 	},
 
@@ -1133,13 +1137,12 @@ window.santu_estimate_page = {
 			.then((r) => {
 				frappe.dom.unfreeze();
 				frappe.show_alert({ message: __("Saved {0}", [r.name]), indicator: "green" });
-				if (opts.print) {
-					if (typeof santu_print_thermal_bill === "function") {
-						santu_print_thermal_bill("Quotation", r.name);
-					}
-				} else if (window.santu_whatsapp_share) {
-					window.santu_whatsapp_share.send_transaction("Quotation", r.name);
-				}
+				// Plain Save does neither now -- printing and WhatsApp are
+				// their own buttons, and pressing one IS the confirmation
+				// (2026-09-07: "no extra confirmation or popup required").
+				santu_save_buttons.after_save("Quotation", r.name, opts.after, {
+					has_party: !!b.customer,
+				});
 				this.tabs = this.tabs.filter((x) => x.id !== b.id);
 				if (!this.tabs.length) this._new_est(false);
 				this.active_id = this.tabs[0].id;
@@ -1175,8 +1178,7 @@ window.santu_estimate_page = {
 			e.stopPropagation();
 			$r.find(".santu-bill-more-menu").toggle();
 		});
-		$r.find(".santu-bill-save").on("click", () => this._save());
-		$r.find(".santu-bill-print-est").on("click", () => this._save({ print: true }));
+		santu_save_buttons.bind($r, (after) => this._save({ after }));
 
 		$(document).off("click.santu-est").on("click.santu-est", (e) => {
 			// The list now covers the whole item area, so getting OUT of it
