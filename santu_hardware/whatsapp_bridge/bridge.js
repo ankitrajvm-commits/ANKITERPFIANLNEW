@@ -28,6 +28,38 @@ fs.mkdirSync(AUTH_DIR, { recursive: true });
 let sock = null;
 let starting = false;
 
+// ---------------------------------------------------------------------------
+// Why the recipient saw "Waiting for this message. This may take a while."
+//
+// WhatsApp multi-device encrypts per session. When the other phone cannot
+// decrypt something (new session, key rotation, phone was offline, app
+// reinstalled), it does NOT fail — it silently sends a RETRY RECEIPT back and
+// shows that "Waiting for this message" bubble until the sender resends.
+//
+// Baileys handles that retry for us, but to resend it must be able to read
+// the ORIGINAL message back, which it does by calling the `getMessage(key)`
+// we hand it at socket setup. That option was never passed here, so Baileys
+// had nothing to resend: the receipt arrived, the resend silently did
+// nothing, and the bill sat as "Waiting for this message" forever — exactly
+// what was reported on 2026-09-05 and again 2026-09-07 ("What's app pr bill
+// vejne pr waiting for this message").
+//
+// Keeping the last few hundred outgoing messages in memory is enough: a
+// retry receipt arrives within seconds-to-minutes of the send, and the
+// alternative (a full message store on disk) is far more machinery than one
+// counter's outgoing bills need.
+const SENT_CACHE_LIMIT = 500;
+const sentMessages = new Map(); // key.id -> proto message content
+
+function rememberSent(sent) {
+	if (!sent || !sent.key || !sent.key.id || !sent.message) return;
+	sentMessages.set(sent.key.id, sent.message);
+	// Map preserves insertion order, so the oldest key is the first one.
+	while (sentMessages.size > SENT_CACHE_LIMIT) {
+		sentMessages.delete(sentMessages.keys().next().value);
+	}
+}
+
 function writeStatus(partial) {
 	let cur = {};
 	try {
@@ -90,6 +122,16 @@ async function startSocket() {
 			syncFullHistory: false,
 			markOnlineOnConnect: true,
 			connectTimeoutMs: 60_000,
+			// Called by Baileys when the other side asks for a message again
+			// (see the note on sentMessages above). Returning the original
+			// content is what actually clears "Waiting for this message".
+			getMessage: async (key) => {
+				const cached = key && key.id ? sentMessages.get(key.id) : null;
+				// An empty conversation is the documented fallback: it tells
+				// Baileys "I no longer have this", which is still better than
+				// throwing — the retry ends instead of hanging.
+				return cached || { conversation: "" };
+			},
 		});
 
 		sock.ev.on("creds.update", saveCreds);
@@ -155,6 +197,7 @@ async function sendText(phone, text) {
 	if (!sock) throw new Error("WhatsApp is not connected.");
 	const jid = jidFromPhone(phone);
 	const r = await sock.sendMessage(jid, { text: String(text || "") });
+	rememberSent(r);
 	return { id: r && r.key && r.key.id };
 }
 
@@ -170,6 +213,7 @@ async function sendDocument(phone, documentBase64, filename, caption, mimetype) 
 	};
 	if (caption) payload.caption = String(caption).slice(0, 1024);
 	const r = await sock.sendMessage(jid, payload);
+	rememberSent(r);
 	return { id: r && r.key && r.key.id };
 }
 
@@ -190,6 +234,7 @@ async function sendImage(phone, imageBase64, caption, mimetype) {
 	};
 	if (caption) payload.caption = String(caption).slice(0, 1024);
 	const r = await sock.sendMessage(jid, payload);
+	rememberSent(r);
 	return { id: r && r.key && r.key.id };
 }
 

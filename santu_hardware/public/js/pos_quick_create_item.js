@@ -154,7 +154,7 @@
 				} catch (err) {
 					frappe.msgprint({
 						title: __("Couldn't Create Item"),
-						message: err.message || String(err),
+						message: (err && err.message) || String(err),
 						indicator: "red",
 					});
 				} finally {

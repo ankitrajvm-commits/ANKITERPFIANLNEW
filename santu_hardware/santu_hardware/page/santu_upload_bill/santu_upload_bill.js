@@ -46,7 +46,7 @@ function render_upload_bill(page) {
 				)}
 			</div>
 			<button class="btn btn-primary santu-upload-bill-btn">${__("Choose PDF & Read Bill")}</button>
-			<input type="file" accept="application/pdf,.pdf" class="santu-upload-bill-file-input" style="display:none">
+			<input type="file" accept="application/pdf,.pdf,image/*,.jpg,.jpeg,.png,.heic" class="santu-upload-bill-file-input" style="display:none">
 			<div class="santu-upload-bill-status"></div>
 		</div>
 	`);

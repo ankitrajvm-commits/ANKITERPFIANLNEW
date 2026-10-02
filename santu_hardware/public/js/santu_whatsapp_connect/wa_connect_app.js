@@ -764,7 +764,7 @@ santu_wa_connect.openSettingsDrawer = async function () {
 			const r = await santu_wa_connect.api.syncContacts();
 			frappe.show_alert({ message: `Contacts synced: ${r.synced || 0} added/updated`, indicator: "green" });
 		} catch (e) {
-			frappe.show_alert({ message: "Sync failed: " + (e.message || e), indicator: "red" });
+			frappe.show_alert({ message: "Sync failed: " + ((e && e.message) || e), indicator: "red" });
 		} finally {
 			$(this).prop("disabled", false).text("🔄 Sync Contacts Now");
 		}

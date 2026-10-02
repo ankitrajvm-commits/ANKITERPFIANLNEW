@@ -62,6 +62,13 @@
 		if (str_title.includes("ResizeObserver loop") || str_msg.includes("ResizeObserver loop")) return;
 		if (str_title.includes("chrome-extension://") || str_stack.includes("chrome-extension://")) return;
 		if (str_title.includes("reading 'push'") && str_stack.includes("<anonymous>:")) return;
+		// The browser refusing to play Frappe's little success chime. Every
+		// modern browser blocks audio that no click asked for, so core's
+		// play_sound() rejects on perfectly successful actions — twice on
+		// santu-view-invoice alone (BUG-20260830-00388). Nothing is broken,
+		// nothing is actionable, and burying real bugs under it is the only
+		// thing it achieves.
+		if (str_stack.includes("play_sound") || (str_title.includes("not allowed by the user agent") && str_stack.includes("play@"))) return;
 
 		// One row per distinct error per page load — the server counts
 		// repeats, it does not need every single one shipped to it.

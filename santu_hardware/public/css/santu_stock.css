@@ -526,6 +526,23 @@
 	vertical-align: middle;
 }
 
+/* Critical count on the Running Low card — same red as the row badge it
+   counts, so the number above the list and the badges inside it read as one
+   thing (2026-09-05 request: "running low me critical v add kr"). */
+.santu-stock-critical-count {
+	display: inline-block;
+	margin-left: 6px;
+	padding: 1px 6px;
+	border-radius: 4px;
+	background: #fee2e2;
+	color: #b91c1c;
+	font-size: 10px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+	vertical-align: middle;
+}
+
 .santu-stock-qty-edit {
 	cursor: pointer;
 }

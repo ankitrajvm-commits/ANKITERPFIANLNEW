@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import os
 from datetime import datetime, timedelta
 
@@ -106,24 +108,62 @@ def _verify_backup_file(db_path: str | None) -> tuple[bool, str]:
 	return True, f"OK — {size} bytes, decompresses cleanly, dump completed"
 
 
-def create_site_backup(backup_type: str = "Manual", include_files: bool = True, location: str = "Local Server"):
-	"""Create a real Frappe site backup and log it."""
-	_require_system_manager()
+from santu_hardware.santu_hardware.singles_write import set_single_fields
 
-	log = frappe.get_doc(
-		{
-			"doctype": "Santu Backup Log",
-			"backup_type": backup_type,
-			"location": location,
-			"status": "In Progress",
-			"created_by_user": frappe.session.user,
-		}
-	)
-	log.insert(ignore_permissions=True)
-	frappe.db.commit()
+
+def create_site_backup(backup_type: str = "Manual", include_files: bool = True, location: str = "Local Server"):
+	"""Create a real Frappe site backup and log it.
+
+	One backup at a time. On 2026-09-11 12:25:29 the hourly backup and the
+	2-hourly snapshot started in the same second; Frappe names the dump by
+	the second, so both wrote ONE file and both came out corrupt ("Not a
+	gzipped file"). The lock makes the second one wait for the first.
+	"""
+	_require_system_manager()
+	from frappe.utils.synchronization import filelock
+
+	with filelock("santu_site_backup", timeout=900):
+		time.sleep(1.1)  # never reuse the previous dump's timestamp-to-the-second name
+		return _create_site_backup(backup_type, include_files, location)
+
+
+def _create_site_backup(backup_type: str, include_files: bool, location: str):
+
+	log_fields = {
+		"doctype": "Santu Backup Log",
+		"backup_type": backup_type,
+		"location": location,
+		"status": "In Progress",
+		"created_by_user": frappe.session.user,
+	}
+	# The log's own number comes from `tabseries`; the hourly backup and the
+	# 2-hourly snapshot (and any bill) can bump that same table at once and
+	# MariaDB answers 1020 (BUG-20260905-00581 again, 2026-09-19 07:45).
+	# Nothing else is in this transaction yet, so a fresh retry is safe.
+	for attempt in range(5):
+		try:
+			frappe.db.commit()
+			log = frappe.get_doc(dict(log_fields))
+			log.insert(ignore_permissions=True)
+			frappe.db.commit()
+			break
+		except frappe.QueryDeadlockError:
+			frappe.db.rollback()
+			if attempt == 4:
+				raise
+			time.sleep(0.5 * (attempt + 1))
 
 	try:
 		odb = new_backup(force=True, ignore_files=not include_files)
+		# The dump takes a minute or two. Whatever transaction was open when
+		# it started is now holding a read view from BEFORE that minute, and
+		# under REPEATABLE READ every later statement is judged against it —
+		# so even READING `tabSingles` afterwards raises 1020 "Record has
+		# changed since last read" if anyone touched any Single meanwhile.
+		# Committing here ends that stale view; everything below then works
+		# off a fresh one. Nothing is lost by committing: the dump is already
+		# written to disk and the log row was committed before it started.
+		frappe.db.commit()
 		db_path = odb.backup_path_db
 		files_path = odb.backup_path_files if include_files else None
 		private_path = odb.backup_path_private_files if include_files else None
@@ -147,14 +187,39 @@ def create_site_backup(backup_type: str = "Manual", include_files: bool = True, 
 		if not verified:
 			raise Exception(f"Backup could not be verified: {verify_note}")
 
+		# Written with db_set_value, NOT settings.save().
+		#
+		# EVERY Single doctype in the site shares one physical table,
+		# `tabSingles` — Santu POS Settings, Website Settings, this one, all
+		# of them, one row per field. A full .save() rewrites every one of
+		# this Single's rows, and it does so at the END of a backup that has
+		# just spent a minute or two dumping the database. Any other process
+		# touching ANY Single in that window (the counter changing a POS
+		# setting, a print job, the branding hook) collided with it and
+		# MariaDB threw 1020 "Record has changed since last read in table
+		# 'tabsingles'" — the backup then reported Failed and, worse, the
+		# except branch below tried the very same full save again and blew
+		# up a second time (BUG-20260905-00580 / 00581: the nightly backup
+		# was silently not running).
+		#
+		# Targeted field updates touch only the three rows that actually
+		# changed, and the settings are re-read FRESH here rather than
+		# carried across the whole dump.
 		settings = frappe.get_single("Santu Backup Settings")
 		if backup_type != "Snapshot":
 			# Snapshots run on their own 2-hourly clock and must not move the
 			# nightly full backup's schedule or masquerade as it.
-			settings.last_backup_on = now_datetime()
-			settings.last_backup_status = "Success"
-			settings.next_backup_on = compute_next_backup_time(settings)
-			settings.save(ignore_permissions=True)
+			# Retrying helper: the dump is verified by now, and a 1020 on this
+			# bookkeeping write was still marking good backups Failed
+			# (SBL-20260911-00953, SBL-20260913-01036).
+			set_single_fields(
+				"Santu Backup Settings",
+				{
+					"last_backup_on": now_datetime(),
+					"last_backup_status": "Success",
+					"next_backup_on": compute_next_backup_time(settings),
+				},
+			)
 
 		_cleanup_old_backups(cint(settings.retention_count) or 10)
 		frappe.db.commit()
@@ -163,9 +228,13 @@ def create_site_backup(backup_type: str = "Manual", include_files: bool = True, 
 	except Exception as e:
 		log.db_set({"status": "Failed", "error_message": str(e)[:500], "verified": 0})
 		if backup_type != "Snapshot":
-			settings = frappe.get_single("Santu Backup Settings")
-			settings.last_backup_status = "Failed"
-			settings.save(ignore_permissions=True)
+			# Same targeted write as the success path — recording a FAILURE
+			# must never be the thing that throws (it was: the full save
+			# hit the same tabSingles collision and buried the real error).
+			try:
+				set_single_fields("Santu Backup Settings", {"last_backup_status": "Failed"})
+			except Exception:
+				pass  # never let the bookkeeping hide the real error
 		frappe.db.commit()
 		frappe.log_error(title="Santu Backup Failed", message=frappe.get_traceback())
 		raise

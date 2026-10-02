@@ -1,0 +1,860 @@
+{
+ "suite": "api_matrix",
+ "site": "scratch.local",
+ "started": "2026-09-19 15:29:30.354460",
+ "gate": {
+  "functional_failures": 86,
+  "invariant_failures": 0,
+  "test_residue": 2,
+  "production_side_effects": 2
+ },
+ "verdict": "FAILED",
+ "rows": [
+  {
+   "section": "0. INVENTORY",
+   "name": "whitelisted santu functions found",
+   "expected": "true",
+   "actual": "true",
+   "result": "PASS",
+   "evidence": "286 functions, 9 allow_guest",
+   "db_impact": ""
+  },
+  {
+   "section": "0. INVENTORY",
+   "name": "test copy server reachable and logged in as the test user",
+   "expected": "claude.test@santuhardware.local",
+   "actual": "claude.test@santuhardware.local",
+   "result": "PASS",
+   "evidence": "HTTP 200",
+   "db_impact": ""
+  },
+  {
+   "section": "A. UNAUTHORIZED (no login)",
+   "name": "every non-guest API refuses a caller who is not logged in",
+   "expected": "[]",
+   "actual": "[]",
+   "result": "PASS",
+   "evidence": "277 checked",
+   "db_impact": ""
+  },
+  {
+   "section": "A. UNAUTHORIZED (no login)",
+   "name": "allow_guest APIs (listed for review)",
+   "expected": "true",
+   "actual": "true",
+   "result": "PASS",
+   "evidence": "[\"santu_hardware.santu_hardware.api.app_lock_device_login\", \"santu_hardware.santu_hardware.api.app_lock_device_register\", \"santu_hardware.santu_hardware.api.app_lock_device_status\", \"santu_hardware.santu_hardware.api.app_lock_touch_id_login_finish\", \"santu_hardware.santu_hardware.api.app_lock_touch_id_login_options\", \"santu_hardware.santu_hardware.api.check_app_lock_pin\", \"santu_hardware.santu_hardware.api.get_app_lock_status\", \"santu_hardware.santu_hardware.api.pin_login\", \"santu_hardware.santu_hardware.transaction_message_api.whatsapp_webhook\"]",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "no API crashes on empty, invalid or wrong-type input",
+   "expected": "[]",
+   "actual": "[[\"santu_hardware.santu_hardware.api._fifo_pending_amounts\", \"empty\", 500, \"TypeError\", \"TypeError: _fifo_pending_amounts() missing 2 required positional arguments: 'party_type' and 'party'\"], [\"santu_hardware.santu_hardware.api.attach_barcode_to_item\", \"empty\", 500, \"TypeError\", \"TypeError: attach_barcode_to_item() missing 2 required positional arguments: 'item_code' and 'barcod\"], [\"santu_hardware.santu_hardware.api.download_customer_khata\", \"empty\", 500, \"TypeError\", \"TypeError: download_customer_khata() missing 1 required positional argument: 'customer'\"], [\"santu_hardware.santu_hardware.api.download_supplier_khata\", \"empty\", 500, \"TypeError\", \"TypeError: download_supplier_khata() missing 1 required positional argument: 'supplier'\"], [\"santu_hardware.santu_hardware.api.export_santu_report\", \"empty\", 500, \"TypeError\", \"TypeError: export_santu_report() missing 1 required positional argument: 'report_id'\"], [\"santu_hardware.santu_hardware.api.export_santu_report\", \"invalid\", 500, \"JSONDecodeError\", \"json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)\"], [\"santu_hardware.santu_hardware.api.export_santu_report\", \"wrongtype\", 500, \"JSONDecodeError\", \"json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (ch\"], [\"santu_hardware.santu_hardware.api.find_item_by_barcode\", \"empty\", 500, \"TypeError\", \"TypeError: find_item_by_barcode() missing 1 required positional argument: 'barcode'\"], [\"santu_hardware.santu_hardware.api.format_bill_no\", \"empty\", 500, \"TypeError\", \"TypeError: format_bill_no() missing 1 required positional argument: 'bill_no'\"], [\"santu_hardware.santu_hardware.api.get_account_ledger\", \"empty\", 500, \"TypeError\", \"TypeError: get_account_ledger() missing 1 required positional argument: 'account'\"], [\"santu_hardware.santu_hardware.api.get_barcode_data_uri\", \"empty\", 500, \"TypeError\", \"TypeError: get_barcode_data_uri() missing 1 required positional argument: 'data'\"], [\"santu_hardware.santu_hardware.api.get_category_items\", \"empty\", 500, \"TypeError\", \"TypeError: get_category_items() missing 1 required positional argument: 'item_group'\"], [\"santu_hardware.santu_hardware.api.get_customer_all_bills\", \"empty\", 500, \"TypeError\", \"TypeError: get_customer_all_bills() missing 1 required positional argument: 'customer'\"], [\"santu_hardware.santu_hardware.api.get_customer_balance_summary\", \"empty\", 500, \"TypeError\", \"TypeError: get_customer_balance_summary() missing 1 required positional argument: 'customer'\"], [\"santu_hardware.santu_hardware.api.get_customer_details_for_sale\", \"empty\", 500, \"TypeError\", \"TypeError: get_customer_details_for_sale() missing 1 required positional argument: 'customer'\"], [\"santu_hardware.santu_hardware.api.get_customer_khata\", \"empty\", 500, \"TypeError\", \"TypeError: get_customer_khata() missing 1 required positional argument: 'customer'\"], [\"santu_hardware.santu_hardware.api.get_customer_loyalty_summary\", \"empty\", 500, \"TypeError\", \"TypeError: get_customer_loyalty_summary() missing 1 required positional argument: 'customer'\"], [\"santu_hardware.santu_hardware.api.get_document_for_edit\", \"empty\", 500, \"TypeError\", \"TypeError: get_document_for_edit() missing 2 required positional arguments: 'doctype' and 'name'\"], [\"santu_hardware.santu_hardware.api.get_invoice_for_edit\", \"empty\", 500, \"TypeError\", \"TypeError: get_invoice_for_edit() missing 1 required positional argument: 'invoice_name'\"], [\"santu_hardware.santu_hardware.api.get_invoice_items_for_return\", \"empty\", 500, \"TypeError\", \"TypeError: get_invoice_items_for_return() missing 1 required positional argument: 'invoice'\"], [\"santu_hardware.santu_hardware.api.get_invoice_pdf_base64\", \"empty\", 500, \"TypeError\", \"TypeError: get_invoice_pdf_base64() missing 3 required positional arguments: 'doctype', 'name', and \"], [\"santu_hardware.santu_hardware.api.get_invoice_view_data\", \"empty\", 500, \"TypeError\", \"TypeError: get_invoice_view_data() missing 2 required positional arguments: 'doctype' and 'name'\"], [\"santu_hardware.santu_hardware.api.get_item_cost_price\", \"empty\", 500, \"TypeError\", \"TypeError: get_item_cost_price() missing 1 required positional argument: 'item_code'\"], [\"santu_hardware.santu_hardware.api.get_item_detail\", \"empty\", 500, \"TypeError\", \"TypeError: get_item_detail() missing 1 required positional argument: 'item_code'\"], [\"santu_hardware.santu_hardware.api.get_item_transactions\", \"empty\", 500, \"TypeError\", \"TypeError: get_item_transactions() missing 1 required positional argument: 'item_code'\"]]",
+   "result": "FAIL",
+   "evidence": "143 APIs x 3 inputs",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: _fifo_pending_amounts [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: _fifo_pending_amounts() missing 2 required positional arguments: 'party_type' and 'party'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: attach_barcode_to_item [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: attach_barcode_to_item() missing 2 required positional arguments: 'item_code' and 'barcod",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: download_customer_khata [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: download_customer_khata() missing 1 required positional argument: 'customer'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: download_supplier_khata [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: download_supplier_khata() missing 1 required positional argument: 'supplier'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: export_santu_report [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: export_santu_report() missing 1 required positional argument: 'report_id'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: export_santu_report [invalid]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 JSONDecodeError",
+   "result": "FAIL",
+   "evidence": "json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: export_santu_report [wrongtype]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 JSONDecodeError",
+   "result": "FAIL",
+   "evidence": "json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (ch",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: find_item_by_barcode [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: find_item_by_barcode() missing 1 required positional argument: 'barcode'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: format_bill_no [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: format_bill_no() missing 1 required positional argument: 'bill_no'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_account_ledger [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_account_ledger() missing 1 required positional argument: 'account'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_barcode_data_uri [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_barcode_data_uri() missing 1 required positional argument: 'data'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_category_items [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_category_items() missing 1 required positional argument: 'item_group'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_customer_all_bills [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_customer_all_bills() missing 1 required positional argument: 'customer'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_customer_balance_summary [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_customer_balance_summary() missing 1 required positional argument: 'customer'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_customer_details_for_sale [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_customer_details_for_sale() missing 1 required positional argument: 'customer'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_customer_khata [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_customer_khata() missing 1 required positional argument: 'customer'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_customer_loyalty_summary [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_customer_loyalty_summary() missing 1 required positional argument: 'customer'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_document_for_edit [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_document_for_edit() missing 2 required positional arguments: 'doctype' and 'name'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_invoice_for_edit [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_invoice_for_edit() missing 1 required positional argument: 'invoice_name'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_invoice_items_for_return [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_invoice_items_for_return() missing 1 required positional argument: 'invoice'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_invoice_pdf_base64 [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_invoice_pdf_base64() missing 3 required positional arguments: 'doctype', 'name', and ",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_invoice_view_data [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_invoice_view_data() missing 2 required positional arguments: 'doctype' and 'name'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_item_cost_price [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_item_cost_price() missing 1 required positional argument: 'item_code'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_item_detail [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_item_detail() missing 1 required positional argument: 'item_code'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_item_transactions [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_item_transactions() missing 1 required positional argument: 'item_code'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_loyalty_status [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_loyalty_status() missing 1 required positional argument: 'customer'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_party_balance [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_party_balance() missing 2 required positional arguments: 'party_type' and 'party'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_party_contact_info [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_party_contact_info() missing 2 required positional arguments: 'party_type' and 'party",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_party_net_due [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_party_net_due() missing 2 required positional arguments: 'party_type' and 'party'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_party_outstanding [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_party_outstanding() missing 2 required positional arguments: 'party_type' and 'party'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_party_transactions [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_party_transactions() missing 2 required positional arguments: 'party_type' and 'party",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_past_order_list_with_phone_village [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_past_order_list_with_phone_village() missing 2 required positional arguments: 'search",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_purchase_invoice_from_bill_pdf [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_purchase_invoice_from_bill_pdf() missing 1 required positional argument: 'file_url'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_purchase_items_for_return [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_purchase_items_for_return() missing 1 required positional argument: 'invoice'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_qr_code_data_uri [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_qr_code_data_uri() missing 1 required positional argument: 'data'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_returnable_invoices [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_returnable_invoices() missing 1 required positional argument: 'customer'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_returnable_purchase_bills [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_returnable_purchase_bills() missing 1 required positional argument: 'supplier'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_supplier_all_bills [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_supplier_all_bills() missing 1 required positional argument: 'supplier'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_supplier_details_for_purchase [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_supplier_details_for_purchase() missing 1 required positional argument: 'supplier'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_supplier_khata [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_supplier_khata() missing 1 required positional argument: 'supplier'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_uom_conversions [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_uom_conversions() missing 1 required positional argument: 'uom'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_upi_qr_data_uri [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_upi_qr_data_uri() missing 1 required positional argument: 'amount'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: item_batches [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: item_batches() missing 1 required positional argument: 'item_code'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: item_uoms [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: item_uoms() missing 1 required positional argument: 'item_code'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: items_uoms [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: items_uoms() missing 1 required positional argument: 'item_codes'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: items_uoms [wrongtype]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: 'int' object is not iterable",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: items_with_same_name [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: items_with_same_name() missing 1 required positional argument: 'item_name'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: party_address_line [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: party_address_line() missing 2 required positional arguments: 'party_type' and 'party'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: party_first_transaction_date [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: party_first_transaction_date() missing 2 required positional arguments: 'party_type' and ",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: push_bill_row_to_master [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: push_bill_row_to_master() missing 1 required positional argument: 'item_code'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: run_santu_report [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: run_santu_report() missing 1 required positional argument: 'report_id'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: run_santu_report [invalid]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 JSONDecodeError",
+   "result": "FAIL",
+   "evidence": "json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: run_santu_report [wrongtype]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 JSONDecodeError",
+   "result": "FAIL",
+   "evidence": "json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (ch",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: search_customers_by_name [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: search_customers_by_name() missing 1 required positional argument: 'query'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: search_customers_by_phone [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: search_customers_by_phone() missing 1 required positional argument: 'query'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: search_link_values [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: search_link_values() missing 1 required positional argument: 'doctype'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: search_products [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: search_products() missing 1 required positional argument: 'query'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: search_suppliers_by_name [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: search_suppliers_by_name() missing 1 required positional argument: 'query'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: search_transactions_topbar [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: search_transactions_topbar() missing 1 required positional argument: 'query'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: touch_id_login_finish [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: touch_id_login_finish() missing 4 required positional arguments: 'credential_id', 'authen",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: touch_id_register_finish [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: touch_id_register_finish() missing 3 required positional arguments: 'credential_id', 'pub",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: verify_gstin_format [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: verify_gstin_format() missing 1 required positional argument: 'gstin'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: report_browser_errors [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: report_browser_errors() missing 1 required positional argument: 'errors'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: report_browser_errors [invalid]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 JSONDecodeError",
+   "result": "FAIL",
+   "evidence": "json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: report_browser_errors [wrongtype]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: 'int' object is not iterable",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: report_bug_from_user [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: report_bug_from_user() missing 1 required positional argument: 'what_happened'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_doc_whatsapp_status [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_doc_whatsapp_status() missing 2 required positional arguments: 'doctype' and 'name'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_message_history [invalid]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 ValueError",
+   "result": "FAIL",
+   "evidence": "ValueError: invalid literal for int() with base 10: 'TEST-DOES-NOT-EXIST-###'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_message_log_detail [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_message_log_detail() missing 1 required positional argument: 'log_name'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: download_tally_export [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: download_tally_export() missing 2 required positional arguments: 'from_date' and 'to_date",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: export_items_file [invalid]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 JSONDecodeError",
+   "result": "FAIL",
+   "evidence": "json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: export_items_file [wrongtype]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 JSONDecodeError",
+   "result": "FAIL",
+   "evidence": "json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (ch",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_tally_export_data [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_tally_export_data() missing 2 required positional arguments: 'from_date' and 'to_date",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: lookup_barcode_item [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: lookup_barcode_item() missing 1 required positional argument: 'barcode'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_catalog_items_for_training [invalid]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 ValueError",
+   "result": "FAIL",
+   "evidence": "ValueError: invalid literal for int() with base 10: 'TEST-DOES-NOT-EXIST-###'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: test_voice_query [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: test_voice_query() missing 1 required positional argument: 'query'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: train_item_voice_alias [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: train_item_voice_alias() missing 2 required positional arguments: 'item_code' and 'phrase",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_chats [invalid]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 ValueError",
+   "result": "FAIL",
+   "evidence": "ValueError: invalid literal for int() with base 10: 'TEST-DOES-NOT-EXIST-###'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_messages [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_messages() missing 1 required positional argument: 'phone'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_reminder_preview [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_reminder_preview() missing 2 required positional arguments: 'party_type' and 'party_n",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_statement [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_statement() missing 2 required positional arguments: 'party_type' and 'party_name'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: get_transactions [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: get_transactions() missing 2 required positional arguments: 'party_type' and 'party_name'",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: link_party [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: link_party() missing 3 required positional arguments: 'phone', 'party_type', and 'party_n",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "crash: preview_transaction [empty]",
+   "expected": "clean refusal",
+   "actual": "HTTP 500 TypeError",
+   "result": "FAIL",
+   "evidence": "TypeError: preview_transaction() missing 2 required positional arguments: 'doctype' and 'name'",
+   "db_impact": ""
+  },
+  {
+   "section": "C. VALID / DUPLICATE / CONCURRENT (read-only, no-argument getters)",
+   "name": "no-argument getters answer (valid call)",
+   "expected": "[]",
+   "actual": "[[\"santu_hardware.santu_hardware.api.get_purchase_item_row\", 404, \"DoesNotExistError\", \"[\\\"{\\\\\\\"message\\\\\\\": \\\\\\\"Item None not found\\\\\\\", \\\\\\\"title\\\\\\\": \\\\\\\"Message\\\\\\\", \\\\\\\"indicator\\\\\\\": \"], [\"santu_hardware.santu_hardware.api.get_sale_item_row\", 404, \"DoesNotExistError\", \"[\\\"{\\\\\\\"message\\\\\\\": \\\\\\\"Item None not found\\\\\\\", \\\\\\\"title\\\\\\\": \\\\\\\"Message\\\\\\\", \\\\\\\"indicator\\\\\\\": \"]]",
+   "result": "FAIL",
+   "evidence": "52 getters",
+   "db_impact": ""
+  },
+  {
+   "section": "C. VALID / DUPLICATE / CONCURRENT (read-only, no-argument getters)",
+   "name": "same getter twice + 4 at once -> same success every time",
+   "expected": "[]",
+   "actual": "[]",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "GATES",
+   "name": "DATA ISOLATION: no real record created / changed / deleted",
+   "expected": "no difference",
+   "actual": "{\"Print Format\": {\"created\": [\"Santu A4 - WhatsApp (Delivery Note)\", \"Santu A4 - WhatsApp (Payment Entry)\", \"Santu A4 - WhatsApp (Purchase Invoice)\", \"Santu A4 - WhatsApp (Quotation)\", \"Santu A4 - WhatsApp (Sales Invoice)\"], \"deleted\": [], \"changed\": [\"Santu Hardware Thermal Bill\", \"Santu Hardware Thermal Bill (Sales Invoice)\"], \"counts\": [5, 0, 2]}, \"single:Santu WhatsApp Settings\": {\"created\": [], \"deleted\": [], \"changed\": [\"enabled\", \"last_test_on\"], \"counts\": [0, 0, 2]}}",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "GATES",
+   "name": "TEST RESIDUE: nothing of the test user left behind",
+   "expected": "{}",
+   "actual": "{\"Santu Bug Report\": 80, \"Print Format\": 5}",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "GATES",
+   "name": "PRODUCTION SIDE-EFFECTS: printer / WhatsApp / counters untouched",
+   "expected": "{}",
+   "actual": "{}",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  }
+ ]
+}

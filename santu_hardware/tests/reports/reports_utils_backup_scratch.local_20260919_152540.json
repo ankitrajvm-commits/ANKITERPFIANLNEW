@@ -1,0 +1,743 @@
+{
+ "suite": "reports_utils_backup",
+ "site": "scratch.local",
+ "started": "2026-09-19 15:25:40.328902",
+ "gate": {
+  "functional_failures": 3,
+  "invariant_failures": 0,
+  "test_residue": 13,
+  "production_side_effects": 1
+ },
+ "verdict": "FAILED",
+ "rows": [
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Day Book' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "General Ledger rows=950",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "  Day Book debit = the ledger's debit for the period",
+   "expected": "20081532.39",
+   "actual": "20081532.39",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "  Day Book debit = credit",
+   "expected": "20081532.39",
+   "actual": "20081532.39",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'All Transactions' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "General Ledger rows=950",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Profit And Loss' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "Profit and Loss Statement rows=13",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Bill Wise Profit' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "Gross Profit rows=764",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Cash Flow' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "Cash Flow rows=18",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Trial Balance Report' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "Trial Balance rows=9",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "  Trial Balance: closing debit = closing credit",
+   "expected": "20081532.39",
+   "actual": "20081532.39",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Balance Sheet' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "Balance Sheet rows=16",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Party Statement' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "General Ledger rows=149",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Party Wise Profit & Loss' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "Gross Profit rows=44",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'All Parties' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "all_parties rows=52",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Party Report By Item' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "Item-wise Sales Register rows=698",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Sale Purchase By Party' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "sale_purchase_by_party rows=43",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Sale Purchase By Party Group' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "sale_purchase_party_group rows=1",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'GSTR 1' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "GSTR-1 rows=0",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'GSTR 2' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "GST Purchase Register rows=0",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'GSTR 3B' opens",
+   "expected": "null",
+   "actual": "'NoneType' object is not subscriptable",
+   "result": "FAIL",
+   "evidence": "GSTR-3B Details rows=0",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Sale Summary By HSN' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "HSN-wise-summary of outward supplies rows=17",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'SAC Report' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "HSN-wise-summary of outward supplies rows=17",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Item Report By Party' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "Item-wise Sales Register rows=698",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Item Wise Profit And Loss' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "Gross Profit rows=348",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Item Category Wise Profit And Loss' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "Gross Profit rows=3",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Stock Detail' opens",
+   "expected": "null",
+   "actual": "'ZZFORCE-ZIWM2'",
+   "result": "FAIL",
+   "evidence": "Stock Ledger rows=0",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Item Detail' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "item_detail rows=1",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Sale/Purchase Report By Item Category' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "Gross Profit rows=3",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Stock Summary Report By Item Category' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "Stock Balance rows=701",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Item Wise Discount' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "discount_report rows=17",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Bank Statement' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "Bank Reconciliation Statement rows=0",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Discount Report' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "discount_report rows=17",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'GST Report' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "GST Account-wise Summary rows=2",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'GST Rate Report' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "GST Tax Rate-wise Summary rows=2",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Form No. 27EQ' opens",
+   "expected": "null",
+   "actual": "can only concatenate str (not \"NoneType\") to str",
+   "result": "FAIL",
+   "evidence": "TDS Computation Summary-India rows=0",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'TCS Receivable' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "Tax Withholding Details-India rows=0",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'TDS Payable' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "Tax Withholding Details-India rows=0",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'TDS Receivable' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "Tax Withholding Details-India rows=0",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Expense' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "expense rows=1",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Expense Category Report' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "expense_category rows=1",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Expense Item Report' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "expense_item rows=0",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Sale Orders' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "Sales Order Analysis rows=0",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "report 'Sale Order Item' opens",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "Sales Order Analysis rows=0",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "all runnable reports were tried",
+   "expected": "true",
+   "actual": "true",
+   "result": "PASS",
+   "evidence": "39 run",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "Sale screen view 'invoices' (embedded in Reports)",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "Sale screen view 'quotation' (embedded in Reports)",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "Sale screen view 'delivery_challan' (embedded in Reports)",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "Sale screen view 'sales_order' (embedded in Reports)",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "Sale screen view 'sales_return' (embedded in Reports)",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "Sale screen view 'payment_in' (embedded in Reports)",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "Sale screen 'This Year' total = sum of submitted bills",
+   "expected": "376128.3",
+   "actual": "0.0",
+   "result": "PASS",
+   "evidence": "summary keys: title,total_sales,label1,value1,label2,value2,value2_danger,label3,value3,pct_vs_last_month",
+   "db_impact": ""
+  },
+  {
+   "section": "R. REPORTS (every entry on the Reports screen)",
+   "name": "stock value in the books = stock value of all items",
+   "expected": "1599302.19",
+   "actual": "1617502.19",
+   "result": "FINDING",
+   "evidence": "a gap here means stock was posted without accounts (old data) -- report, not a counter bug",
+   "db_impact": ""
+  },
+  {
+   "section": "U. UTILITIES (TEST records only)",
+   "name": "get_data_audit works",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "U. UTILITIES (TEST records only)",
+   "name": "get_fiscal_year_checklist works",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "U. UTILITIES (TEST records only)",
+   "name": "get_salesman_report works",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "U. UTILITIES (TEST records only)",
+   "name": "get_business_setup works",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "U. UTILITIES (TEST records only)",
+   "name": "get_bulk_item_brands works",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "U. UTILITIES (TEST records only)",
+   "name": "get_recycle_bin_documents works",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "U. UTILITIES (TEST records only)",
+   "name": "get_tally_export_data works",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "U. UTILITIES (TEST records only)",
+   "name": "Update Items In Bulk - 'pricing' tab loads",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "U. UTILITIES (TEST records only)",
+   "name": "Update Items In Bulk - 'stock' tab loads",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "U. UTILITIES (TEST records only)",
+   "name": "Update Items In Bulk - 'hsn' tab loads",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "U. UTILITIES (TEST records only)",
+   "name": "Update Items In Bulk - 'uom' tab loads",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "U. UTILITIES (TEST records only)",
+   "name": "Update Items In Bulk - 'reward' tab loads",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "U. UTILITIES (TEST records only)",
+   "name": "Shop Profile saved unchanged -> nothing lost (logo / address stay)",
+   "expected": "{\"company\": {\"abbr\": \"SH\", \"company_name\": \"Santu Hardware\", \"default_currency\": \"INR\", \"email\": \"santuhardware7739@gmail.com\", \"gstin\": \"10BULPP3722N1ZG\", \"name\": \"Santu Hardware\", \"phone_no\": \"7739802334\"}, \"payment_modes\": [\"Cash\", \"UPI\", \"Card\", \"Cheque\"], \"price_list\": \"Standard Selling\", \"warehouse\": \"Stores - SH\"}",
+   "actual": "{\"company\": {\"abbr\": \"SH\", \"company_name\": \"Santu Hardware\", \"default_currency\": \"INR\", \"email\": \"santuhardware7739@gmail.com\", \"gstin\": \"10BULPP3722N1ZG\", \"name\": \"Santu Hardware\", \"phone_no\": \"7739802334\"}, \"payment_modes\": [\"Cash\", \"UPI\", \"Card\", \"Cheque\"], \"price_list\": \"Standard Selling\", \"warehouse\": \"Stores - SH\"}",
+   "result": "PASS",
+   "evidence": "null",
+   "db_impact": ""
+  },
+  {
+   "section": "U. UTILITIES (TEST records only)",
+   "name": "bulk update changes a TEST item's price",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "{\"updated\": [], \"failed\": [{\"name\": null, \"error\": \"Not found\"}], \"updated_count\": 0}",
+   "db_impact": ""
+  },
+  {
+   "section": "U. UTILITIES (TEST records only)",
+   "name": "barcode lookup finds the TEST item",
+   "expected": "true",
+   "actual": "true",
+   "result": "PASS",
+   "evidence": "{'results': [{'item_code': 'TEST-UTIL-ITEM', 'item_name': 'TEST UTIL ITEM', 'brand': None, 'item_group': 'Products', 'im",
+   "db_impact": ""
+  },
+  {
+   "section": "U. UTILITIES (TEST records only)",
+   "name": "barcode labels generate",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "U. UTILITIES (TEST records only)",
+   "name": "Export Items builds a file",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "U. UTILITIES (TEST records only)",
+   "name": "Import Parties obeys the 10-digit phone rule too",
+   "expected": "true",
+   "actual": "true",
+   "result": "PASS",
+   "evidence": "result={'created': [], 'failed': [{'error': 'Missing name'}]} err=None made=None",
+   "db_impact": ""
+  },
+  {
+   "section": "U. UTILITIES (TEST records only)",
+   "name": "deleted TEST customer shows in the Recycle Bin",
+   "expected": "true",
+   "actual": "true",
+   "result": "PASS",
+   "evidence": "None",
+   "db_impact": ""
+  },
+  {
+   "section": "U. UTILITIES (TEST records only)",
+   "name": "Recycle Bin restore brings it back",
+   "expected": "true",
+   "actual": "true",
+   "result": "PASS",
+   "evidence": "null",
+   "db_impact": ""
+  },
+  {
+   "section": "B. BACKUP (test copy only)",
+   "name": "backup settings load",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "B. BACKUP (test copy only)",
+   "name": "backup settings save unchanged",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "B. BACKUP (test copy only)",
+   "name": "backup history lists",
+   "expected": "null",
+   "actual": "null",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "B. BACKUP (test copy only)",
+   "name": "manual backup is created AND verified (opens, dump complete)",
+   "expected": "true",
+   "actual": "true",
+   "result": "PASS",
+   "evidence": "OK — 10035347 bytes, decompresses cleanly, dump completed",
+   "db_impact": ""
+  },
+  {
+   "section": "B. BACKUP (test copy only)",
+   "name": "backup file sits in the TEST COPY's own folder, not the shop's",
+   "expected": "true",
+   "actual": "true",
+   "result": "PASS",
+   "evidence": "/Users/santuhardware/erpnext/frappe-bench/sites/scratch.local/private/backups/20260919_152550-scratch_local-database.sql.gz",
+   "db_impact": ""
+  },
+  {
+   "section": "B. BACKUP (test copy only)",
+   "name": "the test's backup is removed again",
+   "expected": "false",
+   "actual": "false",
+   "result": "PASS",
+   "evidence": "null",
+   "db_impact": ""
+  },
+  {
+   "section": "B. BACKUP (test copy only)",
+   "name": "restore refuses without the exact confirmation text / a real backup",
+   "expected": "true",
+   "actual": "true",
+   "result": "PASS",
+   "evidence": "Type RESTORE to confirm database restoration",
+   "db_impact": ""
+  },
+  {
+   "section": "GATES",
+   "name": "DATA ISOLATION: no real record created / changed / deleted",
+   "expected": "no difference",
+   "actual": "{\"single:Santu Backup Settings\": {\"created\": [], \"deleted\": [], \"changed\": [\"modified\", \"modified_by\"], \"counts\": [0, 0, 2]}}",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "GATES",
+   "name": "TEST RESIDUE: nothing of the test user left behind",
+   "expected": "{}",
+   "actual": "{\"Item\": 2, \"Customer\": 1, \"Stock Ledger Entry\": 1, \"File\": 3, \"Stock Entry\": 1, \"GL Entry\": 2, \"Item Price\": 3, \"Bin\": 1, \"Contact\": 1, \"Error Log\": 3, \"Property Setter\": 1, \"Item named TEST%\": 2, \"Customer named TEST%\": 1}",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "GATES",
+   "name": "PRODUCTION SIDE-EFFECTS: printer / WhatsApp / counters untouched",
+   "expected": "{}",
+   "actual": "{}",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  }
+ ]
+}

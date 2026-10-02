@@ -18,6 +18,7 @@ santu_utilities.VIEWS = {
 	close_fy: { title: "Close Financial Year", label: "Close Financial Year" },
 	payment_modes: { title: "Payment Modes", label: "Payment Modes" },
 	cost_price_lock: { title: "Cost Price Lock", label: "Cost Price Lock" },
+	loyalty_points: { title: "Loyalty Points", label: "Loyalty Points" },
 	item_highlight_rules: { title: "Item Colour Rules", label: "Item Colour Rules" },
 	doctor_uncle: { title: "Doctor Uncle (Health Check)", label: "Doctor Uncle" },
 	bug_report: { title: "Bug Report (प्रॉब्लम रिपोर्ट)", label: "Bug Report" },

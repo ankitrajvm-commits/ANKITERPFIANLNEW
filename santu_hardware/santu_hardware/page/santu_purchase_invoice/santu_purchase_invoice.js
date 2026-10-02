@@ -42,7 +42,11 @@ frappe.pages["santu-purchase-invoice"].on_page_show = function () {
 
 const SANTU_PI2_STORAGE_KEY = "santu_purchase_pos_tabs_v1";
 
-const santu_purchase_pos = {
+// `window.` par hona zaroori hai: isi file ka on_page_show
+// `window.santu_purchase_pos` dekhkar prefill chalata hai. Bare `const`
+// window par nahi aata, isliye Estimate se Order/Bill banane par kuch
+// hota hi nahi tha -- chup-chaap khaali screen (2026-10-01).
+window.santu_purchase_pos = {
 	init(page) {
 		this.page = page;
 		this.init_data = null;
@@ -154,7 +158,10 @@ const santu_purchase_pos = {
 		tab.place_of_supply = doc.place_of_supply || tab.place_of_supply;
 		if (doc.terms) tab.terms = doc.terms;
 		if (doc.bill_no) tab.bill_no = doc.bill_no;
-		if (doc.bill_date) tab.posting_date = doc.bill_date;
+		if (doc.bill_date) {
+			tab.posting_date = doc.bill_date;
+			tab.date_set_on = frappe.datetime.get_today(); // supplier's own bill date: keep it
+		}
 		tab.additional_discount_amount = doc.discount_amount || 0;
 
 		const item_promises = (doc.items || []).map((r) =>
@@ -179,9 +186,15 @@ const santu_purchase_pos = {
 					// stock, not the printed carton count.
 					uom: r.uom || row.uom || row.stock_uom,
 					uom_options: row.uom_options || [row.uom || row.stock_uom],
+					// ERPNext ka `rate` discount ke BAAD ka hota hai (price_list_rate
+					// minus discount). Purchase Order se aaye row me rate ke saath
+					// discount bhi copy karne par wo dobara ghat jata tha -- wahi
+					// galti Billing me mili thi (2026-10-01). PDF se padhi bill me
+					// price_list_rate hota hi nahi, wahan discount jaisa tha waisa
+					// rehta hai.
 					rate: r.rate,
-					discount_percentage: r.discount_percentage || 0,
-					discount_amount: r.discount_amount || 0,
+					discount_percentage: r.price_list_rate ? 0 : (r.discount_percentage || 0),
+					discount_amount: r.price_list_rate ? 0 : (r.discount_amount || 0),
 					item_tax_template: row.item_tax_template || tab.default_tax_template || null,
 					tax_rate: row.tax_rate || this._tax_rate_for_template(row.item_tax_template || tab.default_tax_template),
 					barcode: row.barcode || null,
@@ -237,8 +250,27 @@ const santu_purchase_pos = {
 	},
 
 	// ---------- top-level render ----------
+	// A tab left open (or restored from localStorage) from an earlier day
+	// kept that day's date, so a sale/payment made today was booked on the
+	// old date -- Payment In showed 06/09 on 19/09 (2026-09-19). Billing,
+	// Estimate and Returns already roll forward; this does the same, but a
+	// date the user picked by hand TODAY (date_set_on) is left alone.
+	_roll_dates_forward() {
+		const today = frappe.datetime.get_today();
+		let changed = false;
+		(this.tabs || []).forEach((t) => {
+			if (t.saved || t.editing || t.saved_challan || t.saved_doc || t.saved_invoice) return;
+			if (t.posting_date && t.posting_date < today && (t.date_set_on || "") < today) {
+				t.posting_date = today;
+				changed = true;
+			}
+		});
+		if (changed && this._persist) this._persist();
+	},
+
 	render() {
 		if (!this.tabs.length) this._new_tab();
+		this._roll_dates_forward();
 		const $body = $(this.page.body);
 		$body.html(`
 			<div class="santu-si2">
@@ -468,6 +500,10 @@ const santu_purchase_pos = {
 			</div>
 
 			<div class="santu-si2-table-wrap">
+				<!-- Only the table scrolls sideways: the item-search dropdown is a
+				     child of the WRAP, so it must stay outside this box or it gets
+				     clipped (that bug made searching look like it found nothing). -->
+				<div class="santu-si2-table-scroll">
 				<table class="santu-si2-table">
 					<thead>
 						<tr>
@@ -496,6 +532,7 @@ const santu_purchase_pos = {
 						</tr>
 					</tfoot>
 				</table>
+				</div>
 			</div>
 
 			<div class="santu-si2-lowerrow">
@@ -548,7 +585,12 @@ const santu_purchase_pos = {
 				</div>
 				<div class="santu-si2-actionbar-right">
 					<button type="button" class="santu-si2-btn" data-action="share">Share ▾</button>
-					<button type="button" class="santu-si2-btn" data-action="save_print">Save &amp; Print</button>
+					<!-- Same three actions every other document screen has, and
+					     the same rule: pressing one IS the answer, nothing asks
+					     again afterwards (2026-09-07). -->
+					<button type="button" class="santu-si2-btn" data-action="save_whatsapp">💬 Send WhatsApp</button>
+					<button type="button" class="santu-si2-btn" data-action="save_whatsapp_other">↗ Kisi aur ko</button>
+					<button type="button" class="santu-si2-btn" data-action="save_print">🖨️ Save &amp; Print</button>
 					<button type="button" class="santu-si2-btn santu-si2-btn-primary" data-action="save">Save <span class="santu-si2-kbd">Ctrl+S</span></button>
 				</div>
 			</div>
@@ -647,7 +689,7 @@ const santu_purchase_pos = {
 	},
 
 	// ---------- items ----------
-	_render_items() {
+	_render_items({ reveal_row_id = null } = {}) {
 		const tab = this._active_tab();
 		const $tbody = this.$root.find(".santu-si2-table tbody");
 		$tbody.empty();
@@ -659,7 +701,7 @@ const santu_purchase_pos = {
 		tab.items.forEach((row, idx) => {
 			const row_hl = santu_item_row_class(row.item_code, row.item_name);
 			const $tr = $(`
-				<tr data-row="${row.id}" class="${row_hl}">
+				<tr data-row="${row.id}" class="${row.id === reveal_row_id ? "santu-bill-row-new" : ""} ${row_hl}">
 					<td class="santu-si2-col-idx">${idx + 1}</td>
 					<td class="santu-si2-col-item">
 						<div class="santu-si2-item-name">
@@ -728,9 +770,17 @@ const santu_purchase_pos = {
 
 		this._bind_item_row_events();
 		this._recalc_totals();
+		// Naya row apne aap dikhe -- niche se dhoondhna na pade. In screens
+		// ka grid apne scroll box me nahi hai, isliye helper khud page ko
+		// scroll karta hai (santu_scroll_row_into_view ka fallback).
+		if (reveal_row_id) window.santu_scroll_row_into_view(this.$root, { row_id: reveal_row_id });
 	},
 
 	_item_search(q, $anchor) {
+		// "5x tee" / "5* tee" -> 5 tee (santu_qty_prefix.js)
+		const parsed = santu_qty.split(q);
+		this._pending_qty = parsed.qty;
+		if (parsed.qty) q = parsed.text;
 		let $dd = this.$root.find(".santu-si2-item-dropdown");
 		if (!$dd.length) {
 			$dd = $(`<div class="santu-si2-item-dropdown" style="display:none;"></div>`).appendTo(this.$root.find(".santu-si2-table-wrap"));
@@ -744,6 +794,7 @@ const santu_purchase_pos = {
 
 	_render_item_dropdown($dd, rows, heading, query) {
 		$dd.empty();
+		if (this._pending_qty) $dd.append(santu_qty.hint_html(this._pending_qty, "santu-si2-dd-row"));
 		if (heading) $dd.append(`<div class="santu-si2-dd-heading">${heading}</div>`);
 		if (!rows.length) {
 			$dd.append(`<div class="santu-si2-dd-empty">No items found.</div>`);
@@ -825,23 +876,25 @@ const santu_purchase_pos = {
 	},
 
 	_add_item(item_code) {
+		// "5x tee" typed in search -> 5, else 1 (santu_qty_prefix.js)
+		const add_qty = santu_qty.take(this);
 		const tab = this._active_tab();
 		this.$root.find(".santu-si2-item-dropdown").hide();
 		this.$root.find(".santu-si2-item-search").val("");
 
 		const existing = tab.items.find((r) => r.item_code === item_code);
 		if (existing) {
-			existing.qty = (Number(existing.qty) || 0) + 1;
-			this._recompute_row(existing).then(() => this._render_items());
+			existing.qty = (Number(existing.qty) || 0) + add_qty;
+			this._recompute_row(existing).then(() => this._render_items({ reveal_row_id: existing.id }));
 			return;
 		}
 
-		santu_purchase_invoice.api.item_row(tab.supplier, item_code, this.init_data.warehouse, 1).then((row) => {
+		santu_purchase_invoice.api.item_row(tab.supplier, item_code, this.init_data.warehouse, add_qty).then((row) => {
 			const new_row = {
 				id: santu_purchase_invoice.utils.uid(),
 				item_code,
 				item_name: row.item_name || item_code,
-				qty: 1,
+				qty: add_qty,
 				uom: row.uom || row.stock_uom,
 				uom_options: row.uom_options || [row.uom || row.stock_uom],
 				rate: row.price_list_rate || row.rate || 0,
@@ -859,9 +912,9 @@ const santu_purchase_pos = {
 				can_edit_rate: !(frappe.user.has_role("Cashier") && !frappe.user.has_role("System Manager")),
 				amount: row.price_list_rate || row.rate || 0,
 			};
-			tab.items.push(new_row);
+		tab.items.push(new_row);
 			this._save_debounced();
-			this._render_items();
+			this._render_items({ reveal_row_id: new_row.id });
 		});
 	},
 
@@ -987,6 +1040,7 @@ const santu_purchase_pos = {
 		});
 		$root.find(".santu-si2-posting-date").on("change", (e) => {
 			tab.posting_date = e.target.value;
+			tab.date_set_on = frappe.datetime.get_today();
 			this._save_debounced();
 		});
 		$root.find(".santu-si2-place-of-supply").on("change", (e) => {
@@ -1057,7 +1111,9 @@ const santu_purchase_pos = {
 		$input.on("focus", () => this._item_search($input.val().trim()));
 		$input.on("keydown", (e) => {
 			if (e.key === "Enter") {
-				const q = $input.val().trim();
+				const typed = santu_qty.split($input.val().trim());
+				this._pending_qty = typed.qty;
+				const q = typed.qty ? typed.text : $input.val().trim();
 				if (!q) return;
 				santu_purchase_invoice.api.search_items(q).then((r) => {
 					if (r.exact_match) this._add_item(r.exact_match);
@@ -1518,7 +1574,7 @@ const santu_purchase_pos = {
 			window.santu_open_invoice_view("Purchase Invoice", tab.saved_invoice.name);
 			return;
 		}
-		if (action === "save" || action === "save_print" || action === "submit_draft") {
+		if (action === "save" || action === "save_print" || action === "save_whatsapp" || action === "save_whatsapp_other" || action === "submit_draft") {
 			this._save_purchase(tab, action);
 			return;
 		}
@@ -1596,11 +1652,19 @@ const santu_purchase_pos = {
 				frappe.dom.unfreeze();
 				tab.saved_invoice = r;
 				this._save_debounced();
-				frappe.show_alert({ message: __("Saved {0}", [r.name]), indicator: "green" });
+				window.santu_save_buttons ? santu_save_buttons.saved_alert("Purchase Invoice", r) : frappe.show_alert({ message: __("Saved"), indicator: "green" });
 				this._render_body();
-				if (action === "save_print") {
-					frappe.set_route("print", "Purchase Invoice", r.name);
-				}
+				// One shared path with Billing/Estimate/the returns: prints
+				// straight away, sends straight away, and a plain Save does
+				// neither. Purchase Invoice has no thermal layout, so the
+				// print falls through to the normal print view exactly as it
+				// did before -- just via the one helper now.
+				santu_save_buttons.after_save(
+					"Purchase Invoice",
+					r.name,
+					action === "save_print" ? "print" : action === "save_whatsapp" ? "whatsapp" : action === "save_whatsapp_other" ? "whatsapp_other" : null,
+					{ has_party: !!tab.supplier }
+				);
 			})
 			.catch((err) => {
 				frappe.dom.unfreeze();

@@ -53,6 +53,42 @@
 		}
 		button:hover { background: #1d4ed8; }
 		button:disabled { opacity: 0.6; cursor: default; }
+		/* The fingerprint is a real button, not something that only ever
+		   happens to you. The prompt on page load can be dismissed, can time
+		   out, or can never fire at all — with no button there was then no
+		   way back to it short of relaunching the app. */
+		.fp {
+			margin-top: 10px;
+			background: #1e293b;
+			border: 1px solid #334155;
+			display: none;
+			align-items: center;
+			justify-content: center;
+			gap: 8px;
+		}
+		.fp:hover { background: #273449; }
+		.fp.show { display: flex; }
+		.fp-icon { font-size: 17px; line-height: 1; }
+		.enrol {
+			display: none;
+			margin-top: 14px;
+			padding: 10px 12px;
+			border-radius: 10px;
+			background: #172033;
+			border: 1px solid #334155;
+			font-size: 12px;
+			color: #cbd5e1;
+			line-height: 1.45;
+		}
+		.enrol.show { display: block; }
+		.enrol button { margin-top: 8px; padding: 8px; font-size: 13px; }
+		.enrol .no {
+			background: transparent;
+			color: #94a3b8;
+			border: 1px solid #334155;
+			margin-top: 6px;
+		}
+		.enrol .no:hover { background: #1e293b; }
 	</style>
 	<script src="/assets/santu_hardware/js/santu_app_lock_webauthn.js"></script>
 </head>
@@ -65,6 +101,12 @@
 			<input type="password" inputmode="numeric" autocomplete="off" maxlength="8" id="pin-input" placeholder="••••">
 			<div class="error" id="error-text"></div>
 			<button type="button" id="unlock-btn">Unlock</button>
+			<button type="button" class="fp" id="fp-btn"><span class="fp-icon">&#128070;</span><span>Fingerprint se kholo</span></button>
+			<div class="enrol" id="enrol-box">
+				<div id="enrol-text">Is Mac par fingerprint chalu kar dein? Agli baar sirf ungli lagani hogi.</div>
+				<button type="button" id="enrol-yes">Haan, chalu karo</button>
+				<button type="button" class="no" id="enrol-no">Abhi nahi</button>
+			</div>
 		</div>
 	</div>
 
@@ -90,6 +132,23 @@
 			return CSRF_TOKEN;
 		}
 
+		// Remembered only long enough to offer "chalu kar dein?" right after a
+		// correct PIN — never stored anywhere by this page itself. Saving it
+		// is the Keychain's job, behind Touch ID, and only if he says yes.
+		let last_good_pin = null;
+
+		function go_in() {
+			// Same sessionStorage flag santu_app_lock.js checks on every Desk
+			// page load — without setting it here, /app would immediately ask
+			// for the PIN a second time right after this page collected it.
+			try {
+				sessionStorage.setItem("santu_applock_unlocked", "1");
+			} catch (e) {
+				/* ignore */
+			}
+			window.location.href = "/app";
+		}
+
 		async function attempt() {
 			const pin = input.value.trim();
 			if (!pin) return;
@@ -106,16 +165,13 @@
 				});
 				const data = await res.json().catch(() => ({}));
 				if (res.ok && data && data.message && data.message.ok) {
-					// Same sessionStorage flag santu_app_lock.js checks on
-					// every Desk page load — without setting it here, /app
-					// would immediately ask for the PIN a second time right
-					// after this page just collected it once.
-					try {
-						sessionStorage.setItem("santu_applock_unlocked", "1");
-					} catch (e) {
-						/* ignore */
-					}
-					window.location.href = "/app";
+					last_good_pin = pin;
+					// Offer the fingerprint the moment it can actually be set
+					// up — right here, with a PIN the server has just
+					// confirmed. Buried on a settings screen, it never got
+					// switched on at all (2026-09-05).
+					if (await offer_enrolment()) return;
+					go_in();
 					return;
 				}
 				errorText.textContent =
@@ -135,25 +191,77 @@
 			if (e.key === "Enter") attempt();
 		});
 
-		// Fingerprint first, PIN as the fallback that is always right there
-		// waiting — never a separate mode the person has to switch into.
-		// A cancelled/failed Touch ID prompt just leaves the PIN box
-		// focused, exactly as if fingerprint had never been tried.
-		(async () => {
-			const subText = document.getElementById("sub-text");
-			if (window.santu_app_lock_webauthn && santu_app_lock_webauthn.available()) {
-				const ok = await santu_app_lock_webauthn.tryLogin();
-				if (ok) {
-					try {
-						sessionStorage.setItem("santu_applock_unlocked", "1");
-					} catch (e) {
-						/* ignore */
-					}
-					window.location.href = "/app";
+		const fpBtn = document.getElementById("fp-btn");
+		const enrolBox = document.getElementById("enrol-box");
+		const subText = document.getElementById("sub-text");
+
+		// Cached so the button and the enrol offer both read the same answer
+		// instead of asking the bridge twice.
+		let fp = { mode: null, enrolled: false };
+
+		async function run_fingerprint() {
+			fpBtn.disabled = true;
+			errorText.textContent = "";
+			const ok = await santu_app_lock_webauthn.tryLogin();
+			fpBtn.disabled = false;
+			if (ok) {
+				go_in();
+				return true;
+			}
+			// Cancelled, or the finger was not recognised. Not an error worth
+			// shouting about — the PIN box is right there.
+			subText.textContent = "PIN daaliye";
+			input.focus();
+			return false;
+		}
+
+		// Returns true if it took over the screen (asked the question).
+		function offer_enrolment() {
+			return new Promise((resolve) => {
+				if (!(fp.mode && !fp.enrolled && last_good_pin)) {
+					resolve(false);
 					return;
 				}
+				enrolBox.classList.add("show");
+				document.getElementById("enrol-yes").onclick = async () => {
+					enrolBox.classList.remove("show");
+					// Touch ID itself is asked for by the Keychain when it
+					// stores the PIN, so a cancel here simply means "no".
+					await santu_app_lock_webauthn.nativeEnroll(last_good_pin);
+					go_in();
+				};
+				document.getElementById("enrol-no").onclick = () => {
+					enrolBox.classList.remove("show");
+					go_in();
+				};
+				resolve(true);
+			});
+		}
+
+		// Fingerprint first, PIN as the fallback that is always right there
+		// waiting — never a separate mode the person has to switch into.
+		// A cancelled/failed Touch ID prompt just leaves the PIN box focused,
+		// exactly as if fingerprint had never been tried — but now the BUTTON
+		// stays on screen, so it can be tried again without relaunching.
+		(async () => {
+			if (!window.santu_app_lock_webauthn) {
+				subText.textContent = "PIN daaliye";
+				input.focus();
+				return;
 			}
-			subText.textContent = "PIN daaliye";
+			fp = await santu_app_lock_webauthn.availability();
+			if (fp.mode && fp.enrolled) {
+				fpBtn.classList.add("show");
+				fpBtn.addEventListener("click", run_fingerprint);
+				subText.textContent = "Ungli lagaiye ya PIN daaliye";
+				if (await run_fingerprint()) return;
+				return;
+			}
+			// Available but nothing registered on this Mac yet: say so, and
+			// the PIN entry above will offer to set it up.
+			subText.textContent = fp.mode
+				? "PIN daaliye — phir fingerprint chalu kar sakte hain"
+				: "PIN daaliye";
 			input.focus();
 		})();
 	</script>

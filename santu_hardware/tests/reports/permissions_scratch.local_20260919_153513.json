@@ -1,0 +1,41 @@
+{
+ "suite": "permissions",
+ "site": "scratch.local",
+ "started": "2026-09-19 15:35:13.103009",
+ "gate": {
+  "functional_failures": 0,
+  "invariant_failures": 0,
+  "test_residue": 9,
+  "production_side_effects": 0
+ },
+ "verdict": "FAILED",
+ "rows": [
+  {
+   "section": "GATES",
+   "name": "DATA ISOLATION: no real record created / changed / deleted",
+   "expected": "no difference",
+   "actual": "no difference",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "GATES",
+   "name": "TEST RESIDUE: nothing of the test user left behind",
+   "expected": "{}",
+   "actual": "{\"Item\": 1, \"Customer\": 1, \"Notification Settings\": 5, \"User\": 5, \"Item Price\": 1, \"Contact\": 3, \"DocShare\": 5, \"Item named TEST%\": 1, \"Customer named TEST%\": 1}",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "GATES",
+   "name": "PRODUCTION SIDE-EFFECTS: printer / WhatsApp / counters untouched",
+   "expected": "{}",
+   "actual": "{}",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  }
+ ]
+}

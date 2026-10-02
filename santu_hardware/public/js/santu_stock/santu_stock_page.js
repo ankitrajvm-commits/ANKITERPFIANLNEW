@@ -573,60 +573,204 @@ santu_stock.create_page = function () {
 	// Batch concept removed from this app entirely (2026-08-17: "bath ka
 	// concept hata do pura") — one number per item, corrected directly.
 
-	// Changing an item's unit from the shelf-view. Two outcomes, decided by
-	// the server: an item that has never moved simply switches its unit,
-	// while one with history keeps counting stock in its old unit and gains
-	// the new one as an alternate to bill in. Both are stated plainly in the
-	// dialog so nobody has to guess which one happened.
+	// Changing an item's unit from the shelf-view. Plain overwrite, same as
+	// the POS billing row's tick (✓) -- no conversion factor asked, none
+	// applied, quantity keeps its number and just carries the new label
+	// (2026-09-07 direct follow-up: "item se v and update item in bulk se v
+	// unit change ho jaye... apan dimag mat lagao, fix it all" -- rejecting
+	// the earlier redirect-to-POS message). Server side shared with the POS
+	// tick via force_overwrite_item_unit so all entry points agree.
 	edit_unit(r) {
+		const cur_label = santu_uom.abbr(r.uom) || "";
 		santu_uom.list(r.item_code, r.uom).then((opts) => {
-			const others = opts.filter((o) => o.uom !== r.uom);
+			const others = santu_uom
+				.dedupe_by_abbr(opts, r.uom)
+				.filter((o) => o.uom !== r.uom && santu_uom.abbr(o.uom) !== cur_label);
+
 			const d = new frappe.ui.Dialog({
 				title: __("Unit badlein"),
 				fields: [
 					{
 						fieldtype: "HTML",
+						fieldname: "head",
 						options: `<div style="margin-bottom:8px">${frappe.utils.escape_html(r.item_name || r.item_code)}<br>
-							<span style="color:var(--text-muted)">${__("Abhi")}: <b>${frappe.utils.escape_html(santu_uom.abbr(r.uom) || "")}</b></span></div>`,
+							<span style="color:var(--text-muted)">${__("Abhi")}: <b>${frappe.utils.escape_html(cur_label)}</b></span></div>`,
 					},
 					{
 						fieldtype: "Select",
 						fieldname: "uom",
 						label: __("Naya Unit"),
 						reqd: 1,
-						options: others.map((o) => o.uom).join("\n"),
-					},
-					{
-						fieldtype: "Float",
-						fieldname: "conversion_factor",
-						label: __("1 naya unit = kitne {0}?", [santu_uom.abbr(r.uom) || ""]),
-						description: __("Khali chhod dein to system khud samajhne ki koshish karega (jaise 1 Gram = 0.001 Kg)."),
+						options: [""].concat(others.map((o) => o.uom)).join("\n"),
 					},
 				],
-				primary_action_label: __("Save"),
+				primary_action_label: __("Badal do"),
 				primary_action: (v) => {
+					if (!v.uom) {
+						frappe.msgprint(__("Naya unit chuniye."));
+						return;
+					}
+					frappe.dom.freeze(__("Saving…"));
 					frappe
 						.call({
-							method: "santu_hardware.santu_hardware.api.set_item_unit",
-							args: {
-								item_code: r.item_code,
-								uom: v.uom,
-								conversion_factor: v.conversion_factor || null,
-							},
+							method: "santu_hardware.santu_hardware.api.force_overwrite_item_unit",
+							args: { item_code: r.item_code, uom: v.uom },
 						})
 						.then((res) => {
+							frappe.dom.unfreeze();
 							const m = (res && res.message) || {};
+							if (m.unit_error) {
+								frappe.msgprint({ title: __("Nahi ho paya"), indicator: "red", message: m.unit_error });
+								return;
+							}
 							d.hide();
-							// The unit list just changed, so the cached copy is stale.
 							delete santu_uom._cache[r.item_code];
-							frappe.show_alert({ message: m.message || __("Ho gaya."), indicator: "green" }, 7);
+							frappe.show_alert({ message: m.unit_message || __("Ho gaya."), indicator: "green" }, 7);
 							this.load();
-						});
+						})
+						.catch(() => frappe.dom.unfreeze());
 				},
 			});
 			d.show();
 		});
 	},
+
+	// Earlier conversion-guessing version of edit_unit, kept commented
+	// (SWITCHED OFF 2026-09-07, paused not abandoned) -- it only worked
+	// when a factor between the two units was already known, and dead-ended
+	// otherwise (Packet vs Pcs, Box vs Nos on an item nobody had defined
+	// those for). Design is sound once Manage Units carries the shop's own
+	// factors.
+	/*
+	edit_unit_with_conversion_guess(r) {
+		santu_uom.list(r.item_code, r.uom).then((opts) => {
+			// Collapse units that share one short form, then drop the item's
+			// own -- an item on "Nos" must not be offered "Pcs", because
+			// abbr() shows BOTH as "Pcs": picking it would look like nothing
+			// happened while quietly moving the item to an unrelated UOM
+			// record (the bug santu_uom.fill_select was fixed for 2026-09-03;
+			// this hand-built dialog never got that fix until 2026-09-07).
+			const cur_label = santu_uom.abbr(r.uom) || "";
+			const others = santu_uom
+				.dedupe_by_abbr(opts, r.uom)
+				.filter((o) => o.uom !== r.uom && santu_uom.abbr(o.uom) !== cur_label);
+
+			// Just a unit picker -- no conversion-factor field (2026-09-07:
+			// "bs unit change kr sake... baaki ye box me kitna pcs hai ye mat
+			// kro"). The server works out the factor for everything it can.
+			//
+			// The change is now ALWAYS final -- picking a unit really switches
+			// the item's stock unit, existing stock and all (2026-09-07 direct
+			// follow-up: "unit change karu to FINAL change ho jaye naa, bas
+			// warning de de, ya bata de ki pehle wala conversion hata de rahe
+			// hai" -- the earlier version silently added the new unit as an
+			// alternate and left the real unit unchanged, which read as nothing
+			// having happened). Save asks the server for a PREVIEW first
+			// (no write) and shows it as the warning; a second click on that
+			// warning is what actually applies it.
+			const apply_unit_change = (uom, factor) => {
+				frappe.dom.freeze(__("Saving…"));
+				frappe
+					.call({
+						method: "santu_hardware.santu_hardware.api.set_item_unit",
+						args: { item_code: r.item_code, uom, conversion_factor: factor || null, force: 1 },
+					})
+					.then((res) => {
+						frappe.dom.unfreeze();
+						const m = (res && res.message) || {};
+						d.hide();
+						delete santu_uom._cache[r.item_code];
+						frappe.show_alert({ message: m.message || __("Ho gaya."), indicator: "green" }, 7);
+						this.load();
+					})
+					.catch(() => frappe.dom.unfreeze());
+			};
+
+			// Named so both the initial Save and the post-warning reset (when a
+			// different unit gets picked) can point at exactly the same check.
+			const check_and_maybe_confirm = (v) => {
+				if (!v.uom) {
+					frappe.msgprint(__("Naya unit chuniye."));
+					return;
+				}
+				// A confirmed warning is already showing for this exact unit --
+				// this click IS the confirmation, apply for real.
+				if (d._confirmed_uom === v.uom) {
+					apply_unit_change(v.uom, d._confirmed_factor);
+					return;
+				}
+				frappe.dom.freeze(__("Checking…"));
+				frappe
+					.call({
+						method: "santu_hardware.santu_hardware.api.set_item_unit",
+						args: { item_code: r.item_code, uom: v.uom },
+					})
+					.then((res) => {
+						frappe.dom.unfreeze();
+						const m = (res && res.message) || {};
+						if (m.changed) {
+							// Nothing needed converting (no stock yet, or 0) -- the
+							// server already applied it in one step.
+							d.hide();
+							delete santu_uom._cache[r.item_code];
+							frappe.show_alert({ message: m.message || __("Ho gaya."), indicator: "green" }, 7);
+							this.load();
+							return;
+						}
+						if (!m.needs_confirmation) {
+							frappe.show_alert({ message: m.message || __("Ye unit badla nahi ja saka."), indicator: "orange" }, 7);
+							return;
+						}
+						// Show the warning right in the dialog and turn Save into the
+						// confirm button -- exactly what was asked for: "bas warning
+						// de de... bata de ki pehle wala conversion hata de rahe hai".
+						d._confirmed_uom = v.uom;
+						d._confirmed_factor = m.conversion_factor;
+						d.set_primary_action(__("Haan, badal do"), () => apply_unit_change(v.uom, m.conversion_factor));
+						d.fields_dict.warn.$wrapper.html(
+							`<div style="font-size:12.5px;line-height:1.6;color:#92400e;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:8px 10px;margin-top:8px;">
+								⚠️ ${frappe.utils.escape_html(m.message || "")}
+							</div>`
+						);
+					})
+					.catch(() => frappe.dom.unfreeze());
+			};
+
+			const d = new frappe.ui.Dialog({
+				title: __("Unit badlein"),
+				fields: [
+					{
+						fieldtype: "HTML",
+						fieldname: "head",
+						options: `<div style="margin-bottom:8px">${frappe.utils.escape_html(r.item_name || r.item_code)}<br>
+							<span style="color:var(--text-muted)">${__("Abhi")}: <b>${frappe.utils.escape_html(cur_label)}</b></span></div>`,
+					},
+					{
+						fieldtype: "Select",
+						fieldname: "uom",
+						label: __("Naya Unit"),
+						reqd: 1,
+						options: [""].concat(others.map((o) => o.uom)).join("\n"),
+					},
+					{ fieldtype: "HTML", fieldname: "warn", options: "" },
+				],
+				primary_action_label: __("Save"),
+				primary_action: check_and_maybe_confirm,
+			});
+			// A different unit picked after a warning was already shown must ask
+			// again for THAT unit, not silently reuse the old confirmation.
+			d.fields_dict.uom.$input.on("change", () => {
+				if (d.get_value("uom") === d._confirmed_uom) return;
+				d._confirmed_uom = null;
+				d._confirmed_factor = null;
+				d.set_primary_action(__("Save"), check_and_maybe_confirm);
+				d.fields_dict.warn.$wrapper.html("");
+			});
+			d.show();
+		});
+	},
+	*/
+
 
 	edit_stock(row) {
 		this._edit_stock_dialog(row);
@@ -777,7 +921,12 @@ santu_stock.create_page = function () {
 			<div class="santu-stock-card ${s.low_count ? "santu-stock-card-warn" : ""}">
 				<div class="santu-stock-card-label">Running Low</div>
 				<div class="santu-stock-card-value">${format_number(s.low_count || 0, null, 0)}</div>
-				<div class="santu-stock-card-sub">Items at or below their alert level</div>
+				<div class="santu-stock-card-sub">
+					Items at or below their alert level
+					${s.critical_count
+						? `<span class="santu-stock-critical-count">${format_number(s.critical_count, null, 0)} ${__("critical")}</span>`
+						: ""}
+				</div>
 			</div>
 		`);
 	},
@@ -918,7 +1067,9 @@ santu_stock.create_page = function () {
 			});
 			// The unit sits inside the quantity cell, so it has to swallow the
 			// click itself -- otherwise tapping "Kg" would open the
-			// fix-the-stock-count dialog instead of the unit one.
+			// fix-the-stock-count dialog underneath. Re-enabled 2026-09-07 as
+			// a plain overwrite (edit_unit, above) -- same rule the POS bill
+			// row's tick uses, just reachable from here too.
 			$tr.find(".santu-stock-uom-edit").on("click", (e) => {
 				e.stopPropagation();
 				this.edit_unit(r);

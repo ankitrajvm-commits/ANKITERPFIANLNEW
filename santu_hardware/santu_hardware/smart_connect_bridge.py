@@ -293,6 +293,7 @@ def start_bridge(fresh: bool = False) -> dict:
 
 def stop_bridge(logout: bool = False) -> dict:
 	if logout and _alive():
+		block_non_live_send()  # a test must never log the shop's WhatsApp out
 		try:
 			requests.post(f"{BRIDGE_URL}/logout", timeout=8)
 		except Exception:
@@ -332,7 +333,28 @@ def stop_bridge(logout: bool = False) -> dict:
 	return {"ok": True, "state": "LOGGED_OUT" if logout else "DISCONNECTED"}
 
 
+# Only the live shop, and never the test user, may talk to WhatsApp. The bridge
+# is ONE process for the whole Mac, so a test copy of the site (scratch.local)
+# or a test run would otherwise message real customers -- a suite once sent
+# SAILENDRA KR his real bill 844 (2026-09-10). Shop users on the live site are
+# not affected.
+LIVE_SITE = "site1.local"
+TEST_USER_NO_SEND = "claude.test@santuhardware.local"
+
+
+class NonLiveSendBlocked(RuntimeError):
+	pass
+
+
+def block_non_live_send():
+	site = getattr(frappe.local, "site", None)
+	user = getattr(getattr(frappe, "session", None), "user", None)
+	if site != LIVE_SITE or user == TEST_USER_NO_SEND:
+		raise NonLiveSendBlocked(f"WhatsApp send blocked (site={site}, user={user}) -- only the live shop may send.")
+
+
 def send_via_bridge(phone: str, text: str) -> dict:
+	block_non_live_send()
 	if not _alive():
 		start_bridge()
 	phone = _resolve_send_phone(phone)
@@ -346,6 +368,7 @@ def send_via_bridge(phone: str, text: str) -> dict:
 def send_document_via_bridge(
 	phone: str, file_bytes: bytes, filename: str, caption: str = "", mimetype: str = "application/pdf"
 ) -> dict:
+	block_non_live_send()
 	import base64
 
 	def _post():
@@ -373,6 +396,7 @@ def send_document_via_bridge(
 
 
 def send_image_via_bridge(phone: str, file_bytes: bytes, caption: str = "", mimetype: str = "image/png") -> dict:
+	block_non_live_send()
 	"""Same shape as send_document_via_bridge, but hits /send-image so the
 	bridge sends Baileys an `image` message key — the one that actually
 	shows as an inline picture in the chat instead of a document bubble."""

@@ -104,7 +104,19 @@
 }
 
 /* ---- scan bar ---- */
-.santu-bill-searchwrap { position: relative; }
+/* The scan bar stays put while the list grows. Without this, adding an item
+   scrolled the page down to the new row and the search box went off the top,
+   so the next item meant scrolling back up every single time (2026-09-21:
+   "item add ho raha hai but wo niche chala ja raha hai, phir usko upar karna
+   pad raha hai"). */
+.santu-bill-searchwrap {
+	position: sticky;
+	top: 0;
+	z-index: 30;
+	background: #ffffff;
+	padding: 6px 0;
+	border-radius: 8px;
+}
 .santu-bill-search {
 	width: 100%;
 	height: 52px;
@@ -217,7 +229,7 @@
 .santu-bill-qty-stepper {
 	display: inline-flex;
 	align-items: center;
-	gap: 8px;
+	gap: 4px;
 }
 .santu-bill-qty-btn {
 	width: 24px;
@@ -258,7 +270,11 @@
 	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
 	position: relative;
 }
-.santu-bill-gridscroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.santu-bill-gridscroll { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-width: thin; }
+.santu-bill-gridscroll::-webkit-scrollbar { height: 11px; width: 11px; }
+.santu-bill-gridscroll::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 6px; }
+.santu-bill-gridscroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; border: 2px solid #f1f5f9; }
+.santu-bill-gridscroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 .santu-bill-grid tr.santu-bill-row-new {
 	animation: santu-bill-new-row-flash 1.8s ease-out;
 }
@@ -273,7 +289,9 @@
 	top: 0;
 	background: #f8fafc;
 	text-align: left;
-	padding: 12px 16px;
+	/* 16px each side added ~90px to the table and pushed TOTAL past the
+	   right edge once the sidebar is open (2026-09-25). */
+	padding: 12px 9px;
 	font-size: 13px;
 	font-weight: 600;
 	color: #475569;
@@ -286,7 +304,7 @@
 .santu-bill-grid thead th span { display: block; font-weight: 500; color: #94a3b8; margin-top: 2px; }
 .santu-bill-grid tbody { display: table-row-group; }
 .santu-bill-grid tbody td {
-	padding: 12px 16px;
+	padding: 12px 9px;
 	border-bottom: 1px solid #f1f5f9;
 	border-right: 1px solid #f1f5f9;
 	color: #0f172a;
@@ -324,6 +342,21 @@
    Data is untouched, nothing else reads .c-code -- flip this back to
    `width: 130px;` whenever GST/item-code work starts again. */
 .c-code { display: none; }
+/* Item name: FULL name, wrapped -- never cut, never stretching the table
+   (2026-09-10: "koi item ya person ka name bada hua to" -- tested on every
+   sale screen). tbody td is nowrap for the number columns; the name cell
+   alone opts out, and overflow-wrap:anywhere breaks even a name with no
+   spaces. Before this a long name pushed the grid to 1164px inside a 900px
+   box. Shared by Billing, Estimate, Sales Return and Purchase Return. */
+.santu-bill-grid tbody td.c-name {
+	white-space: normal;
+	overflow-wrap: anywhere;
+	word-break: break-word;
+	min-width: 180px;
+	line-height: 1.35;
+}
+/* Item/customer names in the search dropdowns: full name, wrapped. */
+.santu-bill-dd-row > div:first-child { min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
 .c-qty { width: 90px; }
 /* table-layout is auto (item name needs to stay flexible), so a plain
    `width` on <th>/<td> is only ever a hint -- the browser shrank it back
@@ -394,6 +427,15 @@
 	background: #ffffff;
 	box-sizing: border-box;
 	transition: all 0.2s;
+}
+/* Customer name specifically -- straining to read it was the direct
+   complaint (2026-09-07: "kafi chota me dikha raha hia and aankho pe jor
+   dalna pad raha hia"), so it gets a bigger, bolder, darker size step of
+   its own rather than the shared 14px every right-rail input uses. */
+.santu-bill-customer {
+	font-size: 17px;
+	font-weight: 600;
+	color: #0f172a;
 }
 .santu-bill-right input:focus,
 .santu-bill-right select:focus {
@@ -489,6 +531,29 @@
 	color: #64748b;
 	margin-top: 4px;
 }
+/* Reward points used on this bill — sits in the same totals column as the
+   change/baaki rows, so it reads as one continuous account of the money,
+   not a bolt-on. Green: it always makes the payable amount smaller. */
+.santu-bill-loyalty-line {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	font-size: 13.5px;
+	font-weight: 600;
+	color: #15803d;
+	padding: 6px 0;
+	border-top: 1px dashed #e2e8f0;
+}
+/* The "Use Reward Points" dialog's own summary — points held, what they
+   are worth, what this bill costs, and what can actually be used right
+   now, in that order, so the operator reads down the list and arrives at
+   the one number the Points field below is asking for. */
+.santu-bill-loyalty-info {
+	font-size: 13.5px;
+	line-height: 1.9;
+	color: #374151;
+}
+.santu-bill-loyalty-info div:first-child { font-size: 15px; margin-bottom: 4px; }
 /* Same slot, but this is a blocker not an FYI: without a party the bill
    cannot be saved at all, so it reads as a warning rather than a note. */
 .santu-bill-baaki-note.is-warning {
@@ -526,7 +591,15 @@
 	background: #e5e7eb;
 	margin: 6px 4px;
 }
-.santu-bill-save {
+/* The big button is whichever one sits directly in the save column, and the
+   two small ones are whatever is inside .santu-bill-save-row -- styled by
+   POSITION, not by which action it is. Save & Print took the big slot on
+   2026-09-07 ("save and print hamesa hi use hoga baar baar"); writing the
+   rules this way means swapping them again is a markup change only, with no
+   chance of a button ending up the wrong size. */
+.santu-bill-savecol > .santu-bill-save,
+.santu-bill-savecol > .santu-bill-save-print,
+.santu-bill-savecol > .santu-bill-save-whatsapp {
 	background: #10b981;
 	border: 1px solid #059669;
 	border-radius: 8px;
@@ -538,7 +611,54 @@
 	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 	transition: all 0.2s;
 }
-.santu-bill-save:hover { background: #059669; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+.santu-bill-savecol > .santu-bill-save:hover,
+.santu-bill-savecol > .santu-bill-save-print:hover,
+.santu-bill-savecol > .santu-bill-save-whatsapp:hover {
+	background: #059669;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+.santu-bill-save-row {
+	display: flex;
+	gap: 8px;
+}
+.santu-bill-save-row > button {
+	flex: 1 1 0;
+	border-radius: 8px;
+	padding: 12px 8px;
+	font-size: 13.5px;
+	font-weight: 600;
+	cursor: pointer;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+	transition: all 0.2s;
+	border: 1px solid transparent;
+}
+.santu-bill-save-row > .santu-bill-save {
+	background: #f0fdf4;
+	border-color: #bbf7d0;
+	color: #15803d;
+}
+.santu-bill-save-row > .santu-bill-save:hover { background: #dcfce7; border-color: #86efac; }
+.santu-bill-save-row > .santu-bill-save-print {
+	background: #eff6ff;
+	border-color: #bfdbfe;
+	color: #1d4ed8;
+}
+.santu-bill-save-row > .santu-bill-save-print:hover { background: #dbeafe; border-color: #93c5fd; }
+.santu-bill-save-row > .santu-bill-save-whatsapp {
+	background: #ecfdf5;
+	border-color: #a7f3d0;
+	color: #047857;
+}
+.santu-bill-save-row > .santu-bill-save-whatsapp:hover { background: #d1fae5; border-color: #6ee7b7; }
+.santu-bill-save-row { flex-wrap: wrap; }
+.santu-bill-save-row > .santu-bill-save-whatsapp-other {
+	flex: 1 1 100%;
+	background: #ffffff;
+	border-color: #a7f3d0;
+	color: #047857;
+	padding: 9px 8px;
+}
+.santu-bill-save-row > .santu-bill-save-whatsapp-other:hover { background: #ecfdf5; border-color: #6ee7b7; }
 .santu-bill-credit {
 	background: #ffffff;
 	border: 1px solid #e2e8f0;
@@ -647,6 +767,18 @@
 }
 .santu-bill-cust-row:hover { background: #f3f7ff; }
 .santu-bill-cust-row > span:first-child { flex: 1; min-width: 0; }
+/* Name on top, gaon under it in small grey -- same look as the address line
+   under the picked customer (.santu-bill-cust-info). Full text, wraps. */
+.santu-bill-cust-name { display: block; overflow-wrap: anywhere; word-break: break-word; }
+.santu-bill-cust-village {
+	display: block;
+	font-size: 12px;
+	color: #6b7280;
+	line-height: 1.3;
+	margin-top: 1px;
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
 .santu-bill-cust-phone { color: #71748e; }
 /* 2026-09-03 direct request: "yaha ek pencil dal do, customer data edit kr
    sakoon" */
@@ -909,6 +1041,14 @@
 	margin-top: 4px;
 	font-weight: 500;
 }
+/* Tappable: maal aaya to bill chhode bina yahin chadha do. */
+.santu-bill-stock-add {
+	cursor: pointer;
+	text-decoration: underline;
+	text-decoration-style: dotted;
+	text-underline-offset: 2px;
+}
+.santu-bill-stock-add:hover { text-decoration-style: solid; }
 .santu-bill-stock-ok {
 	color: #10b981;
 }
@@ -1130,3 +1270,46 @@
 .santu-bill-more-menu button:hover {
 	background: #f2f4fa;
 }
+
+/* Ruke hue bill ki patti — counter par hamesha dikhe ki kuch baaki hai
+   (2026-09-08 Offline Billing). Neeche BAAYEIN kone me: daayein kone me ye
+   "Other/Credit Payments" button ke ooper aa jaati thi, aur billing ka koi
+   button dhakna sabse buri jagah hai. */
+#santu-offline-badge {
+	position: fixed;
+	left: 18px;
+	bottom: 18px;
+	z-index: 1050;
+	background: #b45309;
+	color: #ffffff;
+	font-size: 13px;
+	font-weight: 600;
+	padding: 9px 14px;
+	border-radius: 999px;
+	box-shadow: 0 6px 16px -4px rgba(0, 0, 0, 0.3);
+	cursor: pointer;
+	user-select: none;
+}
+#santu-offline-badge:hover { background: #92400e; }
+
+
+/* Challan ban jaane ke baad ka chhota box (2026-10-01): print aur WhatsApp
+   dono saamne, taaki kuch bhi apne aap na ho. */
+.santu-challan-done { text-align: center; padding: 6px 0 2px; }
+.santu-challan-done-name { font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 14px; }
+.santu-challan-done-btns { display: flex; gap: 12px; justify-content: center; }
+.santu-challan-done-btns button {
+	flex: 1;
+	max-width: 180px;
+	padding: 12px 10px;
+	font-size: 15px;
+	font-weight: 600;
+	border-radius: 8px;
+	border: 1px solid #d1d5db;
+	background: #fff;
+	cursor: pointer;
+}
+.santu-challan-print { border-color: #2563eb !important; color: #2563eb; }
+.santu-challan-print:hover { background: #eff6ff; }
+.santu-challan-wa { border-color: #16a34a !important; color: #16a34a; }
+.santu-challan-wa:hover { background: #f0fdf4; }

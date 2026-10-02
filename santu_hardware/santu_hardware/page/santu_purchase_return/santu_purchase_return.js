@@ -219,7 +219,7 @@ window.santu_purchase_return_page = {
 							<label>Paisa Kaise Settle Hoga?</label>
 							<select class="santu-bill-settlement">
 								<option value="" ${!b.settlement ? "selected" : ""} disabled>-- Chuno --</option>
-								<option value="credit" ${b.settlement === "credit" ? "selected" : ""}>Khata me credit rahega</option>
+								<option value="credit" ${b.settlement === "credit" ? "selected" : ""}>Account me credit rahega</option>
 								<option value="refund" ${b.settlement === "refund" ? "selected" : ""}>Supplier ne abhi cash/UPI refund diya</option>
 							</select>
 						</div>
@@ -259,7 +259,7 @@ window.santu_purchase_return_page = {
 							<button type="button" data-act="reason">Reason <b>[F12]</b></button>
 						</div>
 					</div>
-						<button type="button" class="santu-bill-save">Save Return <span class="santu-bill-kbd">Ctrl+S</span></button>
+						${santu_save_buttons.html({ save_label: __("Save Return"), kbd: "Ctrl+P" })}
 					</div>
 					</div>
 				</div>
@@ -355,14 +355,14 @@ window.santu_purchase_return_page = {
 		frappe.confirm(__("This return has items. Close anyway?"), drop);
 	},
 
-	_render_rows() {
+	_render_rows({ reveal_row_id = null } = {}) {
 		const b = this._bill();
 		const privacy_on = typeof santu_is_privacy_mode_active === "function" && santu_is_privacy_mode_active();
 		const $tb = this.$root.find(".santu-bill-grid tbody").empty();
 		b.items.forEach((r, i) => {
 			const row_hl = santu_item_row_class(r.item_code, r.item_name);
 			const $tr = $(`
-				<tr class="${r.id === b.selected_row ? "is-selected" : ""} ${row_hl}" data-row="${r.id}">
+				<tr class="${r.id === b.selected_row ? "is-selected" : ""} ${r.id === reveal_row_id ? "santu-bill-row-new" : ""} ${row_hl}" data-row="${r.id}">
 					<td class="c-idx">${i + 1}</td>
 					<td class="c-code">${frappe.utils.escape_html(r.item_code || "-")}</td>
 					<td class="c-name santu-bill-editable" title="${__("Badalne ke liye dabaiye")}">${frappe.utils.escape_html(r.item_name)}${
@@ -437,7 +437,9 @@ window.santu_purchase_return_page = {
 		this._render_totals();
 		// Newly added rows land at the bottom; bring the selected one back into
 		// view so the operator sees it go in without scrolling.
-		window.santu_scroll_row_into_view(this.$root);
+		// Sirf naya (ya abhi badla hua) row view me laaya jaata hai -- har
+		// render par scroll karne se qty/rate badalte waqt bhi list hilti hai.
+		if (reveal_row_id) window.santu_scroll_row_into_view(this.$root, { row_id: reveal_row_id });
 	},
 
 	_clamp_qty(r, v) {
@@ -498,10 +500,15 @@ window.santu_purchase_return_page = {
 	// ---------- items ----------
 	_search(q) {
 		const $dd = this.$root.find(".santu-bill-dropdown");
+		// "5x tee" / "5* tee" -> 5 tee (santu_qty_prefix.js)
+		const parsed = santu_qty.split(q);
+		this._pending_qty = parsed.qty;
+		if (parsed.qty) q = parsed.text;
 		if (!q || q.length < 2) return $dd.hide().empty();
 		santu_purchase_invoice.api.search_items(q).then((res) => {
 			const rows = res.results || res || [];
 			$dd.empty();
+			if (parsed.qty) $dd.append(santu_qty.hint_html(parsed.qty, "santu-bill-dd-row"));
 			rows.forEach((it) => {
 				$(`
 					<div class="santu-bill-dd-row ${santu_item_dd_class(it.item_code, it.item_name)}">
@@ -524,22 +531,31 @@ window.santu_purchase_return_page = {
 	},
 
 	_add_item(item_code) {
+		// "5x tee" typed in search -> 5, else 1 (santu_qty_prefix.js)
+		const add_qty = santu_qty.take(this);
 		const b = this._bill();
 		this.$root.find(".santu-bill-dropdown").hide().empty();
-		this.$root.find(".santu-bill-search").val("").focus();
+		// preventScroll: focusing the search box used to yank the page back up
+		// to it while the new row was scrolling into view -- the two fought and
+		// the screen jumped up and down (2026-09-21). The box still takes the
+		// keyboard, it just does not drag the view along.
+		const $sb = this.$root.find(".santu-bill-search").val("");
+		if ($sb[0]) $sb[0].focus({ preventScroll: true });
 		const existing = b.items.find((r) => r.item_code === item_code);
 		if (existing) {
-			existing.qty = this._clamp_qty(existing, (Number(existing.qty) || 0) + 1);
+			existing.qty = this._clamp_qty(existing, (Number(existing.qty) || 0) + add_qty);
+			b.selected_row = existing.id;
 			this._persist_soon();
-			this._render_rows();
+			// Wahi item dobara -- uski qty badhi, wo row dikhni chahiye.
+			this._render_rows({ reveal_row_id: existing.id });
 			return;
 		}
-		santu_purchase_invoice.api.item_row(b.supplier, item_code, this.init_data.warehouse, 1).then((row) => {
+		santu_purchase_invoice.api.item_row(b.supplier, item_code, this.init_data.warehouse, add_qty).then((row) => {
 			b.items.push({
 				id: santu_purchase_invoice.utils.uid(),
 				item_code: row.item_code || item_code,
 				item_name: row.item_name || item_code,
-				qty: 1,
+				qty: add_qty,
 				uom: row.uom || row.stock_uom,
 				uom_options: [row.uom, row.stock_uom].filter((v, i, a) => v && a.indexOf(v) === i),
 				rate: row.price_list_rate || row.rate || 0,
@@ -547,7 +563,8 @@ window.santu_purchase_return_page = {
 			});
 			b.selected_row = b.items[b.items.length - 1].id;
 			this._persist_soon();
-			this._render_rows();
+			// Naya row apne aap dikhe -- niche se dhoondhna na pade.
+			this._render_rows({ reveal_row_id: b.selected_row });
 		});
 	},
 
@@ -739,11 +756,11 @@ window.santu_purchase_return_page = {
 				.appendTo($dd);
 			$dd.show();
 		};
-		if (!q || q.length < 2) {
-			draw([]);
-			return;
-		}
-		santu_purchase_invoice.api.search_suppliers(q).then((rows) => draw(rows || []));
+		// Khaali box par bhi poore mahajan dikhein (2026-09-23).
+		santu_purchase_invoice.api
+			.list_suppliers_for_picker(q)
+			.then((rows) => draw(rows || []))
+			.catch(() => draw([]));
 	},
 
 	// Renders right inside the existing supplier dropdown, in the empty
@@ -866,7 +883,7 @@ window.santu_purchase_return_page = {
 	},
 
 	// ---------- save ----------
-	_save() {
+	_save(after) {
 		const b = this._bill();
 		if (!b.items.length) {
 			frappe.msgprint(__("Add at least one item."));
@@ -877,7 +894,7 @@ window.santu_purchase_return_page = {
 			return;
 		}
 		if (!b.settlement) {
-			frappe.msgprint(__("Paisa Kaise Settle Hoga — Khata credit ya Refund, ek chuno."));
+			frappe.msgprint(__("Paisa Kaise Settle Hoga — Account credit ya Refund, ek chuno."));
 			return;
 		}
 
@@ -911,7 +928,7 @@ window.santu_purchase_return_page = {
 			)
 			.then((r) => {
 				frappe.dom.unfreeze();
-				frappe.show_alert({ message: __("Saved {0}", [r.name]), indicator: "green" });
+				window.santu_save_buttons ? santu_save_buttons.saved_alert("Purchase Return", r) : frappe.show_alert({ message: __("Saved"), indicator: "green" });
 				// "Supplier ne abhi cash/UPI refund diya" — settle it with a
 				// real Payment Entry right away (2026-08-19, matching the
 				// same fix on Sales Return).
@@ -932,7 +949,12 @@ window.santu_purchase_return_page = {
 				this.active_id = this.tabs[0].id;
 				this._persist_soon();
 				this.render();
-				if (window.santu_open_invoice_view) window.santu_open_invoice_view("Purchase Invoice", r.name);
+				// Print / WhatsApp happen straight away -- pressing that button
+				// is the confirmation, nothing else asks (2026-09-07). The
+				// review view only opens on a plain Save, so it never lands on
+				// top of a print the operator just asked for.
+				santu_save_buttons.after_save("Purchase Invoice", r.name, after, { has_party: !!b.supplier });
+				if (!after && window.santu_open_invoice_view) window.santu_open_invoice_view("Purchase Invoice", r.name);
 			})
 			.catch(() => frappe.dom.unfreeze());
 	},
@@ -973,7 +995,7 @@ window.santu_purchase_return_page = {
 			e.stopPropagation();
 			$r.find(".santu-bill-more-menu").toggle();
 		});
-		$r.find(".santu-bill-save").on("click", () => this._save());
+		santu_save_buttons.bind($r, (after) => this._save(after));
 
 		$(document).off("click.santu-pr").on("click.santu-pr", (e) => {
 			// The list now covers the whole item area, so getting OUT of it

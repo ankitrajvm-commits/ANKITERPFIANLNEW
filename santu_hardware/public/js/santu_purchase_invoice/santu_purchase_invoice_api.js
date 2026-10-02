@@ -189,6 +189,9 @@ santu_purchase_invoice.api = {
 	init() {
 		return frappe.xcall("santu_hardware.santu_hardware.api.get_purchase_invoice_init");
 	},
+	list_suppliers_for_picker(q) {
+		return frappe.xcall("santu_hardware.santu_hardware.api.list_suppliers_for_picker", { query: q || "" });
+	},
 	search_suppliers(q) {
 		return frappe.xcall("santu_hardware.santu_hardware.api.search_suppliers_by_name", { query: q });
 	},

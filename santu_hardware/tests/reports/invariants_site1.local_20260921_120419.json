@@ -1,0 +1,185 @@
+{
+ "suite": "invariants",
+ "site": "site1.local",
+ "started": "2026-09-21 12:04:19.803270",
+ "gate": {
+  "functional_failures": 0,
+  "invariant_failures": 1,
+  "test_residue": 0,
+  "production_side_effects": 0
+ },
+ "verdict": "FAILED",
+ "rows": [
+  {
+   "section": "INVARIANT 1. STOCK: Bin = what the stock ledger says",
+   "name": "every Bin qty equals its last stock-ledger balance",
+   "expected": "0",
+   "actual": "0",
+   "result": "PASS",
+   "evidence": "[]",
+   "db_impact": ""
+  },
+  {
+   "section": "INVARIANT 1. STOCK: Bin = what the stock ledger says",
+   "name": "no Bin shows stock without any stock-ledger entry",
+   "expected": "0",
+   "actual": "0",
+   "result": "PASS",
+   "evidence": "[]",
+   "db_impact": ""
+  },
+  {
+   "section": "INVARIANT 2. BOOKS: every voucher balances (debit = credit)",
+   "name": "no voucher with debit != credit",
+   "expected": "0",
+   "actual": "0",
+   "result": "PASS",
+   "evidence": "[]",
+   "db_impact": ""
+  },
+  {
+   "section": "INVARIANT 2. BOOKS: every voucher balances (debit = credit)",
+   "name": "whole ledger balances",
+   "expected": "0.0",
+   "actual": "0.0",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "INVARIANT 3. UDHAAR: bill outstanding = payment ledger",
+   "name": "every submitted bill's outstanding matches its payment ledger",
+   "expected": "0",
+   "actual": "0",
+   "result": "PASS",
+   "evidence": "[]",
+   "db_impact": ""
+  },
+  {
+   "section": "INVARIANT 3. UDHAAR: bill outstanding = payment ledger",
+   "name": "no normal bill has a negative outstanding (over-paid without advance)",
+   "expected": "0",
+   "actual": "0",
+   "result": "PASS",
+   "evidence": "[]",
+   "db_impact": ""
+  },
+  {
+   "section": "INVARIANT 4. BILL NUMBERS: one live bill per number, counter on the top",
+   "name": "no bill number used by two LIVE (submitted) bills",
+   "expected": "0",
+   "actual": "0",
+   "result": "PASS",
+   "evidence": "[]",
+   "db_impact": ""
+  },
+  {
+   "section": "INVARIANT 4. BILL NUMBERS: one live bill per number, counter on the top",
+   "name": "bill counter sits on the last bill number",
+   "expected": "889",
+   "actual": "889",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "INVARIANT 4. BILL NUMBERS: one live bill per number, counter on the top",
+   "name": "estimate counter sits on the last estimate number",
+   "expected": "1598",
+   "actual": "1598",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "INVARIANT 4. BILL NUMBERS: one live bill per number, counter on the top",
+   "name": "no NEW gap in the last 60 bill numbers",
+   "expected": "[]",
+   "actual": "[887]",
+   "result": "FAIL",
+   "evidence": "known old gaps: [829, 830, 831, 832]",
+   "db_impact": ""
+  },
+  {
+   "section": "INVARIANT 5. REWARD POINTS: nothing points at a bill that is gone",
+   "name": "no NEW Loyalty Point Entry for a deleted bill",
+   "expected": "0",
+   "actual": "0",
+   "result": "PASS",
+   "evidence": "0 known old rows",
+   "db_impact": ""
+  },
+  {
+   "section": "INVARIANT 5. REWARD POINTS: nothing points at a bill that is gone",
+   "name": "no pending-points row for a deleted bill",
+   "expected": "0",
+   "actual": "0",
+   "result": "PASS",
+   "evidence": "[]",
+   "db_impact": ""
+  },
+  {
+   "section": "INVARIANT 5. REWARD POINTS: nothing points at a bill that is gone",
+   "name": "walk-in (SALES) never earns points",
+   "expected": "0",
+   "actual": "0",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "INVARIANT 6. MASTER DATA",
+   "name": "no service (non-stock) items except Udhaar / Purana Baki",
+   "expected": "0",
+   "actual": "0",
+   "result": "PASS",
+   "evidence": "[]",
+   "db_impact": ""
+  },
+  {
+   "section": "INVARIANT 6. MASTER DATA",
+   "name": "no unit refuses a fraction (9.5 Nos)",
+   "expected": "0",
+   "actual": "0",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "INVARIANT 6. MASTER DATA",
+   "name": "no draft bill older than 30 days left hanging",
+   "expected": "0",
+   "actual": "0",
+   "result": "PASS",
+   "evidence": "[]",
+   "db_impact": ""
+  },
+  {
+   "section": "GATES",
+   "name": "DATA ISOLATION: no real record created / changed / deleted",
+   "expected": "no difference",
+   "actual": "no difference",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "GATES",
+   "name": "TEST RESIDUE: nothing of the test user left behind",
+   "expected": "{}",
+   "actual": "{}",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "GATES",
+   "name": "PRODUCTION SIDE-EFFECTS: printer / WhatsApp / counters untouched",
+   "expected": "{}",
+   "actual": "{}",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  }
+ ]
+}

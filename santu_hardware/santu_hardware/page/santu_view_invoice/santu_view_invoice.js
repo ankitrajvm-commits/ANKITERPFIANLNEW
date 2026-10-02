@@ -147,6 +147,7 @@ window.santu_view_invoice_page = {
 		$body.find('[data-action="pdf"]').on("click", open_pdf);
 		if (whatsapp) {
 			$body.find('[data-action="whatsapp"]').on("click", () => this._send_whatsapp());
+			$body.find('[data-action="whatsapp_other"]').on("click", () => this._send_whatsapp(true));
 		}
 	},
 
@@ -199,6 +200,10 @@ window.santu_view_invoice_page = {
 
 					${d.allocations.length ? `
 					<div class="santu-si2-table-wrap">
+						<!-- Only the table scrolls sideways: the item-search dropdown is a
+						     child of the WRAP, so it must stay outside this box or it gets
+						     clipped (that bug made searching look like it found nothing). -->
+						<div class="santu-si2-table-scroll">
 						<table class="santu-si2-table">
 							<thead>
 								<tr>
@@ -217,6 +222,7 @@ window.santu_view_invoice_page = {
 								`).join("")}
 							</tbody>
 						</table>
+						</div>
 					</div>` : ""}
 
 					<div class="santu-si2-lowerrow">
@@ -235,6 +241,7 @@ window.santu_view_invoice_page = {
 						</div>
 						<div class="santu-si2-actionbar-right">
 							<button type="button" class="santu-si2-btn" data-action="whatsapp">Send on WhatsApp</button>
+							<button type="button" class="santu-si2-btn" data-action="whatsapp_other">↗ Kisi aur ko</button>
 							<button type="button" class="santu-si2-btn" data-action="print">Print</button>
 							<button type="button" class="santu-si2-btn santu-si2-btn-primary" data-action="pdf">Download PDF</button>
 						</div>
@@ -282,6 +289,10 @@ window.santu_view_invoice_page = {
 					</div>
 
 					<div class="santu-si2-table-wrap">
+						<!-- Only the table scrolls sideways: the item-search dropdown is a
+						     child of the WRAP, so it must stay outside this box or it gets
+						     clipped (that bug made searching look like it found nothing). -->
+						<div class="santu-si2-table-scroll">
 						<table class="santu-si2-table">
 							<thead>
 								<tr>
@@ -302,6 +313,7 @@ window.santu_view_invoice_page = {
 								`).join("")}
 							</tbody>
 						</table>
+						</div>
 					</div>
 
 					<div class="santu-si2-lowerrow">
@@ -376,6 +388,10 @@ window.santu_view_invoice_page = {
 					</div>
 
 					<div class="santu-si2-table-wrap">
+						<!-- Only the table scrolls sideways: the item-search dropdown is a
+						     child of the WRAP, so it must stay outside this box or it gets
+						     clipped (that bug made searching look like it found nothing). -->
+						<div class="santu-si2-table-scroll">
 						<table class="santu-si2-table">
 							<thead>
 								<tr>
@@ -400,6 +416,7 @@ window.santu_view_invoice_page = {
 								`).join("")}
 							</tbody>
 						</table>
+						</div>
 					</div>
 
 					<div class="santu-si2-lowerrow">
@@ -470,6 +487,7 @@ window.santu_view_invoice_page = {
 						</div>
 						<div class="santu-si2-actionbar-right">
 							<button type="button" class="santu-si2-btn" data-action="whatsapp">Send on WhatsApp</button>
+							<button type="button" class="santu-si2-btn" data-action="whatsapp_other">↗ Kisi aur ko</button>
 							<button type="button" class="santu-si2-btn" data-action="print">Print</button>
 							<button type="button" class="santu-si2-btn santu-si2-btn-primary" data-action="pdf">Download PDF</button>
 						</div>
@@ -518,8 +536,8 @@ window.santu_view_invoice_page = {
 		});
 	},
 
-	_send_whatsapp() {
+	_send_whatsapp(other) {
 		const d = this.data;
-		window.santu_whatsapp_share.send_transaction(d.doctype, d.name);
+		window.santu_whatsapp_share.send_transaction(d.doctype, d.name, { other: !!other });
 	},
 };

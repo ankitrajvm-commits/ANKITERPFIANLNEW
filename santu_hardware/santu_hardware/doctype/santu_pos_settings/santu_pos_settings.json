@@ -43,7 +43,14 @@
   "app_lock_section",
   "app_lock_enabled",
   "app_lock_pin_hash",
-  "app_lock_touch_id_credentials"
+  "app_lock_touch_id_credentials",
+  "app_lock_device_tokens",
+  "loyalty_section",
+  "loyalty_enabled",
+  "loyalty_spend_per_point",
+  "loyalty_column_break",
+  "loyalty_point_value",
+  "loyalty_expiry_months"
  ],
  "fields": [
   {
@@ -236,7 +243,7 @@
   },
   {
    "default": "7739",
-   "description": "Deprecated \u2014 superseded by the hashed PIN. Kept only for migration.",
+   "description": "Deprecated — superseded by the hashed PIN. Kept only for migration.",
    "fieldname": "privacy_mode_pin",
    "fieldtype": "Data",
    "hidden": 1,
@@ -252,7 +259,7 @@
    "read_only": 1
   },
   {
-   "description": "Public keys of devices allowed to unlock Privacy Mode with a fingerprint. Public keys only \u2014 no fingerprint data ever leaves the Mac.",
+   "description": "Public keys of devices allowed to unlock Privacy Mode with a fingerprint. Public keys only — no fingerprint data ever leaves the Mac.",
    "fieldname": "privacy_touch_id_credentials",
    "fieldtype": "Long Text",
    "hidden": 1,
@@ -285,7 +292,52 @@
    "label": "Registered App Lock Fingerprint Devices",
    "hidden": 1,
    "read_only": 1,
-   "description": "Public keys of devices allowed to unlock the app with a fingerprint. Public keys only \u2014 no fingerprint data ever leaves the Mac."
+   "description": "Public keys of devices allowed to unlock the app with a fingerprint. Public keys only — no fingerprint data ever leaves the Mac."
+  },
+  {
+   "fieldname": "app_lock_device_tokens",
+   "fieldtype": "Long Text",
+   "label": "Registered App Lock Macs (native fingerprint)",
+   "hidden": 1,
+   "read_only": 1,
+   "description": "Hashed device tokens for Macs allowed to unlock with the native Touch ID bridge. Hashes only — no token and no fingerprint data is stored here."
+  },
+  {
+   "fieldname": "loyalty_section",
+   "fieldtype": "Section Break",
+   "label": "Loyalty Points"
+  },
+  {
+   "fieldname": "loyalty_enabled",
+   "fieldtype": "Check",
+   "label": "Loyalty Points On",
+   "default": "1",
+   "description": "Turns the reward-points button on Billing on or off. Points already earned are never lost when this is off — only redeeming them at the counter is blocked."
+  },
+  {
+   "fieldname": "loyalty_spend_per_point",
+   "fieldtype": "Float",
+   "label": "Rs Spent Per Point",
+   "default": "100",
+   "description": "How much a customer has to spend to earn 1 point. e.g. 100 means Rs 100 billed = 1 point."
+  },
+  {
+   "fieldname": "loyalty_column_break",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "loyalty_point_value",
+   "fieldtype": "Float",
+   "label": "1 Point = Rs",
+   "default": "1",
+   "description": "What 1 point is worth as a discount when redeemed at the counter."
+  },
+  {
+   "fieldname": "loyalty_expiry_months",
+   "fieldtype": "Int",
+   "label": "Points Expire After (Months)",
+   "default": "24",
+   "description": "Points older than this many months from when they were earned can no longer be used."
   }
  ],
  "icon": "fa fa-shield",

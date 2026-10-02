@@ -111,7 +111,31 @@ def get_widget_metrics(period: str = "This Month", from_date: str = None, to_dat
 	}
 
 
-def widget_catalog(metrics: dict, low_stock_count: int = 0, period: str = "This Month") -> list:
+def _low_stock_text(low: int, critical: int, out_of_stock: int) -> str:
+	"""One short line for the Home widget, in the words used at the counter.
+
+	Nothing to report reads as nothing to report — "0 running low" still
+	makes someone stop and parse a zero.
+	"""
+	if not (low or critical or out_of_stock):
+		return "Sab theek hai"
+	bits = []
+	if low:
+		bits.append(f"{low} running low")
+	if critical:
+		bits.append(f"{critical} critical")
+	if out_of_stock:
+		bits.append(f"{out_of_stock} khatam")
+	return " · ".join(bits)
+
+
+def widget_catalog(
+	metrics: dict,
+	low_stock_count: int = 0,
+	period: str = "This Month",
+	critical_stock_count: int = 0,
+	out_of_stock_count: int = 0,
+) -> list:
 	return [
 		{
 			"key": "purchases",
@@ -143,8 +167,13 @@ def widget_catalog(metrics: dict, low_stock_count: int = 0, period: str = "This 
 			"key": "low_stock",
 			"title": "Low Stocks Items",
 			"kind": "text",
-			"text": "View Items Low on Stock",
+			# The widget used to read "View Items Low on Stock" — a label, not
+			# an answer. Putting a widget on Home is asking to be TOLD the
+			# number, not to be sent somewhere to look it up (2026-09-05).
+			"text": _low_stock_text(low_stock_count, critical_stock_count, out_of_stock_count),
 			"count": low_stock_count,
+			"critical_count": critical_stock_count,
+			"out_of_stock_count": out_of_stock_count,
 			"period": "As of Now",
 			"route": "santu-low-stock",
 		},

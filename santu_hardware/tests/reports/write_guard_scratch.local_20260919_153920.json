@@ -1,0 +1,1130 @@
+{
+ "suite": "write_guard",
+ "site": "scratch.local",
+ "started": "2026-09-19 15:39:20.663266",
+ "gate": {
+  "functional_failures": 119,
+  "invariant_failures": 0,
+  "test_residue": 0,
+  "production_side_effects": 1
+ },
+ "verdict": "FAILED",
+ "rows": [
+  {
+   "section": "0. SESSION",
+   "name": "no-role TEST user is logged in",
+   "expected": "test.norole@santuhardware.local",
+   "actual": "test.norole@santuhardware.local",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "every writing API refuses a user with no roles",
+   "expected": "[]",
+   "actual": "[\"_fifo_pending_amounts\", \"_json_arg\", \"add_item_uom_conversion\", \"add_manual_due\", \"add_uom_conversion\", \"app_lock_device_forget\", \"app_lock_touch_id_register_finish\", \"app_lock_touch_id_register_options\", \"apply_printer_density\", \"attach_barcode_to_item\", \"create_brand\", \"create_customer_full\", \"create_item_master\", \"create_payment_entry\", \"create_payment_mode\", \"create_purchase_invoices_from_bills\", \"create_return_refund_payment\", \"create_staff_user\", \"create_supplier_full\", \"delete_item\", \"delete_party\", \"delete_quotation\", \"delete_sale_invoice\", \"edit_submitted_document\", \"edit_submitted_sale_invoice\", \"fill_missing_item_master_data\", \"fix_stock\", \"force_overwrite_item_unit\", \"item_batches\", \"item_uoms\", \"items_with_same_name\", \"party_first_transaction_date\", \"print_density_test\", \"push_bill_row_to_master\", \"quick_create_item\", \"receive_stock_simple\", \"rename_item_master\", \"reset_loyalty_points_before_today\", \"sale_uom_options\", \"save_delivery_note\", \"save_expense\", \"save_item\", \"save_party_transfer\", \"save_purchase_invoice\", \"save_purchase_order\", \"save_purchase_return\", \"save_quotation\", \"save_sale_invoice\", \"save_sales_order\", \"save_sales_return\", \"set_app_lock_pin\", \"set_document_template\", \"set_item_stock\", \"set_payment_mode_enabled\", \"set_printer_density\", \"set_privacy_pin\", \"touch_id_login_finish\", \"touch_id_login_options\", \"touch_id_register_finish\", \"touch_id_register_options\", \"uom_abbr\", \"update_customer_note\", \"update_item_field\", \"update_item_rate\", \"update_party_details\", \"update_party_phone\", \"update_shop_profile\", \"update_supplier_note\", \"recent_bugs\", \"report_browser_errors\", \"report_bug_from_user\", \"unread_bug_count\", \"save_dashboard_widgets\", \"apply_fix\", \"fix_everything\", \"run_checks\", \"fetch_item_highlight_rules\", \"save_item_highlight_rules\", \"confirm_print_job\", \"create_print_job\", \"dismiss_print_jobs\", \"open_print_jobs\", \"print_customer_khata\", \"print_supplier_khata\", \"print_via_cups\", \"print_via_usb\", \"record_print_attempt\", \"retry_print_job\", \"test_print\", \"disable_user_access\", \"remove_backup\", \"restore_site_backup\", \"save_user_roles\", \"retry_whatsapp_message\", \"send_whatsapp_message\", \"bulk_update_items\", \"generate_barcode_labels\", \"import_items_valid\", \"import_parties\", \"match_pdf_items_for_bulk_update\", \"parse_items_import_file\", \"parse_items_import_file_from_pdf\", \"parse_parties_import_file\", \"restore_deleted_document\", \"save_business_setup\", \"delete_voice_rule\", \"save_voice_rule\", \"test_voice_query\", \"train_item_voice_alias\", \"create_contact\", \"link_party\", \"retry_message\", \"send_customer_khata\", \"send_message\", \"send_reminder\", \"send_statement\", \"send_supplier_khata\", \"send_transaction\"]",
+   "result": "FAIL",
+   "evidence": "266 called, 20 skipped (bridge / guest)",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: _fifo_pending_amounts",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: _fifo_pending_amounts() missing 2 required positional arguments: 'party_type' a",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: _json_arg",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: _json_arg() missing 1 required positional argument: 'value'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: add_item_uom_conversion",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: add_item_uom_conversion() missing 3 required positional arguments: 'item_code',",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: add_manual_due",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: add_manual_due() missing 2 required positional arguments: 'customer' and 'amoun",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: add_uom_conversion",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: add_uom_conversion() missing 3 required positional arguments: 'from_uom', 'to_u",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: app_lock_device_forget",
+   "expected": "REFUSED",
+   "actual": "HTTP 417 ValidationError [\"{\\\"message\\\": \\\"Sirf System Manager fingerprint unlock hata sakta hai.\\\", \\\"title\\\": \\\"M",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: app_lock_touch_id_register_finish",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: app_lock_touch_id_register_finish() missing 3 required positional arguments: 'c",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: app_lock_touch_id_register_options",
+   "expected": "REFUSED",
+   "actual": "HTTP 417 ValidationError [\"{\\\"message\\\": \\\"Sirf System Manager fingerprint unlock set kar sakta hai.\\\", \\\"title\\\": ",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: apply_printer_density",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: apply_printer_density() missing 2 required positional arguments: 'printer_name'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: attach_barcode_to_item",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: attach_barcode_to_item() missing 2 required positional arguments: 'item_code' a",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: create_brand",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: create_brand() missing 1 required positional argument: 'brand_name'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: create_customer_full",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: create_customer_full() missing 1 required positional argument: 'party'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: create_item_master",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: create_item_master() missing 2 required positional arguments: 'doctype' and 'na",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: create_payment_entry",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: create_payment_entry() missing 4 required positional arguments: 'party_type', '",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: create_payment_mode",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: create_payment_mode() missing 1 required positional argument: 'mode_name'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: create_purchase_invoices_from_bills",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: create_purchase_invoices_from_bills() missing 1 required positional argument: '",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: create_return_refund_payment",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: create_return_refund_payment() missing 2 required positional arguments: 'doctyp",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: create_staff_user",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: create_staff_user() missing 2 required positional arguments: 'full_name' and 'e",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: create_supplier_full",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: create_supplier_full() missing 1 required positional argument: 'party'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: delete_item",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: delete_item() missing 1 required positional argument: 'item_code'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: delete_party",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: delete_party() missing 2 required positional arguments: 'party_type' and 'party",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: delete_quotation",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: delete_quotation() missing 1 required positional argument: 'name'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: delete_sale_invoice",
+   "expected": "REFUSED",
+   "actual": "HTTP 417 ValidationError [\"{\\\"message\\\": \\\"Document name is required\\\", \\\"title\\\": \\\"Message\\\", \\\"indicator\\\": \\\"re",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: edit_submitted_document",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: edit_submitted_document() missing 3 required positional arguments: 'doctype', '",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: edit_submitted_sale_invoice",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: edit_submitted_sale_invoice() missing 2 required positional arguments: 'invoice",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: fill_missing_item_master_data",
+   "expected": "REFUSED",
+   "actual": "HTTP 200  ",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: fix_stock",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: fix_stock() missing 3 required positional arguments: 'item_code', 'new_qty', an",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: force_overwrite_item_unit",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: force_overwrite_item_unit() missing 1 required positional argument: 'item_code'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: item_batches",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: item_batches() missing 1 required positional argument: 'item_code'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: item_uoms",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: item_uoms() missing 1 required positional argument: 'item_code'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: items_with_same_name",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: items_with_same_name() missing 1 required positional argument: 'item_name'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: party_first_transaction_date",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: party_first_transaction_date() missing 2 required positional arguments: 'party_",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: print_density_test",
+   "expected": "REFUSED",
+   "actual": "HTTP 417 TestUserPrintBlocked santu_hardware.santu_hardware.print_service.TestUserPrintBlocked: Only the live shop site ",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: push_bill_row_to_master",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: push_bill_row_to_master() missing 1 required positional argument: 'item_code'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: quick_create_item",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: quick_create_item() missing 2 required positional arguments: 'item_name' and 's",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: receive_stock_simple",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: receive_stock_simple() missing 2 required positional arguments: 'item_code' and",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: rename_item_master",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: rename_item_master() missing 3 required positional arguments: 'doctype', 'old_n",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: reset_loyalty_points_before_today",
+   "expected": "REFUSED",
+   "actual": "HTTP 200  ",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: sale_uom_options",
+   "expected": "REFUSED",
+   "actual": "HTTP 200  ",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: save_delivery_note",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: save_delivery_note() missing 1 required positional argument: 'challan_json'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: save_expense",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: save_expense() missing 1 required positional argument: 'expense_json'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: save_item",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: save_item() missing 1 required positional argument: 'item_json'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: save_party_transfer",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: save_party_transfer() missing 1 required positional argument: 'transfer_json'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: save_purchase_invoice",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: save_purchase_invoice() missing 1 required positional argument: 'invoice_json'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: save_purchase_order",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: save_purchase_order() missing 1 required positional argument: 'order_json'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: save_purchase_return",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: save_purchase_return() missing 1 required positional argument: 'return_json'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: save_quotation",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: save_quotation() missing 1 required positional argument: 'quotation_json'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: save_sale_invoice",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: save_sale_invoice() missing 1 required positional argument: 'invoice_json'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: save_sales_order",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: save_sales_order() missing 1 required positional argument: 'order_json'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: save_sales_return",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: save_sales_return() missing 1 required positional argument: 'return_json'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: set_app_lock_pin",
+   "expected": "REFUSED",
+   "actual": "HTTP 417 ValidationError [\"{\\\"message\\\": \\\"Only a System Manager can change the app login PIN.\\\", \\\"title\\\": \\\"Mess",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: set_document_template",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: set_document_template() missing 3 required positional arguments: 'library', 'do",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: set_item_stock",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: set_item_stock() missing 2 required positional arguments: 'item_code' and 'new_",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: set_payment_mode_enabled",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: set_payment_mode_enabled() missing 2 required positional arguments: 'mode' and ",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: set_printer_density",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: set_printer_density() missing 2 required positional arguments: 'printer_name' a",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: set_privacy_pin",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: set_privacy_pin() missing 1 required positional argument: 'new_pin'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: touch_id_login_finish",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: touch_id_login_finish() missing 4 required positional arguments: 'credential_id",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: touch_id_login_options",
+   "expected": "REFUSED",
+   "actual": "HTTP 200  ",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: touch_id_register_finish",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: touch_id_register_finish() missing 3 required positional arguments: 'credential",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: touch_id_register_options",
+   "expected": "REFUSED",
+   "actual": "HTTP 200  ",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: uom_abbr",
+   "expected": "REFUSED",
+   "actual": "HTTP 200  ",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: update_customer_note",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: update_customer_note() missing 2 required positional arguments: 'customer' and ",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: update_item_field",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: update_item_field() missing 2 required positional arguments: 'item_code' and 'f",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: update_item_rate",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: update_item_rate() missing 3 required positional arguments: 'item_code', 'kind'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: update_party_details",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: update_party_details() missing 2 required positional arguments: 'party_type' an",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: update_party_phone",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: update_party_phone() missing 3 required positional arguments: 'party_type', 'pa",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: update_shop_profile",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: update_shop_profile() missing 1 required positional argument: 'company'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: update_supplier_note",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: update_supplier_note() missing 2 required positional arguments: 'supplier' and ",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: recent_bugs",
+   "expected": "REFUSED",
+   "actual": "HTTP 200  ",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: report_browser_errors",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: report_browser_errors() missing 1 required positional argument: 'errors'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: report_bug_from_user",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: report_bug_from_user() missing 1 required positional argument: 'what_happened'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: unread_bug_count",
+   "expected": "REFUSED",
+   "actual": "HTTP 200  ",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: save_dashboard_widgets",
+   "expected": "REFUSED",
+   "actual": "HTTP 200  ",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: apply_fix",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: apply_fix() missing 1 required positional argument: 'fix'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: fix_everything",
+   "expected": "REFUSED",
+   "actual": "HTTP 200  ",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: run_checks",
+   "expected": "REFUSED",
+   "actual": "HTTP 200  ",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: fetch_item_highlight_rules",
+   "expected": "REFUSED",
+   "actual": "HTTP 200  ",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: save_item_highlight_rules",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: save_item_highlight_rules() missing 1 required positional argument: 'rules'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: confirm_print_job",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: confirm_print_job() missing 1 required positional argument: 'job_name'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: create_print_job",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: create_print_job() missing 2 required positional arguments: 'invoice_doctype' a",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: dismiss_print_jobs",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: dismiss_print_jobs() missing 1 required positional argument: 'job_names'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: open_print_jobs",
+   "expected": "REFUSED",
+   "actual": "HTTP 200  ",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: print_customer_khata",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: print_customer_khata() missing 1 required positional argument: 'customer'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: print_supplier_khata",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: print_supplier_khata() missing 1 required positional argument: 'supplier'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: print_via_cups",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: print_via_cups() missing 2 required positional arguments: 'invoice_doctype' and",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: print_via_usb",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: print_via_usb() missing 2 required positional arguments: 'invoice_doctype' and ",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: record_print_attempt",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: record_print_attempt() missing 2 required positional arguments: 'job_name' and ",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: retry_print_job",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: retry_print_job() missing 1 required positional argument: 'job_name'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: test_print",
+   "expected": "REFUSED",
+   "actual": "HTTP 417 TestUserPrintBlocked santu_hardware.santu_hardware.print_service.TestUserPrintBlocked: Only the live shop site ",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: disable_user_access",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: disable_user_access() missing 1 required positional argument: 'user'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: remove_backup",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: remove_backup() missing 1 required positional argument: 'backup_log_name'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: restore_site_backup",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: restore_site_backup() missing 2 required positional arguments: 'backup_log_name",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: save_user_roles",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: save_user_roles() missing 2 required positional arguments: 'user' and 'roles'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: retry_whatsapp_message",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: retry_whatsapp_message() missing 1 required positional argument: 'log_name'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: send_whatsapp_message",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: send_whatsapp_message() missing 2 required positional arguments: 'doctype' and ",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: bulk_update_items",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: bulk_update_items() missing 1 required positional argument: 'updates'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: generate_barcode_labels",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: generate_barcode_labels() missing 1 required positional argument: 'items'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: import_items_valid",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: import_items_valid() missing 1 required positional argument: 'rows'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: import_parties",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: import_parties() missing 1 required positional argument: 'rows'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: match_pdf_items_for_bulk_update",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: match_pdf_items_for_bulk_update() missing 1 required positional argument: 'file",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: parse_items_import_file",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: parse_items_import_file() missing 1 required positional argument: 'file_url'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: parse_items_import_file_from_pdf",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: parse_items_import_file_from_pdf() missing 1 required positional argument: 'fil",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: parse_parties_import_file",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: parse_parties_import_file() missing 1 required positional argument: 'file_url'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: restore_deleted_document",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: restore_deleted_document() missing 1 required positional argument: 'name'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: save_business_setup",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: save_business_setup() missing 1 required positional argument: 'data'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: delete_voice_rule",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: delete_voice_rule() missing 1 required positional argument: 'rule_id'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: save_voice_rule",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: save_voice_rule() missing 2 required positional arguments: 'phrase' and 'target",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: test_voice_query",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: test_voice_query() missing 1 required positional argument: 'query'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: train_item_voice_alias",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: train_item_voice_alias() missing 2 required positional arguments: 'item_code' a",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: create_contact",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: create_contact() missing 2 required positional arguments: 'display_name' and 'p",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: link_party",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: link_party() missing 3 required positional arguments: 'phone', 'party_type', an",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: retry_message",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: retry_message() missing 1 required positional argument: 'chat_name'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: send_customer_khata",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: send_customer_khata() missing 1 required positional argument: 'customer'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: send_message",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: send_message() missing 2 required positional arguments: 'phone' and 'message'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: send_reminder",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: send_reminder() missing 2 required positional arguments: 'party_type' and 'part",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: send_statement",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: send_statement() missing 2 required positional arguments: 'party_type' and 'par",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: send_supplier_khata",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: send_supplier_khata() missing 1 required positional argument: 'supplier'",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "A. WRITERS (must refuse a user with no roles)",
+   "name": "open writer: send_transaction",
+   "expected": "REFUSED",
+   "actual": "HTTP 500 TypeError TypeError: send_transaction() missing 2 required positional arguments: 'doctype' and 'name",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "B. READERS (shop data readable with no role -- for review)",
+   "name": "readers that answer a user with no roles (listed for Ankit)",
+   "expected": "true",
+   "actual": "true",
+   "result": "PASS",
+   "evidence": "[\"bill_label\", \"check_privacy_mode_pin\", \"download_customer_khata\", \"download_supplier_khata\", \"export_santu_report\", \"find_item_by_barcode\", \"format_bill_no\", \"get_a4_logo_data_uri\", \"get_account_ledger\", \"get_add_item_init\", \"get_barcode_data_uri\", \"get_bill_logo_data_uri\", \"get_category_items\", \"get_customer_all_bills\", \"get_customer_balance_summary\", \"get_customer_details_for_sale\", \"get_customer_due_villages\", \"get_customer_dues\", \"get_customer_khata\", \"get_customer_khata_print_html\", \"get_customer_loyalty_summary\", \"get_dashboard_data\", \"get_default_selling_warehouse\", \"get_density_escpos\", \"get_density_levels\", \"get_density_test_receipt\", \"get_document_for_edit\", \"get_expense_init\", \"get_invoice_for_edit\", \"get_invoice_items_for_return\", \"get_invoice_pdf_base64\", \"get_invoice_view_data\", \"get_item_cost_price\", \"get_item_detail\", \"get_item_groups_list\", \"get_item_transactions\", \"get_low_stock_items\", \"get_loyalty_customers\", \"get_loyalty_settings\", \"get_loyalty_status\", \"get_or_create_customer_by_phone\", \"get_parties_list\", \"get_party_balance\", \"get_party_contact_info\", \"get_party_net_due\", \"get_party_outstanding\", \"get_party_transactions\", \"get_past_order_list_with_phone_village\", \"get_payment_entry_init\", \"get_payment_modes\", \"get_payments_made_total\", \"get_payments_received_total\", \"get_pos_confirmation_settings\", \"get_printer_density\", \"get_printer_diagnostics\", \"get_privacy_status\", \"get_purchase_dashboard_data\", \"get_purchase_invoice_from_bill_pdf\", \"get_purchase_invoice_init\", \"get_purchase_items_for_return\", \"get_purchase_tax_options\", \"get_recent_purchase_items\", \"get_recent_sale_items\", \"get_reports_init\", \"get_returnable_invoices\", \"get_returnable_purchase_bills\", \"get_sale_dashboard_data\", \"get_sale_invoice_init\", \"get_sales_chart\", \"get_shop_profile\", \"get_stock_summary\", \"get_supplier_all_bills\", \"get_supplier_details_for_purchase\", \"get_supplier_dues\", \"get_supplier_khata\", \"get_supplier_khata_print_html\", \"get_uom_conversions\", \"get_uom_list\", \"get_upi_display_id\", \"get_vyapar_items_list\", \"items_uoms\", \"list_customers_for_picker\", \"list_printers\", \"party_address_line\", \"receipt_label\", \"search_customers_by_name\", \"search_customers_by_phone\", \"search_link_values\", \"search_products\", \"search_returnable_invoices\", \"search_suppliers_by_name\", \"search_transactions_topbar\", \"verify_gstin_format\", \"get_recent_bugs\", \"get_dashboard_widget_data\", \"get_item_import_prompt\", \"download_backup\", \"get_sync_backup_dashboard\", \"get_doc_whatsapp_status\", \"get_message_log_detail\", \"get_send_preview\", \"download_tally_export\", \"get_tally_export_data\", \"lookup_barcode_item\", \"get_catalog_items_for_training\", \"get_voice_dataset_stats\", \"get_voice_model\", \"get_messages\", \"get_reminder_preview\", \"get_statement\", \"get_transactions\", \"preview_transaction\"]",
+   "db_impact": ""
+  },
+  {
+   "section": "GATES",
+   "name": "DATA ISOLATION: no real record created / changed / deleted",
+   "expected": "no difference",
+   "actual": "{\"single:Santu Backup Settings\": {\"created\": [], \"deleted\": [], \"changed\": [\"auto_backup_enabled\"], \"counts\": [0, 0, 1]}}",
+   "result": "FAIL",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "GATES",
+   "name": "TEST RESIDUE: nothing of the test user left behind",
+   "expected": "{}",
+   "actual": "{}",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "GATES",
+   "name": "PRODUCTION SIDE-EFFECTS: printer / WhatsApp / counters untouched",
+   "expected": "{}",
+   "actual": "{}",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  }
+ ]
+}

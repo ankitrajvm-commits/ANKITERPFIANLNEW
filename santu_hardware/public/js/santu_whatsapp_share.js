@@ -45,18 +45,21 @@
 	}
 
 	window.santu_whatsapp_share = {
+		// opts.other = true: bill goes to a number the operator types (an
+		// accountant, a relative, a driver), not the party's own number.
 		async send_transaction(doctype, name, opts = {}) {
 			if (!(await ensure_connected())) return { ok: false };
+			const other = !!opts.other;
 
 			let preview;
 			try {
 				preview = await frappe.xcall(`${TXN_API}.get_send_preview`, { doctype, name });
 			} catch (e) {
-				frappe.msgprint(e.message || __("Failed to load message preview"));
+				frappe.msgprint((e && e.message) || __("Failed to load message preview"));
 				return { ok: false };
 			}
 
-			if (!preview.phone) {
+			if (!preview.phone && !other) {
 				frappe.msgprint({
 					title: __("No WhatsApp Number"),
 					message: __("Party ka WhatsApp number nahi mila. Parties screen mein number add karo."),
@@ -73,7 +76,7 @@
 				return { ok: false };
 			}
 
-			if (opts.skip_dialog) {
+			if (opts.skip_dialog && !other) {
 				frappe.dom.freeze(__("Sending…"));
 				try {
 					const r = await frappe.xcall(`${TXN_API}.send_whatsapp_message`, {
@@ -86,15 +89,33 @@
 					return r;
 				} catch (e) {
 					frappe.dom.unfreeze();
-					frappe.msgprint(e.message || __("Send failed"));
+					frappe.msgprint((e && e.message) || __("Send failed"));
 					return { ok: false };
 				}
 			}
 
 			return new Promise((resolve) => {
+				let submitted = false;
 				const d = new frappe.ui.Dialog({
 					title: __("Send on WhatsApp"),
 					fields: [
+						...(other
+							? [
+								{
+									fieldtype: "Data",
+									fieldname: "to_phone",
+									label: __("Kis number par bhejna hai (WhatsApp)"),
+									description: __("10 digit mobile number"),
+									reqd: 1,
+								},
+								{
+									fieldtype: "Data",
+									fieldname: "to_name",
+									label: __("Naam (optional)"),
+									description: __("Khaali chhoda to sirf number dikhega"),
+								},
+							]
+							: []),
 						{
 							fieldtype: "HTML",
 							fieldname: "info",
@@ -105,8 +126,9 @@
 											${__("not the party's own number below.")}
 										</div>`
 									: ""
-							}<p><b>${__("Party")}:</b> ${frappe.utils.escape_html(preview.party_name || "")}<br>
-								<b>${__("WhatsApp")}:</b> +${frappe.utils.escape_html(preview.phone)}</p>`,
+							}<p><b>${__("Party")}:</b> ${frappe.utils.escape_html(preview.party_name || "")}${
+								other ? "" : `<br><b>${__("WhatsApp")}:</b> +${frappe.utils.escape_html(preview.phone)}`
+							}</p>`,
 						},
 						{
 							fieldtype: "Small Text",
@@ -117,6 +139,17 @@
 					],
 					primary_action_label: __("Send"),
 					primary_action(values) {
+						let to_phone;
+						if (other) {
+							to_phone = String(values.to_phone || "").replace(/\D/g, "");
+							if (to_phone.length === 12 && to_phone.startsWith("91")) to_phone = to_phone.slice(2);
+							if (to_phone.length === 11 && to_phone.startsWith("0")) to_phone = to_phone.slice(1);
+							if (!/^[0-9]{10}$/.test(to_phone)) {
+								frappe.msgprint(__("Sahi 10 digit WhatsApp number daalo."));
+								return;
+							}
+						}
+						submitted = true;
 						d.hide();
 						frappe.dom.freeze(__("Sending…"));
 						frappe
@@ -124,6 +157,8 @@
 								doctype,
 								name,
 								custom_message: values.message,
+								to_phone,
+								to_name: other ? values.to_name : undefined,
 							})
 							.then((r) => {
 								frappe.dom.unfreeze();
@@ -132,11 +167,21 @@
 							})
 							.catch((e) => {
 								frappe.dom.unfreeze();
-								frappe.msgprint(e.message || __("Send failed"));
+								// frappe.xcall rejects with undefined when the
+								// call fails before a response body exists (a
+								// dropped request, a server restart mid-send).
+								// Reading .message off that threw its own error
+								// on top of the real one, and THAT is what got
+								// reported (BUG-20260830-00389) — the operator
+								// never saw "Send failed" at all.
+								frappe.msgprint((e && e.message) || __("Send failed"));
 								resolve({ ok: false });
 							});
 					},
 				});
+				d.onhide = () => {
+					if (!submitted) resolve({ ok: false });
+				};
 				d.show();
 			});
 		},

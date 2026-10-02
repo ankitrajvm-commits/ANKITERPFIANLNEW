@@ -32,11 +32,63 @@
 		return bytes.buffer;
 	}
 
+	// ---- native Touch ID (the Mac app) --------------------------------
+	//
+	// WebAuthn DOES NOT WORK INSIDE THE MAC APP. Measured 2026-09-05 on the
+	// shop's own MacBook Air M3 with Touch ID enrolled: inside a WKWebView
+	// `window.PublicKeyCredential` exists and `isSecureContext` is true, but
+	// `isUserVerifyingPlatformAuthenticatorAvailable()` resolves FALSE —
+	// platform authenticators are only handed to real browsers. The old
+	// availability check tested just the first two, so the lock screen
+	// believed fingerprint was available, silently failed, and dropped to
+	// "PIN daaliye" every single time. That is why the fingerprint has never
+	// appeared in the app, however many times it was asked for.
+	//
+	// The Mac shell therefore exposes a native bridge (TouchIDBridge in
+	// SantuHardwareApp/Sources/main.swift). Same rule as before: the
+	// fingerprint is a SHORTCUT FOR THE PIN, never a replacement — Touch ID
+	// only releases a device token this Mac was given in exchange for a
+	// correct PIN, and the server will only trade that token for the same
+	// session pin_login hands out. Changing the PIN retires every token.
+	// Nothing is trusted that the server would not have trusted from a
+	// typed PIN. (The Keychain cannot hold that token: a biometric ACL
+	// needs an entitlement this app has no provisioning profile for —
+	// SecItemAdd returns -34018 and a signed-with-entitlement build is
+	// SIGKILLed at launch. Measured 2026-09-05.)
+	function native_bridge() {
+		try {
+			return (window.webkit && webkit.messageHandlers && webkit.messageHandlers.santuTouchID) || null;
+		} catch (e) {
+			return null;
+		}
+	}
+
+	async function native_call(action, extra) {
+		const bridge = native_bridge();
+		if (!bridge) return null;
+		try {
+			return await bridge.postMessage(Object.assign({ action }, extra || {}));
+		} catch (e) {
+			return null;
+		}
+	}
+
 	function platform_authenticator_possible() {
 		// Touch ID is reachable only over a secure context. localhost counts
 		// as secure, so this works without a certificate on this one-Mac
 		// setup.
 		return !!(window.PublicKeyCredential && window.isSecureContext);
+	}
+
+	// The honest check the old one skipped — having the API is not the same
+	// as having a usable fingerprint sensor behind it.
+	async function platform_authenticator_really_available() {
+		if (!platform_authenticator_possible()) return false;
+		try {
+			return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+		} catch (e) {
+			return false;
+		}
 	}
 
 	// santu_unlock.html has none of Desk's JS loaded, so frappe.xcall does
@@ -68,7 +120,75 @@
 
 	window.santu_app_lock_webauthn = {
 		available() {
-			return platform_authenticator_possible();
+			return !!native_bridge() || platform_authenticator_possible();
+		},
+
+		// What the lock screen actually needs to draw itself honestly:
+		//   mode      "native" | "webauthn" | null   (null = no fingerprint here)
+		//   enrolled  is a fingerprint set up on THIS Mac yet
+		// Async because both backends can only answer for real
+		// asynchronously; the old sync available() could not tell "there is
+		// a sensor" from "there is an API that will refuse you".
+		async availability() {
+			if (native_bridge()) {
+				const st = await native_call("status");
+				if (!(st && st.available)) return { mode: null, enrolled: false };
+				// Enrolled means BOTH sides agree: this Mac has a token AND
+				// the server still honours one. Changing the PIN clears the
+				// server list, so a Mac holding a retired token must fall
+				// back to the PIN rather than offering a button that fails.
+				let server_devices = 0;
+				try {
+					const s = await callMethod("app_lock_device_status");
+					server_devices = (s && s.devices) || 0;
+				} catch (e) {
+					server_devices = 0;
+				}
+				return { mode: "native", enrolled: !!st.enrolled && server_devices > 0 };
+			}
+			if (!(await platform_authenticator_really_available())) {
+				return { mode: null, enrolled: false };
+			}
+			let enrolled = false;
+			try {
+				const opts = await callMethod("app_lock_touch_id_login_options");
+				enrolled = !!(opts && opts.available);
+			} catch (e) {
+				/* treat as not set up */
+			}
+			return { mode: "webauthn", enrolled };
+		},
+
+		// Enrol THIS Mac: mint a random device token, have the app store it
+		// behind Touch ID, and register its hash against the current PIN.
+		// The PIN is checked server-side by app_lock_device_register, and is
+		// never itself written to disk. Native shell only.
+		async nativeEnroll(pin) {
+			const bytes = new Uint8Array(32);
+			crypto.getRandomValues(bytes);
+			const token = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+
+			// The Mac goes first: if the fingerprint prompt is cancelled,
+			// nothing is registered on the server either, so the two can
+			// never disagree about whether this Mac is enrolled.
+			const saved = await native_call("save", { token });
+			if (!saved || !saved.ok) return false;
+			try {
+				const res = await callMethod("app_lock_device_register", {
+					pin,
+					token,
+					label: navigator.platform || "This Mac",
+				});
+				if (res && res.ok) return true;
+			} catch (e) {
+				/* fall through to the rollback below */
+			}
+			await native_call("forget");
+			return false;
+		},
+
+		async nativeForget() {
+			await native_call("forget");
 		},
 
 		// Attempts a fingerprint unlock. Resolves true only after the
@@ -78,7 +198,20 @@
 		// any failure, all treated alike: fall back to the PIN, never
 		// leave the caller stuck.
 		async tryLogin() {
-			if (!platform_authenticator_possible()) return false;
+			// Native: Touch ID releases this Mac's device token, and the
+			// server trades that token for a session — the same session
+			// pin_login hands out, on the same terms.
+			if (native_bridge()) {
+				const res = await native_call("get");
+				if (!res || !res.ok || !res.token) return false;
+				try {
+					const out = await callMethod("app_lock_device_login", { token: res.token });
+					return !!(out && out.ok);
+				} catch (e) {
+					return false;
+				}
+			}
+			if (!(await platform_authenticator_really_available())) return false;
 			try {
 				const opts = await callMethod("app_lock_touch_id_login_options");
 				if (!opts || !opts.available) return false;
@@ -114,7 +247,31 @@
 		// Registers this Mac. Only ever called from an already-authenticated
 		// Settings screen (the backend enforces System Manager + a PIN
 		// already being set regardless).
-		async register(label) {
+		async register(label, pin) {
+			// Native shell: nothing to register with the server — the PIN
+			// goes into the Mac's Keychain behind Touch ID. Needs the PIN,
+			// checked server-side first so a wrong one can never be stored.
+			if (native_bridge()) {
+				const entered = pin || (await new Promise((resolve) => {
+					frappe.prompt(
+						[{ fieldtype: "Password", fieldname: "pin", label: __("Apna App Lock PIN daaliye"), reqd: 1 }],
+						(v) => resolve(v.pin),
+						__("Fingerprint chalu karein"),
+						__("Confirm")
+					);
+				}));
+				if (!entered) return false;
+				// No separate PIN check here — app_lock_device_register
+				// verifies it server-side before it will store anything, so
+				// checking twice only adds a second way for the two to
+				// disagree.
+				if (await this.nativeEnroll(entered)) {
+					frappe.show_alert({ message: __("Fingerprint chalu ho gaya"), indicator: "green" });
+					return true;
+				}
+				frappe.msgprint(__("Is Mac par fingerprint chalu nahi ho paya."));
+				return false;
+			}
 			if (!platform_authenticator_possible()) {
 				frappe.msgprint({
 					title: __("Not available here"),

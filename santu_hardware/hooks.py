@@ -224,6 +224,10 @@ app_include_js = _LiveAssets([
 	f"/assets/santu_hardware/js/santu_app_lock.js?v={SANTU_ASSET_VERSION}",
 	# First, so it is listening before anything else can throw.
 	f"/assets/santu_hardware/js/santu_error_capture.js?v={SANTU_ASSET_VERSION}",
+	# Every error / warning on screen in simple Hindi (क्या हुआ + क्या करें),
+	# Ankit 2026-09-19. Early, so it wraps frappe.msgprint before any screen.
+	f"/assets/santu_hardware/js/santu_hindi_errors.js?v={SANTU_ASSET_VERSION}",
+	f"/assets/santu_hardware/js/santu_qty_prefix.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/santu_bill_label.js?v={SANTU_ASSET_VERSION}",
 	# Jaldi: har item-list screen isse row ka rang (CPVC/UPVC) poochti hai.
 	f"/assets/santu_hardware/js/santu_item_highlight.js?v={SANTU_ASSET_VERSION}",
@@ -237,6 +241,18 @@ app_include_js = _LiveAssets([
 	f"/assets/santu_hardware/js/santu_barcode_scanner.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/vendor_qz_tray.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/thermal_print.js?v={SANTU_ASSET_VERSION}",
+	# The shared three-button save block (Save / Save & Print / Send WhatsApp)
+	# used by Billing, Estimate, both returns, Purchase Invoice and the
+	# Challan. Must load after thermal_print.js, which it calls into.
+	f"/assets/santu_hardware/js/santu_save_buttons.js?v={SANTU_ASSET_VERSION}",
+	# The row ✓ (push this line's price + unit into the item). Shared by
+	# Billing and Estimate so the two can never drift apart.
+	f"/assets/santu_hardware/js/santu_tick_to_master.js?v={SANTU_ASSET_VERSION}",
+	# "Available: N" on a bill row -> put stock in without leaving the bill.
+	f"/assets/santu_hardware/js/santu_add_stock_inline.js?v={SANTU_ASSET_VERSION}",
+	# Must load before any billing screen — that screen's save path calls into
+	# it the moment the server cannot be reached (Offline Billing, 2026-09-08).
+	f"/assets/santu_hardware/js/santu_offline_queue.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/santu_printer_settings.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/kiosk_mode.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/santu_fixed_sidebar.js?v={SANTU_ASSET_VERSION}",
@@ -355,10 +371,14 @@ after_migrate = [
 	"santu_hardware.setup.install.apply_santu_branding",
 	"santu_hardware.setup.install.hide_commission_field",
 	"santu_hardware.setup.install.set_default_print_format",
-	# Loyalty points switched off for now (2026-08-18 direct request) — no
-	# need to keep provisioning the redemption expense account on every
-	# migrate for a feature nothing currently uses.
-	# "santu_hardware.santu_hardware.api.ensure_loyalty_setup",
+	# Back on (2026-09-06 direct request) — keeps the redemption expense
+	# account/cost center/expiry on the "Santu Hardware Rewards" programme
+	# from drifting, same as every other after_migrate check here.
+	"santu_hardware.santu_hardware.api.ensure_loyalty_setup",
+	# Points are earned as a real number (Rs 460 -> 4.6), which needs the
+	# ERPNext Int fields widened to Float. Re-asserted after every migrate so
+	# an ERPNext update cannot quietly put the Int back (2026-09-07).
+	"santu_hardware.santu_hardware.api.ensure_fractional_loyalty_points",
 	"santu_hardware.setup.install.enforce_unique_supplier_bill_numbers",
 	"santu_hardware.setup.install.enable_auto_backup",
 	"santu_hardware.setup.install.pin_selling_warehouse",
@@ -366,6 +386,8 @@ after_migrate = [
 	"santu_hardware.setup.install.create_item_pricing_fields",
 	"santu_hardware.setup.install.create_wholesale_price_list",
 	"santu_hardware.santu_hardware.api.migrate_privacy_pin",
+	"santu_hardware.setup.install.allow_fractional_quantities",
+	"santu_hardware.setup.install.create_payment_request_key_field",
 ]
 
 # Uninstallation
@@ -421,6 +443,15 @@ after_migrate = [
 # Hook on document methods and events
 
 doc_events = {
+	# A counter sale must never be stopped by "Quantity (9.5) cannot be a
+	# fraction" -- loose/cut items are sold in halves (2026-09-18 report).
+	# Any UOM added later is saved with the whole-number lock off too.
+	"UOM": {"validate": "santu_hardware.setup.install.uom_allow_fraction"},
+	# Only 10-digit mobiles; one item per name (Ankit, 2026-09-19).
+	("Customer", "Supplier", "Contact"): {"before_validate": "santu_hardware.santu_hardware.api.enforce_ten_digit_mobile"},
+	"Item": {"before_insert": "santu_hardware.santu_hardware.api.block_duplicate_item_name"},
+	# A mistyped UPI ID prints a QR no app can pay (2026-09-18).
+	"Santu POS Settings": {"validate": "santu_hardware.santu_hardware.api.validate_pos_settings_upi"},
 	# Mirror every server error into Santu Bug Report. Hooking Error Log
 	# rather than the app's own nine log_error call sites means core ERPNext
 	# failures get caught too, and no future call site can forget to report.
@@ -433,15 +464,31 @@ doc_events = {
 	"Address": {
 		"before_save": "santu_hardware.santu_hardware.api.title_case_address_fields",
 	},
+	# ERPNext computes earned points as cint(amount / factor), throwing away
+	# the fraction. This puts it back before the row is written -- see
+	# api.exact_loyalty_points (2026-09-07).
+	"Loyalty Point Entry": {
+		"before_insert": "santu_hardware.santu_hardware.api.exact_loyalty_points",
+	},
 	("POS Invoice", "Sales Invoice"): {
 		"before_validate": "santu_hardware.santu_hardware.api.strip_gst_line_items",
 		"validate": "santu_hardware.santu_hardware.api.strip_gst_line_items",
-		"before_submit": "santu_hardware.santu_hardware.api.apply_billing_defaults",
+		"before_submit": [
+			"santu_hardware.santu_hardware.api.apply_billing_defaults",
+			# No cost price must never block a sale/return (2026-09-19).
+			"santu_hardware.santu_hardware.api.allow_zero_cost_lines",
+		],
 		"onload": "santu_hardware.santu_hardware.api.update_payment_summary_fields",
 		"on_submit": [
 			"santu_hardware.santu_hardware.api.save_invoice_pdf_to_dated_folder",
 			"santu_hardware.santu_hardware.transaction_message_service.on_transaction_submit",
+			# Runs AFTER core's own on_submit — the native Loyalty Point
+			# Entry this bill just earned (if any) already exists by the
+			# time this fires, which is what it reads (2026-09-06: due-bill
+			# loyalty points stay Pending until paid within 2 days).
+			"santu_hardware.santu_hardware.loyalty_pending.on_invoice_submit",
 		],
+		"on_cancel": "santu_hardware.santu_hardware.loyalty_pending.on_invoice_cancel",
 	},
 	"Purchase Invoice": {
 		"on_submit": "santu_hardware.santu_hardware.transaction_message_service.on_transaction_submit",
@@ -462,6 +509,7 @@ doc_events = {
 		"on_submit": "santu_hardware.santu_hardware.transaction_message_service.on_transaction_submit",
 	},
 	"Delivery Note": {
+		"before_submit": "santu_hardware.santu_hardware.api.allow_zero_cost_lines",
 		"on_submit": "santu_hardware.santu_hardware.transaction_message_service.on_transaction_submit",
 	},
 }
@@ -490,6 +538,10 @@ doc_events = {
 scheduler_events = {
 	"hourly": [
 		"santu_hardware.santu_hardware.tasks.run_auto_backup_check",
+		# Catches the 2-day due-bill loyalty deadline passing with nobody
+		# having just made a payment to trigger reconcile_customer()
+		# directly — see loyalty_pending.py's module docstring.
+		"santu_hardware.santu_hardware.loyalty_pending.sweep_pending_points",
 	],
 	"cron": {
 		# Database-only snapshot every 2 hours during shop hours, so a crash
@@ -534,8 +586,14 @@ override_whitelisted_methods = {
 
 # Request Events
 # ----------------
-# before_request = ["santu_hardware.utils.before_request"]
-# after_request = ["santu_hardware.utils.after_request"]
+# One door in front of every santu API: no-role users out, owner-only actions
+# need System Manager (permission tests, 2026-09-19).
+before_request = ["santu_hardware.santu_hardware.access_gate.gate"]
+# Any 5xx the shop actually hits gets recorded as a bug. Needed because a
+# failed page render otherwise leaves no trace at all -- the browser capture
+# cannot run (its own page is the one that failed to load) and the Error Log
+# mirror dies with the same aborted transaction (2026-09-07 bug report).
+after_request = ["santu_hardware.santu_hardware.bug_report_service.capture_failed_response"]
 
 # Job Events
 # ----------

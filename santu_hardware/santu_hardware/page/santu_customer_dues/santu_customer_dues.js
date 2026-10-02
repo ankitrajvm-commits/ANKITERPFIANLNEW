@@ -29,6 +29,10 @@ function render_customer_dues(page) {
 				<option value="">All Villages</option>
 			</select>
 			<button type="button" class="btn btn-sm btn-primary santu-dues-add-btn">+ Baki Jodein</button>
+			<!-- Saal band karte waqt poora baaki bahar le jaane ka rasta nahi tha
+			     (2026-09-25 bug report: "sare baaki ko excel me acche se daal rahe
+			     ho na?"). Ab ek click me poori list Excel me. -->
+			<button type="button" class="btn btn-sm santu-dues-excel">⬇ Excel</button>
 		</div>
 		<div class="santu-dues-summary"></div>
 		<div class="santu-dues-list"></div>
@@ -47,6 +51,17 @@ function render_customer_dues(page) {
 	});
 	$village.on("change", reload);
 	$root.find(".santu-dues-add-btn").on("click", () => open_add_due_dialog(reload));
+	$root.find(".santu-dues-excel").on("click", () => {
+		frappe.dom.freeze(__("Excel ban rahi hai…"));
+		frappe
+			.xcall("santu_hardware.santu_hardware.api.export_dues_file", { party_type: state.party_type })
+			.then((r) => {
+				frappe.dom.unfreeze();
+				frappe.show_alert({ message: __("{0} party, kul ₹{1}", [r.rows, format_number(r.total, null, 2)]), indicator: "green" }, 7);
+				window.open(r.file_url, "_blank");
+			})
+			.catch(() => frappe.dom.unfreeze());
+	});
 
 	$tabs.on("click", function () {
 		const party_type = $(this).data("party-type");

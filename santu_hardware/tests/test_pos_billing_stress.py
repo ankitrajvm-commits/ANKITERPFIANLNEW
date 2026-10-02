@@ -17,8 +17,12 @@ from santu_hardware.santu_hardware.api import save_sale_invoice, quick_create_it
 
 
 def run_pos_stress_test(total_invoices: int = 100, batch_size: int = 20):
-	frappe.set_user("Administrator")
-	
+	from santu_hardware.tests.claude_test_user import use_test_user_with_cleanup, TEST_USER; use_test_user_with_cleanup()  # never Administrator -- see claude_test_user.py
+	# 100 SUBMITTED bills to named parties would sit in the shop's real books
+	# and eat 100 real bill numbers. Only ever run this on a scratch copy.
+	if frappe.local.site == "site1.local":
+		raise SystemExit("stress test refuses to run on the live shop site (site1.local) -- use a scratch site")
+
 	print(f"\n============================================================")
 	print(f"STARTING POS BILLING STRESS TEST ({total_invoices} TRANSACTIONS)")
 	print(f"============================================================")

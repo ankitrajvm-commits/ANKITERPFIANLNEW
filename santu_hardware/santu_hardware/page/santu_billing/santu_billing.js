@@ -36,6 +36,19 @@ frappe.pages["santu-billing"].on_page_load = function (wrapper) {
 // me pos billing hi khule" — every path that starts or resumes a sale
 // should land here, not on the secondary Sale Invoice screen).
 frappe.pages["santu-billing"].on_page_show = function () {
+	// Stock may have moved while this bill sat open (a purchase, another
+	// counter, Receive Stock). The "Available: N" on each line is only set
+	// when the item is added, so refresh it on the way back in.
+	if (window.santu_add_stock && window.santu_billing_page && santu_billing_page.page) {
+		try {
+			const b = santu_billing_page._bill();
+			if (b && b.items && b.items.length) {
+				santu_add_stock.refresh(b.items, { after: () => santu_billing_page._render_rows() });
+			}
+		} catch (e) {
+			/* never block the screen for a stock figure */
+		}
+	}
 	const prefill = frappe.route_options && frappe.route_options.prefill;
 	const source_doctype = frappe.route_options && frappe.route_options.source_doctype;
 	if (prefill && window.santu_billing_page && santu_billing_page.page && santu_billing_page.init_data) {
@@ -98,21 +111,44 @@ window.santu_billing_page = {
 			this.init_data = data;
 			const prefill = frappe.route_options && frappe.route_options.prefill;
 			const source_doctype = frappe.route_options && frappe.route_options.source_doctype;
+			// Read EVERY handoff field before clearing: edit_invoice used to
+			// be read after this line, i.e. always undefined, so "Edit Bill"
+			// landed on an empty screen on a cold open (2026-10-02).
+			const edit_invoice_early = frappe.route_options && frappe.route_options.edit_invoice;
 			frappe.route_options = null;
 			if (prefill) {
+				// Bring back the bills already open first -- skipping this
+				// made a cold arrival start from an empty list and then
+				// persist ONLY the converted bill, wiping the other drafts.
+				this._load();
 				this._apply_prefill(prefill, source_doctype);
 				return;
 			}
-			const edit_invoice = frappe.route_options && frappe.route_options.edit_invoice;
-			if (edit_invoice) {
-				frappe.route_options = null;
-				this._apply_edit_invoice(edit_invoice);
+			if (edit_invoice_early) {
+				this._load();
+				this._apply_edit_invoice(edit_invoice_early);
 				return;
 			}
 			this._load();
 			if (!this.tabs.length) this._new_bill(false);
 			this.render();
 		});
+	},
+
+	// Safety net for the convert buttons (santu_sale_transactions.js): a
+	// set_route to the route Desk is ALREADY on does not re-fire
+	// on_page_show, so a handoff could sit unread in frappe.route_options
+	// and the bill never appeared until the user converted a second time
+	// (2026-10-02 report, three times over). Calling this after set_route
+	// is harmless when the hook already ran -- route_options is null then.
+	consume_prefill() {
+		const ro = frappe.route_options;
+		if (!ro || !ro.prefill) return false;
+		if (!this.page || !this.init_data) return false;
+		frappe.route_options = null;
+		if (!this.tabs || !this.tabs.length) this._load();
+		this._apply_prefill(ro.prefill, ro.source_doctype || null);
+		return true;
 	},
 
 	// A converted Quotation/Sales Order arrives here unsaved (see
@@ -156,8 +192,14 @@ window.santu_billing_page = {
 				// Negotiated if final rate < base price, or if explicit discount exists
 				const is_negotiated = (quotation_base_price > 0 && quotation_final_rate < quotation_base_price) || quotation_discount_percentage > 0 || quotation_discount_amount > 0;
 				
-				// Calculate difference based on base price
-				const price_diff = current_base_price - quotation_base_price;
+				// Compare what this line would COST TODAY against the rate the
+				// estimate actually promised -- not base-price vs base-price.
+				// A rate the shopkeeper typed down (or up) on the estimate
+				// leaves the base price untouched, so the old base-vs-base
+				// test found no difference and the choice never appeared,
+				// which is precisely the case Ankit asks about
+				// (2026-10-02: "estimate me rate ghata kar ya badha kr bane").
+				const price_diff = current_base_price - quotation_final_rate;
 				
 				const m = {
 					r, row, uom_options, r_uom,
@@ -190,7 +232,16 @@ window.santu_billing_page = {
 
 	_finish_apply_prefill(mapped_items, b) {
 		mapped_items.forEach((m) => {
-			const { r, row, uom_options, r_uom, final_rate, final_discount } = m;
+			const { r, row, uom_options, r_uom, final_rate } = m;
+			// Discount is ALREADY inside final_rate: a quotation row carries
+			// price_list_rate 260 with rate 255, i.e. the rate the customer
+			// was promised. Copying `discount_amount` (5) into this screen's
+			// own `discount` box took it off a second time -- and that box is
+			// a WHOLE-LINE rupee amount while ERPNext's is PER UNIT, so the
+			// bill came out at a third, different number again
+			// (2026-10-01 report: "alag alag discount aa raha hai, bill rate
+			// galat aa raha hai"). The promised rate goes in as the rate;
+			// nothing is deducted twice.
 			b.items.push({
 				id: santu_sale_invoice.utils.uid(),
 				item_code: row.item_code || r.item_code,
@@ -199,7 +250,7 @@ window.santu_billing_page = {
 				uom: r_uom,
 				uom_options: uom_options,
 				rate: final_rate,
-				discount: final_discount,
+				discount: 0,
 				batch_no: null,
 				available_qty: row.available_qty,
 			});
@@ -221,17 +272,17 @@ window.santu_billing_page = {
 					</div>
 					<div class="santu-bill-modal-body" style="padding: 16px; font-size: 14px;">
 						<p style="margin-bottom: 16px; color: #4B5563;">
-							${__("Some item prices have changed since this quotation was created. Which price do you want to use?")}
+							${__("These items cost a different price today than the estimate promised. Which price should the bill use?")}
 						</p>
 						<div class="santu-price-change-list" style="max-height: 350px; overflow-y: auto; border: 1px solid #E5E7EB; border-radius: 6px; padding: 12px; margin-bottom: 16px;">
 						</div>
 					</div>
 					<div class="santu-bill-modal-foot" style="justify-content: flex-end; gap: 10px;">
 						<button type="button" class="santu-bill-modal-save" style="background: #2563EB; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 500; cursor: pointer;">
-							${__("Keep Quotation Price")}
+							${__("Keep Estimate Price")}
 						</button>
 						<button type="button" class="santu-bill-modal-update" style="background: white; color: #2563EB; border: 1px solid #2563EB; padding: 8px 16px; border-radius: 6px; font-weight: 500; cursor: pointer;">
-							${__("Update to Current Price")}
+							${__("Use Today's Price")}
 						</button>
 					</div>
 				</div>
@@ -240,7 +291,7 @@ window.santu_billing_page = {
 
 		const $list = $m.find(".santu-price-change-list");
 		changed_items.forEach((c) => {
-			const diff_pct = c.quotation_base_price > 0 ? (Math.abs(c.price_diff) / c.quotation_base_price) * 100 : 0;
+			const diff_pct = c.quotation_final_rate > 0 ? (Math.abs(c.price_diff) / c.quotation_final_rate) * 100 : 0;
 			const diff_sign = c.price_diff > 0 ? "+" : "";
 			const diff_color = c.price_diff > 0 ? "#DC2626" : "#16A34A";
 			
@@ -252,11 +303,11 @@ window.santu_billing_page = {
 					</div>
 					<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; font-size: 13px; color: #4B5563;">
 						<div>
-							<div style="font-size: 11px; color: #6B7280; text-transform: uppercase;">Quotation</div>
-							<div style="font-weight: 500;">₹ ${format_number(c.quotation_base_price, null, 2)}</div>
+							<div style="font-size: 11px; color: #6B7280; text-transform: uppercase;">Estimate</div>
+							<div style="font-weight: 500;">₹ ${format_number(c.quotation_final_rate, null, 2)}</div>
 						</div>
 						<div>
-							<div style="font-size: 11px; color: #6B7280; text-transform: uppercase;">Current</div>
+							<div style="font-size: 11px; color: #6B7280; text-transform: uppercase;">Today</div>
 							<div style="font-weight: 500;">₹ ${format_number(c.current_base_price, null, 2)}</div>
 						</div>
 						<div>
@@ -296,16 +347,12 @@ window.santu_billing_page = {
 				const m = all_items.find((i) => i.r.item_code === c.r.item_code); // find mapped item ref
 				if (!m) return;
 				
-				// Recalculate rate while preserving discount semantic
-				if (c.quotation_discount_percentage > 0) {
-					m.final_rate = c.current_base_price * (1 - (c.quotation_discount_percentage / 100));
-				} else if (c.quotation_base_price > c.quotation_final_rate) {
-					const per_unit_discount = c.quotation_base_price - c.quotation_final_rate;
-					m.final_rate = Math.max(c.current_base_price - per_unit_discount, 0);
-				} else {
-					m.final_rate = c.current_base_price;
-				}
-				// The final_discount amount (r.discount_amount) remains the same to preserve standard bill discounts if they were mapped
+				// Today's plain price, exactly the number the modal showed
+				// under "Today". Re-applying the estimate's old negotiation
+				// on top would have made this button produce the SAME rate
+				// as "Keep Estimate Price" whenever the negotiation was the
+				// only difference -- two buttons, one outcome.
+				m.final_rate = c.current_base_price;
 			});
 			close();
 			self._finish_apply_prefill(all_items, b);
@@ -458,14 +505,11 @@ window.santu_billing_page = {
 		// calculation being removed.
 		const sub = b.items.reduce((a, r) => a + this._row_total(r), 0);
 		const total = Math.max(sub + (Number(b.additional_charges) || 0) - (Number(b.bill_discount) || 0), 0);
-		// Loyalty points redemption is switched off everywhere for now
-		// (2026-08-18 direct request: "loyalty points ko abhi ke liye
-		// commentout kr do harek jagah se, baad me decision lenge kaise
-		// karna hai" — how it should work isn't decided yet). `redeem` is
-		// forced to 0 here rather than deleted, so re-enabling later is one
-		// line, not rebuilding the whole payable/change/breakup chain:
-		// const redeem = Math.min(Number(b.redeem_points) || 0, total);
-		const redeem = 0;
+		// Reward points (back on 2026-09-06). `b.redeem_points` already holds
+		// a RUPEE amount — chosen and converted in _loyalty() below — never
+		// more points-worth than the bill itself, same clamp the server
+		// applies again on save so a stale screen can never overspend.
+		const redeem = Math.min(Number(b.redeem_points) || 0, total);
 		const payable = Math.max(total - redeem, 0);
 		// Auto mode (nothing typed yet) means fully paid — see the note on
 		// `amount_received` in _blank_bill().
@@ -587,8 +631,7 @@ window.santu_billing_page = {
 							</div>
 						</div>
 
-						<!-- Loyalty points switched off for now (2026-08-18) — see
-					     the note at _totals(). <div class="santu-bill-loyalty-line" style="display:none"></div> -->
+						<div class="santu-bill-loyalty-line" style="display:none"></div>
 
 						<div class="santu-bill-spacer"></div>
 
@@ -626,6 +669,7 @@ window.santu_billing_page = {
 								<button type="button" data-act="rename">Item Name <b>[F7]</b></button>
 								<button type="button" data-act="charges">Additional Charges <b>[F8]</b></button>
 								<button type="button" data-act="bdisc">Bill Discount <b>[F9]</b></button>
+								<button type="button" data-act="loyalty">Reward Points <b>[F10]</b></button>
 								<button type="button" data-act="remarks">Remarks <b>[F12]</b></button>
 								<div class="santu-bill-more-sep"></div>
 								<button type="button" data-more="draft">${__("Draft save karo (submit nahi)")}</button>
@@ -638,7 +682,18 @@ window.santu_billing_page = {
 								<button type="button" data-more="bug">${__("Kuch gadbad hai? Batao")}</button>
 							</div>
 						</div>
-						<button type="button" class="santu-bill-save">${b.editing ? __("Update Bill") : __("Save &amp; Print Bill")} <span class="santu-bill-kbd">Ctrl+P</span></button>
+						<!-- Save & Print is the big one: at a counter it is what
+						     gets pressed on nearly every sale, so it should be the
+						     button the hand goes to without looking (2026-09-07:
+						     "save and print ka bada wale button me rakhna chahiye
+						     tha... qk save and print hamesa hi use hoga"). Plain
+						     Save and WhatsApp sit under it, same as before. -->
+						<button type="button" class="santu-bill-save-print">🖨️ ${b.editing ? __("Update &amp; Print") : __("Save &amp; Print")} <span class="santu-bill-kbd">Ctrl+P</span></button>
+						<div class="santu-bill-save-row">
+							<button type="button" class="santu-bill-save">${b.editing ? __("Update Bill") : __("Save")}</button>
+							<button type="button" class="santu-bill-save-whatsapp">💬 ${__("Send WhatsApp")}</button>
+							<button type="button" class="santu-bill-save-whatsapp-other" title="${__("Kisi aur ke number par bhejein")}">↗ ${__("Kisi aur ko")}</button>
+						</div>
 						<button type="button" class="santu-bill-credit">Other/Credit Payments <span class="santu-bill-kbd">Ctrl+M</span></button>
 						</div>
 					</div>
@@ -651,6 +706,7 @@ window.santu_billing_page = {
 		this._bind();
 		this._bind_toolbar();
 		this._refresh_print_alert();
+		this._refresh_print_alert_later();
 		this.$root.find(".santu-bill-search").focus();
 		// Phone + address for whoever's already picked on this tab (reopening
 		// a tab, or switching back to it) — 2026-09-03 direct request:
@@ -974,7 +1030,7 @@ window.santu_billing_page = {
 										: r.available_qty <= 5
 											? "santu-bill-stock-low"
 											: "santu-bill-stock-ok"
-								}">${__("Available")}: ${format_number(r.available_qty, null, 0)} ${frappe.utils.escape_html(santu_uom.abbr(r.uom) || "")}</span>`
+								} santu-bill-stock-add" title="${__("Dabaiye — stock chadha sakte hain")}">${__("Available")}: ${format_number(r.available_qty, null, 0)} ${frappe.utils.escape_html(santu_uom.abbr(r.uom) || "")}</span>`
 							: ""
 					}</td>
 					<td class="c-qty">
@@ -1000,7 +1056,7 @@ window.santu_billing_page = {
 						     used to sit next to it is gone (2026-09-03 direct
 						     request: "ye cross feature hata do") — deleting a row is
 						     the # column's job now, via the hover swap. -->
-						<button type="button" class="santu-bill-tick-btn" title="${__("Ye rate master price me save karo")}">✓</button>
+						<button type="button" class="santu-bill-tick-btn" title="${__("Is row ka rate aur unit item me save karo")}">✓</button>
 					</td>
 				</tr>
 			`);
@@ -1018,6 +1074,16 @@ window.santu_billing_page = {
 			$tr.find(".santu-bill-tick-btn").on("click", (e) => {
 				e.stopPropagation();
 				this._push_rate_to_master(r);
+			});
+			// "Available: N" is a button: maal aaya, yahin chadha do.
+			$tr.find(".santu-bill-stock-add").on("click", (e) => {
+				e.stopPropagation();
+				window.santu_add_stock.open(r, {
+					after: () => {
+						this._render_rows();
+						santu_add_stock.refresh(b.items, { after: () => this._render_rows() });
+					},
+				});
 			});
 			// Delete lives in the # column now, via the hover swap
 			// (2026-09-03 direct request) — the ✕ that used to sit next to
@@ -1049,8 +1115,10 @@ window.santu_billing_page = {
 			$tr.find(".c-name").on("click", (e) => {
 				e.stopPropagation();
 				b.selected_row = r.id;
+				const was = r.item_name;
 				this._inline_edit($(e.currentTarget), "text", r.item_name, (v) => {
 					r.item_name = (v || "").trim() || r.item_name;
+					window.santu_tick_to_master.push_name(r, was);
 				});
 			});
 			$tr.find(".santu-bill-qty-val").on("click", (e) => {
@@ -1208,12 +1276,29 @@ window.santu_billing_page = {
 	},
 
 	// ---------- items ----------
+	// "ADD SALE ME V ITEM QUANTITY ADD HO JAYE" (counter's own bug-report
+	// note, 2026-09-21). Type the quantity in FRONT of the name -- "5 cpvc
+	// elbow", "5x cpvc", "5*cpvc", "2.5 kg putty" -- and the item goes onto
+	// the bill with that quantity instead of 1. Nothing changes for anyone
+	// who just types the name.
+	// Shared with every other billing-like screen -- see
+	// public/js/santu_qty_prefix.js for why the x/* mark is required.
+	_split_qty(q) {
+		return santu_qty.split(q);
+	},
+
 	_search(q) {
 		const $dd = this.$root.find(".santu-bill-dropdown");
+		const parsed = this._split_qty(q);
+		this._pending_qty = parsed.qty;
+		if (parsed.qty) q = parsed.text;
 		if (!q || q.length < 2) return $dd.hide().empty();
 		santu_sale_invoice.api.search_items(q).then((res) => {
 			const rows = res.results || res || [];
 			$dd.empty();
+			if (parsed.qty) {
+				$dd.append(santu_qty.hint_html(parsed.qty, "santu-bill-dd-row"));
+			}
 			rows.forEach((it) => {
 				$(`
 					<div class="santu-bill-dd-row ${santu_item_dd_class(it.item_code, it.item_name)}">
@@ -1486,7 +1571,12 @@ window.santu_billing_page = {
 	_add_item(item_code) {
 		const b = this._bill();
 		this.$root.find(".santu-bill-dropdown").hide().empty();
-		this.$root.find(".santu-bill-search").val("").focus();
+		// preventScroll: focusing the search box used to yank the page back up
+		// to it while the new row was scrolling into view -- the two fought and
+		// the screen jumped up and down (2026-09-21). The box still takes the
+		// keyboard, it just does not drag the view along.
+		const $sb = this.$root.find(".santu-bill-search").val("");
+		if ($sb[0]) $sb[0].focus({ preventScroll: true });
 		santu_sale_invoice.api.item_row(b.customer, item_code, this.init_data.warehouse, 1).then((row) => {
 			// A batch-tracked item can't go on a bill without naming a batch —
 			// ERPNext refuses the invoice otherwise. Ask which one, showing the
@@ -1505,6 +1595,8 @@ window.santu_billing_page = {
 	},
 
 	_push_item(row, item_code, batch) {
+		// quantity typed in front of the name ("5 cpvc elbow")
+		const typed_qty = santu_qty.take(this);
 		const b = this._bill();
 		// Same batch of the same item stacks; a different batch is its own
 		// line, because its price and identity are genuinely different.
@@ -1512,7 +1604,7 @@ window.santu_billing_page = {
 			(r) => r.item_code === item_code && (r.batch_no || null) === (batch ? batch.batch_no : null)
 		);
 		if (existing) {
-			existing.qty += 1;
+			existing.qty += typed_qty;
 			// Duplicate items merge into this line, so reveal the line whose
 			// quantity just changed rather than leaving it off-screen.
 			b.selected_row = existing.id;
@@ -1521,7 +1613,7 @@ window.santu_billing_page = {
 				id: santu_sale_invoice.utils.uid(),
 				item_code: row.item_code || item_code,
 				item_name: row.item_name || item_code,
-				qty: 1,
+				qty: typed_qty,
 				uom: row.uom || row.stock_uom,
 				uom_options: row.uoms && row.uoms.length ? row.uoms : [{ uom: row.uom || row.stock_uom, conversion_factor: 1 }],
 				// ERPNext's get_item_details leaves `rate` at 0 until a pricing
@@ -1618,7 +1710,13 @@ window.santu_billing_page = {
 			// the actual Item master (that stays a deliberate, separate,
 			// catalog-wide action elsewhere, not a quick in-bill edit).
 			const r = this._selected();
-			if (r) this._prompt(__("Item Name"), __("Name on this bill"), "Data", r.item_name, (v) => (r.item_name = (v || "").trim() || r.item_name));
+			if (r) {
+				const was = r.item_name;
+				this._prompt(__("Item Name"), __("Name"), "Data", r.item_name, (v) => {
+					r.item_name = (v || "").trim() || r.item_name;
+					window.santu_tick_to_master.push_name(r, was);
+				});
+			}
 		} else if (act === "remove") {
 			const r = this._selected();
 			if (r) {
@@ -1644,8 +1742,8 @@ window.santu_billing_page = {
 			this._prompt(__("Bill Discount"), __("Discount (₹)"), "Currency", b.bill_discount, (v) => (b.bill_discount = Math.max(Number(v) || 0, 0)));
 		} else if (act === "remarks") {
 			this._prompt(__("Remarks"), __("Note"), "Small Text", b.remarks, (v) => (b.remarks = v || ""));
-		// } else if (act === "loyalty") {
-		// 	this._loyalty(); — switched off for now (2026-08-18), see _totals()
+		} else if (act === "loyalty") {
+			this._loyalty();
 		} else if (act === "privacy") {
 			// Cost price is deliberately absent from the counter screen: the
 			// customer is standing on the other side of it. Unlocking is
@@ -1655,84 +1753,103 @@ window.santu_billing_page = {
 		}
 	},
 
-	// Switched off for now (2026-08-18 direct request: "loyalty points ko
-	// abhi ke liye commentout kr do harek jagah se, baad me decision lenge
-	// kaise karna hai" — how redemption should work isn't decided yet).
-	// Left commented rather than deleted so re-enabling is turning this back
-	// on plus the F10 button/map entry, not rebuilding it.
-	// _loyalty() {
-	// 	const b = this._bill();
-	// 	const t = this._totals();
-	// 	if (!b.items.length) {
-	// 		frappe.show_alert({ message: __("Add some items first, then use points."), indicator: "orange" });
-	// 		return;
-	// 	}
-	// 	// A bill with no customer picked is billed to Walk-in Customer on
-	// 	// save, so that is whose points apply here too.
-	// 	const customer = b.customer || "Walk-in Customer";
-	// 	frappe.call({
-	// 		method: "santu_hardware.santu_hardware.api.get_loyalty_status",
-	// 		args: { customer },
-	// 		freeze: true,
-	// 		freeze_message: __("Checking points…"),
-	// 		callback: (r) => {
-	// 			const st = r.message || {};
-	// 			if (!st.enrolled) {
-	// 				frappe.show_alert({ message: __("{0} is not in the rewards scheme.", [customer]), indicator: "blue" });
-	// 				return;
-	// 			}
-	// 			if (!st.points) {
-	// 				frappe.msgprint({
-	// 					title: __("No points yet"),
-	// 					message: __("{0} has 0 points. Points build up at 1 point for every ₹100 of billing.", [customer]),
-	// 					indicator: "blue",
-	// 				});
-	// 				return;
-	// 			}
-	// 			// Never let a bill be paid entirely by points beyond its own
-	// 			// value — ERPNext would reject it and the operator would be
-	// 			// left staring at a stack trace mid-sale.
-	// 			const max_points = Math.floor(Math.min(st.points, t.total / (st.conversion_factor || 1)));
-	// 			const d = new frappe.ui.Dialog({
-	// 				title: __("Use Reward Points"),
-	// 				fields: [
-	// 					{
-	// 						fieldtype: "HTML",
-	// 						fieldname: "info",
-	// 						options: `<div class="santu-bill-loyalty-info">
-	// 							<div><b>${frappe.utils.escape_html(customer)}</b></div>
-	// 							<div>${__("Points in account")}: <b>${st.points}</b> (${__("worth")} ₹ ${format_number(st.value, null, 2)})</div>
-	// 							<div>${__("This bill")}: ₹ ${format_number(t.total, null, 2)}</div>
-	// 							<div>${__("Can use now")}: <b>${max_points}</b> ${__("points")}</div>
-	// 						</div>`,
-	// 					},
-	// 					{
-	// 						fieldtype: "Int",
-	// 						fieldname: "points",
-	// 						label: __("Points to use"),
-	// 						default: b.redeem_points ? Math.round(b.redeem_points / (st.conversion_factor || 1)) : max_points,
-	// 						description: __("1 point = ₹ {0} off. Leave 0 to use none.", [format_number(st.conversion_factor || 1, null, 2)]),
-	// 					},
-	// 				],
-	// 				primary_action_label: __("Apply"),
-	// 				primary_action: (v) => {
-	// 					const pts = Math.max(Math.min(cint(v.points), max_points), 0);
-	// 					b.redeem_points = pts * (st.conversion_factor || 1);
-	// 					d.hide();
-	// 					this._persist_soon();
-	// 					this._render_totals();
-	// 					frappe.show_alert({
-	// 						message: pts
-	// 							? __("{0} points used — ₹ {1} off.", [pts, format_number(b.redeem_points, null, 2)])
-	// 							: __("No points used."),
-	// 						indicator: "green",
-	// 					});
-	// 				},
-	// 			});
-	// 			d.show();
-	// 		},
-	// 	});
-	// },
+	// Back on (2026-09-06 direct request: "utility me loyality wala add kr
+	// de, sara system"). Same shape it had before being switched off
+	// 2026-08-18 — nothing rebuilt, only unwound.
+	_loyalty() {
+		const b = this._bill();
+		const t = this._totals();
+		if (!b.items.length) {
+			frappe.show_alert({ message: __("Add some items first, then use points."), indicator: "orange" });
+			return;
+		}
+		// Points belong to a named person. There is no "Walk-in Customer" in
+		// this shop (that record does not exist; counter sales go on "SALES",
+		// which earns nothing by design) -- so ask for the customer instead of
+		// guessing one that cannot have points.
+		if (!b.customer) {
+			frappe.show_alert({
+				message: __("Pehle grahak chuniye (F11) — reward points naam wale grahak ke hote hain."),
+				indicator: "orange",
+			});
+			this.$root.find(".santu-bill-customer").focus();
+			return;
+		}
+		const customer = b.customer;
+		frappe.call({
+			method: "santu_hardware.santu_hardware.api.get_loyalty_status",
+			args: { customer },
+			freeze: true,
+			freeze_message: __("Checking points…"),
+			callback: (r) => {
+				const st = r.message || {};
+				if (!st.enrolled) {
+					frappe.show_alert({ message: __("{0} is not in the rewards scheme.", [customer]), indicator: "blue" });
+					return;
+				}
+				if (!st.points) {
+					frappe.msgprint({
+						title: __("No points yet"),
+						message: __("{0} has 0 points. Points build up at 1 point for every ₹{1} of billing.", [customer, format_number(st.spend_per_point || 100, null, 0)]),
+						indicator: "blue",
+					});
+					return;
+				}
+				// Never let a bill be paid entirely by points beyond its own
+				// value — ERPNext would reject it and the operator would be
+				// left staring at a stack trace mid-sale.
+				//
+				// Rounded DOWN to 2 decimals, not floored to a whole number:
+				// points are earned as real fractions since 2026-09-07 (a
+				// ₹460 bill earns 4.6), so flooring stranded the fraction of
+				// every balance forever — and a customer holding 0.4 points
+				// was told "Can use now: 0" while the screen above it said
+				// they had points (2026-09-08 bug report).
+				const max_points = Math.floor(Math.min(st.points, t.total / (st.conversion_factor || 1)) * 100) / 100;
+				const d = new frappe.ui.Dialog({
+					title: __("Use Reward Points"),
+					fields: [
+						{
+							fieldtype: "HTML",
+							fieldname: "info",
+							options: `<div class="santu-bill-loyalty-info">
+								<div><b>${frappe.utils.escape_html(customer)}</b></div>
+								<div>${__("Points in account")}: <b>${format_number(st.points, null, 2)}</b> (${__("worth")} ₹ ${format_number(st.value, null, 2)})</div>
+								${st.pending_points ? `<div style="color:#d97706;">${__("Pending")}: ${format_number(st.pending_points, null, 2)} ${__("points")} — ${__("udhaar wale bill ka paisa aane par milenge")}</div>` : ""}
+								<div>${__("This bill")}: ₹ ${format_number(t.total, null, 2)}</div>
+								<div>${__("Can use now")}: <b>${format_number(max_points, null, 2)}</b> ${__("points")}</div>
+							</div>`,
+						},
+						{
+							// Float, not Int — a balance of 4.6 must be usable
+							// as 4.6, not 4 (see max_points above).
+							fieldtype: "Float",
+							precision: 2,
+							fieldname: "points",
+							label: __("Points to use"),
+							default: b.redeem_points ? flt(b.redeem_points / (st.conversion_factor || 1), 2) : max_points,
+							description: __("1 point = ₹ {0} off. Leave 0 to use none.", [format_number(st.conversion_factor || 1, null, 2)]),
+						},
+					],
+					primary_action_label: __("Apply"),
+					primary_action: (v) => {
+						const pts = Math.max(Math.min(flt(v.points, 2), max_points), 0);
+						b.redeem_points = flt(pts * (st.conversion_factor || 1), 2);
+						d.hide();
+						this._persist_soon();
+						this._render_totals();
+						frappe.show_alert({
+							message: pts
+								? __("{0} points used — ₹ {1} off.", [format_number(pts, null, 2), format_number(b.redeem_points, null, 2)])
+								: __("No points used."),
+							indicator: "green",
+						});
+					},
+				});
+				d.show();
+			},
+		});
+	},
 
 	_breakup() {
 		const t = this._totals();
@@ -1799,10 +1916,17 @@ window.santu_billing_page = {
 			if (rows.length) {
 				$dd.append(`<div class="santu-bill-cust-head"><span>Name</span><span>Phone Number</span></div>`);
 			}
+			// Gaon under each name (2026-09-10: "pahle yaha address show krta tha ab
+			// nhi kr rha"). list_customers_for_picker already sends santu_village;
+			// the row just never drew it, so two people with one name could only
+			// be told apart by phone number.
 			rows.forEach((c) => {
 				const $row = $(`
 					<div class="santu-bill-cust-row">
-						<span>${frappe.utils.escape_html(c.customer_name)}</span>
+						<span class="santu-bill-cust-namecol">
+							<span class="santu-bill-cust-name">${frappe.utils.escape_html(c.customer_name)}</span>
+							${c.santu_village ? `<span class="santu-bill-cust-village">${frappe.utils.escape_html(c.santu_village)}</span>` : ""}
+						</span>
 						<span class="santu-bill-cust-phone">${frappe.utils.escape_html(c.mobile_no || "—")}</span>
 						<button type="button" class="santu-bill-cust-edit" title="${__("Edit customer")}">✏️</button>
 					</div>
@@ -2027,6 +2151,14 @@ window.santu_billing_page = {
 	// through the SAME shared santu_sale_invoice.api the old screen used --
 	// no new endpoints, no second copy of the backend wiring.
 
+	// Re-checked a few seconds after a save as well: a bill still printing is
+	// deliberately not listed (see open_print_jobs), so the bar must look
+	// again once the printer has had its moment (2026-09-21).
+	_refresh_print_alert_later() {
+		clearTimeout(this._print_alert_timer);
+		this._print_alert_timer = setTimeout(() => this._refresh_print_alert(), 50 * 1000);
+	},
+
 	_refresh_print_alert() {
 		const $alert = this.$root && this.$root.find(".santu-bill-print-alert");
 		if (!$alert || !$alert.length) return;
@@ -2100,6 +2232,7 @@ window.santu_billing_page = {
 					frappe.show_alert({ message: __("Sab chhap gaye"), indicator: "green" });
 				}
 				this._refresh_print_alert();
+				this._refresh_print_alert_later();
 			});
 	},
 
@@ -2226,9 +2359,12 @@ window.santu_billing_page = {
 		d.show();
 	},
 
-	_save(as_draft) {
+	// `after` is one of undefined/"print"/"whatsapp" -- which of the three
+	// Save buttons was pressed. Threaded through to _proceed_save, which
+	// fires that action directly (no confirm dialog) once the bill is saved.
+	_save(as_draft, after) {
 		const b = this._bill();
-		if (b.editing) return this._save_edited_invoice();
+		if (b.editing) return this._save_edited_invoice(after);
 		const t = this._totals();
 		if (!b.items.length) {
 			frappe.msgprint(__("Add at least one item."));
@@ -2243,7 +2379,7 @@ window.santu_billing_page = {
 			return;
 		}
 		this._check_backdated_warning(b, (allow_backdate) =>
-			this._check_stock_warning(b, () => this._proceed_save(b, t, allow_backdate, as_draft))
+			this._check_stock_warning(b, () => this._proceed_save(b, t, allow_backdate, as_draft, after))
 		);
 	},
 
@@ -2271,8 +2407,11 @@ window.santu_billing_page = {
 		const rows = short
 			.map((r) => {
 				const unit = frappe.utils.escape_html(santu_uom.abbr(r.uom) || "");
-				const have = format_number(flt(r.available_qty), null, 0);
-				const want = format_number(flt(r.qty), null, 0);
+				// 9.5 on the bill was shown as "10" (rounded to 0 decimals) --
+				// the warning must show the same number the bill has.
+				const dp = (v) => (Math.abs(flt(v) % 1) > 1e-9 ? 2 : 0);
+				const have = format_number(flt(r.available_qty), null, dp(r.available_qty));
+				const want = format_number(flt(r.qty), null, dp(r.qty));
 				return `<tr>
 					<td style="padding:4px 10px 4px 0;">${frappe.utils.escape_html(r.item_name || r.item_code)}</td>
 					<td style="padding:4px 10px;text-align:right;color:#b91c1c;font-weight:600;white-space:nowrap;">${have} ${unit}</td>
@@ -2330,34 +2469,13 @@ window.santu_billing_page = {
 	// back out gets the stock-unit rate regardless of which unit is showing
 	// right now — without this, ticking a row mid-Box would overwrite the
 	// per-piece master price with the per-box number.
+	//
+	// Lives in santu_tick_to_master.js -- Estimate uses the very same one.
 	_push_rate_to_master(r) {
-		const cf = flt(r.conversion_factor) || 1;
-		const master_rate = flt(r.rate) / cf;
-		const unit_note = cf !== 1 ? __(" ({0} har {1} me se)", [format_number(master_rate, null, 2), r.uom]) : "";
-		frappe.confirm(
-			__("{0} ka selling price ₹{1} kar diya jaaye?{2}", [
-				frappe.utils.escape_html(r.item_name || r.item_code),
-				format_number(master_rate, null, 2),
-				unit_note,
-			]),
-			() => {
-				frappe.dom.freeze(__("Saving…"));
-				frappe
-					.xcall("santu_hardware.santu_hardware.api.update_item_rate", {
-						item_code: r.item_code,
-						kind: "selling",
-						rate: master_rate,
-					})
-					.then(() => {
-						frappe.dom.unfreeze();
-						frappe.show_alert({ message: __("Master price update ho gaya."), indicator: "green" });
-					})
-					.catch(() => frappe.dom.unfreeze());
-			}
-		);
+		window.santu_tick_to_master.push(r);
 	},
 
-	_proceed_save(b, t, allow_backdate, as_draft) {
+	_proceed_save(b, t, allow_backdate, as_draft, after) {
 		const customer = b.customer;
 		const received = t.received;
 		const payments = received > 0 ? [{ mode_of_payment: b.payment_mode, amount: received }] : [];
@@ -2373,10 +2491,25 @@ window.santu_billing_page = {
 		// (`effective_mode = paid > 0 ? "cash" : "credit"`).
 		const effective_mode = received > 0 ? "cash" : "credit";
 
-		frappe.dom.freeze(__("Saving…"));
-		santu_sale_invoice.api
-			.save(
-				{
+		// Key pehli koshish se PEHLE banti hai, baad me nahi: agar ye koshish
+		// server tak pahunch gayi aur sirf jawab kho gaya, to retry isi key se
+		// purani bill pehchan lega aur grahak ko dobara bill nahi banega.
+		//
+		// ...and it is written into the TAB before anything is sent. A page
+		// reload / app crash between "sent" and "answer" used to lose the key:
+		// the tab came back full, Save was pressed again with a NEW key, and
+		// the customer got two bills (bill 875 + 876 in the 2026-09-19 crash
+		// test). With the key kept on the tab, the second Save carries the
+		// same key and the server hands back the bill it already made.
+		const offline_key = b.pending_offline_key || (window.santu_offline_queue ? window.santu_offline_queue.new_key() : null);
+		if (offline_key && !as_draft && b.pending_offline_key !== offline_key) {
+			b.pending_offline_key = offline_key;
+			this._persist(); // synchronously, before the request leaves
+		}
+		// Built into a variable, not inline, so the catch below can put the
+		// EXACT same bill into the offline queue without rebuilding it.
+		const save_payload = {
+					offline_key: offline_key,
 					customer: customer,
 					company: this.init_data.company,
 					warehouse: this.init_data.warehouse,
@@ -2388,10 +2521,6 @@ window.santu_billing_page = {
 					additional_discount_amount: b.bill_discount || 0,
 					description: b.remarks || null,
 					terms: b.terms || null,
-					// t.redeem is forced to 0 in _totals() while loyalty points
-					// are switched off (2026-08-18), so this always sends 0 —
-					// left as-is rather than stripped so it needs no edit here
-					// when redemption comes back.
 					redeem_points: t.redeem || 0,
 					items: b.items.map((r) => ({
 						item_code: r.item_code,
@@ -2412,10 +2541,12 @@ window.santu_billing_page = {
 						batch_no: r.batch_no || null,
 						discount_amount: r.discount || 0,
 					})),
-				},
-				as_draft ? 0 : 1
-			)
-			.then((r) => {
+		};
+
+		frappe.dom.freeze(__("Saving…"));
+		santu_sale_invoice.api
+			.save(save_payload, as_draft ? 0 : 1)
+			.then(async (r) => {
 				frappe.dom.unfreeze();
 				if (typeof santu_set_privacy_mode === "function" && typeof santu_is_privacy_mode_active === "function" && santu_is_privacy_mode_active()) {
 					santu_set_privacy_mode(false);
@@ -2430,19 +2561,29 @@ window.santu_billing_page = {
 					this._persist_soon();
 					return;
 				}
-				frappe.show_alert({ message: __("Saved {0}", [r.name]), indicator: "green" });
-				if (typeof santu_print_thermal_bill === "function") {
-					santu_print_thermal_bill("Sales Invoice", r.name);
+				if (r && r.already_saved) {
+					frappe.show_alert({ message: `ℹ️ Ye bill pehle hi ban chuka tha — Bill #${r.santu_bill_no || r.bill_no || ""} (dobara nahi bana)`, indicator: "blue" }, 8);
+				} else {
+					window.santu_save_buttons ? santu_save_buttons.saved_alert("Sales Invoice", r) : frappe.show_alert({ message: __("Saved"), indicator: "green" });
 				}
-				// Offer WhatsApp right after saving (2026-08-18 direct
-				// request) — Billing closes the tab immediately on save, so
-				// there's no "bill stays open, share it from here" moment
-				// like Sale Invoice has; this is that moment instead. Only
-				// for a real customer — Walk-in never has a phone number on
-				// file, and send_transaction would just show "No WhatsApp
-				// Number" for no reason on every cash sale.
-				if (b.customer && window.santu_whatsapp_share) {
-					window.santu_whatsapp_share.send_transaction("Sales Invoice", r.name);
+				// Three explicit Save buttons replaced the old "print
+				// karein?" confirm + auto-opened WhatsApp dialog (2026-09-06
+				// direct request: "no extra popup. same screen pe all kaam
+				// ho, baar baar is app ko puchna v nahi padega"). Whichever
+				// button the operator pressed already IS their yes, so this
+				// fires straight through with no further dialog.
+				if (after === "print" && typeof santu_print_thermal_bill === "function") {
+					await santu_print_thermal_bill("Sales Invoice", r.name, {
+						bill_no: r.santu_bill_no || r.bill_no,
+					});
+				} else if (after === "whatsapp_other" && window.santu_whatsapp_share) {
+					await window.santu_whatsapp_share.send_transaction("Sales Invoice", r.name, { other: true });
+				} else if (after === "whatsapp") {
+					if (b.customer && window.santu_whatsapp_share) {
+						await window.santu_whatsapp_share.send_transaction("Sales Invoice", r.name, { skip_dialog: true });
+					} else {
+						frappe.show_alert({ message: __("No WhatsApp number on this bill (no customer selected)."), indicator: "orange" });
+					}
 				}
 				// Bill done: drop this tab and open a clean one, which is how
 				// a counter actually works.
@@ -2454,6 +2595,33 @@ window.santu_billing_page = {
 			})
 			.catch((e) => {
 				frappe.dom.unfreeze();
+				// Server ek pal ke liye nahi mila -- bill khoni nahi chahiye.
+				// Queue me daal kar tab band kar dete hain taaki counter agla
+				// grahak nipta sake; server aate hi ye apne aap chadh jayegi.
+				//
+				// Ye SIRF connection wali dikkat par hota hai. Galat data
+				// (grahak nahi chuna, rate galat) dobara bhejne se bhi theek
+				// nahi hoga, wo cashier ko turant dikhna chahiye.
+				if (window.santu_offline_queue && window.santu_offline_queue.is_connection_problem(e)) {
+					const n = window.santu_offline_queue.add(save_payload, as_draft ? 0 : 1);
+					frappe.msgprint({
+						title: __("Server abhi nahi mil raha"),
+						indicator: "orange",
+						message: __(
+							"Bill SAFE hai — line me lag gaya ({0} ruke hain). Server aate hi apne aap chadh jayega.<br><br>" +
+							"<b>Dhyan rakhiye:</b> jab tak nahi chadhta, is bill ka number nahi banega aur stock bhi nahi katega — " +
+							"isliye abhi grahak ko parcha nahi de sakte.",
+							[n]
+						),
+					});
+					// Tab band — cashier agla grahak le sakta hai. Bill queue me safe hai.
+					this.tabs = this.tabs.filter((x) => x.id !== b.id);
+					if (!this.tabs.length) this._new_bill(false);
+					this.active_id = this.tabs[0].id;
+					this._persist_soon();
+					this.render();
+					return;
+				}
 				frappe.msgprint((e && e.message) || __("Could not save bill."));
 			});
 	},
@@ -2462,7 +2630,7 @@ window.santu_billing_page = {
 	// a fresh sale. Prompts the operator with clear payment options (Cash,
 	// UPI, Baaki/Credit, Split, Custom) so adding new items does not
 	// blindly default to Baaki without the operator's choice.
-	_save_edited_invoice() {
+	_save_edited_invoice(after) {
 		const b = this._bill();
 		if (!b.items.length) {
 			frappe.msgprint(__("Add at least one item."));
@@ -2511,18 +2679,25 @@ window.santu_billing_page = {
 			frappe.dom.freeze(__("Updating bill…"));
 			santu_sale_invoice.api
 				.edit_invoice(b.editing.name, payload)
-				.then((r) => {
+				.then(async (r) => {
 					frappe.dom.unfreeze();
 					frappe.msgprint({
 						title: __("Bill Corrected"),
 						message: `<div style="white-space:pre-wrap">${frappe.utils.escape_html(r.summary || "")}</div>`,
 						indicator: "green",
 					});
-					if (typeof santu_print_thermal_bill === "function") {
-						santu_print_thermal_bill("Sales Invoice", r.name);
-					}
-					if (b.customer && window.santu_whatsapp_share) {
-						window.santu_whatsapp_share.send_transaction("Sales Invoice", r.name);
+					if (after === "print" && typeof santu_print_thermal_bill === "function") {
+						await santu_print_thermal_bill("Sales Invoice", r.name, {
+							bill_no: r.santu_bill_no || r.bill_no,
+						});
+					} else if (after === "whatsapp_other" && window.santu_whatsapp_share) {
+						await window.santu_whatsapp_share.send_transaction("Sales Invoice", r.name, { other: true });
+					} else if (after === "whatsapp") {
+						if (b.customer && window.santu_whatsapp_share) {
+							await window.santu_whatsapp_share.send_transaction("Sales Invoice", r.name, { skip_dialog: true });
+						} else {
+							frappe.show_alert({ message: __("No WhatsApp number on this bill (no customer selected)."), indicator: "orange" });
+						}
 					}
 					this.tabs = this.tabs.filter((x) => x.id !== b.id);
 					if (!this.tabs.length) this._new_bill(false);
@@ -2581,10 +2756,10 @@ window.santu_billing_page = {
 					<input type="radio" name="santu_edit_pay_choice" value="extra_baaki">
 					<div class="santu-edit-pay-opt-info">
 						<div class="santu-edit-pay-opt-title">
-							<span>Extra ₹ ${format_number(diff, null, 2)} Baaki (Khata) me daalein</span>
+							<span>Extra ₹ ${format_number(diff, null, 2)} Baaki (Account) me daalein</span>
 							<span class="santu-figures" style="color:#dc2626;">Baaki: ₹ ${format_number(diff, null, 2)}</span>
 						</div>
-						<div class="santu-edit-pay-opt-desc">Pehle ka ₹ ${format_number(old_paid, null, 2)} paid rahega, badha hua ₹ ${format_number(diff, null, 2)} Customer ke khata me judega.</div>
+						<div class="santu-edit-pay-opt-desc">Pehle ka ₹ ${format_number(old_paid, null, 2)} paid rahega, badha hua ₹ ${format_number(diff, null, 2)} Customer ke account me judega.</div>
 					</div>
 				</label>
 
@@ -2595,7 +2770,7 @@ window.santu_billing_page = {
 							<span>Pura Bill Baaki (Credit) me daalein</span>
 							<span class="santu-figures" style="color:#dc2626;">Pura Baaki: ₹ ${format_number(new_total, null, 2)}</span>
 						</div>
-						<div class="santu-edit-pay-opt-desc">Pura ₹ ${format_number(new_total, null, 2)} Customer ke Udhaar/Khata me chala jayega.</div>
+						<div class="santu-edit-pay-opt-desc">Pura ₹ ${format_number(new_total, null, 2)} Customer ke Udhaar/Account me chala jayega.</div>
 					</div>
 				</label>
 
@@ -2630,7 +2805,7 @@ window.santu_billing_page = {
 							<span>Pura Naya Bill Baaki (Credit) me daalein</span>
 							<span class="santu-figures" style="color:#dc2626;">Baaki: ₹ ${format_number(new_total, null, 2)}</span>
 						</div>
-						<div class="santu-edit-pay-opt-desc">Pura ₹ ${format_number(new_total, null, 2)} Customer ke khata me baaki rahega.</div>
+						<div class="santu-edit-pay-opt-desc">Pura ₹ ${format_number(new_total, null, 2)} Customer ke account me baaki rahega.</div>
 					</div>
 				</label>
 
@@ -2826,6 +3001,39 @@ window.santu_billing_page = {
 		this._check_backdated_warning(b, (allow_backdate) => this._proceed_save_as_challan(b, allow_backdate));
 	},
 
+	// Challan ban jaane ke baad: chhapein ya bhejein -- dono saamne.
+	_challan_after_save(r) {
+		const label = r && r.name ? r.name : "";
+		const d = new frappe.ui.Dialog({
+			title: __("Challan Created"),
+			fields: [{
+				fieldtype: "HTML", fieldname: "body",
+				options: `
+					<div class="santu-challan-done">
+						<div class="santu-challan-done-name">${frappe.utils.escape_html(label)}</div>
+						<div class="santu-challan-done-btns">
+							<button type="button" class="santu-challan-print">🖨️ ${__("Print")}</button>
+							<button type="button" class="santu-challan-wa">💬 ${__("WhatsApp")}</button>
+						</div>
+					</div>`,
+			}],
+			primary_action_label: __("Close"),
+			primary_action: () => d.hide(),
+		});
+		d.show();
+		const $w = d.fields_dict.body.$wrapper;
+		$w.find(".santu-challan-print").on("click", () => {
+			d.hide();
+			if (window.santu_print_thermal_bill) santu_print_thermal_bill("Delivery Note", r.name);
+			else frappe.set_route("print", "Delivery Note", r.name);
+		});
+		$w.find(".santu-challan-wa").on("click", () => {
+			d.hide();
+			if (window.santu_whatsapp_share) window.santu_whatsapp_share.send_transaction("Delivery Note", r.name);
+			else frappe.msgprint(__("WhatsApp is not connected yet."));
+		});
+	},
+
 	_proceed_save_as_challan(b, allow_backdate) {
 		frappe.dom.freeze(__("Chalan ban raha hai…"));
 		frappe
@@ -2865,10 +3073,12 @@ window.santu_billing_page = {
 			})
 			.then((r) => {
 				frappe.dom.unfreeze();
-				frappe.show_alert({ message: __("Chalan Saved {0}", [r.name]), indicator: "green" });
-				if (window.santu_whatsapp_share) {
-					window.santu_whatsapp_share.send_transaction("Delivery Note", r.name);
-				}
+				window.santu_save_buttons ? santu_save_buttons.saved_alert("Delivery Note", r) : frappe.show_alert({ message: __("Chalan Saved"), indicator: "green" });
+				// Pehle yahan seedha WhatsApp khul jata tha aur chhapne ka
+				// koi rasta hi nahi tha (2026-10-01: "isme tum wahan pe print
+				// ka v option do"). Ab dono button saamne hain, aur kuch bhi
+				// bina pooche nahi hota.
+				this._challan_after_save(r);
 				this.tabs = this.tabs.filter((x) => x.id !== b.id);
 				if (!this.tabs.length) this._new_bill(false);
 				this.active_id = this.tabs[0].id;
@@ -3025,6 +3235,14 @@ window.santu_billing_page = {
 			this._action($(e.currentTarget).data("act"));
 		});
 		$r.find(".santu-bill-save").on("click", () => this._save());
+		// Three explicit buttons, no post-save "print karein?"/whatsapp popup
+		// after either -- clicking "Save & Print" or "Send WhatsApp" already
+		// IS the operator's explicit yes (2026-09-06 direct request: "same
+		// screen pe all kaam ho, baar baar is app ko puchna v nahi padega").
+		// Plain "Save" still does neither, same as before.
+		$r.find(".santu-bill-save-print").on("click", () => this._save(false, "print"));
+		$r.find(".santu-bill-save-whatsapp").on("click", () => this._save(false, "whatsapp"));
+		$r.find(".santu-bill-save-whatsapp-other").on("click", () => this._save(false, "whatsapp_other"));
 		$r.find(".santu-bill-more").on("click", (e) => {
 			e.stopPropagation();
 			$r.find(".santu-bill-more-menu").toggle();
@@ -3043,7 +3261,11 @@ window.santu_billing_page = {
 			$r.find(".santu-bill-received").val("");
 			this._persist_soon();
 			this._render_totals();
-			this._save();
+			frappe.confirm(
+				__("Bill print bhi karna hai?"),
+				() => this._save(false, "print"),
+				() => this._save()
+			);
 		});
 
 		$(document).off("click.santu-bill").on("click.santu-bill", (e) => {
@@ -3066,9 +3288,7 @@ window.santu_billing_page = {
 
 		$(document).off("keydown.santu-bill").on("keydown.santu-bill", (ev) => {
 			if (frappe.get_route()[0] !== "santu-billing") return;
-			// F10 dropped from the map (was "loyalty") — loyalty points
-			// switched off for now, 2026-08-18.
-			const map = { F2: "qty", F3: "idisc", F4: "remove", F5: "rate", F6: "unit", F7: "rename", F8: "charges", F9: "bdisc", F11: "privacy", F12: "remarks" };
+			const map = { F2: "qty", F3: "idisc", F4: "remove", F5: "rate", F6: "unit", F7: "rename", F8: "charges", F9: "bdisc", F10: "loyalty", F11: "privacy", F12: "remarks" };
 			if (map[ev.key]) {
 				ev.preventDefault();
 				this._action(map[ev.key]);
@@ -3091,7 +3311,7 @@ window.santu_billing_page = {
 					this.render();
 				} else if (ev.key === "p") {
 					ev.preventDefault();
-					this._save();
+					this._save(false, "print");
 				} else if (ev.key === "m") {
 					ev.preventDefault();
 					$r.find(".santu-bill-credit").trigger("click");

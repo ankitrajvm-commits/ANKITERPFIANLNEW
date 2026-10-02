@@ -6,6 +6,7 @@ import random
 from datetime import datetime
 
 import frappe
+from frappe.utils import cint
 from frappe.utils import flt, get_url, now_datetime, today
 
 from santu_hardware.santu_hardware.transaction_message_service import (
@@ -190,7 +191,7 @@ def get_chat_list(search: str = None, page: int = 1, page_size: int = 50) -> dic
 	# Ensure all party contacts with phone numbers are available
 	sync_contacts_from_parties()
 
-	page, page_size = int(page or 1), min(int(page_size or 50), 100)
+	page, page_size = max(cint(page), 1), min(cint(page_size) or 50, 100)
 	filters = {}
 	if search:
 		filters["display_name"] = ["like", f"%{search}%"]
@@ -482,7 +483,7 @@ def get_payment_reminder_message(party_type: str, party_name: str) -> str:
 *{company}*"""
 
 
-def send_transaction_from_connect(doctype: str, name: str, custom_message: str = None) -> dict:
+def send_transaction_from_connect(doctype: str, name: str, custom_message: str = None, to_phone: str = None, to_name: str = None) -> dict:
 	"""Send transaction message via unified WhatsApp service."""
 	from santu_hardware.santu_hardware.transaction_message_service import (
 		build_message_context,
@@ -495,7 +496,18 @@ def send_transaction_from_connect(doctype: str, name: str, custom_message: str =
 	template = custom_message or get_template(transaction_type)
 	context = build_message_context(doc, transaction_type)
 	body = render_template(template, context)
-	phone = get_party_phone(context.get("_party_type"), context.get("_party_name"))
+	if to_phone:
+		phone = normalize_indian_phone(to_phone)
+		if not phone or len(phone) < 12:
+			return {"ok": False, "error": "Sahi 10 digit WhatsApp number daalo."}
+		# Without this the chat list shows a bare 91XXXXXXXXXX for anyone who
+		# isn't already a saved party, and nobody can tell later who the bill
+		# went to. ensure_contact still wins the name back automatically if
+		# this number turns out to belong to a real Customer/Supplier, and it
+		# never overwrites a name that is already set.
+		ensure_contact(phone, display_name=(to_name or "").strip() or None)
+	else:
+		phone = get_party_phone(context.get("_party_type"), context.get("_party_name"))
 
 	if not phone:
 		return {"ok": False, "error": "No WhatsApp number found for this party."}
@@ -522,8 +534,8 @@ def send_transaction_from_connect(doctype: str, name: str, custom_message: str =
 	return send_chat_message(
 		phone,
 		body,
-		party_type=context.get("_party_type"),
-		party_name=context.get("_party_name"),
+		party_type=None if to_phone else context.get("_party_type"),
+		party_name=None if to_phone else context.get("_party_name"),
 		message_type="Transaction",
 		reference_doctype=doctype,
 		reference_name=name,

@@ -23,6 +23,18 @@ frappe.pages["santu-estimate"].on_page_load = function (wrapper) {
 
 frappe.pages["santu-estimate"].on_page_show = function () {
 	if (!window.santu_estimate_page || !santu_estimate_page.page) return;
+	// Same as Billing: the stock figure on each line is a snapshot from when
+	// the item was added, so refresh it on the way back in.
+	if (window.santu_add_stock) {
+		try {
+			const b = santu_estimate_page._bill();
+			if (b && b.items && b.items.length) {
+				santu_add_stock.refresh(b.items, { after: () => santu_estimate_page._render_rows() });
+			}
+		} catch (e) {
+			/* never block the screen for a stock figure */
+		}
+	}
 	// Coming back from the view screen's Edit button on an already-open tab:
 	// on_page_load will not run again, so the route option has to be picked
 	// up here too or clicking Edit a second time would do nothing.
@@ -229,6 +241,7 @@ window.santu_estimate_page = {
 											<th class="c-rate">PRICE/UNIT(₹)</th>
 											<th class="c-disc">DISCOUNT (₹)</th>
 											<th class="c-total">TOTAL(₹)</th>
+										<th class="c-del"></th>
 										</tr>
 									</thead>
 									<tbody></tbody>
@@ -279,8 +292,7 @@ window.santu_estimate_page = {
 							<button type="button" data-act="remarks">Remarks <b>[F12]</b></button>
 						</div>
 					</div>
-						<button type="button" class="santu-bill-save">Save &amp; Share Estimate <span class="santu-bill-kbd">Ctrl+S</span></button>
-						<button type="button" class="santu-bill-print-est" title="${__("Estimate ka thermal parcha chhapo — WhatsApp nahi bhejega")}">Save &amp; Print Estimate <span class="santu-bill-kbd">Ctrl+P</span></button>
+						${santu_save_buttons.html({ save_label: __("Save Estimate"), kbd: "Ctrl+P" })}
 					</div>
 					</div>
 				</div>
@@ -391,7 +403,7 @@ window.santu_estimate_page = {
 		frappe.confirm(__("This estimate has items. Close anyway?"), drop);
 	},
 
-	_render_rows() {
+	_render_rows({ reveal_row_id = null } = {}) {
 		const b = this._bill();
 		const privacy_on = typeof santu_is_privacy_mode_active === "function" && santu_is_privacy_mode_active();
 		if (privacy_on) this._fetch_costs(b);
@@ -399,10 +411,22 @@ window.santu_estimate_page = {
 		b.items.forEach((r, i) => {
 			const row_hl = santu_item_row_class(r.item_code, r.item_name);
 			const $tr = $(`
-				<tr class="${r.id === b.selected_row ? "is-selected" : ""} ${row_hl}" data-row="${r.id}">
+				<tr class="${r.id === b.selected_row ? "is-selected" : ""} ${r.id === reveal_row_id ? "santu-bill-row-new" : ""} ${row_hl}" data-row="${r.id}">
 					<td class="c-idx">${i + 1}</td>
 					<td class="c-code">${frappe.utils.escape_html(r.item_code || "-")}</td>
-					<td class="c-name santu-bill-editable" title="${__("Badalne ke liye dabaiye")}">${frappe.utils.escape_html(r.item_name)}</td>
+					<td class="c-name">
+						<span class="santu-bill-editable" title="${__("Badalne ke liye dabaiye")}">${frappe.utils.escape_html(r.item_name)}</span>${
+							r.available_qty != null
+								? `<span class="santu-bill-stock-note ${
+										r.available_qty <= 0
+											? "santu-bill-stock-out"
+											: r.available_qty <= 5
+												? "santu-bill-stock-low"
+												: "santu-bill-stock-ok"
+									} santu-bill-stock-add" title="${__("Dabaiye — stock chadha sakte hain")}">${__("Available")}: ${format_number(r.available_qty, null, 0)} ${frappe.utils.escape_html(santu_uom.abbr(r.uom) || "")}</span>`
+								: ""
+						}
+					</td>
 					<td class="c-qty">
 						<span class="santu-bill-qty-stepper">
 							<button type="button" class="santu-bill-qty-btn" data-step="-1">−</button>
@@ -418,11 +442,28 @@ window.santu_estimate_page = {
 					}</td>
 					<td class="c-disc santu-bill-editable" title="${__("Badalne ke liye dabaiye")}">${format_number(r.discount || 0, null, 2)}</td>
 					<td class="c-total">${format_number(this._row_total(r), null, 2)}</td>
+					<td class="c-del">
+						<button type="button" class="santu-bill-tick-btn" title="${__("Is row ka rate aur unit item me save karo")}">✓</button>
+					</td>
 				</tr>
 			`);
 			$tr.on("click", () => {
 				b.selected_row = r.id;
 				this._render_rows();
+			});
+			// Same ✓ as Billing, same shared helper (2026-09-25 request).
+			$tr.find(".santu-bill-tick-btn").on("click", (e) => {
+				e.stopPropagation();
+				window.santu_tick_to_master.push(r);
+			});
+			$tr.find(".santu-bill-stock-add").on("click", (e) => {
+				e.stopPropagation();
+				window.santu_add_stock.open(r, {
+					after: () => {
+						this._render_rows();
+						santu_add_stock.refresh(b.items, { after: () => this._render_rows() });
+					},
+				});
 			});
 			// A real dropdown right in the row (2026-09-03 direct request,
 			// repeatedly: "item ki unit me dropdown daal do, sare jagah").
@@ -435,11 +476,15 @@ window.santu_estimate_page = {
 				this._persist_soon();
 				this._render_rows();
 			});
-			$tr.find(".c-name").on("click", (e) => {
+			// Bound to the NAME span, not the whole cell -- the cell also holds
+			// the "Available: N" line now, and editing the cell would swallow it.
+			$tr.find(".c-name .santu-bill-editable").on("click", (e) => {
 				e.stopPropagation();
 				b.selected_row = r.id;
+				const was = r.item_name;
 				this._inline_edit($(e.currentTarget), "text", r.item_name, (v) => {
 					r.item_name = (v || "").trim() || r.item_name;
+					window.santu_tick_to_master.push_name(r, was);
 				});
 			});
 			$tr.find(".santu-bill-qty-val").on("click", (e) => {
@@ -474,9 +519,10 @@ window.santu_estimate_page = {
 			$tb.append($tr);
 		});
 		this._render_totals();
-		// Newly added rows land at the bottom; bring the selected one back into
-		// view so the operator sees it go in without scrolling.
-		window.santu_scroll_row_into_view(this.$root);
+		// Sirf naya (ya abhi badla hua) row hi view me laaya jaata hai. Har
+		// render par scroll karna galat hai -- qty/rate badalne par bhi list
+		// hilne lagti hai. Billing bhi yahi karta hai.
+		if (reveal_row_id) window.santu_scroll_row_into_view(this.$root, { row_id: reveal_row_id });
 	},
 
 	_inline_edit($cell, type, current, apply) {
@@ -551,10 +597,15 @@ window.santu_estimate_page = {
 	// ---------- items ----------
 	_search(q) {
 		const $dd = this.$root.find(".santu-bill-dropdown");
+		// "5x tee" / "5* tee" -> 5 tee (santu_qty_prefix.js)
+		const parsed = santu_qty.split(q);
+		this._pending_qty = parsed.qty;
+		if (parsed.qty) q = parsed.text;
 		if (!q || q.length < 2) return $dd.hide().empty();
 		santu_sale_invoice.api.search_items(q).then((res) => {
 			const rows = res.results || res || [];
 			$dd.empty();
+			if (parsed.qty) $dd.append(santu_qty.hint_html(parsed.qty, "santu-bill-dd-row"));
 			rows.forEach((it) => {
 				$(`
 					<div class="santu-bill-dd-row ${santu_item_dd_class(it.item_code, it.item_name)}">
@@ -770,30 +821,48 @@ window.santu_estimate_page = {
 	},
 
 	_add_item(item_code) {
+		// "5x tee" typed in search -> 5, else 1 (santu_qty_prefix.js)
+		const add_qty = santu_qty.take(this);
 		const b = this._bill();
 		this.$root.find(".santu-bill-dropdown").hide().empty();
-		this.$root.find(".santu-bill-search").val("").focus();
-		santu_sale_invoice.api.item_row(b.customer, item_code, this.init_data.warehouse, 1).then((row) => {
+		// preventScroll: focusing the search box used to yank the page back up
+		// to it while the new row was scrolling into view -- the two fought and
+		// the screen jumped up and down (2026-09-21). The box still takes the
+		// keyboard, it just does not drag the view along.
+		const $sb = this.$root.find(".santu-bill-search").val("");
+		if ($sb[0]) $sb[0].focus({ preventScroll: true });
+		santu_sale_invoice.api.item_row(b.customer, item_code, this.init_data.warehouse, add_qty).then((row) => {
 			const existing = b.items.find((r) => r.item_code === item_code);
 			if (existing) {
-				existing.qty += 1;
+				existing.qty += add_qty;
+				// Backfill for lines saved before Estimate carried this --
+				// otherwise an old draft never shows "Available: N".
+				if (existing.available_qty == null) existing.available_qty = row.available_qty;
+				b.selected_row = existing.id;
 				this._persist_soon();
-				this._render_rows();
+				// Wahi item dobara scan hua to uski qty badhi -- wo row bhi
+				// dikhni chahiye, warna lagta hai kuch hua hi nahi.
+				this._render_rows({ reveal_row_id: existing.id });
 				return;
 			}
 			b.items.push({
 				id: santu_sale_invoice.utils.uid(),
 				item_code: row.item_code || item_code,
 				item_name: row.item_name || item_code,
-				qty: 1,
+				qty: add_qty,
 				uom: row.uom || row.stock_uom,
 				uom_options: [row.uom, row.stock_uom].filter((v, i, a) => v && a.indexOf(v) === i),
 				rate: row.price_list_rate || row.rate || 0,
 				discount: 0,
+				// Billing has carried this all along; Estimate dropped it, so the
+				// "Available: N" line (and the tap-to-add-stock behind it) had
+				// nothing to show (2026-09-25).
+				available_qty: row.available_qty,
 			});
 			b.selected_row = b.items[b.items.length - 1].id;
 			this._persist_soon();
-			this._render_rows();
+			// Naya row apne aap dikhe -- niche se dhoondhna na pade.
+			this._render_rows({ reveal_row_id: b.selected_row });
 		});
 	},
 
@@ -920,7 +989,7 @@ window.santu_estimate_page = {
 			rows.forEach((c) => {
 				const $row = $(`
 					<div class="santu-bill-cust-row">
-						<span>${frappe.utils.escape_html(c.customer_name)}</span>
+						<span class="santu-bill-cust-namecol"><span class="santu-bill-cust-name">${frappe.utils.escape_html(c.customer_name)}</span>${c.santu_village ? `<span class="santu-bill-cust-village">${frappe.utils.escape_html(c.santu_village)}</span>` : ""}</span>
 						<span class="santu-bill-cust-phone">${frappe.utils.escape_html(c.mobile_no || "—")}</span>
 						<button type="button" class="santu-bill-cust-edit" title="${__("Edit customer")}">✏️</button>
 					</div>
@@ -937,24 +1006,12 @@ window.santu_estimate_page = {
 			$dd.show();
 		};
 
-		if (!q || q.length < 2) {
-			draw([]);
-			return;
-		}
-		Promise.all([
-			santu_sale_invoice.api.search_customers(q),
-			santu_sale_invoice.api.search_customers_by_phone(q),
-		]).then(([by_name, by_phone]) => {
-			const rows = by_name || [];
-			const seen = new Set(rows.map((r) => r.name));
-			(by_phone || []).forEach((r) => {
-				if (!seen.has(r.name)) {
-					seen.add(r.name);
-					rows.push(r);
-				}
-			});
-			draw(rows);
-		});
+		// Khaali box par bhi poori list (haal ke grahak upar) -- Billing me ye
+		// pehle se tha, baaki screens par nahi (2026-09-23 report).
+		santu_sale_invoice.api
+			.list_customers_for_picker(q)
+			.then((rows) => draw(rows || []))
+			.catch(() => draw([]));
 	},
 
 	// Renders right inside the existing customer dropdown, in the empty
@@ -1132,14 +1189,13 @@ window.santu_estimate_page = {
 		request
 			.then((r) => {
 				frappe.dom.unfreeze();
-				frappe.show_alert({ message: __("Saved {0}", [r.name]), indicator: "green" });
-				if (opts.print) {
-					if (typeof santu_print_thermal_bill === "function") {
-						santu_print_thermal_bill("Quotation", r.name);
-					}
-				} else if (window.santu_whatsapp_share) {
-					window.santu_whatsapp_share.send_transaction("Quotation", r.name);
-				}
+				window.santu_save_buttons ? santu_save_buttons.saved_alert("Quotation", r) : frappe.show_alert({ message: __("Saved"), indicator: "green" });
+				// Plain Save does neither now -- printing and WhatsApp are
+				// their own buttons, and pressing one IS the confirmation
+				// (2026-09-07: "no extra confirmation or popup required").
+				santu_save_buttons.after_save("Quotation", r.name, opts.after, {
+					has_party: !!b.customer,
+				});
 				this.tabs = this.tabs.filter((x) => x.id !== b.id);
 				if (!this.tabs.length) this._new_est(false);
 				this.active_id = this.tabs[0].id;
@@ -1175,8 +1231,7 @@ window.santu_estimate_page = {
 			e.stopPropagation();
 			$r.find(".santu-bill-more-menu").toggle();
 		});
-		$r.find(".santu-bill-save").on("click", () => this._save());
-		$r.find(".santu-bill-print-est").on("click", () => this._save({ print: true }));
+		santu_save_buttons.bind($r, (after) => this._save({ after }));
 
 		$(document).off("click.santu-est").on("click.santu-est", (e) => {
 			// The list now covers the whole item area, so getting OUT of it

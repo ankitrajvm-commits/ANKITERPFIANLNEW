@@ -60,25 +60,30 @@ def connect():
 
 
 def _sync_wa_from_bridge(st: dict):
-	wa = frappe.get_single("Santu WhatsApp Settings")
+	# Called on every QR/status poll. It used to .save() the whole Single each
+	# time, even with nothing changed, and collided with other Single writes
+	# (1020 on tabsingles, BUG-20260913-01029). Now only real changes are
+	# written, through the retrying helper.
+	from santu_hardware.santu_hardware.singles_write import set_single_fields
+
+	# The bridge is the LIVE shop's WhatsApp (one per Mac). A test copy of the
+	# site reading its status must not switch its own WhatsApp back on.
+	if getattr(frappe.local, "site", None) != "site1.local":
+		return
 	state = (st.get("state") or "").upper()
+	v = {}
 	if state == "CONNECTED":
-		wa.enabled = 1
-		wa.connect_state = "CONNECTED"
-		wa.connection_status = "Connected"
-		wa.display_phone_number = st.get("phone") or wa.display_phone_number
-		wa.last_test_error = ""
+		v = {"enabled": 1, "connect_state": "CONNECTED", "connection_status": "Connected", "last_test_error": ""}
+		if st.get("phone"):
+			v["display_phone_number"] = st.get("phone")
 	elif state == "QR":
-		wa.connect_state = "CONNECTING"
-		wa.connection_status = "Not Connected"
+		v = {"connect_state": "CONNECTING", "connection_status": "Not Connected"}
 	elif state in ("CONNECTING", "RECONNECTING"):
-		wa.connect_state = state
+		v = {"connect_state": state}
 	elif state == "ERROR":
-		wa.connect_state = "ERROR"
-		wa.connection_status = "Failed"
-		wa.last_test_error = (st.get("error") or "")[:500]
-	wa.save(ignore_permissions=True)
-	frappe.db.commit()
+		v = {"connect_state": "ERROR", "connection_status": "Failed", "last_test_error": (st.get("error") or "")[:500]}
+	if v:
+		set_single_fields("Santu WhatsApp Settings", v)
 
 
 @frappe.whitelist()
@@ -221,7 +226,7 @@ def send_customer_khata(customer: str, from_date: str = None, to_date: str = Non
 		frappe.throw("No WhatsApp number for this customer.")
 	pdf_bytes, filename, data = _customer_khata_pdf_bytes(customer, from_date, to_date)
 	body = custom_message or (
-		f"Khata Statement — {data['customer_name']}\n"
+		f"Account Statement — {data['customer_name']}\n"
 		f"{data['from_date']} to {data['to_date']}\n"
 		f"Opening: Rs. {data['opening_balance']:.2f}  |  Closing: Rs. {data['closing_balance']:.2f}\n\n"
 		f"Santu Hardware"
@@ -251,7 +256,7 @@ def send_supplier_khata(supplier: str, from_date: str = None, to_date: str = Non
 		frappe.throw("Is mahajan ka WhatsApp number nahi mila. Parties screen mein number add karo.")
 	pdf_bytes, filename, data = _supplier_khata_pdf_bytes(supplier, from_date, to_date)
 	body = custom_message or (
-		f"Khata Statement — {data['supplier_name']}\n"
+		f"Account Statement — {data['supplier_name']}\n"
 		f"{data['from_date']} to {data['to_date']}\n"
 		f"Opening: Rs. {data['opening_balance']:.2f}  |  Closing: Rs. {data['closing_balance']:.2f}\n\n"
 		f"Santu Hardware"

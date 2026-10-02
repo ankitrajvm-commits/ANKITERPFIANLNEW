@@ -780,9 +780,23 @@ body[data-route="santu-sale-invoice"] .page-content {
    width, and without this the table widened the whole page instead. */
 .santu-si2-table-scroll {
 	overflow-x: auto;
+	scrollbar-width: thin;
 }
+/* Same reason as Billing: an invisible macOS scrollbar makes a scrollable
+   table look stuck. */
+.santu-si2-table-scroll::-webkit-scrollbar { height: 11px; }
+.santu-si2-table-scroll::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 6px; }
+.santu-si2-table-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; border: 2px solid #f1f5f9; }
+.santu-si2-table-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+/* Sticky, for the same reason Billing's scan bar is (2026-09-21): adding an
+   item scrolls the new row into view, and without this the search box goes off
+   the top so the next item means scrolling back up. */
 .santu-si2-item-search-wrap {
-	padding: 12px 0 0;
+	padding: 12px 0 6px;
+	position: sticky;
+	top: 0;
+	z-index: 30;
+	background: #ffffff;
 }
 .santu-si2-item-search {
 	width: 100%;
@@ -1700,3 +1714,13 @@ body[data-route="santu-sale-invoice"] .page-content {
 .santu-si2-cost-toggle.is-on .santu-si2-ico {
 	filter: brightness(0) invert(1);
 }
+
+/* FULL names on the si2 screens (Sales Order, Delivery Challan, View
+   Invoice) -- 2026-09-10. A name with no spaces could not break, so it
+   widened the item table and pushed the customer card to 716px inside a
+   360px box. overflow-wrap:anywhere lets it wrap; min-width:0 lets the
+   flex child inside the card shrink so it wraps instead of overflowing. */
+.santu-si2-item-name { overflow-wrap: anywhere; word-break: break-word; }
+.santu-si2-table td.santu-si2-col-item { min-width: 180px; }
+.santu-si2-cust-name > span:first-child { min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+.santu-si2-cust-sub { overflow-wrap: anywhere; word-break: break-word; }

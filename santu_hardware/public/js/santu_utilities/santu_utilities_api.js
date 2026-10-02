@@ -29,8 +29,11 @@ santu_utilities.api = {
 	importItemsValid(rows) {
 		return frappe.xcall(`${UTILITIES_API}.import_items_valid`, { rows });
 	},
-	getBulkItems(mode, search, page, page_size) {
-		return frappe.xcall(`${UTILITIES_API}.get_bulk_items`, { mode, search, page, page_size });
+	getBulkItems(mode, search, page, page_size, search_by, brand) {
+		return frappe.xcall(`${UTILITIES_API}.get_bulk_items`, { mode, search, page, page_size, search_by, brand });
+	},
+	getBulkItemBrands() {
+		return frappe.xcall(`${UTILITIES_API}.get_bulk_item_brands`);
 	},
 	bulkUpdateItems(updates) {
 		return frappe.xcall(`${UTILITIES_API}.bulk_update_items`, { updates });

@@ -126,17 +126,21 @@ class SantuRecycleBin {
 		const $c = this.$root.find(".santu-rb-list-container");
 		if (!this.documents.length) $c.html(`<div class="santu-rb-empty"><div class="santu-rb-empty-text">Loading…</div></div>`);
 
-		frappe.db
-			.get_list("Deleted Document", {
-				fields: ["name", "deleted_doctype", "deleted_name", "creation", "owner"],
-				filters: this._filters(),
-				limit: this.limit + 1, // one extra tells us whether there is more
-				order_by: "creation desc",
+		// Goes through our own endpoint, not frappe.db.get_list, because both
+		// readable columns live inside the archived JSON: the bill NUMBER
+		// (the SINV docname must never be shown) and the party name
+		// (2026-09-08: "recycle bin me customer name v likhe harek me").
+		frappe
+			.xcall("santu_hardware.santu_hardware.utilities_api.get_recycle_bin_documents", {
+				doctype_filter: this.$root.find("#santu-rb-doctype-filter").val() || null,
+				doctypes: JSON.stringify(SANTU_RB_TYPES.map(([dt]) => dt)),
+				search: (this.$root.find(".santu-rb-search").val() || "").trim() || null,
+				limit: this.limit,
 			})
-			.then((records) => {
+			.then((res) => {
 				this.loading = false;
-				this.has_more = records.length > this.limit;
-				this.documents = records.slice(0, this.limit);
+				this.has_more = !!(res && res.has_more);
+				this.documents = (res && res.rows) || [];
 				this.render_list();
 			})
 			.catch((e) => {
@@ -169,6 +173,7 @@ class SantuRecycleBin {
 				<thead>
 					<tr>
 						<th>Document</th>
+						<th>Customer / Party</th>
 						<th>Type</th>
 						<th>Deleted On</th>
 						<th>Deleted By</th>
@@ -184,12 +189,19 @@ class SantuRecycleBin {
 			// customer name can legitimately contain & or quotes. owner and
 			// deleted_name are also guarded against being empty, which used
 			// to throw on `.charAt(0)` and blank the whole table.
-			const docname = frappe.utils.escape_html(d.deleted_name || "(unnamed)");
+			// `label` is the shop's own bill number (never the SINV docname)
+			// and `party` is whose document it was — both dug out of the
+			// archived JSON server-side, since the document itself is gone.
+			const docname = frappe.utils.escape_html(d.label || d.deleted_name || "(unnamed)");
+			const party = d.party
+				? frappe.utils.escape_html(d.party)
+				: `<span style="color:#9ca3af;">—</span>`;
 			const owner = d.owner || "—";
 			const initial = frappe.utils.escape_html((owner[0] || "?").toUpperCase());
 			html += `
 				<tr>
 					<td><div class="santu-rb-docname">${docname}</div></td>
+					<td><div class="santu-rb-party">${party}</div></td>
 					<td><span class="santu-rb-doctype">${frappe.utils.escape_html(label_for(d.deleted_doctype))}</span></td>
 					<td><div class="santu-rb-date">${frappe.datetime.str_to_user(d.creation)}</div></td>
 					<td>

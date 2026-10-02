@@ -1,0 +1,113 @@
+{
+ "suite": "api_matrix",
+ "site": "scratch.local",
+ "started": "2026-09-19 15:33:15.521197",
+ "gate": {
+  "functional_failures": 0,
+  "invariant_failures": 0,
+  "test_residue": 0,
+  "production_side_effects": 0
+ },
+ "verdict": "SAFE",
+ "rows": [
+  {
+   "section": "0. INVENTORY",
+   "name": "whitelisted santu functions found",
+   "expected": "true",
+   "actual": "true",
+   "result": "PASS",
+   "evidence": "286 functions, 9 allow_guest",
+   "db_impact": ""
+  },
+  {
+   "section": "0. INVENTORY",
+   "name": "test copy server reachable and logged in as the test user",
+   "expected": "claude.test@santuhardware.local",
+   "actual": "claude.test@santuhardware.local",
+   "result": "PASS",
+   "evidence": "HTTP 200",
+   "db_impact": ""
+  },
+  {
+   "section": "A. UNAUTHORIZED (no login)",
+   "name": "every non-guest API refuses a caller who is not logged in",
+   "expected": "[]",
+   "actual": "[]",
+   "result": "PASS",
+   "evidence": "277 checked",
+   "db_impact": ""
+  },
+  {
+   "section": "A. UNAUTHORIZED (no login)",
+   "name": "allow_guest APIs (listed for review)",
+   "expected": "true",
+   "actual": "true",
+   "result": "PASS",
+   "evidence": "[\"santu_hardware.santu_hardware.api.app_lock_device_login\", \"santu_hardware.santu_hardware.api.app_lock_device_register\", \"santu_hardware.santu_hardware.api.app_lock_device_status\", \"santu_hardware.santu_hardware.api.app_lock_touch_id_login_finish\", \"santu_hardware.santu_hardware.api.app_lock_touch_id_login_options\", \"santu_hardware.santu_hardware.api.check_app_lock_pin\", \"santu_hardware.santu_hardware.api.get_app_lock_status\", \"santu_hardware.santu_hardware.api.pin_login\", \"santu_hardware.santu_hardware.transaction_message_api.whatsapp_webhook\"]",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "calls without their required arguments get Frappe's standard refusal (info)",
+   "expected": "true",
+   "actual": "true",
+   "result": "PASS",
+   "evidence": "71 such calls -- screens always send them",
+   "db_impact": ""
+  },
+  {
+   "section": "B. EMPTY / INVALID / WRONG TYPE (logged in, read-only APIs)",
+   "name": "no API crashes on empty, invalid or wrong-type input",
+   "expected": "[]",
+   "actual": "[]",
+   "result": "PASS",
+   "evidence": "136 APIs x 3 inputs",
+   "db_impact": ""
+  },
+  {
+   "section": "C. VALID / DUPLICATE / CONCURRENT (read-only, no-argument getters)",
+   "name": "no-argument getters answer without crashing (valid call)",
+   "expected": "[]",
+   "actual": "[]",
+   "result": "PASS",
+   "evidence": "49 getters",
+   "db_impact": ""
+  },
+  {
+   "section": "C. VALID / DUPLICATE / CONCURRENT (read-only, no-argument getters)",
+   "name": "same getter twice + 4 at once -> same answer every time",
+   "expected": "[]",
+   "actual": "[]",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "GATES",
+   "name": "DATA ISOLATION: no real record created / changed / deleted",
+   "expected": "no difference",
+   "actual": "no difference",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "GATES",
+   "name": "TEST RESIDUE: nothing of the test user left behind",
+   "expected": "{}",
+   "actual": "{}",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  },
+  {
+   "section": "GATES",
+   "name": "PRODUCTION SIDE-EFFECTS: printer / WhatsApp / counters untouched",
+   "expected": "{}",
+   "actual": "{}",
+   "result": "PASS",
+   "evidence": "",
+   "db_impact": ""
+  }
+ ]
+}

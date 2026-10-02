@@ -387,9 +387,24 @@ async function load_parties($list, search, filter, on_select, auto_select_first,
 		// own dues stay a distinct amber rather than sharing the red, so the
 		// two directions can never be mistaken for each other.
 		const tone = dir.settled ? "" : dir.owes_you ? "danger" : "warning";
+		// Phone and village under the name. Four Aman Singhs are one name in
+		// a list and four different people at the counter; the list has to
+		// say which is which without opening each one (2026-09-06 request).
+		// Phone first — it is what a shopkeeper actually recognises someone
+		// by — then the village, joined by a thin separator so a missing one
+		// never leaves a dangling dot.
+		const meta = [row.mobile_no, row.address].filter(Boolean);
+		const meta_html = meta.length
+			? `<div class="santu-parties-row-meta">${meta
+					.map((m) => `<span>${frappe.utils.escape_html(m)}</span>`)
+					.join('<i class="santu-parties-row-dot"></i>')}</div>`
+			: "";
 		const $row = $(`
-			<div class="santu-parties-row" role="button" tabindex="0" data-party="${frappe.utils.escape_html(row.party)}">
-				<span class="santu-parties-row-name">${frappe.utils.escape_html(row.party_name)}</span>
+			<div class="santu-parties-row ${meta_html ? "has-meta" : ""}" role="button" tabindex="0" data-party="${frappe.utils.escape_html(row.party)}">
+				<div class="santu-parties-row-main">
+					<div class="santu-parties-row-name">${frappe.utils.escape_html(row.party_name)}</div>
+					${meta_html}
+				</div>
 				<span class="santu-parties-row-amount santu-figures ${tone ? "santu-tone-" + tone : ""}">${format_currency_plain(dir.amount)}</span>
 			</div>
 		`)
@@ -424,10 +439,37 @@ function _balance_direction(row) {
 	};
 }
 
+// Payment In / Payment Out — the same shared collect-payment screen every
+// other entry point in the app already opens (Customer Dues, Sale/Purchase
+// pages, the topbar mega-menu), just reachable from a party's own Parties
+// panel too (2026-09-06 direct request: "parties ke harek customer me
+// payment in payment out daal do"). Direction is fixed by party_type, not
+// by who currently owes whom — a Customer is always Payment In (Receive), a
+// Supplier always Payment Out (Pay), exactly what create_payment_entry
+// itself enforces server-side, same as the sidebar's own Payment-In/
+// Payment-Out entries. Shown for EVERY party, settled or not: a shop
+// collecting an advance from a customer who owes nothing yet is a normal
+// counter moment, not an edge case to hide the button for.
+function _payment_btn(row) {
+	const is_supplier = row.party_type === "Supplier";
+	const label = is_supplier ? __("Payment Out") : __("Payment In");
+	return `
+		<button type="button" class="santu-parties-payment-btn" title="${label}">
+			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+			${label}
+		</button>
+	`;
+}
+
 function _balance_line(row) {
 	const { amount, owes_you, settled } = _balance_direction(row);
 	if (settled) {
-		return `<div class="santu-parties-balance santu-parties-balance-clear">All settled — nothing pending</div>`;
+		return `
+			<div class="santu-parties-balance santu-parties-balance-clear">
+				<span>All settled — nothing pending</span>
+				${_payment_btn(row)}
+			</div>
+		`;
 	}
 	const reminder_btn = owes_you ? `
 		<button type="button" class="santu-parties-send-reminder-btn" title="${__("Send WhatsApp Reminder")}">
@@ -441,7 +483,10 @@ function _balance_line(row) {
 				<span class="santu-parties-balance-label">${owes_you ? "Owes you" : "You owe"}</span>
 				<span class="santu-parties-balance-amount santu-figures">₹ ${format_currency_plain(amount)}</span>
 			</div>
-			${reminder_btn}
+			<div class="santu-parties-balance-actions">
+				${reminder_btn}
+				${_payment_btn(row)}
+			</div>
 		</div>
 	`;
 }
@@ -463,20 +508,50 @@ function info_col(icon, label, value) {
 // and shows them as one running account with a balance after each row,
 // the same shape a paper khata page already has. Date range defaults to
 // the last 12 months, same window the WhatsApp statement has always used.
-function open_party_khata_dialog(row) {
+async function open_party_khata_dialog(row) {
 	const is_supplier = row.party_type === "Supplier";
+	// The khata starts on this party's FIRST bill or payment. It used to
+	// default to twelve months back, so a customer whose first sale was last
+	// week got a statement starting last September with nothing in it
+	// (2026-09-06: "jab se saman jaye 1st sale tab se khata bill hoga naa").
+	//
+	// Fetched BEFORE the dialog is built rather than filled in afterwards:
+	// setting a Date field's value on an open dialog pops its calendar open
+	// over the statement, and Print / WhatsApp / Download read this range
+	// too, so it has to be right from the first paint.
+	const first = await frappe
+		.xcall("santu_hardware.santu_hardware.api.party_first_transaction_date", {
+			party_type: row.party_type,
+			party: row.party,
+		})
+		.catch(() => null);
 	const state = {
-		from_date: frappe.datetime.add_months(frappe.datetime.get_today(), -12),
+		from_date: first || frappe.datetime.get_today(),
 		to_date: frappe.datetime.get_today(),
+		// Off by default — the full item-by-item breakdown is what a
+		// statement has always printed. Compact is something to switch ON
+		// for a party with a lot of history, not the new normal (2026-09-06
+		// direct request: "isme ek compact version v bana do").
+		compact: 0,
 	};
 
 	const d = new frappe.ui.Dialog({
-		title: __("Khata — {0}", [row.party_name]),
+		title: __("Account Statement — {0}", [row.party_name]),
 		size: "extra-large",
 		fields: [
-			{ fieldtype: "Date", fieldname: "from_date", label: __("From"), default: state.from_date },
+			{ fieldtype: "Date", fieldname: "from_date", label: __("From (pehli sale se)"), default: state.from_date },
 			{ fieldtype: "Column Break" },
 			{ fieldtype: "Date", fieldname: "to_date", label: __("To"), default: state.to_date },
+			{ fieldtype: "Column Break" },
+			// Only the PRINT (thermal roll) reads this — the on-screen table
+			// above and the A4 Download PDF have room enough that a compact
+			// mode buys them nothing, so it never touches those paths.
+			{
+				fieldtype: "Check",
+				fieldname: "compact_print",
+				label: __("Compact print (no item list, less paper)"),
+				default: 0,
+			},
 			{ fieldtype: "Section Break" },
 			{ fieldtype: "HTML", fieldname: "khata_html", options: `<div class="santu-khata-loading">${__("Loading…")}</div>` },
 		],
@@ -651,6 +726,11 @@ function open_party_khata_dialog(row) {
 		state.to_date = d.get_value("to_date");
 		render_khata();
 	});
+	// Only affects Print — the on-screen table never changes, so no
+	// render_khata() call here.
+	d.fields_dict.compact_print.$input.on("change", () => {
+		state.compact = d.get_value("compact_print") ? 1 : 0;
+	});
 
 	// Print and WhatsApp, alongside Download PDF — a Dialog only has one
 	// built-in primary/secondary pair, so these two are appended to the
@@ -659,10 +739,10 @@ function open_party_khata_dialog(row) {
 	const $print_btn = $(`<button type="button" class="btn btn-default">${__("Print")}</button>`);
 	$print_btn.on("click", async () => {
 		try {
-			frappe.dom.freeze(__("Printing Thermal Khata…"));
+			frappe.dom.freeze(__("Printing Account Statement…"));
 			// Raced against a timeout: the server call talks to the thermal
 			// printer, and a printer that is off or busy never answers — the
-			// screen then sat frozen on "Printing Thermal Khata…" with no way
+			// screen then sat frozen on "Printing Account Statement…" with no way
 			// out (2026-08-29). After 8s we stop waiting and fall through to
 			// the browser print below, which always works.
 			const res = await Promise.race([
@@ -670,7 +750,7 @@ function open_party_khata_dialog(row) {
 					is_supplier
 						? "santu_hardware.santu_hardware.print_service.print_supplier_khata"
 						: "santu_hardware.santu_hardware.print_service.print_customer_khata",
-					khata_args()
+					{ ...khata_args(), compact: state.compact }
 				),
 				new Promise((_, reject) =>
 					setTimeout(() => reject(new Error("thermal-print-timeout")), 8000)
@@ -697,7 +777,7 @@ function open_party_khata_dialog(row) {
 				is_supplier
 					? "santu_hardware.santu_hardware.api.get_supplier_khata_print_html"
 					: "santu_hardware.santu_hardware.api.get_customer_khata_print_html",
-				khata_args()
+				{ ...khata_args(), compact: state.compact }
 			)
 			.then((html) => {
 				w.document.open();
@@ -708,7 +788,7 @@ function open_party_khata_dialog(row) {
 			})
 			.catch((err) => {
 				w.document.open();
-				w.document.write(`<p style="font-family:sans-serif;padding:24px;color:#c0392b;">${frappe.utils.escape_html(err.message || String(err))}</p>`);
+				w.document.write(`<p style="font-family:sans-serif;padding:24px;color:#c0392b;">${frappe.utils.escape_html((err && err.message) || String(err))}</p>`);
 				w.document.close();
 			});
 	});
@@ -734,7 +814,7 @@ function open_party_khata_dialog(row) {
 							frappe.msgprint({ title: __("Could not send"), message: frappe.utils.escape_html(r.error || ""), indicator: "red" });
 							return;
 						}
-						frappe.show_alert({ message: __("Khata sent on WhatsApp"), indicator: "green" });
+						frappe.show_alert({ message: __("Account Statement sent on WhatsApp"), indicator: "green" });
 					})
 					.catch(() => frappe.dom.unfreeze());
 			});
@@ -793,7 +873,7 @@ async function load_party_detail($detail, row) {
 					<input type="text" class="santu-parties-txn-search" placeholder="Search">
 					<button type="button" class="santu-parties-icon-btn santu-parties-txn-search-btn" title="Search">${SANTU_PARTIES_SEARCH_ICON}</button>
 					<button type="button" class="santu-parties-icon-btn santu-parties-txn-print-btn" title="Print">${SANTU_PARTIES_PRINT_ICON}</button>
-					<button type="button" class="santu-parties-khata-btn" title="${__("Poora chalta khata dekho — date range chuno, download karo")}">${__("Khata")}</button>
+					<button type="button" class="santu-parties-khata-btn" title="${__("Poora chalta account dekho — date range chuno, download karo")}">${__("Account")}</button>
 				</div>
 			</div>
 			<div class="santu-parties-bills"></div>
@@ -900,6 +980,19 @@ async function load_party_detail($detail, row) {
 
 	$detail.find(".santu-parties-whatsapp-btn").on("click", open_wa_reminder);
 	$detail.find(".santu-parties-send-reminder-btn").on("click", open_wa_reminder);
+	$detail.find(".santu-parties-payment-btn").on("click", () => {
+		window.santu_open_collect_payment({
+			party_type: row.party_type,
+			party: row.party,
+			// Only worth prefilling when it is actually THIS party owing —
+			// a "You owe" balance is a credit sitting the other way, which
+			// Payment In/Out (always Receive-for-Customer / Pay-for-
+			// Supplier) cannot record, so there is no sane amount to hand
+			// over in that case; the collect-payment screen's own blank
+			// field is exactly right there.
+			amount: _balance_direction(row).owes_you ? _balance_direction(row).amount : null,
+		});
+	});
 	// Edit/Delete live behind a kebab menu: the bare red trash sitting next to
 	// the party name read as a hazard on every single view, and it is a rarely
 	// used action.
@@ -972,6 +1065,7 @@ async function load_party_detail($detail, row) {
 	$detail.find(".santu-parties-khata-btn").on("click", () => open_party_khata_dialog(row));
 
 	const $bills = $detail.find(".santu-parties-bills");
+	const is_supplier_party = row.party_type === "Supplier";
 
 	if (!bills.length) {
 		$bills.append(
@@ -983,7 +1077,14 @@ async function load_party_detail($detail, row) {
 	const $table = $(`
 		<table class="santu-parties-table">
 			<thead>
-				<tr><th>Type</th><th>Number</th><th>Date</th><th class="num">Total</th><th class="num">Balance</th></tr>
+				<tr>
+					<th>${__("Type")}</th>
+					<th>${__("Number")}</th>
+					<th>${__("Date")}</th>
+					<th class="num">${is_supplier_party ? __("Debit (Purchase)") : __("Debit (Sale)")}</th>
+					<th class="num">${__("Credit (Paid)")}</th>
+					<th class="num">${__("Balance")}</th>
+				</tr>
 			</thead>
 			<tbody></tbody>
 		</table>
@@ -991,20 +1092,26 @@ async function load_party_detail($detail, row) {
 	const $tbody = $table.find("tbody");
 
 	bills.forEach((b) => {
-		// Shows the shop's own running Bill No (100, 101 ... same number
-		// printed on the thermal slip), not the document ID (SINV-26-00254) —
-		// that ID means nothing to an operator; the Bill No is what they'd
-		// actually search or ask a customer for (2026-08-23 direct request).
-		// Falls back to the document name when there's no santu_bill_no
-		// (Purchase Invoice rows, or a Sales/POS Invoice that predates the
-		// counter).
+		// Every ledger movement, not just sales (2026-09-23): a sale and a
+		// purchase sit in the Debit column, a payment or a return in Credit,
+		// and the Balance column carries the running total after that row --
+		// the same three columns the khata dialog already uses, so the panel
+		// and the full account read the same way.
+		//
+		// Number still shows the shop's own running Bill No (100, 101 ... the
+		// number printed on the thermal slip), never the document ID
+		// (SINV-26-00254), which means nothing to an operator.
+		const debit = Number(b.debit) || 0;
+		const credit = Number(b.credit) || 0;
+		const note = b.note ? ` <span class="santu-parties-txn-note">${frappe.utils.escape_html(b.note)}</span>` : "";
 		$(`
 			<tr class="santu-parties-bill-row">
-				<td>${frappe.utils.escape_html(b.type)}</td>
+				<td>${frappe.utils.escape_html(b.type)}${note}</td>
 				<td>${frappe.utils.escape_html(b.display_number || santu_bill_label(b.santu_bill_no))}</td>
 				<td>${frappe.datetime.str_to_user(b.posting_date)}</td>
-				<td class="num">₹ ${format_currency_plain(b.grand_total)}</td>
-				<td class="num">${b.outstanding_amount > 0 ? "₹ " + format_currency_plain(b.outstanding_amount) : "-"}</td>
+				<td class="num">${debit ? "₹ " + format_currency_plain(debit) : "-"}</td>
+				<td class="num">${credit ? "₹ " + format_currency_plain(credit) : "-"}</td>
+				<td class="num">₹ ${format_currency_plain(Math.abs(Number(b.balance_after) || 0))}</td>
 			</tr>
 		`)
 			.on("click", () => window.santu_open_invoice_view(b.doctype, b.name))

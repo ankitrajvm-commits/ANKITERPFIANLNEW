@@ -29,6 +29,14 @@ santu_sale.transactions = {
 				if (!r.message) return;
 				frappe.route_options = { prefill: r.message, source_doctype: source_doctype };
 				frappe.set_route("santu-billing");
+				// on_page_show does not fire when Desk is already on this
+				// route, and the screen's own init only reads the handoff
+				// once -- so claim it directly if it is still sitting there.
+				setTimeout(() => {
+					if (window.santu_billing_page && santu_billing_page.consume_prefill) {
+						santu_billing_page.consume_prefill();
+					}
+				}, 400);
 			},
 		});
 	},
@@ -145,7 +153,10 @@ santu_sale.transactions = {
 				<tr class="santu-sale-txn-row">
 					<td>${frappe.datetime.str_to_user(t.posting_date)}</td>
 					<td class="santu-sale-inv-no">${frappe.utils.escape_html(t.invoice_no)}</td>
-					<td>${frappe.utils.escape_html(t.party_name || "—")}</td>
+					<td class="santu-sale-party-cell">
+						<div class="santu-sale-party-name" title="${frappe.utils.escape_html(t.party_name || "")}">${frappe.utils.escape_html(t.party_name || "—")}</div>
+						${t.party_name ? `<div class="santu-sale-party-meta" data-customer="${frappe.utils.escape_html(t.party_name)}"></div>` : ""}
+					</td>
 					<td>${frappe.utils.escape_html(t.transaction)}</td>
 					<td>${frappe.utils.escape_html(t.payment_type || "—")}</td>
 					<td class="num santu-figures">${u.format_money(t.amount)}</td>
@@ -173,7 +184,51 @@ santu_sale.transactions = {
 			$row.appendTo($tbody);
 		});
 
+		if (!is_quotation && !is_payment_in) this._fill_party_meta($tbody);
 		return $header;
+	},
+
+	// Address + phone under each party name (2026-09-10 request), the SAME
+	// way Billing (POS) shows it under the picked customer
+	// (santu_billing.js _render_customer_info): same endpoint
+	// (santu_sale_invoice.api.customer_details -> get_customer_details_for_sale,
+	// which reads Customer.mobile_no and the primary Address's line1 --
+	// never Address.city, which holds the party name here), same
+	// "address · phone" join, same fallback text.
+	//
+	// One request per CUSTOMER, not per row, and remembered across
+	// re-renders/filter changes -- a list of 50 bills for 12 people makes 12
+	// calls once, not 50 every time the date range changes.
+	_party_meta_cache: {},
+	_fill_party_meta($tbody) {
+		if (!window.santu_sale_invoice || !santu_sale_invoice.api || !santu_sale_invoice.api.customer_details) return;
+		const cache = this._party_meta_cache;
+		const $slots = $tbody.find(".santu-sale-party-meta");
+		const customers = [...new Set($slots.map((i, el) => $(el).attr("data-customer")).get().filter(Boolean))];
+		customers.forEach((customer) => {
+			if (!cache[customer]) {
+				cache[customer] = santu_sale_invoice.api.customer_details(customer).catch(() => {
+					delete cache[customer]; // let a later render retry a hiccup
+					return null;
+				});
+			}
+			cache[customer].then((d) => {
+				const $mine = $slots.filter((i, el) => $(el).attr("data-customer") === customer);
+				if (!d || !d.name) {
+					$mine.remove();
+					return;
+				}
+				const bits = [d.address, d.mobile_no].filter(Boolean);
+				// Both lines are cut with "…" to keep the row 56px; the full
+				// address/phone stays readable on hover.
+				$mine.attr("title", bits.join(" · "));
+				$mine.html(
+					bits.length
+						? frappe.utils.escape_html(bits.join(" · "))
+						: `<span class="santu-sale-party-meta-empty">${__("No phone/address on file")}</span>`
+				);
+			});
+		});
 	},
 
 	_quotation_status_class(status) {
@@ -336,7 +391,24 @@ santu_sale.transactions = {
 					action: () => {
 						this._convert_via_mapped_doc(
 							"erpnext.selling.doctype.sales_order.sales_order.make_sales_invoice",
-							doc_name
+							doc_name,
+							"Sales Order"
+						);
+					},
+				});
+			}
+			// Challan ka bill banana -- dukaan isi rasta se chalti hai (maal
+			// pehle jata hai, bill baad me). Ye option tha hi nahi, sirf
+			// Sales Order ka tha jo yahan istemal hi nahi hota
+			// (2026-10-01 report).
+			if (t.doctype === "Delivery Note") {
+				items.splice(2, 0, {
+					label: __("Bill Banao"),
+					action: () => {
+						this._convert_via_mapped_doc(
+							"erpnext.stock.doctype.delivery_note.delivery_note.make_sales_invoice",
+							doc_name,
+							"Delivery Note"
 						);
 					},
 				});

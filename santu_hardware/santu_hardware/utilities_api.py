@@ -12,7 +12,23 @@ import frappe
 from frappe import _
 from frappe.utils import cint, flt, getdate, now_datetime, today
 
-from santu_hardware.santu_hardware.api import default_selling_warehouse
+from santu_hardware.santu_hardware.api import default_selling_warehouse, force_overwrite_item_unit
+
+
+def _ensure_brand_exists(brand_name):
+	"""A Brand is a plain Link field on Item -- an Excel sheet with a brand
+	nobody has typed into this shop before used to blow up the whole row
+	with "Could not find Brand: XYZ" (silently swallowed into `failed[]`,
+	so the item just never imported, with no obvious reason why). Same
+	auto-create convention Item screens already use for a new Brand/Category
+	typed on the fly (see EDITABLE_ITEM_FIELDS in api.py) -- a typo becomes a
+	new Brand row, not an import failure (2026-09-07 bug report: "brand
+	error for new brand in excel").
+	"""
+	brand_name = (brand_name or "").strip()
+	if brand_name and not frappe.db.exists("Brand", brand_name):
+		frappe.get_doc({"doctype": "Brand", "brand": brand_name}).insert(ignore_permissions=True)
+	return brand_name or None
 
 ITEM_IMPORT_FIELDS = {
 	"item_name": "Item Name",
@@ -212,6 +228,14 @@ def parse_items_import_file_from_pdf(file_url: str):
 	if not extracted_items:
 		frappe.throw("Is PDF me koi item list ya rate card identify nahi ho paya.")
 
+	# Label every line against the shop's own catalogue before it reaches the
+	# screen, so an item that already exists is not imported a second time
+	# under a slightly different spelling (2026-09-05). Only labels — nothing
+	# is merged or created here.
+	from santu_hardware.santu_hardware.item_matcher import match_extracted_items
+
+	extracted_items = match_extracted_items(extracted_items)
+
 	headers = ["Item Name", "HSN Code", "Stock Unit (UOM)", "Purchase Price", "Selling Price (MRP)", "Item Code", "Opening Stock"]
 	rows = [
 		{
@@ -355,10 +379,12 @@ def import_items_valid(rows: str):
 					if data.get(key) not in (None, ""):
 						existing.set(field, flt(data.get(key)))
 						touched = True
-				for field, key in (("brand", "brand"), ("description", "description")):
-					if data.get(key):
-						existing.set(field, data.get(key))
-						touched = True
+				if data.get("brand"):
+					existing.brand = _ensure_brand_exists(data.get("brand"))
+					touched = True
+				if data.get("description"):
+					existing.description = data.get("description")
+					touched = True
 				hsn = data.get("hsn_code") or data.get("gst_hsn_code")
 				if hsn:
 					existing.gst_hsn_code = hsn
@@ -379,7 +405,7 @@ def import_items_valid(rows: str):
 			item.stock_uom = data.get("stock_uom") or "Nos"
 			item.is_stock_item = 1
 			if data.get("brand"):
-				item.brand = data.get("brand")
+				item.brand = _ensure_brand_exists(data.get("brand"))
 			if data.get("hsn_code") or data.get("gst_hsn_code"):
 				item.gst_hsn_code = data.get("hsn_code") or data.get("gst_hsn_code")
 			if data.get("description"):
@@ -418,26 +444,55 @@ def import_items_valid(rows: str):
 
 
 @frappe.whitelist()
-def get_bulk_items(mode: str = "pricing", search: str = None, page: int = 1, page_size: int = 50):
+def get_bulk_item_brands():
+	"""Distinct brands actually in use, for the bulk-update screen's Brand
+	filter dropdown (2026-09-07 direct request: "search by brand, search by
+	name" -- the free-text box already matched brand as one of several
+	fields; this gives an explicit "browse this one brand" filter instead of
+	relying on typing the brand name into a blended search)."""
+	_require_manager()
+	return frappe.get_all(
+		"Item", filters={"disabled": 0, "brand": ["is", "set"]},
+		distinct=True, order_by="brand asc", pluck="brand",
+	)
+
+
+@frappe.whitelist()
+def get_bulk_items(mode: str = "pricing", search: str = None, page: int = 1, page_size: int = 50, search_by: str = None, brand: str = None):
+	"""`search_by` narrows the free-text box to one field ("name" or
+	"brand") instead of the blended name/code/hsn/brand match; `brand` is a
+	separate exact-match dropdown filter, usable together with a name
+	search (2026-09-07 direct request, Update Items In Bulk: "search by
+	brand, search by name")."""
 	_require_manager()
 	page, page_size = cint(page) or 1, min(cint(page_size) or 50, 500)
 	filters = {"disabled": 0}
+	if brand:
+		filters["brand"] = brand
 	or_filters = None
 	if search:
 		like = f"%{search}%"
-		or_filters = [
-			["item_name", "like", like],
-			["item_code", "like", like],
-			["gst_hsn_code", "like", like],
-			["brand", "like", like],
-		]
+		if search_by == "name":
+			or_filters = [["item_name", "like", like], ["item_code", "like", like]]
+		elif search_by == "brand":
+			or_filters = [["brand", "like", like]]
+		else:
+			or_filters = [
+				["item_name", "like", like],
+				["item_code", "like", like],
+				["gst_hsn_code", "like", like],
+				["brand", "like", like],
+			]
+	if or_filters:
+		brand_clause = "AND brand = %(brand)s" if brand else ""
+		field_clause = {
+			"name": "(item_name LIKE %(s)s OR item_code LIKE %(s)s)",
+			"brand": "(brand LIKE %(s)s)",
+		}.get(search_by, "(item_name LIKE %(s)s OR item_code LIKE %(s)s OR gst_hsn_code LIKE %(s)s OR brand LIKE %(s)s)")
 		total = frappe.db.sql(
-			"""SELECT COUNT(*) FROM `tabItem`
-			WHERE disabled = 0 AND (
-				item_name LIKE %(s)s OR item_code LIKE %(s)s
-				OR gst_hsn_code LIKE %(s)s OR brand LIKE %(s)s
-			)""",
-			{"s": like},
+			f"""SELECT COUNT(*) FROM `tabItem`
+			WHERE disabled = 0 {brand_clause} AND {field_clause}""",
+			{"s": like, "brand": brand},
 		)[0][0]
 	else:
 		total = frappe.db.count("Item", filters=filters)
@@ -448,6 +503,7 @@ def get_bulk_items(mode: str = "pricing", search: str = None, page: int = 1, pag
 		fields=[
 			"name", "item_name", "item_code", "item_group", "brand", "gst_hsn_code",
 			"standard_rate", "valuation_rate", "stock_uom", "description", "is_stock_item",
+			"custom_no_reward_points",
 		],
 		order_by="item_name asc",
 		limit_start=(page - 1) * page_size,
@@ -603,10 +659,21 @@ def bulk_update_items(updates: str):
 	for u in updates:
 		try:
 			name = u.get("name")
-			fields = u.get("fields") or {}
+			fields = dict(u.get("fields") or {})
 			if not name or not frappe.db.exists("Item", name):
 				failed.append({"name": name, "error": "Not found"})
 				continue
+			# Unit is a plain overwrite (2026-09-07 direct request: "update
+			# item in bulk se v unit change ho jaye") — same rule the POS
+			# billing row's tick and Stock Summary use, not a generic
+			# doc.set(): that path also rewrites the item's uoms table and
+			# Bin.stock_uom, which a bare field assignment would miss.
+			new_uom = fields.pop("stock_uom", None)
+			if new_uom:
+				unit_result = force_overwrite_item_unit(name, new_uom)
+				if unit_result.get("unit_error"):
+					failed.append({"name": name, "error": unit_result["unit_error"]})
+					continue
 			doc = frappe.get_doc("Item", name)
 			for k, v in fields.items():
 				if k == "barcode" and v:
@@ -689,7 +756,9 @@ def import_parties(rows: str, party_type: str = "Customer"):
 @frappe.whitelist()
 def export_items_file(filters: str = None):
 	_require_manager()
-	filters = frappe.parse_json(filters) if isinstance(filters, str) else (filters or {})
+	from santu_hardware.santu_hardware.api import _json_arg
+
+	filters = _json_arg(filters) or {}
 	item_filters = {"disabled": 0}
 	if filters.get("item_group"):
 		item_filters["item_group"] = filters.get("item_group")
@@ -699,16 +768,66 @@ def export_items_file(filters: str = None):
 	items = frappe.get_all(
 		"Item",
 		filters=item_filters,
-		fields=["name", "item_name", "item_code", "item_group", "brand", "gst_hsn_code", "standard_rate", "valuation_rate", "stock_uom", "description"],
+		fields=[
+			"name", "item_name", "item_code", "item_group", "brand", "gst_hsn_code",
+			"standard_rate", "valuation_rate", "custom_mrp", "min_order_qty", "stock_uom", "description",
+		],
 		order_by="item_name asc",
 		limit_page_length=0,
 	)
-	headers = ["Item Name", "Item Code", "Item Group", "Brand", "HSN", "Sale Price", "Purchase Price", "UOM", "Stock", "Barcode", "Description"]
+
+	# Selling price does NOT live on Item.standard_rate in this app -- the tick,
+	# Stock Summary and Update Items In Bulk all write Item Price (Standard
+	# Selling). Reading the Item field exported a blank for 624 of 817 items
+	# (2026-09-25). Cost is worse: Item.valuation_rate is 0 on EVERY item here,
+	# because real cost is the weighted average on Bin. Both are now read from
+	# where the app actually keeps them, with the old fields as a last resort.
+	sell_price, buy_price = {}, {}
+	for r in frappe.db.sql(
+		"""select item_code, price_list, price_list_rate from `tabItem Price`
+		   where price_list in ('Standard Selling','Standard Buying')""",
+		as_dict=True,
+	):
+		(sell_price if r.price_list == "Standard Selling" else buy_price)[r.item_code] = flt(r.price_list_rate)
+
+	bin_qty, bin_val = {}, {}
+	for r in frappe.db.sql(
+		"""select item_code, sum(actual_qty) qty,
+		          sum(stock_value) / nullif(sum(actual_qty), 0) val
+		   from `tabBin` group by item_code""",
+		as_dict=True,
+	):
+		bin_qty[r.item_code] = flt(r.qty)
+		if r.val:
+			bin_val[r.item_code] = flt(r.val)
+
+	barcodes = {}
+	for r in frappe.db.sql("""select parent, barcode from `tabItem Barcode`""", as_dict=True):
+		barcodes.setdefault(r.parent, r.barcode)
+
+	# Header wording matches ITEM_IMPORT_FIELDS so an exported sheet can be
+	# edited and imported straight back. "Stock" is deliberately NOT called
+	# "Opening Stock": that label makes the importer post a Material Receipt
+	# for a newly created item, which would double the shop's stock.
+	headers = [
+		"Item Name", "Item Code", "Item Group", "Brand", "HSN Code", "Description",
+		"Selling Price", "Purchase Price", "MRP", "Stock UOM", "Stock", "Minimum Stock", "Barcode",
+	]
 	rows = [headers]
 	for it in items:
-		barcode = frappe.db.get_value("Item Barcode", {"parent": it.name}, "barcode") or ""
-		qty = frappe.db.sql("SELECT SUM(actual_qty) FROM `tabBin` WHERE item_code = %s", it.name)[0][0] or 0
-		rows.append([it.item_name, it.item_code, it.item_group, it.brand or "", it.gst_hsn_code or "", it.standard_rate, it.valuation_rate, it.stock_uom, qty, barcode, it.description or ""])
+		sell = sell_price.get(it.name)
+		if sell is None:
+			sell = flt(it.standard_rate)
+		cost = bin_val.get(it.name)
+		if cost is None:
+			cost = buy_price.get(it.name)
+		if cost is None:
+			cost = flt(it.valuation_rate)
+		rows.append([
+			it.item_name, it.item_code, it.item_group, it.brand or "", it.gst_hsn_code or "",
+			it.description or "", sell, cost, flt(it.custom_mrp), it.stock_uom,
+			bin_qty.get(it.name, 0), flt(it.min_order_qty), barcodes.get(it.name, ""),
+		])
 
 	from frappe.utils.xlsxutils import make_xlsx
 	from frappe.utils.file_manager import save_file
@@ -898,8 +1017,20 @@ def get_data_audit():
 		"""SELECT item_code, warehouse, actual_qty FROM `tabBin` WHERE actual_qty < 0 LIMIT 50""",
 		as_dict=True,
 	)
+	# Warning, never Error (2026-09-25). Negative stock here is not corruption:
+	# the shop sells off the shelf and enters the purchase later, and Stock
+	# Settings has Allow Negative Stock on for exactly that reason. Traced on
+	# MALHOTRA-PIPE-1-2MM: 70 sold on 2026-05-19 with nothing on file, 100
+	# received on 2026-08-26, sold back under zero after. Flagging that red
+	# made a healthy shop read "Needs Attention" every single day.
 	for b in neg_stock:
-		issues.append({"category": "Stock", "severity": "Error", "record": f"{b.item_code} @ {b.warehouse}", "description": f"Negative stock ({b.actual_qty})", "fix": "Review Required"})
+		issues.append({
+			"category": "Stock",
+			"severity": "Warning",
+			"record": f"{b.item_code} @ {b.warehouse}",
+			"description": f"Stock minus me hai ({b.actual_qty}) — maal aaya par chadha nahi",
+			"fix": "Bill me item ke neeche 'Available' pe dabakar stock chadha do",
+		})
 
 	dup_gstin = frappe.db.sql(
 		"""SELECT gstin, COUNT(*) c FROM `tabCustomer` WHERE gstin IS NOT NULL AND gstin != '' GROUP BY gstin HAVING c > 1""",
@@ -938,14 +1069,24 @@ def get_fiscal_year_checklist():
 	checks = []
 	checks.append({"label": "No draft sales invoices", "ok": frappe.db.count("Sales Invoice", {"docstatus": 0}) == 0, "detail": f"{frappe.db.count('Sales Invoice', {'docstatus': 0})} draft"})
 	checks.append({"label": "No draft purchase invoices", "ok": frappe.db.count("Purchase Invoice", {"docstatus": 0}) == 0, "detail": f"{frappe.db.count('Purchase Invoice', {'docstatus': 0})} draft"})
+	# Udhaar is INFORMATION, not a blocker. A hardware shop always carries
+	# outstanding into the next year -- gating on "outstanding == 0" meant the
+	# Proceed button could never light up (₹72,523 outstanding on 2026-09-25,
+	# and it is supposed to be there). These two lines are shown to be read,
+	# not passed.
 	cust_out = frappe.db.sql("""SELECT SUM(outstanding_amount) FROM `tabSales Invoice` WHERE docstatus=1 AND outstanding_amount > 0""")[0][0] or 0
-	checks.append({"label": "Customer outstanding reviewed", "ok": flt(cust_out) == 0, "detail": f"₹ {flt(cust_out):,.2f} outstanding"})
+	checks.append({"label": "Customer udhaar (agle saal chalega)", "ok": True, "kind": "info", "detail": f"₹ {flt(cust_out):,.2f} baaki"})
 	sup_out = frappe.db.sql("""SELECT SUM(outstanding_amount) FROM `tabPurchase Invoice` WHERE docstatus=1 AND outstanding_amount > 0""")[0][0] or 0
-	checks.append({"label": "Supplier outstanding reviewed", "ok": flt(sup_out) == 0, "detail": f"₹ {flt(sup_out):,.2f} outstanding"})
+	checks.append({"label": "Supplier ka baaki (agle saal chalega)", "ok": True, "kind": "info", "detail": f"₹ {flt(sup_out):,.2f} baaki"})
 	neg = frappe.db.count("Bin", {"actual_qty": ["<", 0]})
 	checks.append({"label": "No negative stock", "ok": neg == 0, "detail": f"{neg} negative bins"})
 
-	all_ok = all(c["ok"] for c in checks[:3])  # strict on drafts + stock
+	# The old gate was `checks[:3]` with the comment "strict on drafts + stock"
+	# -- but the first three are the two draft checks plus CUSTOMER OUTSTANDING,
+	# so it gated on udhaar and skipped negative stock entirely, the exact
+	# opposite of what it says. Gate on what the shop can actually clear.
+	gate_labels = {"No draft sales invoices", "No draft purchase invoices", "No negative stock"}
+	all_ok = all(c["ok"] for c in checks if c["label"] in gate_labels)
 	return {"fiscal_year": fy, "checks": checks, "can_close": all_ok, "company": company}
 
 
@@ -1121,6 +1262,84 @@ def _deleted_doc_label(doctype: str, docname: str, data: str = None) -> str:
 			bill_no = None
 		return _("Bill {0}").format(bill_label(bill_no))
 	return docname
+
+
+def _deleted_doc_party(data: str = None) -> str:
+	"""Whose document was this — the name the shop would recognise.
+
+	Read out of the archived JSON, because the document itself is gone. A
+	bill number alone does not tell the shop what they are looking at
+	(2026-09-08 request: "recycle bin me customer name v likhe harek me");
+	the party name is what makes a row identifiable at a glance.
+	"""
+	import json as _json
+
+	try:
+		doc = _json.loads(data or "{}") or {}
+	except Exception:
+		return ""
+	# customer_name / supplier_name hold the readable form; customer / party
+	# hold the id. Item and other doctypes fall back to their own title.
+	for key in ("customer_name", "supplier_name", "party_name", "customer",
+	            "supplier", "party", "item_name", "title"):
+		val = doc.get(key)
+		if val and str(val).strip():
+			return str(val).strip()
+	return ""
+
+
+@frappe.whitelist()
+def get_recycle_bin_documents(doctype_filter: str = None, doctypes: str = None,
+                              search: str = None, limit: int = 50, start: int = 0):
+	"""Recycle Bin ki list — har row par padhne layak naam.
+
+	Built server-side rather than reading Deleted Document straight from the
+	browser, because both readable columns have to come out of the archived
+	JSON: the bill NUMBER (never the SINV docname — see api.bill_label) and
+	the party name. Sending every row's full JSON to the browser to do that
+	there would ship the whole deleted document, which is far heavier and
+	puts data on screen that nothing needs.
+	"""
+	frappe.only_for("System Manager")
+	limit = min(cint(limit) or 50, 200)
+	start = cint(start) or 0
+
+	conds = ["restored = 0"]
+	params = {}
+	if doctype_filter:
+		conds.append("deleted_doctype = %(dt)s")
+		params["dt"] = doctype_filter
+	else:
+		# Only the kinds the screen actually offers — the log also holds
+		# child rows and internal records nobody would ever restore by hand.
+		allowed = frappe.parse_json(doctypes) if doctypes else None
+		if allowed:
+			conds.append("deleted_doctype in %(dts)s")
+			params["dts"] = tuple(allowed)
+	rows = frappe.db.sql(
+		f"""select name, deleted_doctype, deleted_name, creation, owner, data
+		from `tabDeleted Document` where {' and '.join(conds)}
+		order by creation desc limit %(lim)s offset %(off)s""",
+		dict(params, lim=limit + 1, off=start),
+		as_dict=True,
+	)
+
+	out = []
+	q = (search or "").strip().lower()
+	for r in rows:
+		label = _deleted_doc_label(r.deleted_doctype, r.deleted_name, r.data)
+		party = _deleted_doc_party(r.data)
+		if q and q not in label.lower() and q not in party.lower() and q not in (r.deleted_name or "").lower():
+			continue
+		out.append({
+			"name": r.name,
+			"deleted_doctype": r.deleted_doctype,
+			"label": label,
+			"party": party,
+			"creation": str(r.creation),
+			"owner": r.owner,
+		})
+	return {"rows": out[:limit], "has_more": len(rows) > limit}
 
 
 @frappe.whitelist()

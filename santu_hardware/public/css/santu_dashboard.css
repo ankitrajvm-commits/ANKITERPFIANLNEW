@@ -448,6 +448,37 @@ body[data-route="santu-dashboard"] .page-body,
 	color: #0f172a;
 	line-height: normal;
 }
+/* Low-stock widget: a number and two chips, not a link to go and find out
+   (2026-09-05). The chips reuse the Items screen's critical red so the same
+   fact looks the same wherever it appears. */
+.santu-dash-w-unit {
+	font-size: 13px;
+	font-weight: 600;
+	color: #64748b;
+}
+.santu-dash-w-subline {
+	margin-top: 6px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+.santu-dash-w-chip {
+	display: inline-block;
+	padding: 2px 8px;
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.02em;
+}
+.santu-dash-w-chip.is-critical {
+	background: #fee2e2;
+	color: #b91c1c;
+}
+.santu-dash-w-chip.is-out {
+	background: #e2e8f0;
+	color: #334155;
+}
+
 .santu-dash-w-remove {
 	position: absolute;
 	right: 16px;

@@ -9,7 +9,7 @@ santu_txn_msg.views = {
 			else if (view === "history") await this.render_history($wrap);
 			else await this.render_message($wrap);
 		} catch (e) {
-			$wrap.html(`<div class="santu-txn-msg-error">${frappe.utils.escape_html(e.message || "Failed to load")}</div>`);
+			$wrap.html(`<div class="santu-txn-msg-error">${frappe.utils.escape_html((e && e.message) || "Failed to load")}</div>`);
 		}
 	},
 

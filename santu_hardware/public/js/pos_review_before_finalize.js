@@ -124,7 +124,7 @@
 			frappe.dom.unfreeze();
 			frappe.msgprint({
 				title: __("Couldn't Save Bill"),
-				message: err.message || String(err),
+				message: (err && err.message) || String(err),
 				indicator: "red",
 			});
 			return;
@@ -173,7 +173,7 @@
 					d.enable_primary_action();
 					frappe.msgprint({
 						title: __("Couldn't Complete Sale"),
-						message: err.message || String(err),
+						message: (err && err.message) || String(err),
 						indicator: "red",
 					});
 				}

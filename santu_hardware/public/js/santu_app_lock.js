@@ -53,6 +53,7 @@
 					maxlength="8" class="santu-applock-input" placeholder="••••">
 				<div class="santu-applock-error"></div>
 				<button type="button" class="santu-applock-btn">Unlock</button>
+				<button type="button" class="santu-applock-fp" style="display:none;">&#128070; Fingerprint se kholo</button>
 			</div>
 		`;
 		document.body.appendChild(overlay);
@@ -97,18 +98,38 @@
 		// Try the fingerprint first, same as /santu_unlock — a re-lock
 		// (via "Lock App") should feel exactly as fast to get back into as
 		// the very first unlock did. Falls straight through to the PIN box
-		// on any cancel/failure/not-set-up.
-		(async () => {
-			if (window.santu_app_lock_webauthn && santu_app_lock_webauthn.available()) {
-				const ok = await santu_app_lock_webauthn.tryLogin();
-				if (ok) {
-					mark_unlocked();
-					overlay.remove();
-					reveal();
-					return;
-				}
+		// on any cancel/failure/not-set-up, and the BUTTON stays on screen so
+		// a dismissed Touch ID sheet can be tried again without reloading
+		// (2026-09-05: with no button, a cancelled prompt meant PIN only).
+		const $fp = overlay.querySelector(".santu-applock-fp");
+
+		async function try_fingerprint() {
+			$fp.disabled = true;
+			const ok = await santu_app_lock_webauthn.tryLogin();
+			$fp.disabled = false;
+			if (ok) {
+				mark_unlocked();
+				overlay.remove();
+				reveal();
+				return true;
 			}
 			$input.focus();
+			return false;
+		}
+
+		(async () => {
+			if (!window.santu_app_lock_webauthn) {
+				$input.focus();
+				return;
+			}
+			const fp = await santu_app_lock_webauthn.availability();
+			if (!(fp.mode && fp.enrolled)) {
+				$input.focus();
+				return;
+			}
+			$fp.style.display = "block";
+			$fp.addEventListener("click", try_fingerprint);
+			await try_fingerprint();
 		})();
 	}
 
