@@ -10,7 +10,7 @@ from datetime import datetime
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt, getdate, now_datetime, today
+from frappe.utils import cint, flt, getdate, now_datetime, nowtime, today
 
 from santu_hardware.santu_hardware.api import default_selling_warehouse, force_overwrite_item_unit
 
@@ -1239,6 +1239,77 @@ def get_data_audit():
 	return {
 		"summary": {"passed": passed, "warnings": warnings, "errors": errors, "health": "Good" if errors == 0 else "Needs Attention"},
 		"issues": issues,
+	}
+
+
+@frappe.whitelist()
+def get_negative_stock():
+	"""Every item sitting below zero, for the Verify My Data screen."""
+	_require_manager()
+	rows = frappe.db.sql(
+		"""SELECT b.item_code, b.warehouse, b.actual_qty, i.item_name
+		   FROM `tabBin` b LEFT JOIN `tabItem` i ON i.name = b.item_code
+		   WHERE b.actual_qty < 0 ORDER BY b.actual_qty ASC""",
+		as_dict=True,
+	)
+	return {"rows": rows, "count": len(rows), "total_qty": sum(flt(r.actual_qty) for r in rows)}
+
+
+@frappe.whitelist()
+def fix_negative_stock():
+	"""Bring every below-zero item up to zero, through the stock ledger.
+
+	The shop sells off the shelf and enters the purchase later, so an item can
+	read minus until the bill is keyed in. Once the shop decides the count is
+	simply wrong, this writes ONE Stock Reconciliation setting those items to
+	0 (2026-10-02 request: "jo item qty minus me ho use 0 kr de").
+
+	A real stock document on purpose -- Bin is only the running total of the
+	ledger, so editing Bin directly would be overwritten by the next repost
+	and would leave the accounts out of step with the stock. The
+	reconciliation is a normal document: it is listed, it can be cancelled,
+	and it says who did it and when.
+	"""
+	_require_manager()
+	rows = frappe.db.sql(
+		"""SELECT item_code, warehouse, actual_qty FROM `tabBin` WHERE actual_qty < 0""",
+		as_dict=True,
+	)
+	if not rows:
+		return {"fixed": 0, "entry": None, "message": _("Koi bhi item minus me nahi hai.")}
+
+	company = frappe.defaults.get_user_default("Company")
+	doc = frappe.new_doc("Stock Reconciliation")
+	doc.company = company
+	doc.purpose = "Stock Reconciliation"
+	doc.posting_date = today()
+	doc.posting_time = nowtime()
+
+	for b in rows:
+		# A valuation rate is required for a line that is being INCREASED, and
+		# every one of these is (from minus to zero). Fall back through the
+		# item's own last known cost rather than letting ERPNext throw.
+		rate = (
+			frappe.db.get_value("Item Price", {"item_code": b.item_code, "price_list": "Standard Buying"}, "price_list_rate")
+			or frappe.db.get_value("Item", b.item_code, "valuation_rate")
+			or frappe.db.get_value("Item", b.item_code, "last_purchase_rate")
+			or frappe.db.get_value("Item Price", {"item_code": b.item_code, "price_list": "Standard Selling"}, "price_list_rate")
+			or 0
+		)
+		doc.append("items", {
+			"item_code": b.item_code,
+			"warehouse": b.warehouse,
+			"qty": 0,
+			"valuation_rate": flt(rate),
+		})
+
+	doc.insert(ignore_permissions=True)
+	doc.submit()
+	frappe.db.commit()
+	return {
+		"fixed": len(rows),
+		"entry": doc.name,
+		"message": _("{0} item ka stock 0 kar diya gaya.").format(len(rows)),
 	}
 
 

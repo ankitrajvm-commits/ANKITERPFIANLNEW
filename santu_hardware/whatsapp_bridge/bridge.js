@@ -2,7 +2,13 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-// Baileys 6.17 exports makeWASocket as a NAMED export; the default export
+// The package is plain `baileys` now, not @whiskeysockets/baileys. The old
+// name's last real publish was 6.17.16 in March 2025, and its inflated
+// version number meant "^6.17.16" could never pick up the maintained 6.7.x
+// line either -- the shop was pinned to a dead branch and npm update did
+// nothing (found 2026-10-02, with WhatsApp logged out).
+//
+// Baileys exports makeWASocket as a NAMED export; the default export
 // became a namespace object. Importing it as the default made
 // `makeWASocket({...})` a call on an object — the bridge would have crashed
 // on connect. Named import works on both 6.7 and 6.17.
@@ -14,7 +20,7 @@ import {
 	fetchLatestWaWebVersion,
 	makeCacheableSignalKeyStore,
 	Browsers,
-} from "@whiskeysockets/baileys";
+} from "baileys";
 import QRCode from "qrcode";
 import pino from "pino";
 

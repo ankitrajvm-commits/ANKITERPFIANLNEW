@@ -1313,3 +1313,34 @@
 .santu-challan-print:hover { background: #eff6ff; }
 .santu-challan-wa { border-color: #16a34a !important; color: #16a34a; }
 .santu-challan-wa:hover { background: #f0fdf4; }
+
+/* "WhatsApp band hai -- file save kar lijiye" (2026-10-02). The shop's way
+   out when the unofficial WhatsApp link breaks: same PDF, sent by hand. */
+.santu-wa-saved-file {
+	font-weight: 600;
+	font-size: 15px;
+	margin-bottom: 8px;
+	word-break: break-word;
+}
+.santu-wa-saved p {
+	color: #4b5563;
+	margin-bottom: 10px;
+}
+.santu-wa-saved-msg {
+	width: 100%;
+	border: 1px solid #e5e7eb;
+	border-radius: 6px;
+	padding: 8px;
+	font-size: 13px;
+	resize: vertical;
+}
+.santu-wa-copy {
+	margin-top: 10px;
+	background: #fff;
+	color: #2563eb;
+	border: 1px solid #2563eb;
+	padding: 7px 14px;
+	border-radius: 6px;
+	font-weight: 500;
+	cursor: pointer;
+}
