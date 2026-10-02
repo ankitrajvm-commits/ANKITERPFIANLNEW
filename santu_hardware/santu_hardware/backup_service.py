@@ -8,6 +8,7 @@ import os
 from datetime import datetime, timedelta
 
 import frappe
+from frappe import _
 from frappe.utils import cint, get_datetime, get_files_path, get_site_path, now_datetime
 from frappe.utils.backups import get_backup_path, new_backup
 
@@ -221,6 +222,13 @@ def _create_site_backup(backup_type: str, include_files: bool, location: str):
 				},
 			)
 
+		# Frappe has a retention of its own -- System Settings backup_limit,
+		# default 3 -- and its hourly `delete_downloadable_backups` job
+		# enforces it on the same folder. It was quietly winning: 384 backups
+		# read "Success" on the shop's screen while only the last two still
+		# had a file on disk (found 2026-10-02). Keeping the two numbers in
+		# step is what makes this app's retention real.
+		_sync_frappe_backup_limit(cint(settings.retention_count) or 10)
 		_cleanup_old_backups(cint(settings.retention_count) or 10)
 		frappe.db.commit()
 
@@ -270,6 +278,31 @@ def compute_next_backup_time(settings=None):
 	return candidate
 
 
+def _sync_frappe_backup_limit(retention: int):
+	"""Tell Frappe to keep as many backup FILES as this app promises.
+
+	Both counts cover the same folder, and Frappe's hourly cleanup job runs
+	whether or not this app's own trim does -- so a retention set here that
+	Frappe does not know about is a promise the shop cannot collect on.
+	Snapshots live in the same folder, so they are counted in too.
+	"""
+	wanted = cint(retention) + SNAPSHOT_RETENTION
+	try:
+		current = cint(frappe.get_system_settings("backup_limit"))
+	except Exception:
+		current = 0
+	if current == wanted:
+		return
+	try:
+		# db_set, not a full save: System Settings is a Single, and saving one
+		# from a long-running job collides on tabSingles (see singles_write).
+		frappe.db.set_single_value("System Settings", "backup_limit", wanted)
+		frappe.clear_cache()
+	except Exception:
+		# Retention is housekeeping -- never let it fail a good backup.
+		frappe.log_error(title="Santu backup_limit sync failed", message=frappe.get_traceback())
+
+
 def _cleanup_old_backups(retention: int):
 	"""Trim old backups, counting snapshots separately from full backups.
 
@@ -314,6 +347,7 @@ def get_backup_history(limit: int = 50):
 			"error_message",
 			"verified",
 			"verify_note",
+			"database_file",
 		],
 		order_by="creation desc",
 		limit_page_length=limit,
@@ -321,6 +355,20 @@ def get_backup_history(limit: int = 50):
 	for r in rows:
 		r["size_label"] = _format_size(r.get("file_size") or 0)
 		r["date_label"] = frappe.format_value(r.creation, {"fieldtype": "Datetime"})
+		# A row that says "Success" with no file left is a lie the shop would
+		# only discover while trying to restore. Local backups get checked
+		# against the disk; a backup sent to Drive/computer is not ours to
+		# check, so it is left alone.
+		if r.get("location") == "Local Server":
+			r["file_missing"] = not (r.get("database_file") and os.path.isfile(r["database_file"]))
+			if r["file_missing"] and r.get("status") == "Success":
+				r["status"] = "Removed"
+				r["verify_note"] = _(
+					"Purana ho gaya tha, isliye jagah banane ke liye hata diya gaya."
+				)
+		else:
+			r["file_missing"] = False
+		r.pop("database_file", None)
 	return rows
 
 

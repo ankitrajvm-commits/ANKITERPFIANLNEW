@@ -1599,6 +1599,50 @@ def get_recycle_bin_documents(doctype_filter: str = None, doctypes: str = None,
 
 
 @frappe.whitelist()
+def get_recycle_bin_count():
+	"""How much is sitting in the bin, for the empty-it button."""
+	frappe.only_for("System Manager")
+	return {
+		"count": frappe.db.count("Deleted Document", {"restored": 0}),
+		"oldest": frappe.db.sql(
+			"""select min(creation) from `tabDeleted Document` where restored = 0"""
+		)[0][0],
+	}
+
+
+@frappe.whitelist()
+def empty_recycle_bin(names: str = None):
+	"""Throw away the bin's contents for good — only when a person asks.
+
+	NOTHING here ever runs on a timer. Frappe does not auto-clear Deleted
+	Document (it is not in Log Settings and no scheduled job touches it), and
+	nothing added here changes that: the shop's deleted bills stay restorable
+	until somebody deliberately presses the button (2026-10-02 request:
+	"dyaan rhe ki ye auto delete ya erase naa ho").
+
+	This removes the ARCHIVED COPIES only. Live bills, parties and items are
+	untouched -- a row here is a record of something already deleted, so after
+	this it simply can no longer be brought back.
+	"""
+	frappe.only_for("System Manager")
+	selected = frappe.parse_json(names) if isinstance(names, str) else names
+
+	if selected:
+		rows = [
+			r
+			for r in selected
+			if frappe.db.exists("Deleted Document", {"name": r, "restored": 0})
+		]
+	else:
+		rows = frappe.get_all("Deleted Document", filters={"restored": 0}, pluck="name")
+
+	for name in rows:
+		frappe.delete_doc("Deleted Document", name, force=1, ignore_permissions=True)
+	frappe.db.commit()
+	return {"deleted": len(rows), "left": frappe.db.count("Deleted Document", {"restored": 0})}
+
+
+@frappe.whitelist()
 def restore_deleted_document(name: str):
 	import json as _json
 

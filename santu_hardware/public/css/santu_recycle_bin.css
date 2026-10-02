@@ -180,3 +180,14 @@
 	cursor: pointer;
 }
 .santu-rb-more:hover { background: #f5f8fc; }
+
+/* "Bin khali karein" confirmation (2026-10-02). Irreversible, so it reads
+   like it: the count first, then what is and is not affected. */
+.santu-rb-empty-warn p {
+	margin-bottom: 8px;
+	color: #4b5563;
+}
+.santu-rb-empty-warn p b {
+	color: #b91c1c;
+	font-size: 15px;
+}

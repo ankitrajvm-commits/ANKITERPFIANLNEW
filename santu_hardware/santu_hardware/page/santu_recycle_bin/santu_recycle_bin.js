@@ -54,6 +54,16 @@ class SantuRecycleBin {
 			"refresh"
 		);
 
+		// Emptying the bin is a DELIBERATE act and nothing else. Frappe never
+		// clears Deleted Document on its own -- it is not in Log Settings and
+		// no scheduled job touches it -- and nothing here puts it on a timer
+		// (2026-10-02: "dyaan rhe ki ye auto delete ya erase naa ho").
+		this.page.set_secondary_action(
+			"🗑️ Bin khali karein",
+			() => this.confirm_empty(),
+			"trash"
+		);
+
 		this.$root.html(`
 			<div class="santu-rb-main">
 				<div class="santu-rb-header">
@@ -227,6 +237,72 @@ class SantuRecycleBin {
 			html += `<div class="santu-rb-morewrap"><button type="button" class="santu-rb-more">Show more</button></div>`;
 		}
 		$c.html(html);
+	}
+
+	async confirm_empty() {
+		let info;
+		try {
+			info = await frappe.xcall(
+				"santu_hardware.santu_hardware.utilities_api.get_recycle_bin_count"
+			);
+		} catch (e) {
+			frappe.msgprint((e && e.message) || __("Bin ki ginti nahi mili"));
+			return;
+		}
+		if (!info.count) {
+			frappe.msgprint(__("Bin pehle se khali hai."));
+			return;
+		}
+
+		const d = new frappe.ui.Dialog({
+			title: __("Bin khali karein"),
+			fields: [
+				{
+					fieldtype: "HTML",
+					fieldname: "warn",
+					options: `
+						<div class="santu-rb-empty-warn">
+							<p><b>${__("{0} cheezein hamesha ke liye mit jayengi.", [info.count])}</b></p>
+							<p>${__("Ye sirf mitaye hue bill/party/item ki purani copy hai — chalu bill, party aur item ko kuch nahi hota. Lekin iske baad inhe wapas nahi laaya ja sakta.")}</p>
+						</div>`,
+				},
+				{
+					fieldtype: "Check",
+					fieldname: "sure",
+					label: __("Haan, mujhe pata hai — ye wapas nahi aayengi"),
+				},
+			],
+			primary_action_label: __("Hamesha ke liye mitayein"),
+			primary_action: async (values) => {
+				if (!values.sure) {
+					frappe.msgprint(__("Pehle upar wale dabbe par tick karein."));
+					return;
+				}
+				d.hide();
+				frappe.dom.freeze(__("Bin khali ho raha hai…"));
+				try {
+					const r = await frappe.xcall(
+						"santu_hardware.santu_hardware.utilities_api.empty_recycle_bin"
+					);
+					frappe.dom.unfreeze();
+					frappe.show_alert(
+						{ message: __("{0} cheezein mita di gayin", [r.deleted]), indicator: "green" },
+						7
+					);
+					this.limit = SANTU_RB_PAGE;
+					this.load_data();
+				} catch (e) {
+					frappe.dom.unfreeze();
+					frappe.msgprint((e && e.message) || __("Bin khali nahi ho paya"));
+				}
+			},
+		});
+		d.show();
+		// Guard against a stray double-press on an irreversible action.
+		d.get_primary_btn().prop("disabled", true);
+		d.fields_dict.sure.$input.on("change", function () {
+			d.get_primary_btn().prop("disabled", !$(this).is(":checked"));
+		});
 	}
 
 	restore_document(name, docname, doctype) {
