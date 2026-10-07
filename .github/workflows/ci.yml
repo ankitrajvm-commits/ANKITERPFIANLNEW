@@ -77,7 +77,12 @@ jobs:
             ${{ runner.os }}-yarn-
 
       - name: Install MariaDB Client
-        run: sudo apt-get install mariadb-client-10.6
+        # Unversioned on purpose. The pin to mariadb-client-10.6 broke every
+        # run once GitHub's Ubuntu image stopped carrying that exact package
+        # ("Package 'mariadb-client-10.6' has no installation candidate",
+        # 2026-10-07) -- the client only has to speak to the 10.6 service
+        # container above, and any current client does.
+        run: sudo apt-get update && sudo apt-get install -y mariadb-client
 
       - name: Setup
         run: |
