@@ -24,6 +24,16 @@ frappe.pages["santu-purchase-order"].on_page_load = function (wrapper) {
 };
 
 frappe.pages["santu-purchase-order"].on_page_show = function () {
+	// "Edit Purchase Order" on the View Invoice screen hands the document's NAME
+// here. The button has existed since 2026-08-29 but nothing on this
+// screen ever read the option, so pressing it opened a blank one and
+// threw the correction away (found 2026-10-07).
+	const edit_name = frappe.route_options && frappe.route_options.edit_purchase_order;
+	if (edit_name && window.santu_purchase_order_page && santu_purchase_order_page.init_data) {
+		frappe.route_options = null;
+		santu_purchase_order_page._apply_edit(edit_name);
+		return;
+	}
 	if (window.santu_purchase_order_page && santu_purchase_order_page.page) santu_purchase_order_page.render();
 };
 
@@ -45,7 +55,13 @@ window.santu_purchase_order_page = {
 
 		santu_purchase_order.api.init().then((data) => {
 			this.init_data = data;
+			const edit_name = frappe.route_options && frappe.route_options.edit_purchase_order;
+			frappe.route_options = null;
 			this._load_from_storage();
+			if (edit_name) {
+				this._apply_edit(edit_name);
+				return;
+			}
 			if (!this.tabs.length) this._new_tab();
 			this.render();
 		});
@@ -96,6 +112,8 @@ window.santu_purchase_order_page = {
 			terms: "",
 			description: "",
 			saved_order: null,
+			// Set only when this tab corrects an already-submitted order.
+			editing: null,
 		};
 	},
 
@@ -105,6 +123,54 @@ window.santu_purchase_order_page = {
 		if (focus !== false) this.active_id = t.id;
 		this._save_debounced();
 		return t;
+	},
+
+	// Reopen a submitted Purchase Order on this screen with its own rows already
+	// in it, rather than a separate edit form nobody has seen before. Same
+	// shape as the Estimate screen's _apply_edit.
+	_apply_edit(name) {
+		frappe.dom.freeze(__("Purchase Order khol rahe hain…"));
+		frappe
+			.xcall("santu_hardware.santu_hardware.api.get_document_for_edit", {
+				doctype: "Purchase Order",
+				name,
+			})
+			.then((doc) => {
+				frappe.dom.unfreeze();
+				const t = this._new_tab(true);
+				t.supplier = doc.party;
+				t.supplier_details = { name: doc.party, supplier_name: doc.party_label };
+				t.posting_date = doc.posting_date || t.posting_date;
+				t.schedule_date = doc.posting_date || t.schedule_date;
+				t.additional_discount_amount = doc.bill_discount || 0;
+				t.editing = {
+					name: doc.name,
+					santu_bill_no: doc.santu_bill_no,
+					original_total: doc.grand_total,
+				};
+				(doc.items || []).forEach((r) => {
+					t.items.push({
+						id: santu_purchase_invoice.utils.uid(),
+						item_code: r.item_code,
+						item_name: r.item_name || r.item_code,
+						qty: r.qty,
+						uom: r.uom || r.stock_uom,
+						uom_options:
+							r.uom_options && r.uom_options.length
+								? r.uom_options
+								: [{ uom: r.uom, conversion_factor: 1 }],
+						rate: r.rate,
+						// The submitted rate is already net of any discount, so
+						// re-applying one would take it off twice.
+						discount_percentage: 0,
+						discount_amount: 0,
+						available_qty: r.available_qty,
+					});
+				});
+				this._save_debounced();
+				this.render();
+			})
+			.catch(() => frappe.dom.unfreeze());
 	},
 
 	_active_tab() {
@@ -211,6 +277,13 @@ window.santu_purchase_order_page = {
 		const tab = this._active_tab();
 		const $wrap = this.$root.find(".santu-si2-body");
 		$wrap.html(`
+			${
+				// Sudhaar mode -- the counter must never mistake a correction for
+				// a new document. Same banner Billing has shown since 2026-08-27.
+				tab.editing
+					? `<div class="santu-bill-edit-banner">${__("Sudhaar mode")} — ${__("Purchase Order")} <b>${frappe.utils.escape_html(tab.editing.name)}</b> ${__("ko sudhaara ja raha hai. Save karte hi purana cancel hokar naya sahi ban jayega.")}</div>`
+					: ""
+			}
 			<div class="santu-si2-header">
 				<div class="santu-si2-header-title">Purchase Order</div>
 			</div>
@@ -917,8 +990,16 @@ window.santu_purchase_order_page = {
 		};
 
 		frappe.dom.freeze(__("Saving…"));
-		santu_purchase_order.api
-			.save(payload, 1)
+		// Correcting a submitted order amends it: the original is cancelled
+		// and chained to the correction, keeping its number.
+		(tab.editing
+			? frappe.xcall("santu_hardware.santu_hardware.api.edit_submitted_document", {
+					doctype: "Purchase Order",
+					name: tab.editing.name,
+					payload_json: JSON.stringify(payload),
+			  })
+			: santu_purchase_order.api.save(payload, 1)
+		)
 			.then((r) => {
 				frappe.dom.unfreeze();
 				tab.saved_order = r;

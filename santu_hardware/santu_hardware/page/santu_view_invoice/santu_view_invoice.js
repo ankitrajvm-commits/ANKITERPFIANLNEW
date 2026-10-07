@@ -475,6 +475,15 @@ window.santu_view_invoice_page = {
 									: ""
 							}
 							${
+								// Payment Entry has no items table, so it does not go
+								// through SANTU_EDITABLE_DOCS -- the figures that can be
+								// corrected are the amount, mode, date and reference
+								// (2026-10-07 request).
+								(d.doctype === "Payment Entry" && d.docstatus === 1)
+									? `<button type="button" class="santu-si2-btn santu-si2-btn-edit" data-action="edit-payment" title="${__("Amount ya payment mode galat hai? Yahan se sudhaar kar dobara save ho jayega.")}">${__("Edit Payment")}</button>`
+									: ""
+							}
+							${
 								(d.doctype === "Quotation")
 									? `<button type="button" class="santu-si2-btn" data-action="delete-doc" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;font-weight:600;" title="${__("Delete this Estimate")}">${__("Delete Estimate")}</button>`
 									: ""
@@ -514,6 +523,10 @@ window.santu_view_invoice_page = {
 			if (!cfg) return;
 			frappe.route_options = { [cfg.option]: d.name };
 			frappe.set_route(cfg.route);
+		});
+		$body.find('[data-action="edit-payment"]').on("click", () => {
+			frappe.route_options = { edit_payment: d.name };
+			frappe.set_route("santu-payment-entry");
 		});
 		$body.find('[data-action="delete-doc"]').on("click", () => {
 			const display_no = d.display_number || santu_bill_label(d.santu_bill_no);

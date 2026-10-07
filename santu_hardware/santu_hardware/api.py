@@ -9688,6 +9688,83 @@ def _create_payment_entry(
 	}
 
 
+@frappe.whitelist()
+def get_payment_for_edit(name: str):
+	"""A submitted payment, shaped the way the Payment In screen fills a tab.
+
+	Payment Entry has no `items` table, so it cannot go through
+	get_document_for_edit -- the figures the counter can correct are the
+	amount, the mode, the date, the reference and the remark.
+	"""
+	if not frappe.db.exists("Payment Entry", name):
+		frappe.throw(_("{0} not found").format(name))
+	doc = frappe.get_doc("Payment Entry", name)
+	if doc.docstatus != 1:
+		frappe.throw(
+			_("Sirf submit ho chuka payment edit ho sakta hai — {0} abhi {1} hai.").format(
+				name, {0: "draft", 2: "cancelled"}.get(doc.docstatus, "submitted nahi")
+			)
+		)
+	return {
+		"name": doc.name,
+		"party_type": doc.party_type,
+		"party": doc.party,
+		"party_label": frappe.db.get_value(doc.party_type, doc.party, "name") or doc.party,
+		"posting_date": str(doc.posting_date or ""),
+		"mode_of_payment": doc.mode_of_payment,
+		"reference_no": doc.reference_no or "",
+		"remarks": doc.remarks or "",
+		"amount": flt(doc.paid_amount),
+	}
+
+
+@frappe.whitelist()
+def edit_payment_entry(
+	name: str,
+	amount: float,
+	mode_of_payment: str,
+	posting_date: str = None,
+	reference_no: str = None,
+	remarks: str = None,
+):
+	"""Correct a submitted payment by cancel + rebuild, like every other
+	document the shop can reopen (see edit_submitted_document).
+
+	Cancelling first is what puts the money back on the party's balance, so
+	the replacement does not count twice -- and the cancelled original stays
+	in the database as the "before" half of the record. The party and its
+	type are NOT editable here: a payment credited to the wrong party is a
+	different payment, and silently moving money between two parties' khatas
+	from an edit box is not something a counter should be able to do by
+	accident. Delete it and take a fresh one instead.
+	"""
+	if not frappe.db.exists("Payment Entry", name):
+		frappe.throw(_("{0} not found").format(name))
+	old = frappe.get_doc("Payment Entry", name)
+	if old.docstatus != 1:
+		frappe.throw(_("Sirf submit ho chuka payment edit ho sakta hai."))
+
+	amount = flt(amount)
+	if amount <= 0:
+		frappe.throw(_("Enter a valid amount."))
+
+	party_type, party = old.party_type, old.party
+	old.cancel()
+	frappe.db.commit()
+
+	res = _create_payment_entry(
+		party_type=party_type,
+		party=party,
+		amount=amount,
+		mode_of_payment=mode_of_payment or old.mode_of_payment,
+		posting_date=posting_date or str(old.posting_date),
+		reference_no=reference_no,
+		remarks=remarks,
+	)
+	res["replaced"] = name
+	return res
+
+
 def _party_advance_map(party_type: str, company: str = None) -> dict:
 	"""{party: unallocated payment total} for every party in one query.
 

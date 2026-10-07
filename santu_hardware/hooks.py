@@ -228,6 +228,10 @@ app_include_js = _LiveAssets([
 	# Ankit 2026-09-19. Early, so it wraps frappe.msgprint before any screen.
 	f"/assets/santu_hardware/js/santu_hindi_errors.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/santu_qty_prefix.js?v={SANTU_ASSET_VERSION}",
+	# Search over the lines already on a bill/estimate/challan/order/return.
+	# Shared for the same reason qty_prefix is: every item-entry screen needs
+	# it and none of them should carry its own copy.
+	f"/assets/santu_hardware/js/santu_row_filter.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/santu_bill_label.js?v={SANTU_ASSET_VERSION}",
 	# Jaldi: har item-list screen isse row ka rang (CPVC/UPVC) poochti hai.
 	f"/assets/santu_hardware/js/santu_item_highlight.js?v={SANTU_ASSET_VERSION}",

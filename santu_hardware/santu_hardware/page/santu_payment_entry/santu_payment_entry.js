@@ -57,6 +57,10 @@ window.santu_payment_entry_page = {
 
 		this._load_init(opts.party_type || "Customer").then(() => {
 			this._load();
+			if (opts.edit_payment) {
+				this._apply_edit(opts.edit_payment);
+				return;
+			}
 			if (opts.party) {
 				const b = this._new_bill(true);
 				b.party_type = opts.party_type || "Customer";
@@ -103,6 +107,13 @@ window.santu_payment_entry_page = {
 	},
 
 	apply_route_options(opts) {
+		// "Edit Payment" on the View Invoice screen hands the payment's NAME
+		// here (2026-10-07 request: payments had no edit route at all -- a
+		// wrong amount or mode could only be deleted and re-taken).
+		if (opts && opts.edit_payment) {
+			this._apply_edit(opts.edit_payment);
+			return;
+		}
 		if (!opts || (!opts.party && !opts.party_type)) return;
 		const b = this._new_bill(true);
 		b.party_type = opts.party_type || "Customer";
@@ -114,6 +125,33 @@ window.santu_payment_entry_page = {
 			this.$root.find(".santu-pay-amount").val(b.amount || "");
 			this._render_totals();
 		}
+	},
+
+	// Reopen a submitted payment on this screen, with its own figures in it.
+	// The party is shown but NOT changeable: a payment credited to the wrong
+	// party is a different payment, and moving money between two khatas from
+	// an edit box is not something a counter should do by accident.
+	_apply_edit(name) {
+		frappe.dom.freeze(__("Payment khol rahe hain…"));
+		frappe
+			.xcall("santu_hardware.santu_hardware.api.get_payment_for_edit", { name })
+			.then((doc) => {
+				frappe.dom.unfreeze();
+				const b = this._new_bill(true);
+				b.party_type = doc.party_type;
+				b.posting_date = doc.posting_date || b.posting_date;
+				b.mode_of_payment = doc.mode_of_payment || b.mode_of_payment;
+				b.reference_no = doc.reference_no || "";
+				b.remarks = doc.remarks || "";
+				b.amount = doc.amount;
+				b.amount_touched = true;
+				b.editing = { name: doc.name, original_amount: doc.amount };
+				this.render();
+				// After render, so the outstanding panel and the party box are
+				// filled exactly as they are for a normal pick.
+				this._select_party(doc.party);
+			})
+			.catch(() => frappe.dom.unfreeze());
 	},
 
 	_is_in(b) {
@@ -174,6 +212,8 @@ window.santu_payment_entry_page = {
 			// party doesn't silently overwrite it with the new total due.
 			amount_touched: false,
 			saved: null,
+			// Set only when this tab corrects an already-submitted payment.
+			editing: null,
 		};
 	},
 	_new_bill(focus = true) {
@@ -213,6 +253,13 @@ window.santu_payment_entry_page = {
 		if (this.page && this.page.set_title) this.page.set_title(this._screen_title());
 		$(this.page.body).html(`
 			<div class="santu-bill santu-pay">
+				${
+					// Sudhaar mode -- the counter must never mistake a correction
+					// for a second payment. The party is deliberately fixed here.
+					b.editing
+						? `<div class="santu-bill-edit-banner">${__("Sudhaar mode")} — ${__("Payment")} <b>${frappe.utils.escape_html(b.editing.name)}</b> ${__("ko sudhaara ja raha hai. Save karte hi purana payment cancel hokar naya sahi ban jayega. Party nahi badal sakti.")}</div>`
+						: ""
+				}
 				<div class="santu-bill-tabbar">
 					<div class="santu-bill-tabs"></div>
 					<div class="santu-si2-toolbar santu-pay-dirtoggle">
@@ -625,17 +672,27 @@ window.santu_payment_entry_page = {
 			if (this._saving) return;
 			this._saving = true;
 			frappe.dom.freeze(__("Saving…"));
-			frappe
-				.xcall("santu_hardware.santu_hardware.api.create_payment_entry", {
-					party_type: b.party_type,
-					party: b.party,
-					amount,
-					mode_of_payment: b.mode_of_payment,
-					posting_date: b.posting_date,
-					reference_no: b.reference_no || null,
-					remarks: b.remarks || null,
-					request_key: b.request_key,
-				})
+			// Correcting a submitted payment cancels the original and books the
+			// replacement, so the money is never counted twice.
+			(b.editing
+				? frappe.xcall("santu_hardware.santu_hardware.api.edit_payment_entry", {
+						name: b.editing.name,
+						amount,
+						mode_of_payment: b.mode_of_payment,
+						posting_date: b.posting_date,
+						reference_no: b.reference_no || null,
+						remarks: b.remarks || null,
+				  })
+				: frappe.xcall("santu_hardware.santu_hardware.api.create_payment_entry", {
+						party_type: b.party_type,
+						party: b.party,
+						amount,
+						mode_of_payment: b.mode_of_payment,
+						posting_date: b.posting_date,
+						reference_no: b.reference_no || null,
+						remarks: b.remarks || null,
+						request_key: b.request_key,
+				  }))
 				.then((r) => {
 					this._saving = false;
 					frappe.dom.unfreeze();
