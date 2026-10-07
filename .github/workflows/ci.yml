@@ -87,7 +87,13 @@ jobs:
       - name: Setup
         run: |
           pip install frappe-bench
-          bench init --skip-redis-config-generation --skip-assets --python "$(which python)" ~/frappe-bench
+          # --frappe-branch version-15 on purpose. Unpinned, bench init clones
+          # frappe's default branch (develop), which has moved past what this
+          # app runs on and past Python 3.10 -- the install died with "Build
+          # failures usually indicate a problem with the package or the build
+          # environment" before a single test ran (2026-10-07). The shop runs
+          # Frappe 15.116.1, so CI tests against the same major line.
+          bench init --skip-redis-config-generation --skip-assets --frappe-branch version-15 --python "$(which python)" ~/frappe-bench
           mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL character_set_server = 'utf8mb4'"
           mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL collation_server = 'utf8mb4_unicode_ci'"
 
