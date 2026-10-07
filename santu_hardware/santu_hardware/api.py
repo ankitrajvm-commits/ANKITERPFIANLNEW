@@ -8498,12 +8498,29 @@ def get_invoice_for_edit(invoice_name: str):
 			{0: "abhi draft", 2: "cancel ho chuki"}.get(doc.docstatus, "submit nahi hui"),
 		))
 
+	# A credit note is a Sales Invoice too, and the Billing screen cannot hold
+	# one -- its row total clamps a negative line to zero, so a -Rs 1,450 return
+	# loaded as a Rs 0 bill and saving it would have cancelled the customer's
+	# real credit and replaced it with nothing (found 2026-10-07). Refused here
+	# as well as on the screen: the button is only the first lock, and this
+	# endpoint is reachable on its own.
+	if doc.get("is_return") or flt(doc.grand_total) < 0:
+		frappe.throw(
+			_(
+				"Yeh ek Return (credit note) hai, aam bill nahi — ise Billing screen se "
+				"nahi sudhaara ja sakta.<br><br><b>Kya karein:</b> ise rehne dijiye aur "
+				"zarurat ho to nayi Return banaiye."
+			),
+			title=_("Return yahan se nahi sudhrega"),
+		)
+
 	return {
 		"name": doc.name,
 		"santu_bill_no": doc.santu_bill_no,
 		"customer": doc.customer,
 		"customer_label": doc.customer_name or doc.customer,
 		"posting_date": str(doc.posting_date),
+		"is_return": bool(doc.get("is_return")),
 		"payment_mode": "cash" if doc.is_pos else "credit",
 		"payments": [{"mode_of_payment": p.mode_of_payment, "amount": p.amount} for p in (doc.payments or [])],
 		"outstanding_amount": flt(doc.outstanding_amount),

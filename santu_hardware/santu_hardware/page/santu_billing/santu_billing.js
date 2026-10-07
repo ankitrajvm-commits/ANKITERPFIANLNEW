@@ -372,6 +372,23 @@ window.santu_billing_page = {
 			.get_invoice_for_edit(invoice_name)
 			.then((inv) => {
 				frappe.dom.unfreeze();
+				// A credit note is a Sales Invoice too, and this screen cannot
+				// hold one: _row_total clamps a negative line to zero, so a
+				// -Rs 1,450 return loads as a Rs 0 bill and saving it would
+				// cancel the customer's real credit and replace it with
+				// nothing (found 2026-10-07). The View screen no longer offers
+				// Edit on a return; this is the second lock, for any other way
+				// in.
+				if (inv.is_return || Number(inv.grand_total) < 0) {
+					frappe.msgprint({
+						title: __("Return yahan se nahi sudhrega"),
+						message: __(
+							"Yeh ek Return (credit note) hai, aam bill nahi — Billing screen ise theek se nahi sambhal sakti aur grahak ka credit mit sakta hai.<br><br><b>Kya karein:</b> ise rehne dijiye aur zarurat ho to nayi Return banaiye."
+						),
+						indicator: "orange",
+					});
+					return;
+				}
 				const b = this._new_bill(true);
 				b.customer = inv.customer;
 				b.customer_label = inv.customer_label;

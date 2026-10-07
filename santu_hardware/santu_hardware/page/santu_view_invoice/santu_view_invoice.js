@@ -473,7 +473,15 @@ window.santu_view_invoice_page = {
 						<div class="santu-si2-actionbar-left">
 							<button type="button" class="santu-si2-btn" data-action="back">← Back</button>
 							${
-								(d.doctype === "Sales Invoice" && d.docstatus === 1)
+								// NOT on a return. A credit note is a Sales Invoice too, so
+								// it used to get the ordinary "Edit Bill" button -- which
+								// reopens it in Billing, where a -1 quantity row is clamped
+								// to zero by _row_total's Math.max(..., 0). A -Rs 1,450
+								// credit note loaded as a Rs 0 bill, and saving it would
+								// have cancelled the customer's real credit and replaced it
+								// with nothing (found 2026-10-07). Returns are corrected on
+								// the Return screen, not here.
+								(d.doctype === "Sales Invoice" && d.docstatus === 1 && !d.is_return)
 									? `<button type="button" class="santu-si2-btn santu-si2-btn-edit" data-action="edit-bill" title="${__("Rate ya quantity galat hai? Yahan se sudhaar kar aur nayi bill submit ho jayegi.")}">${__("Edit Bill")}</button>
 									   <button type="button" class="santu-si2-btn" data-action="delete-doc" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;font-weight:600;" title="${__("Delete this Bill")}">${__("Delete Bill")}</button>`
 									: ""
