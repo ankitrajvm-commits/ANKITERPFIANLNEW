@@ -34,6 +34,14 @@ SITES = os.path.join(HERE, "..", "..", "..", "..", "sites")
 
 # read_only: safe to point at the live shop as well as the test copy.
 # slow: only in --full, because these take minutes rather than seconds.
+# Two suites drive the app over real HTTP against the TEST COPY's own web
+# server. Without it they cannot run at all: every call is refused, every
+# check fails, and their fixtures are left behind -- which is exactly how four
+# suites in a row came to report a residue failure that was really this
+# (2026-10-07). Start it in another terminal first:
+#     cd frappe-bench && bench serve --port 8001 --site scratch.local
+SCRATCH_HTTP = ("127.0.0.1", 8001)
+
 SUITES = [
 	{"file": "test_invariants.py", "read_only": True, "slow": False,
 	 "what": "Data health: stock = ledger, GL balances, bill numbers, reward points"},
@@ -41,7 +49,7 @@ SUITES = [
 	 "what": "Regression: every fix from the 2026-09-05 session onwards"},
 	{"file": "test_write_guard.py", "read_only": False, "slow": False,
 	 "what": "A user with no roles must not be able to change anything"},
-	{"file": "test_permissions.py", "read_only": False, "slow": False,
+	{"file": "test_permissions.py", "read_only": False, "needs_http": True, "slow": False,
 	 "what": "Permission matrix: who can view / create / submit / cancel / delete"},
 	{"file": "test_reports_utils_backup.py", "read_only": False, "slow": False,
 	 "what": "Reports, Utilities and Backup screens"},
@@ -49,7 +57,7 @@ SUITES = [
 	 "what": "Billing torture: zero stock, fractions, discounts, 60-line bills"},
 	{"file": "test_failure_first.py", "read_only": False, "slow": True,
 	 "what": "Concurrency, idempotency, fuzz, stock chain, reconciliation, rollback"},
-	{"file": "test_api_matrix.py", "read_only": False, "slow": True,
+	{"file": "test_api_matrix.py", "read_only": False, "needs_http": True, "slow": True,
 	 "what": "Every whitelisted API, seven ways, over real HTTP"},
 ]
 
@@ -60,6 +68,18 @@ SUITES = [
 # CRASHED purely for printing its total differently (2026-10-07).
 SUMMARY_GATED = re.compile(r"PASS (\d+)\s+FAIL (\d+)(?:\s+FINDINGS (\d+))?.*?=>\s*(\w+)", re.S)
 SUMMARY_PLAIN = re.compile(r"^PASS:\s*(\d+)\s+FAIL:\s*(\d+)\s*$", re.M)
+
+
+def _scratch_http_up() -> bool:
+	"""Is the test copy's web server listening? Checked rather than assumed, so
+	an HTTP suite is skipped with a reason instead of failing meaninglessly."""
+	import socket
+
+	try:
+		with socket.create_connection(SCRATCH_HTTP, timeout=1.5):
+			return True
+	except OSError:
+		return False
 
 
 def run_one(suite: str, site: str, timeout: int) -> dict:
@@ -118,6 +138,17 @@ def main() -> int:
 	args = ap.parse_args()
 
 	chosen = [s for s in SUITES if args.full or not s["slow"]]
+
+	if not _scratch_http_up():
+		skipped = [s["file"] for s in chosen if s.get("needs_http")]
+		if skipped:
+			print("\n  !! The test copy's web server is not running on "
+			      f"{SCRATCH_HTTP[0]}:{SCRATCH_HTTP[1]}, so these are SKIPPED, not run:")
+			for f in skipped:
+				print(f"       {f}")
+			print("     Start it in another terminal and run again:")
+			print("       cd frappe-bench && bench serve --port 8001 --site scratch.local\n")
+		chosen = [s for s in chosen if not s.get("needs_http")]
 	if args.only:
 		chosen = [s for s in chosen if args.only in s["file"]]
 	missing = [s["file"] for s in chosen if not os.path.isfile(os.path.join(HERE, s["file"]))]
