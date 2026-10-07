@@ -29,26 +29,17 @@ frappe.pages["santu-purchase-invoice"].on_page_load = function (wrapper) {
 // documents; frappe.model.open_mapped_doc also needs a real frm object,
 // which there isn't one of on a plain list row).
 frappe.pages["santu-purchase-invoice"].on_page_show = function () {
-	const prefill = frappe.route_options && frappe.route_options.prefill;
-	const prefill_bills = frappe.route_options && frappe.route_options.prefill_bills;
-	if ((prefill || prefill_bills) && window.santu_purchase_pos && santu_purchase_pos.page && santu_purchase_pos.init_data) {
-		frappe.route_options = null;
-		if (prefill_bills) santu_purchase_pos._apply_prefill_bills(prefill_bills);
-		else santu_purchase_pos._apply_prefill(prefill);
-		return;
-	}
-	// "Edit Purchase Bill" on the View Invoice screen hands the bill's NAME
-	// here. The button has existed since 2026-08-29 but nothing on this screen
-	// ever read the option, so pressing it opened a blank bill and threw the
-	// correction away (found 2026-10-07).
-	const edit_name = frappe.route_options && frappe.route_options.edit_purchase;
-	if (edit_name && window.santu_purchase_pos && santu_purchase_pos.init_data) {
-		frappe.route_options = null;
-		santu_purchase_pos._apply_edit(edit_name);
-		return;
-	}
-	if (window.santu_purchase_pos && santu_purchase_pos.page) santu_purchase_pos.render();
+	// All three handoffs claimed in one place, in the order they take
+	// precedence. santu_handoff reads the whole bag before clearing anything.
+	const P = window.santu_purchase_pos;
+	if (santu_handoff.claim(P, {
+		prefill_bills: P && P._apply_prefill_bills,
+		prefill: P && P._apply_prefill,
+		edit_purchase: P && P._apply_edit,
+	})) return;
+	if (P && P.page) P.render();
 };
+
 
 const SANTU_PI2_STORAGE_KEY = "santu_purchase_pos_tabs_v1";
 
@@ -69,24 +60,12 @@ window.santu_purchase_pos = {
 		Promise.all([santu_purchase_invoice.api.init(), santu_purchase_invoice.api.tax_options()]).then(([data, tax_options]) => {
 			this.init_data = data;
 			this.tax_options = tax_options || [];
-			const prefill = frappe.route_options && frappe.route_options.prefill;
-			const prefill_bills = frappe.route_options && frappe.route_options.prefill_bills;
-			// Read EVERY handoff field before clearing it.
-			const edit_name = frappe.route_options && frappe.route_options.edit_purchase;
-			frappe.route_options = null;
-			if (prefill_bills) {
-				this._apply_prefill_bills(prefill_bills);
-				return;
-			}
-			if (prefill) {
-				this._apply_prefill(prefill);
-				return;
-			}
+			if (santu_handoff.claim(this, {
+				prefill_bills: this._apply_prefill_bills,
+				prefill: this._apply_prefill,
+			})) return;
 			this._load_from_storage();
-			if (edit_name) {
-				this._apply_edit(edit_name);
-				return;
-			}
+			if (santu_handoff.claim(this, { edit_purchase: this._apply_edit })) return;
 			if (!this.tabs.length) this._new_tab();
 			this.render();
 		});

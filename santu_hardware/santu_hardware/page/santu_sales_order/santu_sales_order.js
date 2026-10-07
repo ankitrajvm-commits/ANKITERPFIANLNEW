@@ -33,23 +33,15 @@ frappe.pages["santu-sales-order"].on_page_load = function (wrapper) {
 // once per session, so a second conversion while this page is already open
 // needs its own check to not silently no-op.
 frappe.pages["santu-sales-order"].on_page_show = function () {
-	const prefill = frappe.route_options && frappe.route_options.prefill;
-	if (prefill && window.santu_sales_order_page && santu_sales_order_page.page && santu_sales_order_page.init_data) {
-		frappe.route_options = null;
-		santu_sales_order_page._apply_prefill(prefill);
-		return;
-	}
-	// "Edit Order" on the View Invoice screen hands the document's NAME
-// here. The button has existed since 2026-08-29 but nothing on this
-// screen ever read the option, so pressing it opened a blank one and
-// threw the correction away (found 2026-10-07).
-	const edit_name = frappe.route_options && frappe.route_options.edit_order;
-	if (edit_name && window.santu_sales_order_page && santu_sales_order_page.init_data) {
-		frappe.route_options = null;
-		santu_sales_order_page._apply_edit(edit_name);
-		return;
-	}
-	if (window.santu_sales_order_page && santu_sales_order_page.page) santu_sales_order_page.render();
+	// Both handoffs claimed in one place: santu_handoff reads the whole bag
+	// before clearing anything, which is the ordering that kept being got
+	// wrong when each screen did its own reading.
+	const P = window.santu_sales_order_page;
+	if (santu_handoff.claim(P, {
+		prefill: P && P._apply_prefill,
+		edit_order: P && P._apply_edit,
+	})) return;
+	if (P && P.page) P.render();
 };
 
 const SANTU_SO_STORAGE_KEY = "santu_sales_order_tabs_v1";
@@ -70,19 +62,9 @@ window.santu_sales_order_page = {
 
 		santu_sales_order.api.init().then((data) => {
 			this.init_data = data;
-			const prefill = frappe.route_options && frappe.route_options.prefill;
-			// Read EVERY handoff field before clearing it.
-			const edit_name = frappe.route_options && frappe.route_options.edit_order;
-			frappe.route_options = null;
-			if (prefill) {
-				this._apply_prefill(prefill);
-				return;
-			}
+			if (santu_handoff.claim(this, { prefill: this._apply_prefill })) return;
 			this._load_from_storage();
-			if (edit_name) {
-				this._apply_edit(edit_name);
-				return;
-			}
+			if (santu_handoff.claim(this, { edit_order: this._apply_edit })) return;
 			if (!this.tabs.length) this._new_tab();
 			this.render();
 		});

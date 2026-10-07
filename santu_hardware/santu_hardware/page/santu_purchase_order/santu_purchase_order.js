@@ -24,18 +24,13 @@ frappe.pages["santu-purchase-order"].on_page_load = function (wrapper) {
 };
 
 frappe.pages["santu-purchase-order"].on_page_show = function () {
-	// "Edit Purchase Order" on the View Invoice screen hands the document's NAME
-// here. The button has existed since 2026-08-29 but nothing on this
-// screen ever read the option, so pressing it opened a blank one and
-// threw the correction away (found 2026-10-07).
-	const edit_name = frappe.route_options && frappe.route_options.edit_purchase_order;
-	if (edit_name && window.santu_purchase_order_page && santu_purchase_order_page.init_data) {
-		frappe.route_options = null;
-		santu_purchase_order_page._apply_edit(edit_name);
-		return;
-	}
-	if (window.santu_purchase_order_page && santu_purchase_order_page.page) santu_purchase_order_page.render();
+	// "Edit Purchase Order" hands the order's NAME here, claimed through
+	// santu_handoff (one reader, whole bag read before anything is cleared).
+	const P = window.santu_purchase_order_page;
+	if (santu_handoff.claim(P, { edit_purchase_order: P && P._apply_edit })) return;
+	if (P && P.page) P.render();
 };
+
 
 const SANTU_PO_STORAGE_KEY = "santu_purchase_order_tabs_v1";
 
@@ -55,13 +50,8 @@ window.santu_purchase_order_page = {
 
 		santu_purchase_order.api.init().then((data) => {
 			this.init_data = data;
-			const edit_name = frappe.route_options && frappe.route_options.edit_purchase_order;
-			frappe.route_options = null;
 			this._load_from_storage();
-			if (edit_name) {
-				this._apply_edit(edit_name);
-				return;
-			}
+			if (santu_handoff.claim(this, { edit_purchase_order: this._apply_edit })) return;
 			if (!this.tabs.length) this._new_tab();
 			this.render();
 		});

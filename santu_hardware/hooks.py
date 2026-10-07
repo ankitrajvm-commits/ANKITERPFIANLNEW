@@ -232,6 +232,9 @@ app_include_js = _LiveAssets([
 	# Shared for the same reason qty_prefix is: every item-entry screen needs
 	# it and none of them should carry its own copy.
 	f"/assets/santu_hardware/js/santu_row_filter.js?v={SANTU_ASSET_VERSION}",
+	# Reads a screen-to-screen handoff (convert this to a bill, edit this
+	# challan) in ONE place. Loaded before the page scripts that use it.
+	f"/assets/santu_hardware/js/santu_handoff.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/santu_bill_label.js?v={SANTU_ASSET_VERSION}",
 	# Jaldi: har item-list screen isse row ka rang (CPVC/UPVC) poochti hai.
 	f"/assets/santu_hardware/js/santu_item_highlight.js?v={SANTU_ASSET_VERSION}",

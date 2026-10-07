@@ -35,16 +35,12 @@ frappe.pages["santu-delivery-challan"].on_page_load = function (wrapper) {
 // since on_page_load only ever fires once per session.
 frappe.pages["santu-delivery-challan"].on_page_show = function () {
 	// "Edit Challan" on the View Invoice screen hands the challan's NAME here.
-	// The button has existed since 2026-08-29 but nothing on this screen ever
-	// read the option, so pressing it opened a blank challan and threw the
-	// correction away (found 2026-10-07).
-	const edit_name = frappe.route_options && frappe.route_options.edit_challan;
-	if (edit_name && window.santu_delivery_challan_page && santu_delivery_challan_page.init_data) {
-		frappe.route_options = null;
-		santu_delivery_challan_page._apply_edit(edit_name);
-		return;
-	}
-	if (window.santu_delivery_challan_page && santu_delivery_challan_page.page) santu_delivery_challan_page.render();
+	// Claimed through santu_handoff: one reader, whole bag read before anything
+	// is cleared. Doing that by hand is what left this screen ignoring the
+	// option entirely for about a year (found 2026-10-07).
+	const P = window.santu_delivery_challan_page;
+	if (santu_handoff.claim(P, { edit_challan: P && P._apply_edit })) return;
+	if (P && P.page) P.render();
 };
 
 const SANTU_DC_STORAGE_KEY = "santu_delivery_challan_tabs_v1";
@@ -63,17 +59,10 @@ window.santu_delivery_challan_page = {
 
 		santu_delivery_challan.api.init().then((data) => {
 			this.init_data = data;
-			// Read the handoff BEFORE clearing it, and load the open tabs first,
-			// so a correction arrives as one more tab beside whatever the
-			// counter already had (same rule as Billing -- see
-			// santu_billing.js's consume_prefill).
-			const edit_name = frappe.route_options && frappe.route_options.edit_challan;
-			frappe.route_options = null;
+			// Open tabs first, so a correction arrives as one more tab beside
+			// whatever the counter already had (same rule as Billing).
 			this._load_from_storage();
-			if (edit_name) {
-				this._apply_edit(edit_name);
-				return;
-			}
+			if (santu_handoff.claim(this, { edit_challan: this._apply_edit })) return;
 			if (!this.tabs.length) this._new_tab();
 			this.render();
 		});
