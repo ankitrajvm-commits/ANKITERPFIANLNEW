@@ -145,6 +145,12 @@ window.santu_view_invoice_page = {
 			else open_pdf();
 		});
 		$body.find('[data-action="pdf"]').on("click", open_pdf);
+		// Bound here rather than in one render function: the payment screen and
+		// the item-document screen both draw this button.
+		$body.find('[data-action="edit-payment"]').on("click", () => {
+			frappe.route_options = { edit_payment: d.name };
+			frappe.set_route("santu-payment-entry");
+		});
 		if (whatsapp) {
 			$body.find('[data-action="whatsapp"]').on("click", () => this._send_whatsapp());
 			$body.find('[data-action="whatsapp_other"]').on("click", () => this._send_whatsapp(true));
@@ -238,6 +244,15 @@ window.santu_view_invoice_page = {
 					<div class="santu-si2-actionbar">
 						<div class="santu-si2-actionbar-left">
 							<button type="button" class="santu-si2-btn" data-action="back">← Back</button>
+							${
+								// Payment In / Payment Out is rendered by this function,
+								// not by _render_item_doc, so the Edit button added there
+								// never appeared on a payment (reported 2026-10-07:
+								// "abhi tak payment in me koi edit option nh aaya hai").
+								d.docstatus === 1
+									? `<button type="button" class="santu-si2-btn santu-si2-btn-edit" data-action="edit-payment" title="${__("Amount ya payment mode galat hai? Yahan se sudhaar kar dobara save ho jayega.")}">${__("Edit Payment")}</button>`
+									: ""
+							}
 						</div>
 						<div class="santu-si2-actionbar-right">
 							<button type="button" class="santu-si2-btn" data-action="whatsapp">Send on WhatsApp</button>
