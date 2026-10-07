@@ -13,7 +13,11 @@ app_logo_url = "/assets/santu_hardware/images/logo.svg"
 # Apps
 # ------------------
 
-# required_apps = []
+# This app is built on ERPNext -- its doctypes (Item, UOM, Sales Invoice,
+# Stock Entry ...) are used throughout. Declared so a fresh bench installs
+# them in the right order instead of failing partway through
+# ("Module import failed for UOM", 2026-10-07).
+required_apps = ["erpnext"]
 
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [

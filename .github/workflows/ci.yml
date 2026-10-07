@@ -100,9 +100,16 @@ jobs:
       - name: Install
         working-directory: /home/runner/frappe-bench
         run: |
+          # ERPNext first. This app is built on it -- 424 references to its
+          # doctypes in api.py alone -- and without it the install died on
+          # "Module import failed for UOM ... No module named
+          # 'frappe.core.doctype.uom'", because UOM is an ERPNext doctype
+          # (erpnext/setup/doctype/uom), not a Frappe core one (2026-10-07).
+          bench get-app --branch version-15 erpnext
           bench get-app santu_hardware $GITHUB_WORKSPACE
           bench setup requirements --dev
           bench new-site --db-root-password root --admin-password admin test_site
+          bench --site test_site install-app erpnext
           bench --site test_site install-app santu_hardware
           bench build
         env:
