@@ -9654,7 +9654,13 @@ def _create_payment_entry(
 		doc.reference_no = reference_no
 		doc.reference_date = posting_date
 	if remarks:
+		# custom_remarks tells ERPNext to leave the note alone. Without it
+		# set_remarks() overwrites whatever the counter typed with its own
+		# "Amount INR 500.0 received from ..." line, so the note never
+		# survived a save -- on a new payment or a corrected one
+		# (found 2026-10-07).
 		doc.remarks = remarks
+		doc.custom_remarks = 1
 
 	# No `references` appended — the whole amount stays unallocated, a
 	# lump-sum credit against the party rather than a specific bill.

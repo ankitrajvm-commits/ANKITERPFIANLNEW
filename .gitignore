@@ -15,3 +15,6 @@ __pycache__
 santu_hardware/whatsapp_bridge/site1.local/
 santu_hardware/whatsapp_bridge/*/private/
 santu_hardware/tests/tmp_*
+# Test run output: regenerated on every run, and the rows carry the shop's own
+# customer names and phone numbers. Keep them on disk, out of the repo.
+santu_hardware/tests/reports/
