@@ -25,7 +25,14 @@ frappe.pages["santu-sales-return"].on_page_load = function (wrapper) {
 };
 
 frappe.pages["santu-sales-return"].on_page_show = function () {
-	if (window.santu_sales_return_page && santu_sales_return_page.page) santu_sales_return_page.render();
+	// "Edit Return" on the View screen hands the return's NAME here. Returns
+	// cannot go through Billing's edit -- a credit note's negative lines are
+	// clamped to zero there, which would have wiped the customer's credit
+	// (2026-10-07) -- so they are corrected here, where the screen already
+	// thinks in positive "how many came back" quantities.
+	const P = window.santu_sales_return_page;
+	if (santu_handoff.claim(P, { edit_return: P && P._apply_edit })) return;
+	if (P && P.page) P.render();
 };
 
 const SANTU_SR_KEY = "santu_sales_return_tabs_v2";
@@ -44,6 +51,7 @@ window.santu_sales_return_page = {
 		santu_sale_invoice.api.init().then((data) => {
 			this.init_data = data;
 			this._load();
+			if (santu_handoff.claim(this, { edit_return: this._apply_edit })) return;
 			if (!this.tabs.length) this._new_ret(false);
 			this.render();
 		});
@@ -102,6 +110,8 @@ window.santu_sales_return_page = {
 			// an explicit choice here is cheaper than a wrong balance later.
 			settlement: null,
 			refund_mode: "Cash",
+			// Set only when this tab corrects an already-submitted return.
+			editing: null,
 			items: [],
 			selected_row: null,
 			bill_discount: 0,
@@ -109,6 +119,55 @@ window.santu_sales_return_page = {
 			saved: null,
 		};
 	},
+	// Reopen a submitted return on this screen, with its own rows already in
+	// it. Quantities arrive positive -- the stored ones are negative because
+	// that is ERPNext's representation, but this screen and the counter both
+	// think in "how many came back".
+	_apply_edit(name) {
+		frappe.dom.freeze(__("Return khol rahe hain…"));
+		frappe
+			.xcall("santu_hardware.santu_hardware.api.get_return_for_edit", {
+				doctype: "Sales Invoice",
+				name,
+			})
+			.then((doc) => {
+				frappe.dom.unfreeze();
+				const b = this._new_ret(true);
+				b.customer = doc.party;
+				b.customer_label = doc.party_label;
+				b.posting_date = doc.posting_date || b.posting_date;
+				b.return_against = doc.return_against || null;
+				b.reason = doc.reason || "";
+				b.settlement = doc.settlement || null;
+				b.refund_mode = doc.refund_mode || "Cash";
+				b.editing = {
+					name: doc.name,
+					original_total: doc.grand_total,
+					refund_payment: doc.refund_payment,
+				};
+				(doc.items || []).forEach((r) => {
+					b.items.push({
+						id: santu_sale_invoice.utils.uid(),
+						item_code: r.item_code,
+						item_name: r.item_name || r.item_code,
+						qty: r.qty,
+						uom: r.uom || r.stock_uom,
+						uom_options:
+							r.uom_options && r.uom_options.length
+								? r.uom_options
+								: [{ uom: r.uom, conversion_factor: 1 }],
+						rate: r.rate,
+						discount: 0,
+						sales_invoice_item: r.sales_invoice_item || null,
+						available_qty: r.available_qty,
+					});
+				});
+				this._persist_soon();
+				this.render();
+			})
+			.catch(() => frappe.dom.unfreeze());
+	},
+
 	_new_ret(focus = true) {
 		const b = this._blank_ret();
 		this.tabs.push(b);
@@ -952,9 +1011,11 @@ window.santu_sales_return_page = {
 		}
 
 		frappe.dom.freeze(__("Saving…"));
-		santu_sales_return.api
-			.save(
-				{
+		// Correcting a submitted return goes through edit_submitted_return,
+		// which cancels the original AND any cash refund booked against it
+		// before rebuilding -- otherwise real money would be left pointing at
+		// a cancelled document, or paid out twice.
+		const _return_payload = {
 					customer: b.customer,
 					company: this.init_data.company,
 					warehouse: this.init_data.warehouse,
@@ -976,9 +1037,17 @@ window.santu_sales_return_page = {
 						sales_invoice_item: r.sales_invoice_item || null,
 						discount_amount: r.discount || 0,
 					})),
-				},
-				1
-			)
+		};
+		(b.editing
+			? frappe.xcall("santu_hardware.santu_hardware.api.edit_submitted_return", {
+					doctype: "Sales Invoice",
+					name: b.editing.name,
+					payload_json: JSON.stringify(_return_payload),
+					settlement: b.settlement,
+					refund_mode: b.refund_mode || "Cash",
+			  })
+			: santu_sales_return.api.save(_return_payload, 1)
+		)
 			.then((r) => {
 				frappe.dom.unfreeze();
 				window.santu_save_buttons ? santu_save_buttons.saved_alert("Sales Return", r) : frappe.show_alert({ message: __("Saved"), indicator: "green" });
@@ -987,7 +1056,10 @@ window.santu_sales_return_page = {
 				// balance is correct the moment this tab closes rather than
 				// sitting as unresolved credit until someone reconciles it
 				// by hand later (2026-08-19 direct request).
-				if (b.settlement === "refund") {
+				// Not on an edit: edit_submitted_return already cancelled the old
+				// refund and booked the new one, so doing it here too would pay
+				// the customer back twice.
+				if (b.settlement === "refund" && !b.editing) {
 					santu_sales_return.api
 						.create_refund_payment("Sales Invoice", r.name, b.refund_mode || "Cash")
 						.then(() => frappe.show_alert({ message: __("Refund recorded"), indicator: "green" }))
