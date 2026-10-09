@@ -13,7 +13,11 @@ app_logo_url = "/assets/santu_hardware/images/logo.svg"
 # Apps
 # ------------------
 
-# required_apps = []
+# This app is built on ERPNext -- its doctypes (Item, UOM, Sales Invoice,
+# Stock Entry ...) are used throughout. Declared so a fresh bench installs
+# them in the right order instead of failing partway through
+# ("Module import failed for UOM", 2026-10-07).
+required_apps = ["erpnext"]
 
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
@@ -228,6 +232,13 @@ app_include_js = _LiveAssets([
 	# Ankit 2026-09-19. Early, so it wraps frappe.msgprint before any screen.
 	f"/assets/santu_hardware/js/santu_hindi_errors.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/santu_qty_prefix.js?v={SANTU_ASSET_VERSION}",
+	# Search over the lines already on a bill/estimate/challan/order/return.
+	# Shared for the same reason qty_prefix is: every item-entry screen needs
+	# it and none of them should carry its own copy.
+	f"/assets/santu_hardware/js/santu_row_filter.js?v={SANTU_ASSET_VERSION}",
+	# Reads a screen-to-screen handoff (convert this to a bill, edit this
+	# challan) in ONE place. Loaded before the page scripts that use it.
+	f"/assets/santu_hardware/js/santu_handoff.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/santu_bill_label.js?v={SANTU_ASSET_VERSION}",
 	# Jaldi: har item-list screen isse row ka rang (CPVC/UPVC) poochti hai.
 	f"/assets/santu_hardware/js/santu_item_highlight.js?v={SANTU_ASSET_VERSION}",

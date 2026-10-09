@@ -1,6 +1,6 @@
 """Regression checks for everything changed on 2026-09-05.
 
-Run: frappe-bench/env/bin/python (from frappe-bench/sites) test_session_2026_09_05.py
+Run: frappe-bench/env/bin/python (from frappe-bench/sites) suite_session_2026_09_05.py
 Every check here exists because the thing it checks was broken once.
 """
 import re, sys, traceback
@@ -8,6 +8,17 @@ import frappe
 frappe.init(site=__import__("os").environ.get("SANTU_TEST_SITE", "scratch.local")); frappe.connect(); from santu_hardware.tests.claude_test_user import use_test_user_with_cleanup, TEST_USER; use_test_user_with_cleanup()  # never Administrator -- see claude_test_user.py
 _SUITE_START = frappe.utils.now()
 from frappe.utils import flt, cint
+
+import os as _os
+
+# Where the app code these checks READ actually lives. This used to be the
+# hardcoded /Users/santuhardware/erpnext/santu_hardware -- a stale COPY of the
+# app, last touched 2026-10-01, that nothing runs from. Every file-content
+# check below was reading that week-old copy instead of the code the shop is
+# actually using, so it would have gone on passing after the real file changed
+# (found 2026-10-07). Derived from this test file's own location now, so it
+# cannot drift apart from the app again.
+APP_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 
 PASS, FAIL = [], []
 def check(name, cond, detail=""):
@@ -315,7 +326,7 @@ for want, dt in [("Santu Hardware Thermal Purchase Bill", "Purchase Invoice"),
                  ("Santu Hardware Thermal Challan (Delivery Note)", "Delivery Note"),
                  ("Santu Hardware Thermal Payment Receipt", "Payment Entry")]:
     check(f"naya thermal format maujood: {want}", (want, dt) in fmts)
-js = open("/Users/santuhardware/erpnext/santu_hardware/public/js/santu_printer_settings.js").read()
+js = open(APP_ROOT + "/public/js/santu_printer_settings.js").read()
 check("library me Khata Statement hai", '"Khata Statement"' in js)
 check("library me Purchase Order hai", '{ value: "Purchase Order"' in js)
 # the thermal candidate list is the first arm of the ternary inside resolve_format
@@ -423,9 +434,9 @@ except Exception:
 src = inspect.getsource(a.set_app_lock_pin)
 check("PIN badalne par saare device retire", "app_lock_device_tokens" in src)
 check("lock screen pe fingerprint button hai",
-      'id="fp-btn"' in open("/Users/santuhardware/erpnext/santu_hardware/www/santu_unlock.html").read())
+      'id="fp-btn"' in open(APP_ROOT + "/www/santu_unlock.html").read())
 check("PIN ke baad enrol ka offer hai",
-      "offer_enrolment" in open("/Users/santuhardware/erpnext/santu_hardware/www/santu_unlock.html").read())
+      "offer_enrolment" in open(APP_ROOT + "/www/santu_unlock.html").read())
 
 section("12. SAVE / PRINT / WHATSAPP — THREE EXPLICIT BUTTONS, NO POPUP")
 # Changed 2026-09-06 direct request: "sale me teen button daal de rahe hai
@@ -437,9 +448,9 @@ section("12. SAVE / PRINT / WHATSAPP — THREE EXPLICIT BUTTONS, NO POPUP")
 # any more. santu_confirm_then_print() itself still exists in
 # thermal_print.js (other screens may still use it) but Billing's own save
 # paths no longer call it.
-tp = open("/Users/santuhardware/erpnext/santu_hardware/public/js/thermal_print.js").read()
+tp = open(APP_ROOT + "/public/js/thermal_print.js").read()
 check("santu_confirm_then_print function still exists (other screens use it)", "function santu_confirm_then_print" in tp)
-bill_js = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_billing/santu_billing.js").read()
+bill_js = open(APP_ROOT + "/santu_hardware/page/santu_billing/santu_billing.js").read()
 check("Billing's own save paths no longer call the confirm-before-print dialog",
       "await santu_confirm_then_print(" not in bill_js)
 check("Save & Print button present", "santu-bill-save-print" in bill_js and "Save &amp; Print" in bill_js)
@@ -452,7 +463,7 @@ check("plain 'Bill Save Karo' path takes neither action (after is undefined ther
       '$r.find(".santu-bill-save").on("click", () => this._save());' in bill_js)
 check("Ctrl+P now triggers Save & Print, not a bare save",
       'this._save(false, "print");' in bill_js)
-psp = open("/Users/santuhardware/erpnext/santu_hardware/public/js/post_sale_popup.js").read()
+psp = open(APP_ROOT + "/public/js/post_sale_popup.js").read()
 check("POS submit still asks before printing (unaffected by Billing's change)",
       "santu_confirm_then_print" in psp and "cint(settings.auto_print)" not in psp)
 check("plain save button ka naam ab bas 'Save' hai (2026-09-07: 'save bill kro mat likho, just save likho')",
@@ -465,7 +476,7 @@ body = resp.get_data(as_text=True)
 check("preview ek hi saaf document deta hai", body.count("<!DOCTYPE") == 1)
 check("preview me Frappe website ka navbar nahi", "navbar" not in body)
 check("purana www page hata diya",
-      not __import__("os").path.exists("/Users/santuhardware/erpnext/santu_hardware/www/santu_khata_preview.py"))
+      not __import__("os").path.exists(APP_ROOT + "/www/santu_khata_preview.py"))
 
 
 section("14. KHATA PEHLI SALE SE SHURU HO")
@@ -481,7 +492,7 @@ check("khud di hui date range abhi bhi maani jaati hai",
 check("bina lena-dena wali party pe crash nahi",
       a.party_first_transaction_date("Supplier", "CALCUTTA MOTAR CHAPRA") is None
       or bool(a.get_supplier_khata("CALCUTTA MOTAR CHAPRA")["from_date"]))
-_pj = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_parties/santu_parties.js").read()
+_pj = open(APP_ROOT + "/santu_hardware/page/santu_parties/santu_parties.js").read()
 check("dialog 12-mahine wala default nahi lagata",
       "add_months(frappe.datetime.get_today(), -12)" not in _pj)
 check("dialog pehle first-date poochta hai (calendar pop na ho)",
@@ -506,7 +517,7 @@ check("address me party ka apna naam nahi",
       not [r for r in _rows if r["address"] and r["party_name"].lower() in r["address"].lower()])
 _t0 = _t.time(); a.get_parties_list(); _el = _t.time() - _t0
 check("list tez hai (1s se kam)", _el < 1.0, f"{_el:.2f}s")
-_pjs = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_parties/santu_parties.js").read()
+_pjs = open(APP_ROOT + "/santu_hardware/page/santu_parties/santu_parties.js").read()
 check("row me meta line ka markup hai", "santu-parties-row-meta" in _pjs)
 check("phone/address na ho to row lamba nahi hota", "has-meta" in _pjs)
 
@@ -675,11 +686,11 @@ check("Invoice Library preview endpoint compact param maanta hai",
       ("t-khata-items-wrap" not in _bc[_bc.find("<body>"):]) and
       ("t-khata-items-wrap" in _bn[_bn.find("<body>"):]))
 
-_pjs = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_parties/santu_parties.js").read()
+_pjs = open(APP_ROOT + "/santu_hardware/page/santu_parties/santu_parties.js").read()
 check("Parties khata dialog me Compact checkbox hai", "compact_print" in _pjs)
 check("Print call me compact bheja jaata hai", "compact: state.compact" in _pjs)
 
-_pss = open("/Users/santuhardware/erpnext/santu_hardware/public/js/santu_printer_settings.js").read()
+_pss = open(APP_ROOT + "/public/js/santu_printer_settings.js").read()
 check("Invoice Library me Compact template card hai", "Thermal Khata (Compact)" in _pss)
 
 
@@ -785,27 +796,27 @@ frappe.db.commit()
 check("seed invoice for this section cleaned up", not frappe.db.exists("Sales Invoice", _seed_inv))
 check("test invoice cleanup ho gaya", not frappe.db.exists("Sales Invoice", _res["name"]))
 
-_bjs = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_billing/santu_billing.js").read()
+_bjs = open(APP_ROOT + "/santu_hardware/page/santu_billing/santu_billing.js").read()
 check("Billing me F10 Reward Points wapas jud gaya", 'F10: "loyalty"' in _bjs)
 check("Billing me _loyalty() method active hai (comment-out nahi)",
       "_loyalty() {" in _bjs and "// _loyalty() {" not in _bjs)
 check("Billing totals me redeem ab clamp hota hai, force-zero nahi",
       "const redeem = Math.min(Number(b.redeem_points)" in _bjs)
 
-_uv = open("/Users/santuhardware/erpnext/santu_hardware/public/js/santu_utilities/santu_utilities_views.js").read()
+_uv = open(APP_ROOT + "/public/js/santu_utilities/santu_utilities_views.js").read()
 check("Utilities me render_loyalty_points screen hai", "render_loyalty_points" in _uv)
-_sidebar = open("/Users/santuhardware/erpnext/santu_hardware/public/js/santu_fixed_sidebar.js").read()
+_sidebar = open(APP_ROOT + "/public/js/santu_fixed_sidebar.js").read()
 check("sidebar me Loyalty Points link hai", '"loyalty_points"' in _sidebar or "view: \"loyalty_points\"" in _sidebar)
 
 
 section("20. PARTIES — PAYMENT IN / PAYMENT OUT")
-_pjs2 = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_parties/santu_parties.js").read()
+_pjs2 = open(APP_ROOT + "/santu_hardware/page/santu_parties/santu_parties.js").read()
 check("Payment button _balance_line me hamesha (settled sameet) render hota hai",
       "_payment_btn(row)" in _pjs2 and "santu-parties-balance-clear" in _pjs2)
 check("click handler santu_open_collect_payment ko call karta hai party_type/party ke saath",
       "santu_open_collect_payment" in _pjs2 and "party_type: row.party_type" in _pjs2)
 
-_pe_js = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_payment_entry/santu_payment_entry.js").read()
+_pe_js = open(APP_ROOT + "/santu_hardware/page/santu_payment_entry/santu_payment_entry.js").read()
 check("_render_body wala pre-existing bug (har amount-prefill caller todta tha) fix ho gaya",
       "this._render_body()" not in _pe_js)
 check("_select_party ab party_label bhar deta hai (search box khaali nahi rehta)",
@@ -882,7 +893,7 @@ _gls = a.get_loyalty_status(_TEST_CUSTOMER)
 check("get_loyalty_status returns the real spend_per_point (not derived from point_value)",
       _gls.get("spend_per_point") == flt(frappe.db.get_single_value("Santu POS Settings", "loyalty_spend_per_point")),
       _gls.get("spend_per_point"))
-_bjs2 = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_billing/santu_billing.js").read()
+_bjs2 = open(APP_ROOT + "/santu_hardware/page/santu_billing/santu_billing.js").read()
 check("'No points yet' popup no longer back-computes the ratio from conversion_factor",
       "1 / (st.conversion_factor" not in _bjs2)
 check("'No points yet' popup reads st.spend_per_point directly",
@@ -1018,31 +1029,84 @@ check("Loyalty due-bill-expiry test invoices cleaned up (no residue)",
       frappe.db.count("Santu Loyalty Pending Point", {"invoice": ["in", _lp_test_invoices]}) == 0)
 
 
-section("22. BILL / RECEIPT T&C LINE — LOYALTY EXPIRY NOTICE")
-_TNC_TEXT = "बिल की पूरी भुगतान 2 दिन के अंदर न होने पर इस बिल के रिवॉर्ड पॉइंट्स समाप्त हो जाएंगे।"
-_tnc_thermal_formats = [
-    "Santu Hardware Thermal Bill (Sales Invoice)", "Santu Thermal - Compact Bill",
-    "Santu Thermal - Detailed Bill", "Santu Thermal - Simple Cash Bill",
-    "Santu Thermal - Customer Copy", "Santu Thermal - Duplicate / Office Copy",
-    "Santu Thermal - Large Print Bill", "Santu Thermal - Udhaar / Balance Bill",
-    "Santu Thermal - Minimal Slip", "Santu Thermal - Standard Bill",
-]
-for _pf in _tnc_thermal_formats + ["Santu Hardware Bill (Sales Invoice)"]:
-    _html = frappe.db.get_value("Print Format", _pf, "html") or ""
-    check(f"T&C line present in print format: {_pf}", _TNC_TEXT in _html and "loyalty.show_reward_terms" in _html)
+section("22. LOYALTY TEXT APPEARS ONLY WHEN LOYALTY IS ON (Ankit, 2026-10-07)")
+# Rewritten. It used to assert a Devanagari T&C line was hard-present in every
+# thermal format, which stopped being true when the bills were rebuilt in
+# English and the reward block became conditional. Ankit's actual rule is the
+# one worth testing: "jab mai reward point on kru tab wo aaye warna naa aaye"
+# -- with loyalty switched off NOTHING on a bill may mention reward points.
+_LOYALTY_WORDS = re.compile(r"reward point|loyalty|रिवॉर्ड", re.I)
+_loy_before = cint(frappe.db.get_single_value("Santu POS Settings", "loyalty_enabled"))
+_loy_si = frappe.db.get_value("Sales Invoice", {"docstatus": 1, "is_return": 0}, "name",
+                              order_by="creation desc")
 
-# Since 2026-09-18 the T&C prints only on a bill whose points wait on
-# payment, so render one of those.
-_recent_inv = [i for i in frappe.get_all("Santu Loyalty Pending Point", filters={"status": "Pending", "invoice_doctype": "Sales Invoice"}, order_by="creation desc", pluck="invoice")
+
+def _formats_mentioning_loyalty():
+    """Every Sales Invoice format that PRINTS loyalty words right now."""
+    out = []
+    with a._print_request_context():
+        for _f in frappe.get_all("Print Format",
+                                 filters={"name": ["like", "Santu%"], "doc_type": "Sales Invoice"},
+                                 pluck="name"):
+            try:
+                _h = frappe.get_print("Sales Invoice", _loy_si, _f)
+            except Exception:
+                continue
+            if _LOYALTY_WORDS.search(_h):
+                out.append(_f)
+    return out
+
+
+if _loy_si:
+    frappe.db.set_single_value("Santu POS Settings", "loyalty_enabled", 0)
+    frappe.db.commit()
+    _off_hits = _formats_mentioning_loyalty()
+    check("loyalty OFF: no bill mentions reward points at all", not _off_hits, str(_off_hits[:4]))
+
+    # And the gate is real, not just absent text: every format that carries the
+    # block must ask the server whether loyalty is on before printing it.
+    _carriers = [n for n, h in frappe.db.sql(
+        "select name, html from `tabPrint Format` where name like 'Santu%%'")
+        if h and ("reward" in h.lower() or "t&amp;c" in h.lower() or "t&c" in h.lower())]
+    _ungated = [n for n in _carriers
+                if "loyalty.enabled" not in (frappe.db.get_value("Print Format", n, "html") or "")
+                and "loyalty.show_reward_terms" not in (frappe.db.get_value("Print Format", n, "html") or "")]
+    check("every format carrying the reward block checks the loyalty switch first",
+          not _ungated, str(_ungated[:4]))
+
+    frappe.db.set_single_value("Santu POS Settings", "loyalty_enabled", _loy_before)
+    frappe.db.commit()
+    check("loyalty switch put back exactly as it was",
+          cint(frappe.db.get_single_value("Santu POS Settings", "loyalty_enabled")) == _loy_before,
+          _loy_before)
+
+# The other half of Ankit's rule: with loyalty ON, a bill whose points are
+# waiting on payment DOES carry the reward terms. Checked by switching the
+# loyalty flag on for the length of this one render and putting it straight
+# back, so the shop's own setting is never left changed.
+_recent_inv = [i for i in frappe.get_all("Santu Loyalty Pending Point",
+                                         filters={"status": "Pending", "invoice_doctype": "Sales Invoice"},
+                                         order_by="creation desc", pluck="invoice")
                if frappe.db.get_value("Sales Invoice", i, "docstatus") == 1][:1]
 if _recent_inv:
-    with _print_request_context():
-        _rendered = frappe.get_print("Sales Invoice", _recent_inv[0], "Santu Hardware Thermal Bill (Sales Invoice)", as_pdf=False)
-    check("T&C line actually renders in a live thermal bill (not just template text)", _TNC_TEXT in _rendered)
+    frappe.db.set_single_value("Santu POS Settings", "loyalty_enabled", 1)
+    frappe.db.commit()
+    try:
+        with _print_request_context():
+            _rendered = frappe.get_print("Sales Invoice", _recent_inv[0],
+                                         "Santu A4 - Standard A4", as_pdf=False)
+        check("loyalty ON: a bill with points pending does carry the reward terms",
+              bool(re.search(r"reward point", _rendered, re.I)),
+              _recent_inv[0])
+    finally:
+        frappe.db.set_single_value("Santu POS Settings", "loyalty_enabled", _loy_before)
+        frappe.db.commit()
+    check("loyalty switch still exactly as the shop left it",
+          cint(frappe.db.get_single_value("Santu POS Settings", "loyalty_enabled")) == _loy_before)
 
 
 section("23. UPDATE ITEMS IN BULK — BRAND AUTO-CREATE + SEARCH BY BRAND/NAME")
-_buv_js = open("/Users/santuhardware/erpnext/santu_hardware/public/js/santu_utilities/santu_utilities_views.js").read()
+_buv_js = open(APP_ROOT + "/public/js/santu_utilities/santu_utilities_views.js").read()
 check("bulk-update search box focus is captured before the DOM wipe (bug: had to click back in after every letter typed)",
       "document.activeElement === $prev_search[0]" in _buv_js)
 check("bulk-update search box focus is restored after the table re-renders",
@@ -1208,7 +1272,7 @@ section("25. INVOICE LIBRARY — 'TEST PRINT TEMPLATE' BUTTON")
 # calls the client-side window.santu_print_thermal_bill helper instead.
 check("api.py has no dead print_thermal_bill attribute (it never should)",
       not hasattr(a, "print_thermal_bill"))
-_prn_js = open("/Users/santuhardware/erpnext/santu_hardware/public/js/santu_printer_settings.js").read()
+_prn_js = open(APP_ROOT + "/public/js/santu_printer_settings.js").read()
 check("Test Print Template no longer calls the nonexistent api.print_thermal_bill",
       "api.print_thermal_bill" not in _prn_js.replace("// This used to call a server method (api.print_thermal_bill)", ""))
 check("Test Print Template now calls the real client-side print helper",
@@ -1264,8 +1328,8 @@ check("gap above Account Summary panel reduced from the old 18px",
 check("Reward Points Earned now uses its own slightly larger/darker style, not the faint .legal one",
       '<div class="santu-bill-reward">Reward Points Earned:' in _a4_html
       and ".santu-bill-reward { margin-top: 6px; font-size: 11px; color: #6b7280; }" in _a4_css)
-check("T&C line now uses a darker style too, same size, wording untouched",
-      '<div class="santu-bill-tnc">T&amp;C: बिल की पूरी भुगतान 2 दिन के अंदर न होने पर इस बिल के रिवॉर्ड पॉइंट्स समाप्त हो जाएंगे।</div>' in _a4_html
+check("T&C line stays small and quiet (it is a note, not a warning)",
+      'class="santu-bill-tnc"' in _a4_html
       and ".santu-bill-tnc { margin-top: 2px; font-size: 10px; color: #6b7280; }" in _a4_css)
 check("the actual 'Goods once sold...' legal disclaimer is untouched (still the original faint .legal style)",
       '<div class="legal">Goods once sold can only be exchanged, not refunded. Bill is required for exchange. E&amp;OE.</div>' in _a4_html
@@ -1295,36 +1359,38 @@ _pdf_bytes, _pdf_filename, _ = a._customer_khata_pdf_bytes(_TEST_CUSTOMER)
 check("downloadable PDF filename says account-statement, not khata (visible in Downloads/WhatsApp)",
       "account-statement" in _pdf_filename and "khata" not in _pdf_filename.lower())
 
-_prn_js_khata = open("/Users/santuhardware/erpnext/santu_hardware/public/js/santu_printer_settings.js").read()
+_prn_js_khata = open(APP_ROOT + "/public/js/santu_printer_settings.js").read()
 check("Invoice Library shows 'Account Statement' labels (dropdown, thermal & A4 card names)",
       all(x in _prn_js_khata for x in [
           '{ value: "Khata Statement", label: "Account Statement" }',
-          'name: "Thermal Account Statement"',
-          'name: "Thermal Account Statement (Compact)"',
-          'name: "A4 Account Statement"',
+          # Built through the T(hindi, english, hint) helper since the Invoice
+          # Library was reorganised; the English label is still what shows.
+          '"Thermal Account Statement"',
+          '"Thermal Account Statement (Compact)"',
+          '"A4 Account Statement"',
       ]))
 
-_parties_js = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_parties/santu_parties.js").read()
+_parties_js = open(APP_ROOT + "/santu_hardware/page/santu_parties/santu_parties.js").read()
 check("Parties screen's statement dialog/button/messages all say Account, not Khata",
       "Khata" not in _parties_js
       and 'title: __("Account Statement — {0}", [row.party_name])' in _parties_js
       and '__("Account")' in _parties_js)
 
-_tooltips_js = open("/Users/santuhardware/erpnext/santu_hardware/public/js/santu_tooltips.js").read()
+_tooltips_js = open(APP_ROOT + "/public/js/santu_tooltips.js").read()
 check("tooltip reads 'Account / ledger', not 'Khata / ledger'",
       '"Account / ledger"' in _tooltips_js and "Khata" not in _tooltips_js)
 
-_wa_api = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/whatsapp_connect_api.py").read()
+_wa_api = open(APP_ROOT + "/santu_hardware/whatsapp_connect_api.py").read()
 check("WhatsApp-shared statement message says 'Account Statement', not 'Khata Statement'",
       "Account Statement —" in _wa_api and "Khata" not in _wa_api)
 
-_ret_sales = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_sales_return/santu_sales_return.js").read()
-_ret_purch = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_purchase_return/santu_purchase_return.js").read()
+_ret_sales = open(APP_ROOT + "/santu_hardware/page/santu_sales_return/santu_sales_return.js").read()
+_ret_purch = open(APP_ROOT + "/santu_hardware/page/santu_purchase_return/santu_purchase_return.js").read()
 check("Sales/Purchase Return credit-settlement option says Account, not Khata",
       "Account me credit rahega" in _ret_sales and "Account me credit rahega" in _ret_purch
       and "Khata" not in _ret_sales and "Khata" not in _ret_purch)
 
-_bill_js_khata = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_billing/santu_billing.js").read()
+_bill_js_khata = open(APP_ROOT + "/santu_hardware/page/santu_billing/santu_billing.js").read()
 check("Billing's edit-invoice payment options say Account, not Khata (comments aside)",
       "Baaki (Account) me daalein" in _bill_js_khata and "customer ke account me" in _bill_js_khata.lower())
 
@@ -1412,7 +1478,7 @@ section("30. UNIT CONVERSION-GUESSING — SWITCHED OFF ON PURPOSE")
 check("set_item_unit is no longer exposed", not hasattr(a, "set_item_unit"))
 check("guess_unit_factor is no longer exposed", not hasattr(a, "guess_unit_factor"))
 check("force_overwrite_item_unit is exposed and whitelisted", hasattr(a, "force_overwrite_item_unit"))
-_stock_js = open("/Users/santuhardware/erpnext/santu_hardware/public/js/santu_stock/santu_stock_page.js").read()
+_stock_js = open(APP_ROOT + "/public/js/santu_stock/santu_stock_page.js").read()
 check("the old conversion-guessing dialog is commented out, not deleted (it comes back later)",
       "edit_unit_with_conversion_guess(r) {" in _stock_js and "SWITCHED OFF 2026-09-07" in _stock_js)
 check("the live edit_unit is the force-overwrite version, reachable from the unit chip",
@@ -1426,11 +1492,20 @@ section("31. BILLING TICK (\u2713) — FORCE-OVERWRITES UNIT *AND* PRICE")
 # operator is stating what the unit and price ARE, not asking for a
 # conversion. The quantity keeps its number and simply carries the new
 # label, which is the whole point of "forcefully".
-_tick_js = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_billing/santu_billing.js").read()
+# Moved to the shared public/js/santu_tick_to_master.js -- the behaviour is
+# unchanged, this check was simply still reading billing.js (2026-10-07).
+_tick_js = open(APP_ROOT + "/public/js/santu_tick_to_master.js").read()
 check("tick sends the row's unit as well as its rate",
-      "push_bill_row_to_master" in _tick_js and "uom: unit_changed ? r.uom : null" in _tick_js)
+      "push_bill_row_to_master" in _tick_js and "uom: r.uom || null" in _tick_js)
+# The "only if it actually differs" guard moved to the server when the tick
+# became shared: force_overwrite_item_unit returns untouched on
+# `not uom or uom == stock_uom`, so sending it every time is harmless and the
+# screen still only WARNS when the unit is really changing (2026-10-07).
+_tick_py = open(APP_ROOT + "/santu_hardware/api.py").read()
 check("a unit only counts as changed when it differs from the item's own stock unit",
-      "r.uom_options[0].uom" in _tick_js and "unit_changed = !!r.uom && r.uom !== stock_uom" in _tick_js)
+      "r.uom_options[0].uom" in _tick_js
+      and "unit_changing = r.uom && stock_uom && r.uom !== stock_uom" in _tick_js
+      and "if not uom or uom == stock_uom:" in _tick_py)
 
 _tk = "ZZTICK-" + frappe.utils.random_string(6).upper()
 _tk_ste = None
@@ -1710,7 +1785,7 @@ section("34. THE THREE SAVE BUTTONS ON EVERY DOCUMENT SCREEN")
 # WhatsApp, no extra confirmation or popup) put on every screen that needs
 # it. One shared helper -- santu_save_buttons.js -- rather than five
 # near-copies that drift.
-_sb = open("/Users/santuhardware/erpnext/santu_hardware/public/js/santu_save_buttons.js").read()
+_sb = open(APP_ROOT + "/public/js/santu_save_buttons.js").read()
 check("shared helper exists and exposes html/bind/after_save",
       all(x in _sb for x in ["function html(", "function bind(", "async function after_save(", "window.santu_save_buttons"]))
 check("helper prints straight away — never asks first",
@@ -1718,7 +1793,7 @@ check("helper prints straight away — never asks first",
 check("helper sends WhatsApp with skip_dialog — no preview to confirm",
       "skip_dialog: true" in _sb)
 check("helper is loaded app-wide, after thermal_print.js which it calls into",
-      "santu_save_buttons.js" in open("/Users/santuhardware/erpnext/santu_hardware/hooks.py").read())
+      "santu_save_buttons.js" in open(APP_ROOT + "/hooks.py").read())
 
 _screens = {
     "santu_billing/santu_billing": ("Sales Invoice", False),
@@ -1729,7 +1804,7 @@ _screens = {
     "santu_purchase_invoice/santu_purchase_invoice": ("Purchase Invoice", True),
 }
 for _rel, (_dt, _uses_helper) in _screens.items():
-    _js = open(f"/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/{_rel}.js").read()
+    _js = open(APP_ROOT + f"/santu_hardware/page/{_rel}.js").read()
     # Three ways a screen can legitimately have them: Billing spells the
     # markup out itself, most screens call santu_save_buttons.html(), and the
     # two si2-style action bars use data-action buttons.
@@ -1745,15 +1820,15 @@ for _rel, (_dt, _uses_helper) in _screens.items():
 
 # The one rule that matters: a plain Save must not print or send, and
 # neither action may re-ask once its own button was pressed.
-_bill_js2 = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_billing/santu_billing.js").read()
+_bill_js2 = open(APP_ROOT + "/santu_hardware/page/santu_billing/santu_billing.js").read()
 check("no screen re-introduced the 'print karein?' confirm on save",
-      all("await santu_confirm_then_print(" not in open(f"/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/{r}.js").read()
+      all("await santu_confirm_then_print(" not in open(APP_ROOT + f"/santu_hardware/page/{r}.js").read()
           for r in _screens))
-_est_js = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_estimate/santu_estimate.js").read()
+_est_js = open(APP_ROOT + "/santu_hardware/page/santu_estimate/santu_estimate.js").read()
 check("Estimate's plain Save no longer auto-opens the WhatsApp dialog",
       "} else if (window.santu_whatsapp_share) {" not in _est_js)
 for _rel in ("santu_sales_return/santu_sales_return", "santu_delivery_challan/santu_delivery_challan"):
-    _js = open(f"/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/{_rel}.js").read()
+    _js = open(APP_ROOT + f"/santu_hardware/page/{_rel}.js").read()
     check(f"{_rel.split('/')[0]}'s review popup only opens on a plain Save",
           "if (!after && window.santu_open_invoice_view" in _js or "if (!after) window.santu_open_invoice_view" in _js)
 
@@ -1815,7 +1890,7 @@ check("units test left no extra conversion rows behind",
       frappe.db.count("UOM Conversion Factor") == _uc_before)
 
 # Manage Categories: rename round-trips through the same shared endpoint.
-_cat_src = open("/Users/santuhardware/erpnext/santu_hardware/public/js/santu_stock/santu_stock_page.js").read()
+_cat_src = open(APP_ROOT + "/public/js/santu_stock/santu_stock_page.js").read()
 check("Manage Categories renames via the shared rename_item_master endpoint",
       "rename_item_master" in _cat_src and 'doctype: "Item Group"' in _cat_src)
 check("Manage Units opens the conversions panel for the picked unit",
@@ -1829,18 +1904,18 @@ section("36. SAVE & PRINT IS THE BIG BUTTON")
 # whatever sits directly in .santu-bill-savecol is the big one -- so the
 # order can be changed in markup alone without a button coming out the wrong
 # size.
-_bcss = open("/Users/santuhardware/erpnext/santu_hardware/public/css/santu_billing.css").read()
+_bcss = open(APP_ROOT + "/public/css/santu_billing.css").read()
 check("big-button styling is positional, not tied to one action",
       ".santu-bill-savecol > .santu-bill-save-print {" in _bcss.replace(",\n", " {\n")
       or ".santu-bill-savecol > .santu-bill-save-print" in _bcss)
 check("the row under it styles whatever button is in it",
       ".santu-bill-save-row > button {" in _bcss)
-_bjs3 = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_billing/santu_billing.js").read()
+_bjs3 = open(APP_ROOT + "/santu_hardware/page/santu_billing/santu_billing.js").read()
 _savecol = _bjs3.split("santu-bill-savecol")[1].split("santu-bill-credit")[0]
 check("Billing puts Save & Print in the big slot, Save + WhatsApp in the row",
       _savecol.index("santu-bill-save-print") < _savecol.index("santu-bill-save-row")
       and _savecol.index("santu-bill-save-row") < _savecol.index("santu-bill-save-whatsapp"))
-_sb2 = open("/Users/santuhardware/erpnext/santu_hardware/public/js/santu_save_buttons.js").read()
+_sb2 = open(APP_ROOT + "/public/js/santu_save_buttons.js").read()
 check("the shared helper uses the same order for every other screen",
       _sb2.index("santu-bill-save-print") < _sb2.index("santu-bill-save-row"))
 
@@ -1853,7 +1928,7 @@ section("37. WHATSAPP 'WAITING FOR THIS MESSAGE' — RESEND ON RETRY RECEIPT")
 # for us, but only if it can read the original message back through the
 # `getMessage(key)` callback -- which was never passed, so nothing was ever
 # resent and the bubble never cleared.
-_bridge = open("/Users/santuhardware/erpnext/santu_hardware/whatsapp_bridge/bridge.js").read()
+_bridge = open(APP_ROOT + "/whatsapp_bridge/bridge.js").read()
 check("the socket now supplies getMessage, so Baileys can answer a retry receipt",
       "getMessage: async (key)" in _bridge)
 check("outgoing messages are cached so there is something to resend",
@@ -1909,7 +1984,7 @@ section("39. A 500 PAGE NOW LEAVES A TRACE")
 check("an after_request hook is registered to catch failed responses",
       "santu_hardware.santu_hardware.bug_report_service.capture_failed_response"
       in frappe.get_hooks("after_request"))
-_brs = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/bug_report_service.py").read()
+_brs = open(APP_ROOT + "/santu_hardware/bug_report_service.py").read()
 check("it rolls the aborted transaction back first — that is what unblocks the write",
       "frappe.db.rollback()" in _brs.split("def capture_failed_response")[1].split("def ")[0])
 check("it only fires on 5xx, so 404s and 417s stay out of the bug list",
@@ -1931,13 +2006,13 @@ section("40. EXPORT ITEMS IS REACHABLE")
 # 2026-09-07: "utilities me export items nh hai." The screen and its endpoint
 # both existed and worked -- but no menu entry ever pointed at them, so the
 # one way to get the catalogue out as Excel could not be reached at all.
-_sb_js = open("/Users/santuhardware/erpnext/santu_hardware/public/js/santu_fixed_sidebar.js").read()
+_sb_js = open(APP_ROOT + "/public/js/santu_fixed_sidebar.js").read()
 check("Utilities now has an Export Items entry",
       'view: "export_items"' in _sb_js and 'label: "Export Items"' in _sb_js)
-_uv_js = open("/Users/santuhardware/erpnext/santu_hardware/public/js/santu_utilities/santu_utilities_utils.js").read()
+_uv_js = open(APP_ROOT + "/public/js/santu_utilities/santu_utilities_utils.js").read()
 check("the view dispatcher knows it", "export_items:" in _uv_js)
 check("the screen that renders it exists",
-      "render_export_items" in open("/Users/santuhardware/erpnext/santu_hardware/public/js/santu_utilities/santu_utilities_views.js").read())
+      "render_export_items" in open(APP_ROOT + "/public/js/santu_utilities/santu_utilities_views.js").read())
 
 import santu_hardware.santu_hardware.utilities_api as _ua
 _exp = _ua.export_items_file()
@@ -1962,7 +2037,7 @@ section("41. THE OLD CONVERSION PATH IS GONE FROM EVERY CALLER")
 # reaching for them, and the POS tick standing alone as the one way a unit
 # changes (2026-09-07: "ise baad me karenge and agar POS sale me tick kare
 # then forcefully unit and price overwrite ho jaye").
-_api_src = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/api.py").read()
+_api_src = open(APP_ROOT + "/santu_hardware/api.py").read()
 _live_api = "\n".join(l for l in _api_src.split("\n") if not l.lstrip().startswith("#"))
 check("no live code calls set_item_unit any more",
       "set_item_unit(item_code" not in _live_api and "= set_item_unit(" not in _live_api)
@@ -2019,7 +2094,7 @@ finally:
     frappe.db.commit()
 check("queue test item cleaned up", not frappe.db.exists("Item", _q_item))
 check("the except block clears the queue rather than leaving it to luck",
-      "frappe.clear_messages()" in open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/api.py").read())
+      "frappe.clear_messages()" in open(APP_ROOT + "/santu_hardware/api.py").read())
 
 
 section("43. UNIT FORCE-OVERWRITE FROM STOCK SUMMARY AND BULK UPDATE")
@@ -2256,11 +2331,27 @@ _ap = frappe.get_all("Item", filters={"disabled": 0, "item_group": "Paints", "br
 # edits, not regressions, so what is checked now is what must STAY true:
 # every twin that exists was built right, and nothing vanished unrecorded.
 _twin_bad, _twin_noprice, _twin_vanished = [], [], []
+try:
+    with open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                            "fixtures", "twin_baseline.json")) as _bf:
+        _TWIN_BASELINE = set(json.load(_bf)["twins"])
+except Exception:
+    _TWIN_BASELINE = set()
 for _b in _bo:
     _a = _b.replace("BIRLA-OPUS-", "AP-", 1)
     if not frappe.db.exists("Item", _a):
-        # Deleted on purpose through the UI = fine. Gone with no record = not.
-        if not frappe.db.exists("Deleted Document", {"deleted_doctype": "Item", "deleted_name": _a}):
+        # Deleted on purpose = fine. Gone with nothing to show for it = not.
+        #
+        # This used to take a Deleted Document row as the proof of intent, but
+        # the Recycle Bin can be emptied from the screen now (2026-10-07) and
+        # that evidence does not survive it -- on the live shop the bin was
+        # emptied the same day and 24 long-deleted twins instantly read as
+        # "vanished". The baseline below is the proof instead: a twin that was
+        # alive on 2026-10-07 and is gone now, with no deletion record, is what
+        # this flags. Older deletions are history and are not re-litigated.
+        if _a in _TWIN_BASELINE and not frappe.db.exists(
+            "Deleted Document", {"deleted_doctype": "Item", "deleted_name": _a}
+        ):
             _twin_vanished.append(_a)
         continue
     _d = frappe.db.get_value("Item", _a, ["gst_hsn_code", "is_stock_item", "brand", "item_group"], as_dict=True)
@@ -2393,13 +2484,13 @@ section("51. OFFLINE BILLING — EK BILL DO BAAR KABHI NA BANE")
 # The whole design rests on one thing: a retry must never bill twice.
 check("Sales Invoice carries the offline key field",
       frappe.db.has_column("Sales Invoice", "custom_offline_key"))
-_off_js = open("/Users/santuhardware/erpnext/santu_hardware/public/js/santu_offline_queue.js").read()
+_off_js = open(APP_ROOT + "/public/js/santu_offline_queue.js").read()
 check("the queue only swallows CONNECTION failures, not bad data",
       "is_connection_problem" in _off_js and "navigator.onLine" in _off_js)
 check("the key is made before the first attempt, not after",
-      "new_key()" in open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_billing/santu_billing.js").read())
+      "new_key()" in open(APP_ROOT + "/santu_hardware/page/santu_billing/santu_billing.js").read())
 check("the queue is registered so every screen has it",
-      "santu_offline_queue.js" in open("/Users/santuhardware/erpnext/santu_hardware/hooks.py").read())
+      "santu_offline_queue.js" in open(APP_ROOT + "/hooks.py").read())
 
 _ob_item = _sellable_item()
 _ob_key = "off-test-" + frappe.generate_hash(length=10)
@@ -2449,7 +2540,7 @@ section("52. FRACTIONAL POINTS MUST BE REDEEMABLE")
 # redeem dialog still took whole numbers only -- Math.floor on the maximum,
 # fieldtype Int, cint on the entered value. A customer holding 0.4 points was
 # shown "Can use now: 0", and every balance stranded its fraction forever.
-_bill_js = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_billing/santu_billing.js").read()
+_bill_js = open(APP_ROOT + "/santu_hardware/page/santu_billing/santu_billing.js").read()
 _loy_js = _bill_js.split("_loyalty() {")[1].split("_breakup()")[0]
 check("the redeem field is a Float, not an Int", '"Float"' in _loy_js and '"Int"' not in _loy_js)
 # Floored to 2 DECIMALS (* 100 / 100), not to a whole number.
@@ -2465,7 +2556,7 @@ check("no customer picked asks for one instead of guessing a Walk-in that does n
 # The backend already accepted a rupee amount with decimals -- prove it.
 check("the server takes a fractional redeem amount",
       "redeem_value = flt(data.get(\"redeem_points\"))" in
-      open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/api.py").read())
+      open(APP_ROOT + "/santu_hardware/api.py").read())
 
 
 section("53. RECYCLE BIN — BILL NUMBER AUR CUSTOMER KA NAAM")
@@ -2482,7 +2573,7 @@ check("every row carries a party field", all("party" in r for r in _rb["rows"]))
 check("a deleted bill knows whose it was",
       all(r["party"] for r in _rb_bills) if _rb_bills else True,
       [(r["label"], r["party"]) for r in _rb_bills[:3]])
-_rb_js = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_recycle_bin/santu_recycle_bin.js").read()
+_rb_js = open(APP_ROOT + "/santu_hardware/page/santu_recycle_bin/santu_recycle_bin.js").read()
 check("the screen shows a Customer / Party column", "Customer / Party" in _rb_js)
 check("...and no longer reads Deleted Document straight from the browser",
       'get_list("Deleted Document"' not in _rb_js)
@@ -2496,7 +2587,7 @@ section("54. NAYA ITEM APNE AAP DIKHE — HAR ITEM-GRID SCREEN PAR")
 # Delivery Challan, Sales Order and Purchase Invoice/Order never called it at
 # all. Fixed in one place (the helper now matches data-row) plus a
 # reveal_row_id on every screen's add path.
-_topbar = open("/Users/santuhardware/erpnext/santu_hardware/public/js/santu_topbar.js").read()
+_topbar = open(APP_ROOT + "/public/js/santu_topbar.js").read()
 check("the helper matches any row by data-row, not just Billing's own class",
       'tr[data-row="${CSS.escape(String(opts.row_id))}"]' in _topbar
       and ".santu-bill-tr[data-row" not in _topbar)
@@ -2526,7 +2617,7 @@ _GRID_SCREENS = {
 }
 _missing_reveal, _missing_call, _missing_flash = [], [], []
 for _folder, _file in _GRID_SCREENS.items():
-    _src = open(f"/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/{_folder}/{_file}.js").read()
+    _src = open(APP_ROOT + f"/santu_hardware/page/{_folder}/{_file}.js").read()
     if "reveal_row_id" not in _src:
         _missing_reveal.append(_file)
     if "santu_scroll_row_into_view" not in _src:
@@ -2541,21 +2632,21 @@ check("every item-grid screen flashes the new row", not _missing_flash, _missing
 # would look correct and do nothing, which is exactly the bug being fixed.
 _no_reveal_on_add = []
 for _folder, _file in _GRID_SCREENS.items():
-    _src = open(f"/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/{_folder}/{_file}.js").read()
+    _src = open(APP_ROOT + f"/santu_hardware/page/{_folder}/{_file}.js").read()
     if "reveal_row_id:" not in _src:
         _no_reveal_on_add.append(_file)
 check("...and every screen's add path passes a row to reveal", not _no_reveal_on_add, _no_reveal_on_add)
 check("the flash animation the class relies on is defined",
-      "santu-bill-row-new" in open("/Users/santuhardware/erpnext/santu_hardware/public/css/santu_billing.css").read())
+      "santu-bill-row-new" in open(APP_ROOT + "/public/css/santu_billing.css").read())
 
 
 section("55. SALE INVOICES LIST — PARTY KA PATA AUR PHONE")
 # 2026-09-10 request: show the customer's address and mobile under the party
 # name on each Sale Invoices row, the same way Billing (POS) shows it under
 # the picked customer -- same endpoint, same join, same fallback, no new API.
-_st_js = open("/Users/santuhardware/erpnext/santu_hardware/public/js/santu_sale/santu_sale_transactions.js").read()
-_sp_js = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_sale/santu_sale.js").read()
-_bl_js = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_billing/santu_billing.js").read()
+_st_js = open(APP_ROOT + "/public/js/santu_sale/santu_sale_transactions.js").read()
+_sp_js = open(APP_ROOT + "/santu_hardware/page/santu_sale/santu_sale.js").read()
+_bl_js = open(APP_ROOT + "/santu_hardware/page/santu_billing/santu_billing.js").read()
 check("the list reuses Billing's customer_details call, not a new endpoint",
       "santu_sale_invoice.api.customer_details(customer)" in _st_js
       and "santu_sale_invoice.api.customer_details(customer)" in _bl_js)
@@ -2568,7 +2659,7 @@ check("one request per customer, cached across re-renders",
       "_party_meta_cache" in _st_js and "new Set(" in _st_js)
 check("only the sale rows get it -- estimate and payment-in rows untouched",
       "if (!is_quotation && !is_payment_in) this._fill_party_meta($tbody);" in _st_js)
-_ss_css = open("/Users/santuhardware/erpnext/santu_hardware/public/css/santu_sale.css").read()
+_ss_css = open(APP_ROOT + "/public/css/santu_sale.css").read()
 check("the line is kept compact (one line, truncated)", ".santu-sale-party-meta" in _ss_css)
 # 2026-09-10: first a long NAME had no limit (wrapped to 113px, or with no
 # spaces stretched the table past the page), then it was cut with "…" --
@@ -2582,8 +2673,8 @@ def _css_rule(css, selector):
     # appended si2 fix (the file already had an older .santu-si2-item-name).
     parts = css.split(selector + " {")[1:]
     return " ".join(p.split("}")[0] for p in parts)
-_bl_css = open("/Users/santuhardware/erpnext/santu_hardware/public/css/santu_billing.css").read()
-_si_css = open("/Users/santuhardware/erpnext/santu_hardware/public/css/santu_sale_invoice.css").read()
+_bl_css = open(APP_ROOT + "/public/css/santu_billing.css").read()
+_si_css = open(APP_ROOT + "/public/css/santu_sale_invoice.css").read()
 _full = lambda rule: "overflow-wrap: anywhere" in rule and "ellipsis" not in rule
 check("no name anywhere on the sale screens is cut with '…'",
       "text-overflow: ellipsis" not in _ss_css)
@@ -2609,7 +2700,7 @@ section("56. POS CUSTOMER LIST SHOWS THE GAON; TEST GRAHAK NEVER LINGERS")
 # address show krta tha ab nhi kr rha". list_customers_for_picker has always
 # sent santu_village; the dropdown row only ever drew name + phone. The same
 # screenshot showed the suite's own "Zz Test Grahak" in the shop's list.
-_bl_js2 = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_billing/santu_billing.js").read()
+_bl_js2 = open(APP_ROOT + "/santu_hardware/page/santu_billing/santu_billing.js").read()
 _cs = _bl_js2.split("_cust_search(q) {")[1].split("\n\t},")[0]
 check("the POS customer row draws the gaon (santu_village) under the name",
       "c.santu_village" in _cs and "santu-bill-cust-village" in _cs)
@@ -2617,7 +2708,7 @@ _pk = a.list_customers_for_picker("")
 check("the picker sends a gaon for real customers",
       sum(1 for r in _pk if r.get("santu_village")) >= len(_pk) - 5, f"{sum(1 for r in _pk if r.get('santu_village'))}/{len(_pk)}")
 check("the gaon line has its own compact style",
-      ".santu-bill-cust-village {" in open("/Users/santuhardware/erpnext/santu_hardware/public/css/santu_billing.css").read())
+      ".santu-bill-cust-village {" in open(APP_ROOT + "/public/css/santu_billing.css").read())
 check("the suite removes its test grahak when it finishes (never left in the shop's list)",
       "_atexit.register(_remove_test_customer)" in open(__file__).read())
 
@@ -2626,7 +2717,7 @@ section("57. HALF QUANTITIES NEVER BLOCK A BILL")
 # 2026-09-18: "Row 7: Quantity (9.5) cannot be a fraction ... in UOM Nos"
 check("no UOM has the whole-number lock",
       not frappe.db.sql("select name from tabUOM where must_be_whole_number=1"))
-_hk = open("/Users/santuhardware/erpnext/santu_hardware/hooks.py").read()
+_hk = open(APP_ROOT + "/hooks.py").read()
 check("lock is re-removed after every migrate and on every UOM save",
       "allow_fractional_quantities" in _hk and "uom_allow_fraction" in _hk)
 
@@ -2718,16 +2809,16 @@ _uncosted = frappe.db.sql("""select b.item_code from tabBin b join tabItem i on 
     where b.warehouse='Stores - SH' and ifnull(b.valuation_rate,0)=0 and ifnull(i.valuation_rate,0)=0 and i.is_stock_item=1 limit 1""")
 if _uncosted:
     check("an item with NO cost price is billed at zero cost instead of refused", _needs_zero_valuation(_uncosted[0][0], "Stores - SH"))
-_src = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/api.py").read()
+_src = open(APP_ROOT + "/santu_hardware/api.py").read()
 check("the sale save sets allow_zero_valuation_rate from that check",
       'item_row["allow_zero_valuation_rate"] = 1' in _src)
 check("backup log insert retries a 1020 on tabseries",
-      "except frappe.QueryDeadlockError" in open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/backup_service.py").read().split("def _create_site_backup")[1][:2500])
+      "except frappe.QueryDeadlockError" in open(APP_ROOT + "/santu_hardware/backup_service.py").read().split("def _create_site_backup")[1][:2500])
 
 
 section("63. OLD DATE NEVER CARRIES INTO TODAY'S ENTRY (2026-09-19)")
 # Payment In showed 06/09/2026 on 19/09: a tab restored from an earlier day.
-_pg = "/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/"
+_pg = APP_ROOT + "/santu_hardware/page/"
 for _f in ("santu_payment_entry", "santu_delivery_challan", "santu_sales_order", "santu_purchase_order", "santu_purchase_invoice"):
     _js = open(f"{_pg}{_f}/{_f}.js").read()
     check(f"{_f}: stale date rolls forward on render", "this._roll_dates_forward();" in _js and "_roll_dates_forward() {" in _js)
@@ -2737,13 +2828,13 @@ for _f in ("santu_billing", "santu_estimate", "santu_sales_return", "santu_purch
 
 
 section("64. CRASH / RELOAD / NO-ROLE SAFETY (2026-09-19 full-app test)")
-_bj = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_billing/santu_billing.js").read()
+_bj = open(APP_ROOT + "/santu_hardware/page/santu_billing/santu_billing.js").read()
 check("billing keeps the bill's key on the tab BEFORE sending (reload cannot double a bill)",
       "b.pending_offline_key || " in _bj and "this._persist(); // synchronously" in _bj)
 check("billing tells the counter when a repeat was folded into the first bill", "r.already_saved" in _bj)
-_pj2 = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_payment_entry/santu_payment_entry.js").read()
+_pj2 = open(APP_ROOT + "/santu_hardware/page/santu_payment_entry/santu_payment_entry.js").read()
 check("payment keeps its request key at once (not debounced)", "this._persist(); // at once" in _pj2)
-_hk2 = open("/Users/santuhardware/erpnext/santu_hardware/hooks.py").read()
+_hk2 = open(APP_ROOT + "/hooks.py").read()
 check("one access gate in front of every santu API", "santu_hardware.santu_hardware.access_gate.gate" in _hk2)
 from santu_hardware.santu_hardware.access_gate import ADMIN_ONLY as _AO
 check("owner-only list covers the dangerous ones",
@@ -2786,10 +2877,11 @@ try:
     a._usb_write_with_retry(_p2, 1, b"hello")
 except frappe.ValidationError as _ex:
     _e2 = str(_ex)
-check("a printer that stays stuck: plain Hindi message, not a 500", bool(_e2) and "प्रिंटर" in (_e2 or ""), (_e2 or "")[:90])
-check("  ...and it tells the shop what to do", "क्या करें" in (_e2 or ""))
+check("a printer that stays stuck: plain Hinglish message, not a 500",
+      bool(_e2) and "Printer abhi jawab nahi de raha" in (_e2 or ""), (_e2 or "")[:90])
+check("  ...and it tells the shop what to do", "Kya karein" in (_e2 or ""))
 check("every raw-USB write goes through the retry helper",
-      "dev.write(SANTU_USB_OUT_ENDPOINT" not in open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/api.py").read())
+      "dev.write(SANTU_USB_OUT_ENDPOINT" not in open(APP_ROOT + "/santu_hardware/api.py").read())
 
 
 section("66. DELETING THE LAST BILL GIVES ITS NUMBER BACK (no hole)")
@@ -2834,16 +2926,22 @@ _old = [j for j in _opj(24) if j.get("name") == _pj67.name]
 check("a print that really never came out IS still reported", len(_old) == 1, str(_old[:1])[:160])
 frappe.delete_doc("Santu Print Job", _pj67.name, force=1, ignore_permissions=True)
 frappe.db.commit()
-_bj67 = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_billing/santu_billing.js").read()
+_bj67 = open(APP_ROOT + "/santu_hardware/page/santu_billing/santu_billing.js").read()
 check("the screen looks again a few seconds later", "_refresh_print_alert_later" in _bj67)
 
 
 section("68. QUANTITY TYPED IN FRONT OF THE ITEM NAME (counter's request, 2026-09-21)")
-_bj68 = open("/Users/santuhardware/erpnext/santu_hardware/santu_hardware/page/santu_billing/santu_billing.js").read()
+# One shared implementation for every item-entry screen since 2026-09-21, so
+# the markup and the parsing both live here rather than in billing.js.
+_bj68 = (open(APP_ROOT + "/santu_hardware/page/santu_billing/santu_billing.js").read()
+         + open(APP_ROOT + "/public/js/santu_qty_prefix.js").read())
 check("billing understands '5 cpvc elbow' / '5*cpvc' as five pieces", "_split_qty(q)" in _bj68 and "_pending_qty" in _bj68)
 check("the row is added with that quantity, not 1", "qty: typed_qty," in _bj68 and "existing.qty += typed_qty" in _bj68)
 check("the search list shows what will happen", "santu-bill-dd-qtyhint" in _bj68)
-check("plain typing still adds one piece (no change for anyone else)", "flt(this._pending_qty) > 0 ? flt(this._pending_qty) : 1" in _bj68)
+# Same guarantee, written once in the shared file now: take() returns the
+# typed quantity when there is one and 1 otherwise.
+check("plain typing still adds one piece (no change for anyone else)",
+      "ctx._pending_qty = null" in _bj68 and "return n > 0 ? n : 1;" in _bj68)
 
 
 print("\n" + "=" * 74)

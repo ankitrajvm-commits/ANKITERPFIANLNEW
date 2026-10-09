@@ -77,21 +77,39 @@ jobs:
             ${{ runner.os }}-yarn-
 
       - name: Install MariaDB Client
-        run: sudo apt-get install mariadb-client-10.6
+        # Unversioned on purpose. The pin to mariadb-client-10.6 broke every
+        # run once GitHub's Ubuntu image stopped carrying that exact package
+        # ("Package 'mariadb-client-10.6' has no installation candidate",
+        # 2026-10-07) -- the client only has to speak to the 10.6 service
+        # container above, and any current client does.
+        run: sudo apt-get update && sudo apt-get install -y mariadb-client
 
       - name: Setup
         run: |
           pip install frappe-bench
-          bench init --skip-redis-config-generation --skip-assets --python "$(which python)" ~/frappe-bench
+          # --frappe-branch version-15 on purpose. Unpinned, bench init clones
+          # frappe's default branch (develop), which has moved past what this
+          # app runs on and past Python 3.10 -- the install died with "Build
+          # failures usually indicate a problem with the package or the build
+          # environment" before a single test ran (2026-10-07). The shop runs
+          # Frappe 15.116.1, so CI tests against the same major line.
+          bench init --skip-redis-config-generation --skip-assets --frappe-branch version-15 --python "$(which python)" ~/frappe-bench
           mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL character_set_server = 'utf8mb4'"
           mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL collation_server = 'utf8mb4_unicode_ci'"
 
       - name: Install
         working-directory: /home/runner/frappe-bench
         run: |
+          # ERPNext first. This app is built on it -- 424 references to its
+          # doctypes in api.py alone -- and without it the install died on
+          # "Module import failed for UOM ... No module named
+          # 'frappe.core.doctype.uom'", because UOM is an ERPNext doctype
+          # (erpnext/setup/doctype/uom), not a Frappe core one (2026-10-07).
+          bench get-app --branch version-15 erpnext
           bench get-app santu_hardware $GITHUB_WORKSPACE
           bench setup requirements --dev
           bench new-site --db-root-password root --admin-password admin test_site
+          bench --site test_site install-app erpnext
           bench --site test_site install-app santu_hardware
           bench build
         env:

@@ -240,6 +240,30 @@ for key, (email, _) in USERS.items():
 		frappe.delete_doc("Contact", c, force=1, ignore_permissions=True)
 	frappe.delete_doc("User", email, force=1, ignore_permissions=True)
 	frappe.db.commit()
+# The named fixtures this suite makes at module level belong to Administrator,
+# not to any of the five test users, so the owner-filtered sweep above walked
+# straight past them. They survived every run and the suite then failed its own
+# TEST RESIDUE gate -- four suites in a row reported a failure that was only
+# this (2026-10-07).
+for _dt, _nm in (("Item", ITEM), ("Customer", "TEST PERM GRAHAK")):
+	if frappe.db.exists(_dt, _nm):
+		for _t in ("Stock Ledger Entry", "Bin", "Item Price"):
+			if frappe.db.table_exists(_t):
+				frappe.db.sql(f"delete from `tab{_t}` where item_code=%s", _nm)
+		try:
+			frappe.delete_doc(_dt, _nm, force=1, ignore_permissions=True)
+		except Exception as ex:  # noqa: BLE001
+			print("  cleanup:", _dt, _nm, str(ex)[:100])
+# Contacts are auto-created with the users and are named after them, not
+# addressed by them, so the email_id filter above missed these too.
+for _c in frappe.get_all("Contact", filters={"first_name": ["like", "TEST PERM%"]}, pluck="name") + \
+		frappe.get_all("Contact", filters={"first_name": ["like", "TEST NOROLE%"]}, pluck="name"):
+	try:
+		frappe.delete_doc("Contact", _c, force=1, ignore_permissions=True)
+	except Exception as ex:  # noqa: BLE001
+		print("  cleanup: Contact", _c, str(ex)[:100])
+frappe.db.commit()
+
 frappe.set_user(tk.TEST_USER)
 from santu_hardware.tests.cleanup_test_user import main as _cleanup_test_user  # noqa: E402
 

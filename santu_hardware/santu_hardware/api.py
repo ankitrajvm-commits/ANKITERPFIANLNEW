@@ -8498,12 +8498,29 @@ def get_invoice_for_edit(invoice_name: str):
 			{0: "abhi draft", 2: "cancel ho chuki"}.get(doc.docstatus, "submit nahi hui"),
 		))
 
+	# A credit note is a Sales Invoice too, and the Billing screen cannot hold
+	# one -- its row total clamps a negative line to zero, so a -Rs 1,450 return
+	# loaded as a Rs 0 bill and saving it would have cancelled the customer's
+	# real credit and replaced it with nothing (found 2026-10-07). Refused here
+	# as well as on the screen: the button is only the first lock, and this
+	# endpoint is reachable on its own.
+	if doc.get("is_return") or flt(doc.grand_total) < 0:
+		frappe.throw(
+			_(
+				"Yeh ek Return (credit note) hai, aam bill nahi — ise Billing screen se "
+				"nahi sudhaara ja sakta.<br><br><b>Kya karein:</b> ise rehne dijiye aur "
+				"zarurat ho to nayi Return banaiye."
+			),
+			title=_("Return yahan se nahi sudhrega"),
+		)
+
 	return {
 		"name": doc.name,
 		"santu_bill_no": doc.santu_bill_no,
 		"customer": doc.customer,
 		"customer_label": doc.customer_name or doc.customer,
 		"posting_date": str(doc.posting_date),
+		"is_return": bool(doc.get("is_return")),
 		"payment_mode": "cash" if doc.is_pos else "credit",
 		"payments": [{"mode_of_payment": p.mode_of_payment, "amount": p.amount} for p in (doc.payments or [])],
 		"outstanding_amount": flt(doc.outstanding_amount),
@@ -9654,7 +9671,13 @@ def _create_payment_entry(
 		doc.reference_no = reference_no
 		doc.reference_date = posting_date
 	if remarks:
+		# custom_remarks tells ERPNext to leave the note alone. Without it
+		# set_remarks() overwrites whatever the counter typed with its own
+		# "Amount INR 500.0 received from ..." line, so the note never
+		# survived a save -- on a new payment or a corrected one
+		# (found 2026-10-07).
 		doc.remarks = remarks
+		doc.custom_remarks = 1
 
 	# No `references` appended — the whole amount stays unallocated, a
 	# lump-sum credit against the party rather than a specific bill.
@@ -9686,6 +9709,83 @@ def _create_payment_entry(
 		"party": party,
 		"party_type": party_type,
 	}
+
+
+@frappe.whitelist()
+def get_payment_for_edit(name: str):
+	"""A submitted payment, shaped the way the Payment In screen fills a tab.
+
+	Payment Entry has no `items` table, so it cannot go through
+	get_document_for_edit -- the figures the counter can correct are the
+	amount, the mode, the date, the reference and the remark.
+	"""
+	if not frappe.db.exists("Payment Entry", name):
+		frappe.throw(_("{0} not found").format(name))
+	doc = frappe.get_doc("Payment Entry", name)
+	if doc.docstatus != 1:
+		frappe.throw(
+			_("Sirf submit ho chuka payment edit ho sakta hai — {0} abhi {1} hai.").format(
+				name, {0: "draft", 2: "cancelled"}.get(doc.docstatus, "submitted nahi")
+			)
+		)
+	return {
+		"name": doc.name,
+		"party_type": doc.party_type,
+		"party": doc.party,
+		"party_label": frappe.db.get_value(doc.party_type, doc.party, "name") or doc.party,
+		"posting_date": str(doc.posting_date or ""),
+		"mode_of_payment": doc.mode_of_payment,
+		"reference_no": doc.reference_no or "",
+		"remarks": doc.remarks or "",
+		"amount": flt(doc.paid_amount),
+	}
+
+
+@frappe.whitelist()
+def edit_payment_entry(
+	name: str,
+	amount: float,
+	mode_of_payment: str,
+	posting_date: str = None,
+	reference_no: str = None,
+	remarks: str = None,
+):
+	"""Correct a submitted payment by cancel + rebuild, like every other
+	document the shop can reopen (see edit_submitted_document).
+
+	Cancelling first is what puts the money back on the party's balance, so
+	the replacement does not count twice -- and the cancelled original stays
+	in the database as the "before" half of the record. The party and its
+	type are NOT editable here: a payment credited to the wrong party is a
+	different payment, and silently moving money between two parties' khatas
+	from an edit box is not something a counter should be able to do by
+	accident. Delete it and take a fresh one instead.
+	"""
+	if not frappe.db.exists("Payment Entry", name):
+		frappe.throw(_("{0} not found").format(name))
+	old = frappe.get_doc("Payment Entry", name)
+	if old.docstatus != 1:
+		frappe.throw(_("Sirf submit ho chuka payment edit ho sakta hai."))
+
+	amount = flt(amount)
+	if amount <= 0:
+		frappe.throw(_("Enter a valid amount."))
+
+	party_type, party = old.party_type, old.party
+	old.cancel()
+	frappe.db.commit()
+
+	res = _create_payment_entry(
+		party_type=party_type,
+		party=party,
+		amount=amount,
+		mode_of_payment=mode_of_payment or old.mode_of_payment,
+		posting_date=posting_date or str(old.posting_date),
+		reference_no=reference_no,
+		remarks=remarks,
+	)
+	res["replaced"] = name
+	return res
 
 
 def _party_advance_map(party_type: str, company: str = None) -> dict:
@@ -11003,6 +11103,146 @@ def save_sales_return(return_json: str, submit: int = 1):
 		"docstatus": doc.docstatus,
 		"grand_total": doc.grand_total,
 		"status": doc.status,
+	}
+
+
+_RETURN_SCREENS = {
+	"Sales Invoice": {"party": "customer", "save": "save_sales_return", "arg": "return_json",
+	                  "label": "Sales Return"},
+	"Purchase Invoice": {"party": "supplier", "save": "save_purchase_return", "arg": "return_json",
+	                     "label": "Purchase Return"},
+}
+
+
+def _linked_refund_payment(doctype: str, return_name: str):
+	"""The Payment Entry created by create_return_refund_payment for this
+	return, if the counter settled it in cash on the spot."""
+	rows = frappe.db.sql(
+		"""select pe.name from `tabPayment Entry` pe
+		   join `tabPayment Entry Reference` r on r.parent = pe.name
+		   where pe.docstatus = 1 and r.reference_doctype = %s and r.reference_name = %s""",
+		(doctype, return_name),
+		pluck=True,
+	)
+	return rows[0] if rows else None
+
+
+@frappe.whitelist()
+def get_return_for_edit(doctype: str, name: str):
+	"""A submitted return, shaped the way its own screen fills a tab.
+
+	Returns do NOT go through get_document_for_edit: a credit note carries
+	negative quantities, and the Return screens work in positive ones with
+	the sign applied on save. Reopening one through the ordinary bill path
+	loaded a -Rs 1,450 credit note as a Rs 0 bill (found 2026-10-07), which
+	is why that path refuses them outright.
+	"""
+	cfg = _RETURN_SCREENS.get(doctype)
+	if not cfg:
+		frappe.throw(_("{0} is not a return type.").format(doctype))
+	if not frappe.db.exists(doctype, name):
+		frappe.throw(_("{0} nahi mila.").format(name))
+
+	doc = frappe.get_doc(doctype, name)
+	if not doc.get("is_return"):
+		frappe.throw(_("{0} return nahi hai.").format(name))
+	if doc.docstatus != 1:
+		frappe.throw(
+			_("Sirf submit ho chuka return edit ho sakta hai — {0} abhi {1} hai.").format(
+				name, {0: "draft", 2: "cancelled"}.get(doc.docstatus, "submitted nahi")
+			)
+		)
+
+	refund = _linked_refund_payment(doctype, name)
+	party = doc.get(cfg["party"])
+	return {
+		"name": doc.name,
+		"doctype": doctype,
+		"party": party,
+		"party_label": doc.get("customer_name") or doc.get("supplier_name") or party,
+		"posting_date": str(doc.posting_date or ""),
+		"return_against": doc.get("return_against"),
+		"reason": doc.get("remarks") or "",
+		"grand_total": flt(doc.grand_total),
+		# The screen offers "account credit" or "cash refund"; which one this
+		# was is told by whether a refund Payment Entry exists against it.
+		"settlement": "refund" if refund else "credit",
+		"refund_payment": refund,
+		"refund_mode": frappe.db.get_value("Payment Entry", refund, "mode_of_payment") if refund else None,
+		"items": [
+			{
+				"item_code": row.item_code,
+				"item_name": row.item_name,
+				# Shown positive. The stored quantity is negative because that
+				# is ERPNext's representation of a return, but the screen and
+				# the counter both think in "how many came back".
+				"qty": abs(flt(row.qty)),
+				"uom": row.uom,
+				"rate": flt(row.rate),
+				"sales_invoice_item": row.get("sales_invoice_item") or row.get("purchase_invoice_item"),
+				**_edit_row_extras(row.item_code, row.get("warehouse")),
+			}
+			for row in doc.items
+		],
+	}
+
+
+@frappe.whitelist()
+def edit_submitted_return(doctype: str, name: str, payload_json: str,
+                          settlement: str = "credit", refund_mode: str = None):
+	"""Correct a submitted return by cancel + rebuild, like every other
+	document the shop can reopen.
+
+	The extra care a return needs over a plain bill: if it was settled in
+	cash, a Payment Entry exists against it. Cancelling the return without
+	that payment would leave real money pointing at a cancelled document, so
+	the refund is cancelled first and re-made against the correction only if
+	it is still a cash refund.
+	"""
+	import json as _json
+
+	cfg = _RETURN_SCREENS.get(doctype)
+	if not cfg:
+		frappe.throw(_("{0} is not a return type.").format(doctype))
+	if not frappe.db.exists(doctype, name):
+		frappe.throw(_("{0} nahi mila.").format(name))
+	old = frappe.get_doc(doctype, name)
+	if not old.get("is_return"):
+		frappe.throw(_("{0} return nahi hai.").format(name))
+	if old.docstatus != 1:
+		frappe.throw(_("Sirf submit ho chuka return edit ho sakta hai."))
+
+	# Money first: the refund that was handed over against the OLD return.
+	refund = _linked_refund_payment(doctype, name)
+	if refund:
+		pe = frappe.get_doc("Payment Entry", refund)
+		pe.flags.ignore_permissions = True
+		pe.cancel()
+		frappe.db.commit()
+
+	# Reloaded on purpose: cancelling the refund un-allocates it, which writes
+	# to the return itself, so the copy read before that is already stale and
+	# cancel() refuses it with "Document has been modified after you have
+	# opened it".
+	old.reload()
+	old.flags.ignore_permissions = True
+	old.cancel()
+	frappe.db.commit()
+
+	payload = _json.loads(payload_json or "{}")
+	result = frappe.get_attr(f"santu_hardware.santu_hardware.api.{cfg['save']}")(
+		**{cfg["arg"]: _json.dumps(payload), "submit": 1}
+	)
+	new_name = result.get("name") if isinstance(result, dict) else result
+
+	if (settlement or "credit") == "refund" and new_name:
+		create_return_refund_payment(doctype, new_name, refund_mode or "Cash")
+
+	return {
+		"name": new_name,
+		"replaced": name,
+		"refund_cancelled": refund,
+		"settlement": settlement,
 	}
 
 

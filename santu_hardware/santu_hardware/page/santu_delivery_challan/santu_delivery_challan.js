@@ -34,7 +34,13 @@ frappe.pages["santu-delivery-challan"].on_page_load = function (wrapper) {
 // route_options.prefill path — just a re-render fallback for revisits,
 // since on_page_load only ever fires once per session.
 frappe.pages["santu-delivery-challan"].on_page_show = function () {
-	if (window.santu_delivery_challan_page && santu_delivery_challan_page.page) santu_delivery_challan_page.render();
+	// "Edit Challan" on the View Invoice screen hands the challan's NAME here.
+	// Claimed through santu_handoff: one reader, whole bag read before anything
+	// is cleared. Doing that by hand is what left this screen ignoring the
+	// option entirely for about a year (found 2026-10-07).
+	const P = window.santu_delivery_challan_page;
+	if (santu_handoff.claim(P, { edit_challan: P && P._apply_edit })) return;
+	if (P && P.page) P.render();
 };
 
 const SANTU_DC_STORAGE_KEY = "santu_delivery_challan_tabs_v1";
@@ -53,7 +59,10 @@ window.santu_delivery_challan_page = {
 
 		santu_delivery_challan.api.init().then((data) => {
 			this.init_data = data;
+			// Open tabs first, so a correction arrives as one more tab beside
+			// whatever the counter already had (same rule as Billing).
 			this._load_from_storage();
+			if (santu_handoff.claim(this, { edit_challan: this._apply_edit })) return;
 			if (!this.tabs.length) this._new_tab();
 			this.render();
 		});
@@ -105,6 +114,9 @@ window.santu_delivery_challan_page = {
 			terms: "",
 			description: "",
 			saved_challan: null,
+			// Set only when this tab is a correction of an already-submitted
+			// challan; _save_challan then amends instead of creating a new one.
+			editing: null,
 		};
 	},
 
@@ -114,6 +126,54 @@ window.santu_delivery_challan_page = {
 		if (focus !== false) this.active_id = t.id;
 		this._save_debounced();
 		return t;
+	},
+
+	// Reopen a submitted challan on this screen with its own rows already in
+	// it, rather than a separate edit form nobody has seen before. Same shape
+	// as the Estimate screen's _apply_edit.
+	_apply_edit(name) {
+		frappe.dom.freeze(__("Challan khol rahe hain…"));
+		frappe
+			.xcall("santu_hardware.santu_hardware.api.get_document_for_edit", {
+				doctype: "Delivery Note",
+				name,
+			})
+			.then((doc) => {
+				frappe.dom.unfreeze();
+				const t = this._new_tab(true);
+				t.customer = doc.party;
+				t.customer_details = { name: doc.party, customer_name: doc.party_label };
+				t.posting_date = doc.posting_date || t.posting_date;
+				t.additional_discount_amount = doc.bill_discount || 0;
+				t.editing = {
+					name: doc.name,
+					santu_bill_no: doc.santu_bill_no,
+					original_total: doc.grand_total,
+				};
+				(doc.items || []).forEach((r) => {
+					t.items.push({
+						id: santu_sale_invoice.utils.uid(),
+						item_code: r.item_code,
+						item_name: r.item_name || r.item_code,
+						qty: r.qty,
+						uom: r.uom || r.stock_uom,
+						uom_options:
+							r.uom_options && r.uom_options.length
+								? r.uom_options
+								: [{ uom: r.uom, conversion_factor: 1 }],
+						rate: r.rate,
+						// The submitted rate is already net of any discount, so
+						// re-applying one here would take it off twice (the same
+						// trap the convert-to-bill path hit, 2026-10-01).
+						discount_percentage: 0,
+						discount_amount: 0,
+						available_qty: r.available_qty,
+					});
+				});
+				this._save_debounced();
+				this.render();
+			})
+			.catch(() => frappe.dom.unfreeze());
 	},
 
 	_active_tab() {
@@ -220,6 +280,13 @@ window.santu_delivery_challan_page = {
 		const tab = this._active_tab();
 		const $wrap = this.$root.find(".santu-si2-body");
 		$wrap.html(`
+			${
+				// Sudhaar mode -- the counter must never mistake a correction for
+				// a new document. Same banner Billing has shown since 2026-08-27.
+				tab.editing
+					? `<div class="santu-bill-edit-banner">${__("Sudhaar mode")} — ${__("Challan")} <b>${frappe.utils.escape_html(tab.editing.name)}</b> ${__("ko sudhaara ja raha hai. Save karte hi purana cancel hokar naya sahi ban jayega.")}</div>`
+					: ""
+			}
 			<div class="santu-si2-header">
 				<div class="santu-si2-header-title">Delivery Challan</div>
 			</div>
@@ -878,7 +945,16 @@ window.santu_delivery_challan_page = {
 					})),
 				};
 
-				return santu_delivery_challan.api.save(payload, 1);
+				// Correcting a submitted challan goes through the amend path:
+				// the original is cancelled and chained to the correction, so
+				// the challan number the customer already has carries forward.
+				return tab.editing
+					? frappe.xcall("santu_hardware.santu_hardware.api.edit_submitted_document", {
+							doctype: "Delivery Note",
+							name: tab.editing.name,
+							payload_json: JSON.stringify(payload),
+					  })
+					: santu_delivery_challan.api.save(payload, 1);
 			})
 			.then((r) => {
 				if (!r) return;

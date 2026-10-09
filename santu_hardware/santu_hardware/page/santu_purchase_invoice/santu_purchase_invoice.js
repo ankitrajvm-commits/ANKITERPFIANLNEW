@@ -29,16 +29,17 @@ frappe.pages["santu-purchase-invoice"].on_page_load = function (wrapper) {
 // documents; frappe.model.open_mapped_doc also needs a real frm object,
 // which there isn't one of on a plain list row).
 frappe.pages["santu-purchase-invoice"].on_page_show = function () {
-	const prefill = frappe.route_options && frappe.route_options.prefill;
-	const prefill_bills = frappe.route_options && frappe.route_options.prefill_bills;
-	if ((prefill || prefill_bills) && window.santu_purchase_pos && santu_purchase_pos.page && santu_purchase_pos.init_data) {
-		frappe.route_options = null;
-		if (prefill_bills) santu_purchase_pos._apply_prefill_bills(prefill_bills);
-		else santu_purchase_pos._apply_prefill(prefill);
-		return;
-	}
-	if (window.santu_purchase_pos && santu_purchase_pos.page) santu_purchase_pos.render();
+	// All three handoffs claimed in one place, in the order they take
+	// precedence. santu_handoff reads the whole bag before clearing anything.
+	const P = window.santu_purchase_pos;
+	if (santu_handoff.claim(P, {
+		prefill_bills: P && P._apply_prefill_bills,
+		prefill: P && P._apply_prefill,
+		edit_purchase: P && P._apply_edit,
+	})) return;
+	if (P && P.page) P.render();
 };
+
 
 const SANTU_PI2_STORAGE_KEY = "santu_purchase_pos_tabs_v1";
 
@@ -59,18 +60,12 @@ window.santu_purchase_pos = {
 		Promise.all([santu_purchase_invoice.api.init(), santu_purchase_invoice.api.tax_options()]).then(([data, tax_options]) => {
 			this.init_data = data;
 			this.tax_options = tax_options || [];
-			const prefill = frappe.route_options && frappe.route_options.prefill;
-			const prefill_bills = frappe.route_options && frappe.route_options.prefill_bills;
-			frappe.route_options = null;
-			if (prefill_bills) {
-				this._apply_prefill_bills(prefill_bills);
-				return;
-			}
-			if (prefill) {
-				this._apply_prefill(prefill);
-				return;
-			}
+			if (santu_handoff.claim(this, {
+				prefill_bills: this._apply_prefill_bills,
+				prefill: this._apply_prefill,
+			})) return;
 			this._load_from_storage();
+			if (santu_handoff.claim(this, { edit_purchase: this._apply_edit })) return;
 			if (!this.tabs.length) this._new_tab();
 			this.render();
 		});
@@ -129,6 +124,8 @@ window.santu_purchase_pos = {
 			description: "",
 			held: false,
 			saved_invoice: null,
+			// Set only when this tab corrects an already-submitted bill.
+			editing: null,
 			// Applied to every new row added after this is changed — the
 			// "whatever bracket most of this bill is" shortcut (2026-08-18:
 			// "top pe default tax ka v option de do jitna v tax bracket h").
@@ -235,6 +232,51 @@ window.santu_purchase_pos = {
 			this._save_debounced();
 			this.render();
 		});
+	},
+
+	// Reopen a submitted purchase bill on this screen with its own rows
+	// already in it, rather than a separate edit form nobody has seen before.
+	_apply_edit(name) {
+		frappe.dom.freeze(__("Purchase bill khol rahe hain…"));
+		frappe
+			.xcall("santu_hardware.santu_hardware.api.get_document_for_edit", {
+				doctype: "Purchase Invoice",
+				name,
+			})
+			.then((doc) => {
+				frappe.dom.unfreeze();
+				const t = this._new_tab(true);
+				t.supplier = doc.party;
+				t.supplier_details = { name: doc.party, supplier_name: doc.party_label };
+				t.posting_date = doc.posting_date || t.posting_date;
+				t.additional_discount_amount = doc.bill_discount || 0;
+				t.editing = {
+					name: doc.name,
+					santu_bill_no: doc.santu_bill_no,
+					original_total: doc.grand_total,
+				};
+				(doc.items || []).forEach((r) => {
+					t.items.push({
+						id: santu_purchase_invoice.utils.uid(),
+						item_code: r.item_code,
+						item_name: r.item_name || r.item_code,
+						qty: r.qty,
+						uom: r.uom || r.stock_uom,
+						uom_options:
+							r.uom_options && r.uom_options.length
+								? r.uom_options
+								: [{ uom: r.uom, conversion_factor: 1 }],
+						rate: r.rate,
+						// The submitted rate is already net of any discount.
+						discount_percentage: 0,
+						discount_amount: 0,
+						available_qty: r.available_qty,
+					});
+				});
+				this._save_debounced();
+				this.render();
+			})
+			.catch(() => frappe.dom.unfreeze());
 	},
 
 	_active_tab() {
@@ -429,6 +471,13 @@ window.santu_purchase_pos = {
 		const tab = this._active_tab();
 		const $wrap = this.$root.find(".santu-si2-body");
 		$wrap.html(`
+			${
+				// Sudhaar mode -- the counter must never mistake a correction for
+				// a new document. Same banner Billing has shown since 2026-08-27.
+				tab.editing
+					? `<div class="santu-bill-edit-banner">${__("Sudhaar mode")} — ${__("Purchase Bill")} <b>${frappe.utils.escape_html(tab.editing.name)}</b> ${__("ko sudhaara ja raha hai. Save karte hi purana cancel hokar naya sahi ban jayega.")}</div>`
+					: ""
+			}
 			<div class="santu-si2-header">
 				<div class="santu-si2-header-title">Purchase</div>
 				<div class="santu-si2-mode">
@@ -1646,8 +1695,16 @@ window.santu_purchase_pos = {
 		};
 
 		frappe.dom.freeze(__("Saving…"));
-		santu_purchase_invoice.api
-			.save(payload, submit)
+		// Correcting a submitted bill amends it: the original is cancelled and
+		// chained to the correction, keeping its number.
+		(tab.editing
+			? frappe.xcall("santu_hardware.santu_hardware.api.edit_submitted_document", {
+					doctype: "Purchase Invoice",
+					name: tab.editing.name,
+					payload_json: JSON.stringify(payload),
+			  })
+			: santu_purchase_invoice.api.save(payload, submit)
+		)
 			.then((r) => {
 				frappe.dom.unfreeze();
 				tab.saved_invoice = r;

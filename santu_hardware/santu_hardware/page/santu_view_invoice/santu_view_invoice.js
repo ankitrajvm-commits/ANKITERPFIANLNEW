@@ -145,6 +145,16 @@ window.santu_view_invoice_page = {
 			else open_pdf();
 		});
 		$body.find('[data-action="pdf"]').on("click", open_pdf);
+		// Bound here rather than in one render function: the payment screen and
+		// the item-document screen both draw this button.
+		$body.find('[data-action="edit-return"]').on("click", () => {
+			frappe.route_options = { edit_return: d.name };
+			frappe.set_route(d.doctype === "Sales Invoice" ? "santu-sales-return" : "santu-purchase-return");
+		});
+		$body.find('[data-action="edit-payment"]').on("click", () => {
+			frappe.route_options = { edit_payment: d.name };
+			frappe.set_route("santu-payment-entry");
+		});
 		if (whatsapp) {
 			$body.find('[data-action="whatsapp"]').on("click", () => this._send_whatsapp());
 			$body.find('[data-action="whatsapp_other"]').on("click", () => this._send_whatsapp(true));
@@ -238,6 +248,15 @@ window.santu_view_invoice_page = {
 					<div class="santu-si2-actionbar">
 						<div class="santu-si2-actionbar-left">
 							<button type="button" class="santu-si2-btn" data-action="back">← Back</button>
+							${
+								// Payment In / Payment Out is rendered by this function,
+								// not by _render_item_doc, so the Edit button added there
+								// never appeared on a payment (reported 2026-10-07:
+								// "abhi tak payment in me koi edit option nh aaya hai").
+								d.docstatus === 1
+									? `<button type="button" class="santu-si2-btn santu-si2-btn-edit" data-action="edit-payment" title="${__("Amount ya payment mode galat hai? Yahan se sudhaar kar dobara save ho jayega.")}">${__("Edit Payment")}</button>`
+									: ""
+							}
 						</div>
 						<div class="santu-si2-actionbar-right">
 							<button type="button" class="santu-si2-btn" data-action="whatsapp">Send on WhatsApp</button>
@@ -458,7 +477,15 @@ window.santu_view_invoice_page = {
 						<div class="santu-si2-actionbar-left">
 							<button type="button" class="santu-si2-btn" data-action="back">← Back</button>
 							${
-								(d.doctype === "Sales Invoice" && d.docstatus === 1)
+								// NOT on a return. A credit note is a Sales Invoice too, so
+								// it used to get the ordinary "Edit Bill" button -- which
+								// reopens it in Billing, where a -1 quantity row is clamped
+								// to zero by _row_total's Math.max(..., 0). A -Rs 1,450
+								// credit note loaded as a Rs 0 bill, and saving it would
+								// have cancelled the customer's real credit and replaced it
+								// with nothing (found 2026-10-07). Returns are corrected on
+								// the Return screen, not here.
+								(d.doctype === "Sales Invoice" && d.docstatus === 1 && !d.is_return)
 									? `<button type="button" class="santu-si2-btn santu-si2-btn-edit" data-action="edit-bill" title="${__("Rate ya quantity galat hai? Yahan se sudhaar kar aur nayi bill submit ho jayegi.")}">${__("Edit Bill")}</button>
 									   <button type="button" class="santu-si2-btn" data-action="delete-doc" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;font-weight:600;" title="${__("Delete this Bill")}">${__("Delete Bill")}</button>`
 									: ""
@@ -472,6 +499,22 @@ window.santu_view_invoice_page = {
 								// customer was already quoting (2026-08-29 request).
 								(SANTU_EDITABLE_DOCS[d.doctype] && d.docstatus === 1)
 									? `<button type="button" class="santu-si2-btn santu-si2-btn-edit" data-action="edit-doc" title="${__("Saman, rate ya quantity sudhaarna hai? Yahan se badal kar dobara submit ho jayega.")}">${__("Edit {0}", [SANTU_EDITABLE_DOCS[d.doctype].label])}</button>`
+									: ""
+							}
+							${
+								// Payment Entry has no items table, so it does not go
+								// through SANTU_EDITABLE_DOCS -- the figures that can be
+								// corrected are the amount, mode, date and reference
+								// (2026-10-07 request).
+								(d.doctype === "Payment Entry" && d.docstatus === 1)
+									? `<button type="button" class="santu-si2-btn santu-si2-btn-edit" data-action="edit-payment" title="${__("Amount ya payment mode galat hai? Yahan se sudhaar kar dobara save ho jayega.")}">${__("Edit Payment")}</button>`
+									: ""
+							}
+							${
+								// A return is corrected on the Return screen, never through
+								// Billing -- see the is_return guard on Edit Bill above.
+								(d.is_return && d.docstatus === 1 && (d.doctype === "Sales Invoice" || d.doctype === "Purchase Invoice"))
+									? `<button type="button" class="santu-si2-btn santu-si2-btn-edit" data-action="edit-return" title="${__("Qty ya rate galat hai? Yahan se sudhaar kar dobara save ho jayega.")}">${__("Edit Return")}</button>`
 									: ""
 							}
 							${
@@ -514,6 +557,10 @@ window.santu_view_invoice_page = {
 			if (!cfg) return;
 			frappe.route_options = { [cfg.option]: d.name };
 			frappe.set_route(cfg.route);
+		});
+		$body.find('[data-action="edit-payment"]').on("click", () => {
+			frappe.route_options = { edit_payment: d.name };
+			frappe.set_route("santu-payment-entry");
 		});
 		$body.find('[data-action="delete-doc"]').on("click", () => {
 			const display_no = d.display_number || santu_bill_label(d.santu_bill_no);

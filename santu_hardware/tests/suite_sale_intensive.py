@@ -1,9 +1,9 @@
 """
 Intensive Sale module test suite — run via:
-  cd frappe-bench && bench --site site1.local run-tests --module santu_hardware.tests.test_sale_intensive
+  cd frappe-bench && bench --site site1.local run-tests --module santu_hardware.tests.suite_sale_intensive
 
 Or standalone (30 min soak):
-  cd frappe-bench/sites && ../env/bin/python ../apps/santu_hardware/santu_hardware/tests/test_sale_intensive.py --soak 1800
+  cd frappe-bench/sites && ../env/bin/python ../apps/santu_hardware/santu_hardware/tests/suite_sale_intensive.py --soak 1800
 """
 
 from __future__ import annotations
