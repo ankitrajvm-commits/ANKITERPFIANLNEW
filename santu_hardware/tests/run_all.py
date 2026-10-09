@@ -42,22 +42,27 @@ SITES = os.path.join(HERE, "..", "..", "..", "..", "sites")
 #     cd frappe-bench && bench serve --port 8001 --site scratch.local
 SCRATCH_HTTP = ("127.0.0.1", 8001)
 
+# Named suite_*.py, not test_*.py, on purpose. `bench run-tests --app
+# santu_hardware` imports every test_*.py it can find, and these are
+# standalone scripts that run their whole body on import and expect a live
+# site and HTTP server -- CI exploded on the first one it touched
+# ("Connection refused ... port 8001", 2026-10-07). Keep the prefix.
 SUITES = [
-	{"file": "test_invariants.py", "read_only": True, "slow": False,
+	{"file": "suite_invariants.py", "read_only": True, "slow": False,
 	 "what": "Data health: stock = ledger, GL balances, bill numbers, reward points"},
-	{"file": "test_session_2026_09_05.py", "read_only": True, "slow": False,
+	{"file": "suite_session_2026_09_05.py", "read_only": True, "slow": False,
 	 "what": "Regression: every fix from the 2026-09-05 session onwards"},
-	{"file": "test_write_guard.py", "read_only": False, "slow": False,
+	{"file": "suite_write_guard.py", "read_only": False, "slow": False,
 	 "what": "A user with no roles must not be able to change anything"},
-	{"file": "test_permissions.py", "read_only": False, "needs_http": True, "slow": False,
+	{"file": "suite_permissions.py", "read_only": False, "needs_http": True, "slow": False,
 	 "what": "Permission matrix: who can view / create / submit / cancel / delete"},
-	{"file": "test_reports_utils_backup.py", "read_only": False, "slow": False,
+	{"file": "suite_reports_utils_backup.py", "read_only": False, "slow": False,
 	 "what": "Reports, Utilities and Backup screens"},
-	{"file": "test_billing_extreme.py", "read_only": False, "slow": True,
+	{"file": "suite_billing_extreme.py", "read_only": False, "slow": True,
 	 "what": "Billing torture: zero stock, fractions, discounts, 60-line bills"},
-	{"file": "test_failure_first.py", "read_only": False, "slow": True,
+	{"file": "suite_failure_first.py", "read_only": False, "slow": True,
 	 "what": "Concurrency, idempotency, fuzz, stock chain, reconciliation, rollback"},
-	{"file": "test_api_matrix.py", "read_only": False, "needs_http": True, "slow": True,
+	{"file": "suite_api_matrix.py", "read_only": False, "needs_http": True, "slow": True,
 	 "what": "Every whitelisted API, seven ways, over real HTTP"},
 ]
 

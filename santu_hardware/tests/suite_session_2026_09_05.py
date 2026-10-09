@@ -1,6 +1,6 @@
 """Regression checks for everything changed on 2026-09-05.
 
-Run: frappe-bench/env/bin/python (from frappe-bench/sites) test_session_2026_09_05.py
+Run: frappe-bench/env/bin/python (from frappe-bench/sites) suite_session_2026_09_05.py
 Every check here exists because the thing it checks was broken once.
 """
 import re, sys, traceback

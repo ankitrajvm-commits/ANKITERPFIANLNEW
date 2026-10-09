@@ -9,7 +9,7 @@ Rules this file keeps:
   * bill / estimate counters are put back on the last real number
   * nothing is printed and nothing is sent (no WhatsApp, no printer)
 
-Run:  cd frappe-bench/sites && ../env/bin/python ../apps/santu_hardware/santu_hardware/tests/test_billing_extreme.py
+Run:  cd frappe-bench/sites && ../env/bin/python ../apps/santu_hardware/santu_hardware/tests/suite_billing_extreme.py
 """
 import json
 import os

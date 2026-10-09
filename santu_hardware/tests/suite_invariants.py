@@ -1,5 +1,5 @@
 """Data-health invariants (full-app test plan, part F). READ-ONLY -- safe on
-the live site too:  SANTU_TEST_SITE=site1.local ../env/bin/python .../test_invariants.py
+the live site too:  SANTU_TEST_SITE=site1.local ../env/bin/python .../suite_invariants.py
 
 Each check states what the books must satisfy and shows the offending rows
 as evidence. Sections start with "INVARIANT" so the gate counts them as data
