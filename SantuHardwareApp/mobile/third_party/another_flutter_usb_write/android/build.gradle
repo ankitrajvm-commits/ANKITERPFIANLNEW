@@ -1,0 +1,46 @@
+group = "hr.integrator.flutter_usb_write"
+version = "1.0"
+
+// Structure mirrors print_bluetooth_thermal's own android/build.gradle — the
+// other printer plugin this app already builds against — rather than
+// upstream's, which pinned Android Gradle Plugin 3.5.0 and resolved it from
+// the long-dead jcenter().
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath("com.android.tools.build:gradle:8.3.2")
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: "com.android.library"
+
+android {
+    // Upstream declared this as the manifest's `package` attribute, which AGP 8
+    // no longer accepts, so the app's root build.gradle had to inject the
+    // namespace from outside the pub cache. Declared properly here instead.
+    if (project.android.hasProperty("namespace")) {
+        namespace = "hr.integrator.flutter_usb_write"
+    }
+
+    compileSdk = 34
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+
+    defaultConfig {
+        minSdk = 21
+    }
+}

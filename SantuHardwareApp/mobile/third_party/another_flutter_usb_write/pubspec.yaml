@@ -1,0 +1,19 @@
+name: another_flutter_usb_write
+description: Write raw data to USB device on Android. Local fork — see README.md.
+version: 1.0.1
+publish_to: 'none'
+
+environment:
+  sdk: '>=2.18.0 <4.0.0'
+  flutter: ">=1.12.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: hr.integrator.flutter_usb_write
+        pluginClass: FlutterUsbWritePlugin
