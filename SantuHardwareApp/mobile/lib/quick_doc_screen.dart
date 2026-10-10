@@ -9,7 +9,6 @@ import 'theme.dart';
 import 'thermal_receipt.dart';
 import 'transaction_actions.dart';
 import 'units.dart';
-import 'whatsapp_util.dart';
 
 /// One screen, four modules: Estimate, Delivery Challan, Sales Return and
 /// Purchase Return all have the same shape in the web app — party + items
@@ -435,30 +434,32 @@ class _QuickDocScreenState extends State<QuickDocScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err ?? 'Printed ✓')));
     } else if (whatsapp || otherPhone != null) {
-      final templates = await AppDb.instance.listMessageTemplates();
-      final template = templates[widget.title] ?? 'Namaste {party}, aapka ${widget.title} {doc_no} ₹{amount} ka taiyaar hai.';
-      final partyName = otherName ?? _doc.partyLabel ?? widget.partyKind;
-      final msg = fillTemplate(template, {
-        'party': partyName,
-        'doc_no': _doc.docNo ?? '',
-        'amount': _doc.grandTotal.toStringAsFixed(2),
-      });
-      if (!mounted) return;
-      await shareViaWhatsApp(
+      await TransactionActions.shareQuickDoc(
         context,
+        doc: _doc,
+        kind: widget.kind,
+        titleLabel: widget.title,
         phone: otherPhone,
-        message: msg,
-        docType: widget.title,
-        docNo: _doc.docNo,
-        partyLabel: partyName,
+        asPdf: true,
       );
     } else {
+      final docToShare = _doc;
       await showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text('${widget.title} saved'),
-          content: Text('No: ${_doc.docNo}\n${widget.partyKind}: ${_doc.partyLabel ?? "-"}\nTotal: ₹${_doc.grandTotal.toStringAsFixed(2)}'),
-          actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+          content: Text('No: ${docToShare.docNo}\n${widget.partyKind}: ${docToShare.partyLabel ?? "-"}\nTotal: ₹${docToShare.grandTotal.toStringAsFixed(2)}'),
+          actions: [
+            TextButton.icon(
+              onPressed: () {
+                Navigator.pop(ctx);
+                TransactionActions.shareQuickDoc(context, doc: docToShare, kind: widget.kind, titleLabel: widget.title, asPdf: true);
+              },
+              icon: const Icon(Icons.share, size: 18),
+              label: const Text('WhatsApp (A4 PDF)'),
+            ),
+            FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+          ],
         ),
       );
     }

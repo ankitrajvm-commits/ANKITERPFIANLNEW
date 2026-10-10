@@ -18,7 +18,7 @@ class TransactionActions {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err ?? 'Printed ✓')));
   }
 
-  static Future<void> shareInvoice(BuildContext context, Invoice inv, {String? phone, bool asPdf = false}) async {
+  static Future<void> shareInvoice(BuildContext context, Invoice inv, {String? phone, bool asPdf = true}) async {
     final templates = await AppDb.instance.listMessageTemplates();
     final template = templates['Sales Transaction'] ?? 'Namaste {party}, aapka bill {doc_no} ₹{amount} ka ban gaya hai.';
     final msg = fillTemplate(template, {'party': inv.customerLabel ?? 'Customer', 'doc_no': inv.billNo ?? '', 'amount': inv.grandTotal.toStringAsFixed(2)});
@@ -27,9 +27,10 @@ class TransactionActions {
       try {
         pdfPath = await A4Invoice.writeToFile(inv);
       } catch (e) {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('A4 PDF ban nahi paya: $e')));
-        return;
+        debugPrint('A4 PDF error: $e');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('A4 PDF ban nahi paya: $e')));
+        }
       }
     }
     if (!context.mounted) return;
@@ -77,9 +78,10 @@ class TransactionActions {
             ListTile(
               leading: const Icon(Icons.chat_outlined),
               title: const Text('Send on WhatsApp'),
+              subtitle: const Text('Text aur A4 PDF bill ke saath'),
               onTap: () {
                 Navigator.pop(ctx);
-                shareInvoice(context, inv);
+                shareInvoice(context, inv, asPdf: true);
               },
             ),
             ListTile(
@@ -113,7 +115,7 @@ class TransactionActions {
                   ),
                 );
                 if (ok == true && phoneCtrl.text.trim().length >= 10 && context.mounted) {
-                  await shareInvoice(context, inv, phone: phoneCtrl.text.trim());
+                  await shareInvoice(context, inv, phone: phoneCtrl.text.trim(), asPdf: true);
                 }
               },
             ),
@@ -145,6 +147,52 @@ class TransactionActions {
     );
   }
 
+  static Future<void> shareQuickDoc(
+    BuildContext context, {
+    required QuickDoc doc,
+    required String kind,
+    required String titleLabel,
+    String? phone,
+    bool asPdf = true,
+  }) async {
+    String? pdfPath;
+    if (asPdf) {
+      try {
+        pdfPath = await A4Invoice.writeToFileForQuickDoc(doc, titleLabel, kind: kind);
+      } catch (e) {
+        debugPrint('A4 QuickDoc PDF error: $e');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('A4 PDF ban nahi paya: $e')));
+        }
+      }
+    }
+    final templates = await AppDb.instance.listMessageTemplates();
+    final docTypeKey = kind == 'estimate'
+        ? 'Quotation'
+        : (kind == 'challan'
+            ? 'Delivery Note'
+            : (kind == 'sales_order'
+                ? 'Sales Order'
+                : (kind == 'sales_return' ? 'Sales Return' : titleLabel)));
+    final template = templates[docTypeKey] ??
+        templates[titleLabel] ??
+        'Namaste {party}, aapka $titleLabel {doc_no} ban gaya hai. Total: ₹{amount}';
+    final msg = fillTemplate(template, {
+      'party': doc.partyLabel ?? 'Party',
+      'doc_no': doc.docNo ?? '',
+      'amount': doc.grandTotal.toStringAsFixed(2),
+    });
+    if (!context.mounted) return;
+    await shareViaWhatsApp(
+      context,
+      message: msg,
+      phone: phone,
+      docType: docTypeKey,
+      docNo: doc.docNo,
+      partyLabel: doc.partyLabel,
+      attachmentPath: pdfPath,
+    );
+  }
 
   static void showQuickDocMenu(
     BuildContext context, {
@@ -195,22 +243,10 @@ class TransactionActions {
             ListTile(
               leading: const Icon(Icons.chat_outlined),
               title: const Text('Send on WhatsApp'),
+              subtitle: const Text('Text aur A4 PDF document ke saath'),
               onTap: () async {
                 Navigator.pop(ctx);
-                final templates = await AppDb.instance.listMessageTemplates();
-                final docTypeKey = kind == 'estimate'
-                    ? 'Quotation'
-                    : (kind == 'challan'
-                        ? 'Delivery Note'
-                        : (kind == 'sales_order' ? 'Sales Order' : titleLabel));
-                final template = templates[docTypeKey] ?? 'Namaste {party}, aapka $titleLabel {doc_no} ban gaya hai. Total: ₹{amount}';
-                final msg = fillTemplate(template, {
-                  'party': doc.partyLabel ?? 'Party',
-                  'doc_no': doc.docNo ?? '',
-                  'amount': doc.grandTotal.toStringAsFixed(2),
-                });
-                if (!context.mounted) return;
-                await shareViaWhatsApp(context, message: msg, docType: docTypeKey, docNo: doc.docNo, partyLabel: doc.partyLabel);
+                await shareQuickDoc(context, doc: doc, kind: kind, titleLabel: titleLabel, asPdf: true);
               },
             ),
             ListTile(
@@ -219,33 +255,33 @@ class TransactionActions {
               subtitle: Text(kind == 'challan' ? 'Delivery Challan PDF (bina rate wala)' : 'A4 PDF document'),
               onTap: () async {
                 Navigator.pop(ctx);
-                String? pdfPath;
-                try {
-                  pdfPath = await A4Invoice.writeToFileForQuickDoc(doc, titleLabel, kind: kind);
-                } catch (e) {
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('A4 PDF ban nahi paya: $e')));
-                  return;
+                await shareQuickDoc(context, doc: doc, kind: kind, titleLabel: titleLabel, asPdf: true);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.arrow_outward),
+              title: const Text('↗ Kisi aur ko'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final phoneCtrl = TextEditingController();
+                final ok = await showDialog<bool>(
+                  context: context,
+                  builder: (c) => AlertDialog(
+                    title: const Text('Kisi aur ko bhejein'),
+                    content: TextField(
+                      controller: phoneCtrl,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(labelText: '10-digit WhatsApp number', hintText: '9876543210'),
+                    ),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+                      FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Send')),
+                    ],
+                  ),
+                );
+                if (ok == true && phoneCtrl.text.trim().length >= 10 && context.mounted) {
+                  await shareQuickDoc(context, doc: doc, kind: kind, titleLabel: titleLabel, phone: phoneCtrl.text.trim(), asPdf: true);
                 }
-                final templates = await AppDb.instance.listMessageTemplates();
-                final docTypeKey = kind == 'estimate'
-                    ? 'Quotation'
-                    : (kind == 'challan'
-                        ? 'Delivery Note'
-                        : (kind == 'sales_order' ? 'Sales Order' : titleLabel));
-                final template = templates[docTypeKey] ?? 'Namaste {party}, aapka $titleLabel {doc_no} ban gaya hai.';
-                final msg = fillTemplate(template, {
-                  'party': doc.partyLabel ?? 'Party',
-                  'doc_no': doc.docNo ?? '',
-                  'amount': doc.grandTotal.toStringAsFixed(2),
-                });
-                if (!context.mounted) return;
-                await shareViaWhatsApp(context,
-                    message: msg,
-                    docType: docTypeKey,
-                    docNo: doc.docNo,
-                    partyLabel: doc.partyLabel,
-                    attachmentPath: pdfPath);
               },
             ),
             ListTile(

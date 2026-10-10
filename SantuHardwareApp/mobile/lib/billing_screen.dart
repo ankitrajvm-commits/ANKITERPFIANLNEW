@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
-import 'a4_invoice_pdf.dart';
 import 'app_overflow_menu.dart';
 import 'app_settings.dart';
 import 'db.dart';
@@ -13,7 +12,7 @@ import 'quick_doc_screen.dart';
 import 'theme.dart';
 import 'thermal_receipt.dart';
 import 'units.dart';
-import 'whatsapp_util.dart';
+import 'transaction_actions.dart';
 
 /// Mirrors santu_billing.js's layout: sticky search at top-left, item grid
 /// below it, a fixed-width right rail with customer/date/totals/payment,
@@ -1136,30 +1135,11 @@ class _BillingScreenState extends State<BillingScreen> {
     }
     if (!mounted) return;
     if (whatsapp || whatsappOtherPhone != null) {
-      final templates = await AppDb.instance.listMessageTemplates();
-      final template = templates['Sales Transaction'] ?? 'Namaste {party}, aapka bill {doc_no} ₹{amount} ka ban gaya hai.';
-      final partyName = whatsappOtherName ?? _bill.customerLabel ?? 'Customer';
-      final msg = fillTemplate(template, {
-        'party': partyName,
-        'doc_no': _bill.billNo ?? '',
-        'amount': _bill.grandTotal.toStringAsFixed(2),
-      });
-      // The actual bill, not just a text line — same A4 PDF "Send A4 PDF"
-      // builds elsewhere. Best-effort: a PDF failure must not block sending
-      // the text itself, which is what every WhatsApp share did before.
-      String? pdfPath;
-      try {
-        pdfPath = await A4Invoice.writeToFile(_bill);
-      } catch (_) {}
-      if (!mounted) return;
-      await shareViaWhatsApp(
+      await TransactionActions.shareInvoice(
         context,
+        _bill,
         phone: whatsappOtherPhone,
-        message: msg,
-        docType: 'Sales Transaction',
-        docNo: _bill.billNo,
-        partyLabel: partyName,
-        attachmentPath: pdfPath,
+        asPdf: true,
       );
     } else {
       await showDialog(
@@ -2554,6 +2534,11 @@ class _ReceiptDialogState extends State<_ReceiptDialog> {
       ),
       actions: [
         if (!widget.forPrint) TextButton.icon(onPressed: _print, icon: const Icon(Icons.print, size: 18), label: const Text('Print')),
+        TextButton.icon(
+          onPressed: () => TransactionActions.shareInvoice(context, invoice, asPdf: true),
+          icon: const Icon(Icons.share, size: 18),
+          label: const Text('WhatsApp (A4 PDF)'),
+        ),
         FilledButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
       ],
     );

@@ -416,14 +416,21 @@ class A4Invoice {
     final docKind = kind ??
         (titleLabel.toLowerCase().contains('challan')
             ? 'challan'
-            : (titleLabel.toLowerCase().contains('estimate') ? 'estimate' : 'quick_doc'));
+            : (titleLabel.toLowerCase().contains('estimate')
+                ? 'estimate'
+                : (titleLabel.toLowerCase().contains('return') ? 'sales_return' : 'quick_doc')));
     final isChallan = docKind == 'challan' || titleLabel.toLowerCase().contains('challan');
     final isEstimate = docKind == 'estimate' || titleLabel.toLowerCase().contains('estimate');
     final isPurchase = docKind.contains('purchase') || titleLabel.toLowerCase().contains('purchase');
+    final isReturn = docKind.contains('return') || titleLabel.toLowerCase().contains('return');
 
     final docTypeKey = isChallan
         ? 'Delivery Note'
-        : (isEstimate ? 'Quotation' : (isPurchase ? 'Purchase Order' : 'Sales Order'));
+        : (isEstimate
+            ? 'Quotation'
+            : (isPurchase
+                ? 'Purchase Order'
+                : (isReturn ? 'Sales Return' : 'Sales Order')));
 
     final template = templateOverride ?? await AppSettings.defaultTemplate('WhatsApp A4 Library', docTypeKey);
     final v = _style(template);
@@ -466,6 +473,7 @@ class A4Invoice {
                 phone,
                 titleLabel,
                 isChallan: isChallan,
+                isReturn: isReturn,
                 logoImage: logoImage,
                 a4LogoWidth: a4LogoWidth,
               ),
@@ -475,6 +483,7 @@ class A4Invoice {
                 partyCustomer,
                 isPurchase: isPurchase,
                 isChallan: isChallan,
+                isReturn: isReturn,
               ),
               pw.SizedBox(height: 12),
               isChallan ? _challanItems(d, _on(v, 'code')) : _quickDocItems(d, _on(v, 'code')),
@@ -518,11 +527,16 @@ class A4Invoice {
     String? phone,
     String titleLabel, {
     required bool isChallan,
+    bool isReturn = false,
     pw.MemoryImage? logoImage,
     double a4LogoWidth = 40.0,
   }) {
     final banner = v['banner'] as String? ?? '';
-    final docTitle = isChallan ? 'DELIVERY CHALLAN' : titleLabel.toUpperCase();
+    final docTitle = isChallan
+        ? 'DELIVERY CHALLAN'
+        : (isReturn
+            ? 'SALES RETURN / CREDIT NOTE'
+            : (titleLabel.toLowerCase().contains('estimate') ? 'ESTIMATE / QUOTATION' : titleLabel.toUpperCase()));
     return pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
       if (banner.isNotEmpty)
         pw.Container(
@@ -558,23 +572,28 @@ class A4Invoice {
         pw.Expanded(
           flex: 4,
           child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
-            pw.Text(docTitle, style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold)),
+            pw.Text(docTitle, style: pw.TextStyle(fontSize: 13.5, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 4),
-            pw.Text('${isChallan ? "Challan" : "Doc"} No: ${d.docNo ?? "-"}',
+            pw.Text('${isChallan ? "Challan" : (isReturn ? "Return" : "Doc")} No: ${d.docNo ?? "-"}',
                 style: const pw.TextStyle(fontSize: 9.5)),
             pw.Text('Date: ${d.postingDate}', style: const pw.TextStyle(fontSize: 9.5)),
             pw.SizedBox(height: 5),
             pw.Container(
               padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: pw.BoxDecoration(
-                color: isChallan ? const PdfColor.fromInt(0xFFEFF6FF) : const PdfColor.fromInt(0xFFDCFCE7),
+                color: isChallan
+                    ? const PdfColor.fromInt(0xFFEFF6FF)
+                    : (isReturn ? const PdfColor.fromInt(0xFFFEE2E2) : const PdfColor.fromInt(0xFFDCFCE7)),
                 borderRadius: pw.BorderRadius.circular(9),
               ),
-              child: pw.Text(isChallan ? 'Delivered' : (d.status == InvoiceStatus.saved ? 'Saved' : 'Draft'),
+              child: pw.Text(
+                  isChallan
+                      ? 'Delivered'
+                      : (isReturn ? 'Returned' : (d.status == InvoiceStatus.saved ? 'Saved' : 'Draft')),
                   style: pw.TextStyle(
                       fontSize: 8.5,
                       fontWeight: pw.FontWeight.bold,
-                      color: isChallan ? _brand : _paid)),
+                      color: isChallan ? _brand : (isReturn ? _due : _paid))),
             ),
           ]),
         ),
@@ -587,13 +606,19 @@ class A4Invoice {
     Customer? cust, {
     required bool isPurchase,
     required bool isChallan,
+    bool isReturn = false,
   }) =>
       pw.Container(
         width: double.infinity,
         padding: const pw.EdgeInsets.all(8),
         decoration: pw.BoxDecoration(color: _panel, border: pw.Border.all(color: _line, width: 0.5)),
         child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-          pw.Text(isChallan ? 'DELIVERED TO / PARTY' : (isPurchase ? 'SUPPLIER DETAILS' : 'BILLED TO'),
+          pw.Text(
+              isChallan
+                  ? 'DELIVERED TO / PARTY'
+                  : (isPurchase
+                      ? 'SUPPLIER DETAILS'
+                      : (isReturn ? 'RETURN FROM / CUSTOMER' : 'BILLED TO')),
               style: const pw.TextStyle(fontSize: 8, color: _muted)),
           pw.SizedBox(height: 2),
           pw.Text(d.partyLabel ?? (isPurchase ? 'Supplier' : 'Customer'),
@@ -737,6 +762,346 @@ class A4Invoice {
             pw.Container(width: 150, height: 0.5, color: _line),
             pw.SizedBox(height: 3),
             pw.Text('Received in good condition', style: const pw.TextStyle(fontSize: 8.5, color: _muted)),
+          ]),
+          pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+            pw.Text('For $shopName', style: pw.TextStyle(fontSize: 9.5, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 22),
+            pw.Container(width: 150, height: 0.5, color: _line),
+            pw.SizedBox(height: 3),
+            pw.Text('Authorised Signatory', style: const pw.TextStyle(fontSize: 8.5, color: _muted)),
+          ]),
+        ],
+      );
+
+  /// Writes the Account Statement A4 PDF for sharing / printing.
+  static Future<String> writeToFileForStatement({
+    required String partyType,
+    required String partyId,
+    required String partyLabel,
+    required DateTime fromDate,
+    required DateTime toDate,
+    required double openingBalance,
+    required double closingBalance,
+    required List<({DateTime date, String docNo, String type, double debit, double credit, double balance})> rows,
+    String? templateOverride,
+  }) async {
+    final bytes = await buildStatement(
+      partyType: partyType,
+      partyId: partyId,
+      partyLabel: partyLabel,
+      fromDate: fromDate,
+      toDate: toDate,
+      openingBalance: openingBalance,
+      closingBalance: closingBalance,
+      rows: rows,
+      templateOverride: templateOverride,
+    );
+    final safeName = partyLabel.replaceAll(RegExp(r'[^A-Za-z0-9-]'), '_');
+    final file = await shareableFile('Statement_$safeName.pdf');
+    await file.writeAsBytes(bytes, flush: true);
+    return file.path;
+  }
+
+  /// Builds the Account Statement A4 PDF matching PC's _customer_khata_html layout.
+  static Future<List<int>> buildStatement({
+    required String partyType,
+    required String partyId,
+    required String partyLabel,
+    required DateTime fromDate,
+    required DateTime toDate,
+    required double openingBalance,
+    required double closingBalance,
+    required List<({DateTime date, String docNo, String type, double debit, double credit, double balance})> rows,
+    String? templateOverride,
+  }) async {
+    final shopName = await AppSettings.shopName();
+    final address = await AppSettings.companyAddressLine();
+    final gstin = await AppSettings.gstin();
+    final phone = await AppSettings.phone();
+    final website = await AppSettings.website();
+    final footer = await AppSettings.billFooter();
+    final showLogo = await AppSettings.showLogoOnA4Bill();
+    final a4LogoWidth = await AppSettings.a4LogoWidth();
+
+    pw.MemoryImage? logoImage;
+    if (showLogo) {
+      try {
+        final data = await rootBundle.load('assets/thermal_bill_logo.png');
+        logoImage = pw.MemoryImage(data.buffer.asUint8List());
+      } catch (_) {}
+    }
+
+    final isCustomer = partyType == 'Customer';
+    final customer = isCustomer ? await AppDb.instance.customerByName(partyId) : null;
+    final supplier = !isCustomer ? (await AppDb.instance.supplier(partyId) ?? await AppDb.instance.supplierByName(partyLabel)) : null;
+    final partyPhone = customer?.phone ?? supplier?.phone;
+    final partyAddress = customer?.village;
+
+    final totalDebit = rows.fold<double>(0, (s, r) => s + r.debit);
+    final totalCredit = rows.fold<double>(0, (s, r) => s + r.credit);
+
+    final doc = pw.Document();
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.fromLTRB(28, 28, 28, 28),
+        build: (context) => [
+          _statementHeader(
+            shopName,
+            address,
+            gstin,
+            phone,
+            fromDate,
+            toDate,
+            closingBalance,
+            logoImage: logoImage,
+            a4LogoWidth: a4LogoWidth,
+          ),
+          pw.SizedBox(height: 12),
+          _statementParty(
+            partyType: partyType,
+            partyLabel: partyLabel,
+            partyPhone: partyPhone,
+            partyAddress: partyAddress,
+            openingBalance: openingBalance,
+            closingBalance: closingBalance,
+          ),
+          pw.SizedBox(height: 12),
+          _statementTable(
+            fromDate: fromDate,
+            openingBalance: openingBalance,
+            closingBalance: closingBalance,
+            totalDebit: totalDebit,
+            totalCredit: totalCredit,
+            rows: rows,
+          ),
+          pw.SizedBox(height: 10),
+          if (closingBalance != 0) ...[
+            pw.Text(
+              'Balance in Words: ${inWords(closingBalance.abs())}',
+              style: const pw.TextStyle(fontSize: 9, color: _muted),
+            ),
+            pw.SizedBox(height: 14),
+          ],
+          _statementSignatures(shopName, isCustomer: isCustomer),
+          pw.SizedBox(height: 12),
+          _footer(shopName, website, footer, true, 0),
+        ],
+      ),
+    );
+    return doc.save();
+  }
+
+  static pw.Widget _statementHeader(
+    String shopName,
+    String address,
+    String? gstin,
+    String? phone,
+    DateTime fromDate,
+    DateTime toDate,
+    double closingBalance, {
+    pw.MemoryImage? logoImage,
+    double a4LogoWidth = 40.0,
+  }) {
+    final fmt = DateFormat('dd-MM-yyyy');
+    final balancePill = closingBalance > 0
+        ? 'KUL BAAKI: Rs. ${_money.format(closingBalance)}'
+        : (closingBalance < 0
+            ? 'ADVANCE: Rs. ${_money.format(-closingBalance)}'
+            : 'NIL / ALL CLEAR');
+    final pillBg = closingBalance > 0
+        ? const PdfColor.fromInt(0xFFFEE2E2)
+        : const PdfColor.fromInt(0xFFDCFCE7);
+    final pillText = closingBalance > 0 ? _due : _paid;
+
+    return pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+      pw.Expanded(
+        flex: 6,
+        child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+          if (logoImage != null) ...[
+            pw.Container(
+              width: (a4LogoWidth / 100 * 240).clamp(60, 240),
+              margin: const pw.EdgeInsets.only(bottom: 6),
+              child: pw.Image(logoImage),
+            ),
+          ] else ...[
+            pw.Text(shopName, style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: _brand)),
+            pw.SizedBox(height: 3),
+          ],
+          if (address.isNotEmpty) pw.Text(address, style: const pw.TextStyle(fontSize: 9, color: _muted)),
+          if (phone != null && phone.isNotEmpty)
+            pw.Text('Phone: $phone', style: const pw.TextStyle(fontSize: 9, color: _muted)),
+          if (gstin != null && gstin.isNotEmpty)
+            pw.Text('GSTIN: $gstin', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+        ]),
+      ),
+      pw.Expanded(
+        flex: 4,
+        child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+          pw.Text('ACCOUNT STATEMENT', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 4),
+          pw.Text('Period: ${fmt.format(fromDate)} se ${fmt.format(toDate)}',
+              style: const pw.TextStyle(fontSize: 8.5, color: _muted)),
+          pw.Text('Printed: ${fmt.format(DateTime.now())}',
+              style: const pw.TextStyle(fontSize: 8.5, color: _muted)),
+          pw.SizedBox(height: 5),
+          pw.Container(
+            padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: pw.BoxDecoration(
+              color: pillBg,
+              borderRadius: pw.BorderRadius.circular(9),
+            ),
+            child: pw.Text(balancePill,
+                style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: pillText)),
+          ),
+        ]),
+      ),
+    ]);
+  }
+
+  static pw.Widget _statementParty({
+    required String partyType,
+    required String partyLabel,
+    String? partyPhone,
+    String? partyAddress,
+    required double openingBalance,
+    required double closingBalance,
+  }) =>
+      pw.Container(
+        width: double.infinity,
+        padding: const pw.EdgeInsets.all(8),
+        decoration: pw.BoxDecoration(color: _panel, border: pw.Border.all(color: _line, width: 0.5)),
+        child: pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+          pw.Expanded(
+            flex: 6,
+            child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+              pw.Text('STATEMENT FOR (${partyType.toUpperCase()})',
+                  style: const pw.TextStyle(fontSize: 8, color: _muted)),
+              pw.SizedBox(height: 2),
+              pw.Text(partyLabel, style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+              if (partyPhone != null && partyPhone.isNotEmpty)
+                pw.Text('Phone: $partyPhone', style: const pw.TextStyle(fontSize: 9, color: _muted)),
+              if (partyAddress != null && partyAddress.isNotEmpty)
+                pw.Text('Address: $partyAddress', style: const pw.TextStyle(fontSize: 9, color: _muted)),
+            ]),
+          ),
+          pw.Expanded(
+            flex: 4,
+            child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+              pw.Text('Opening Balance: Rs. ${_money.format(openingBalance)}',
+                  style: const pw.TextStyle(fontSize: 9, color: _muted)),
+              pw.SizedBox(height: 3),
+              pw.Text(
+                'Closing Balance: Rs. ${_money.format(closingBalance)}',
+                style: pw.TextStyle(
+                  fontSize: 11,
+                  fontWeight: pw.FontWeight.bold,
+                  color: closingBalance > 0 ? _due : _paid,
+                ),
+              ),
+            ]),
+          ),
+        ]),
+      );
+
+  static pw.Widget _statementTable({
+    required DateTime fromDate,
+    required double openingBalance,
+    required double closingBalance,
+    required double totalDebit,
+    required double totalCredit,
+    required List<({DateTime date, String docNo, String type, double debit, double credit, double balance})> rows,
+  }) {
+    final fmt = DateFormat('dd-MM-yyyy');
+    pw.Widget cell(String t, {bool bold = false, pw.TextAlign align = pw.TextAlign.left, PdfColor? color}) => pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: pw.Text(
+            t,
+            textAlign: align,
+            style: pw.TextStyle(
+              fontSize: 8.5,
+              fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+              color: color ?? _ink,
+            ),
+          ),
+        );
+
+    return pw.Table(
+      border: pw.TableBorder.all(color: _line, width: 0.5),
+      columnWidths: {
+        0: const pw.FixedColumnWidth(22),
+        1: const pw.FixedColumnWidth(60),
+        2: const pw.FixedColumnWidth(75),
+        3: const pw.FlexColumnWidth(3),
+        4: const pw.FixedColumnWidth(70),
+        5: const pw.FixedColumnWidth(70),
+        6: const pw.FixedColumnWidth(80),
+      },
+      children: [
+        pw.TableRow(
+          decoration: const pw.BoxDecoration(color: _panel),
+          children: [
+            cell('#', bold: true),
+            cell('Date', bold: true),
+            cell('Doc / Voucher', bold: true),
+            cell('Particulars', bold: true),
+            cell('Debit (+)', bold: true, align: pw.TextAlign.right),
+            cell('Credit (-)', bold: true, align: pw.TextAlign.right),
+            cell('Balance', bold: true, align: pw.TextAlign.right),
+          ],
+        ),
+        pw.TableRow(
+          decoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFFF1F5F9)),
+          children: [
+            cell(''),
+            cell(fmt.format(fromDate)),
+            cell('-'),
+            cell('Opening Balance', bold: true),
+            cell('-', align: pw.TextAlign.right),
+            cell('-', align: pw.TextAlign.right),
+            cell('Rs. ${_money.format(openingBalance)}', bold: true, align: pw.TextAlign.right),
+          ],
+        ),
+        for (var i = 0; i < rows.length; i++)
+          pw.TableRow(
+            children: [
+              cell('${i + 1}'),
+              cell(fmt.format(rows[i].date)),
+              cell(rows[i].docNo),
+              cell(rows[i].type),
+              cell(rows[i].debit > 0 ? 'Rs. ${_money.format(rows[i].debit)}' : '-',
+                  align: pw.TextAlign.right, color: rows[i].debit > 0 ? _due : _ink),
+              cell(rows[i].credit > 0 ? 'Rs. ${_money.format(rows[i].credit)}' : '-',
+                  align: pw.TextAlign.right, color: rows[i].credit > 0 ? _paid : _ink),
+              cell('Rs. ${_money.format(rows[i].balance)}', bold: true, align: pw.TextAlign.right),
+            ],
+          ),
+        pw.TableRow(
+          decoration: const pw.BoxDecoration(color: _panel),
+          children: [
+            cell(''),
+            cell(''),
+            cell(''),
+            cell('TOTALS', bold: true),
+            cell('Rs. ${_money.format(totalDebit)}', bold: true, align: pw.TextAlign.right),
+            cell('Rs. ${_money.format(totalCredit)}', bold: true, align: pw.TextAlign.right),
+            cell('Rs. ${_money.format(closingBalance)}', bold: true, align: pw.TextAlign.right),
+          ],
+        ),
+      ],
+    );
+  }
+
+  static pw.Widget _statementSignatures(String shopName, {required bool isCustomer}) => pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+            pw.Text(isCustomer ? "Customer's Signature" : "Supplier's Signature",
+                style: pw.TextStyle(fontSize: 9.5, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 22),
+            pw.Container(width: 150, height: 0.5, color: _line),
+            pw.SizedBox(height: 3),
+            pw.Text('Signature / Mohar', style: const pw.TextStyle(fontSize: 8.5, color: _muted)),
           ]),
           pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
             pw.Text('For $shopName', style: pw.TextStyle(fontSize: 9.5, fontWeight: pw.FontWeight.bold)),

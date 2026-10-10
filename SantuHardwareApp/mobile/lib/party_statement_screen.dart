@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import 'a4_invoice_pdf.dart';
 import 'db.dart';
+import 'models.dart';
 import 'theme.dart';
 import 'view_invoice_screen.dart';
 import 'whatsapp_util.dart';
@@ -164,7 +166,7 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
     }
   }
 
-  Future<void> _share() async {
+  Future<void> _share({bool asPdf = true}) async {
     final fmt = DateFormat('dd MMM yyyy');
     final buf = StringBuffer();
     buf.writeln('*${widget.partyLabel} — Account Statement*');
@@ -178,8 +180,50 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
     }
     buf.writeln('');
     buf.writeln('*Closing Balance: ₹${_closingBalance.toStringAsFixed(2)}*');
+
+    String? pdfPath;
+    if (asPdf) {
+      try {
+        final rowsData = _visibleRows.map((r) => (
+          date: r.date,
+          docNo: r.docNo,
+          type: r.type,
+          debit: r.debit,
+          credit: r.credit,
+          balance: r.balance,
+        )).toList();
+
+        pdfPath = await A4Invoice.writeToFileForStatement(
+          partyType: widget.partyType,
+          partyId: widget.partyId,
+          partyLabel: widget.partyLabel,
+          fromDate: _fromDate ?? DateTime.now(),
+          toDate: _toDate,
+          openingBalance: _openingBalance,
+          closingBalance: _closingBalance,
+          rows: rowsData,
+        );
+      } catch (e) {
+        debugPrint('A4 Statement PDF error: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('A4 PDF ban nahi paya: $e')));
+        }
+      }
+    }
+
+    Customer? cust;
+    if (_isCustomer) {
+      cust = await AppDb.instance.customerByName(widget.partyId);
+    }
     if (!mounted) return;
-    await shareViaWhatsApp(context, message: buf.toString(), docType: 'Account Statement', partyLabel: widget.partyLabel);
+    await shareViaWhatsApp(
+      context,
+      message: buf.toString(),
+      phone: cust?.phone,
+      docType: 'Account Statement',
+      partyLabel: widget.partyLabel,
+      attachmentPath: pdfPath,
+    );
   }
 
   @override
@@ -190,8 +234,24 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
         title: Text('${widget.partyLabel} — Statement'),
         actions: [
           IconButton(icon: const Icon(Icons.date_range), tooltip: 'Date Range', onPressed: _loading ? null : _pickRange),
-          IconButton(icon: const Icon(Icons.share), tooltip: 'Share', onPressed: _loading || _visibleRows.isEmpty ? null : _share),
+          IconButton(icon: const Icon(Icons.picture_as_pdf_outlined), tooltip: 'Send A4 PDF', onPressed: _loading || _visibleRows.isEmpty ? null : () => _share(asPdf: true)),
+          IconButton(icon: const Icon(Icons.share), tooltip: 'Share', onPressed: _loading || _visibleRows.isEmpty ? null : () => _share(asPdf: true)),
         ],
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: FilledButton.icon(
+            onPressed: _loading || _visibleRows.isEmpty ? null : () => _share(asPdf: true),
+            icon: const Icon(Icons.share, size: 18),
+            label: const Text('Send Statement (A4 PDF) on WhatsApp'),
+            style: FilledButton.styleFrom(
+              backgroundColor: SantuColors.green,
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

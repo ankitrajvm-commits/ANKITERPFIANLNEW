@@ -5,7 +5,7 @@ import 'models.dart';
 import 'prefill_bus.dart';
 import 'theme.dart';
 import 'thermal_receipt.dart';
-import 'whatsapp_util.dart';
+import 'transaction_actions.dart';
 
 /// Every saved bill, newest first, with a tap-to-reprint receipt — mirrors
 /// santu_view_invoice.js's list + print action.
@@ -173,13 +173,7 @@ class InvoiceDetailDialog extends StatelessWidget {
           label: const Text('Edit'),
         ),
         TextButton.icon(
-          onPressed: () async {
-            final templates = await AppDb.instance.listMessageTemplates();
-            final template = templates['Sales Transaction'] ?? 'Namaste {party}, aapka bill {doc_no} ₹{amount} ka ban gaya hai.';
-            final msg = fillTemplate(template, {'party': invoice.customerLabel ?? 'Customer', 'doc_no': invoice.billNo ?? '', 'amount': invoice.grandTotal.toStringAsFixed(2)});
-            if (!context.mounted) return;
-            await shareViaWhatsApp(context, message: msg, docType: 'Sales Transaction', docNo: invoice.billNo, partyLabel: invoice.customerLabel);
-          },
+          onPressed: () => TransactionActions.shareInvoice(context, invoice, asPdf: true),
           icon: const Icon(Icons.share, size: 18),
           label: const Text('WhatsApp'),
         ),
@@ -201,12 +195,8 @@ class InvoiceDetailDialog extends StatelessWidget {
                 ],
               ),
             );
-            if (ok == true && phoneCtrl.text.trim().length >= 10) {
-              final templates = await AppDb.instance.listMessageTemplates();
-              final template = templates['Sales Transaction'] ?? 'Namaste {party}, aapka bill {doc_no} ₹{amount} ka ban gaya hai.';
-              final msg = fillTemplate(template, {'party': invoice.customerLabel ?? 'Customer', 'doc_no': invoice.billNo ?? '', 'amount': invoice.grandTotal.toStringAsFixed(2)});
-              if (!context.mounted) return;
-              await shareViaWhatsApp(context, message: msg, docType: 'Sales Transaction', docNo: invoice.billNo, partyLabel: invoice.customerLabel, phone: phoneCtrl.text.trim());
+            if (ok == true && phoneCtrl.text.trim().length >= 10 && context.mounted) {
+              await TransactionActions.shareInvoice(context, invoice, phone: phoneCtrl.text.trim(), asPdf: true);
             }
           },
           icon: const Icon(Icons.arrow_outward, size: 18),

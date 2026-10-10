@@ -765,6 +765,20 @@ class AppDb {
     return rows.map(Supplier.fromMap).toList();
   }
 
+  Future<Supplier?> supplier(String id) async {
+    final db = await database;
+    final rows = await db.query('supplier', where: 'name = ?', whereArgs: [id]);
+    if (rows.isEmpty) return null;
+    return Supplier.fromMap(rows.first);
+  }
+
+  Future<Supplier?> supplierByName(String name) async {
+    final db = await database;
+    final rows = await db.query('supplier', where: 'supplier_name = ?', whereArgs: [name]);
+    if (rows.isEmpty) return null;
+    return Supplier.fromMap(rows.first);
+  }
+
   // ---- Purchase invoices ----
 
   Future<int> nextPurchaseNo() async {
