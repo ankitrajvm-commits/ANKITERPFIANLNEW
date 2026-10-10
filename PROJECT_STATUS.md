@@ -370,6 +370,38 @@ cross-sell — flagged, never resolved).
     view/report reusing `get_pos_reserved_qty()` so the two screens never
     disagree about what's "available." See `IMPROVEMENT_LOG.md` 2026-07-30.
 
+11. **Android: Invoice Settings print format shows a different shop address
+    than Shop Profile.** Reported 2026-10-10 from the shop. A fix is already
+    pushed but was not in the reporter's build: `invoice_settings_screen.dart`
+    assembled the preview address from city/state/pincode only, dropping the
+    street line, and fell through to the sample shop's address whenever those
+    three were blank. It now calls `AppSettings.companyAddressLine()`, the same
+    helper `a4_invoice_pdf.dart` and `thermal_receipt.dart` already used, so all
+    three agree. Shop Profile reads and writes those same SharedPreferences
+    keys, so there is no second store to reconcile. **Rebuild the APK and
+    re-check before investigating further** — if the two still disagree after
+    that, the cause is something new and not this.
+
+12. **Android: "Scan & Pay" UPI QR prints wrong on the thermal slip.**
+    Reported 2026-10-10 from the shop; exact symptom (garbage characters /
+    unscannable / wrong amount) not yet pinned down. The `GS ( k` sequence in
+    `ThermalReceipt._qr()` was checked command by command against the Epson
+    spec — model select, module size, error-correction level, store and print
+    are all well-formed, and the store length is `len(data)+3` as required. So
+    suspect, in order: (a) the printer's firmware does not implement the native
+    QR commands at all, which is common on cheap ESC/POS units and prints the
+    payload as text instead — note the PC never hits this, as it sends a PNG
+    through CUPS and lets that raster it; (b) module size is hard-coded at 6
+    regardless of paper width, so a long `upi://` payload on a 58mm roll can
+    print too dense or too wide to scan; (c) the content itself, since the
+    amount is `thisDue > 0 ? thisDue : grandTotal`, which asks a fully-paid
+    bill's reader to pay the whole total again.
+    Diagnose first: compare the bill's QR against Printer Settings → Test
+    Print, and check whether anything QR-shaped appears at all. If it is (a),
+    the real fix is to encode the QR in-app and send it as a raster bitmap
+    (`GS v 0`) rather than relying on printer firmware — which is what the PC
+    effectively already does.
+
 ---
 
 ## 6. IMPORTANT COMMANDS TO RUN
