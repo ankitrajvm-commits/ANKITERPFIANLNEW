@@ -44,6 +44,26 @@ launch, always.
 - Privacy Mode toggle/indicator small and unobtrusive when locked, clearly visible
   when unlocked (so staff always know the state).
 
+### 2.1 Item entry order and scrolling (hard rule, 2026-09-21)
+
+Applies to EVERY screen where items are added to a document — Billing (POS),
+Estimate/Quotation, Sales Return, Purchase Return, Sales Order, Delivery Challan,
+Purchase Bill, Purchase Order:
+
+1. **New lines are appended at the BOTTOM**, in the order they were entered — the
+   bill reads the way it was billed, on screen and on paper. (A "newest on top"
+   variant was tried on 2026-09-21 and rejected the same day by Ankit.)
+2. **The item just added must be in sight without touching the scrollbar.** After
+   every add the screen brings that row into view by itself — the operator never
+   scrolls to find what they just added.
+3. **The item search box stays on screen** (`position: sticky; top: 0`) while the
+   list grows, so the next item never requires scrolling back up either. Adding a
+   row must leave both the new row AND the search box visible.
+4. **Adding an item must not move the view up and down.** Focus the search box with
+   `focus({ preventScroll: true })`, and keep the row-reveal instant and single —
+   no `behavior: "smooth"`, no second scroll a frame later, and cancel any pending
+   reveal before starting a new one (`window.santu_scroll_row_into_view`).
+
 ---
 
 ## 3. DASHBOARD

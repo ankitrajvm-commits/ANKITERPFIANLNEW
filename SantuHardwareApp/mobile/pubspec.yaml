@@ -1,0 +1,136 @@
+name: santu_hardware_mobile
+description: "A new Flutter project."
+# The following line prevents the package from being accidentally published to
+# pub.dev using `flutter pub publish`. This is preferred for private packages.
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+# The following defines the version and build number for your application.
+# A version number is three numbers separated by dots, like 1.2.43
+# followed by an optional build number separated by a +.
+# Both the version and the builder number may be overridden in flutter
+# build by specifying --build-name and --build-number, respectively.
+# In Android, build-name is used as versionName while build-number used as versionCode.
+# Read more about Android versioning at https://developer.android.com/studio/publish/versioning
+# In iOS, build-name is used as CFBundleShortVersionString while build-number is used as CFBundleVersion.
+# Read more about iOS versioning at
+# https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+# In Windows, build-name is used as the major, minor, and patch parts
+# of the product and file versions while build-number is used as the build suffix.
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.6.0
+
+# Dependencies specify other packages that your package needs in order to work.
+# To automatically upgrade your package dependencies to the latest versions
+# consider running `flutter pub upgrade --major-versions`. Alternatively,
+# dependencies can be manually updated by changing the version numbers below to
+# the latest version available on pub.dev. To see which dependencies have newer
+# versions available, run `flutter pub outdated`.
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # The following adds the Cupertino Icons font to your application.
+  # Use with the CupertinoIcons class for iOS style icons.
+  cupertino_icons: ^1.0.8
+
+  # Local on-device database — mirrors Item / Customer / Sales Invoice so
+  # billing works fully offline, no server dependency.
+  sqflite: ^2.4.1
+  path: ^1.9.0
+  path_provider: ^2.1.5
+  intl: ^0.19.0
+  uuid: ^4.5.1
+
+  # WhatsApp share (wa.me link) and opening a saved backup file with
+  # another app, both via the OS — no native plugin of our own needed.
+  url_launcher: ^6.3.1
+  # Photo attach for Upload Bill and the share-sheet for Backup export.
+  image_picker: ^1.1.2
+  share_plus: ^10.1.4
+  # Picking a backup .json file to restore from.
+  file_picker: ^8.1.6
+  # Dashboard sales chart — same "line chart with a range picker" the web
+  # app's Home screen has.
+  fl_chart: ^0.69.2
+
+  # The already-configured thermal printer, over Bluetooth — raw ESC/POS
+  # bytes built to match print_service.py's escpos_bill_bytes exactly
+  # (48-column Font A, same line-by-line layout), not a generic template.
+  print_bluetooth_thermal: ^1.2.0
+  # USB OTG — the printer plugged in directly with a USB cable, same raw
+  # ESC/POS bytes as the Bluetooth path (thermal_receipt.dart), just a
+  # different transport: a raw USB bulk write, no ESC/POS abstraction of
+  # its own to conflict with the one already built here.
+  # Local fork of the (unmaintained) 1.0.1 release: upstream cannot obtain USB
+  # permission at all on Android 12+. third_party/.../README.md has the detail.
+  another_flutter_usb_write:
+    path: third_party/another_flutter_usb_write
+  permission_handler: ^11.3.1
+  shared_preferences: ^2.3.3
+  # Import Items — same .xlsx template as the PC Utilities screen.
+  excel: ^4.0.6
+  pdf: ^3.11.3
+  # Scan & Pay QR. The modules are encoded in-app and sent to the printer as a
+  # raster bitmap, because the ESC/POS native QR commands are optional and
+  # plenty of cheap thermal units ignore them (thermal_receipt.dart _qr).
+  # Already in the tree via pdf → barcode; declared here since we use it.
+  qr: ^3.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # The "flutter_lints" package below contains a set of recommended lints to
+  # encourage good coding practices. The lint set provided by the package is
+  # activated in the `analysis_options.yaml` file located at the root of your
+  # package. See that file for information about deactivating specific lint
+  # rules and activating additional ones.
+  flutter_lints: ^5.0.0
+  sqflite_common_ffi: ^2.3.4+4
+
+# For information on the generic Dart part of this file, see the
+# following page: https://dart.dev/tools/pub/pubspec
+
+# The following section is specific to Flutter packages.
+flutter:
+
+  # The following line ensures that the Material Icons font is
+  # included with your application, so that you can use the icons in
+  # the material Icons class.
+  uses-material-design: true
+
+  # The PC app's own internal dev-team feature backlog (Utilities > Feature
+  # Workbook), seeded once into the local DB so it's browsable on the phone.
+  assets:
+    - assets/feature_workbook.json
+    - assets/catalog_items.json
+    - assets/supreme_lifeline_items.json
+    - assets/thermal_bill_logo.png
+
+  # An image asset can refer to one or more resolution-specific "variants", see
+  # https://flutter.dev/to/resolution-aware-images
+
+  # For details regarding adding assets from package dependencies, see
+  # https://flutter.dev/to/asset-from-package
+
+  # To add custom fonts to your application, add a fonts section here,
+  # in this "flutter" section. Each entry in this list should have a
+  # "family" key with the font family name, and a "fonts" key with a
+  # list giving the asset and other descriptors for the font. For
+  # example:
+  # fonts:
+  #   - family: Schyler
+  #     fonts:
+  #       - asset: fonts/Schyler-Regular.ttf
+  #       - asset: fonts/Schyler-Italic.ttf
+  #         style: italic
+  #   - family: Trajan Pro
+  #     fonts:
+  #       - asset: fonts/TrajanPro.ttf
+  #       - asset: fonts/TrajanPro_Bold.ttf
+  #         weight: 700
+  #
+  # For details regarding fonts from package dependencies,
+  # see https://flutter.dev/to/font-from-package

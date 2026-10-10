@@ -18,6 +18,99 @@
 
 ---
 
+## 2026-09-23 — Print library: every document, several layouts each
+
+- **Original problem:** a return printed as a sale ("return item ka thermal
+  bill invoice se likha aa raha hai"), and Invoice Settings listed seven
+  document types where several had exactly one layout — or none. Sales Order
+  and Receive Stock had no print format at all, and the A4 library showed six
+  style cards backed by a single format.
+- **Alternatives considered:**
+  1. Hand-write each new layout — rejected: ~60 formats, and every future fix
+     would have to be repeated in each one.
+  2. One format with a `style` URL parameter — does not work: a Print Format
+     cannot read query parameters (this is why the old A4 cards all previewed
+     the same bill).
+  3. **Chosen:** generate each variant as a real Print Format from the
+     document's own base, applying a CSS wrapper, an optional banner and an
+     optional item-code line. Same mechanism the eleven thermal Sale Bill
+     layouts already used, so preview and real print stay identical.
+- **Measurable result:** 89 Santu formats on live (was 25). Every one renders
+  against a real document — 88 renders, 0 failures — and no printed line shows
+  a negative number for a return. Invoice Settings now lists 11 document types;
+  each shows only the layouts it really has.
+- **Note:** a document type with no document yet (Sales Order on live) says so
+  in the preview instead of showing another document's layout.
+
+---
+
+## 2026-09-23 — Parties panel: every transaction, not just sales
+
+- **Original problem:** the Parties detail panel listed sales only (Purchase
+  Invoice for a supplier). A payment received, a return, a purana-baki entry
+  or a party transfer simply did not appear, so the panel disagreed with the
+  khata sitting next to it and with the "Owes you" figure above it. Ankit:
+  "showing all the credit, debit in the transactions".
+- **Alternatives considered:**
+  1. Add a few more doctype queries (Payment Entry, credit notes) next to the
+     existing ones — rejected: that is how the panel drifted in the first
+     place; the next new voucher type would be missing again.
+  2. Reuse `get_customer_khata` — rejected: it is date-windowed, carries item
+     summaries the panel does not show, and itself only knows three doctypes.
+  3. **Chosen:** read the ledger. Every GL Entry booked against the party,
+     grouped per voucher, with debit/credit and a running balance. Whatever
+     moved the party's balance shows up; drafts and non-financial documents
+     (quotation, challan) still do not.
+- **Measurable result:** on live (read-only) the panel's running balance equals
+  the app's own outstanding for every party checked — Aman Singh ₹12,387.50,
+  Hirdya Ray ₹5,280, Sabre Alam ₹1,739.60 — and Aman Singh's ₹5,000 payment,
+  invisible before, now shows. Return / Payment In / Payment Out rows verified
+  on three real parties with returns; supplier side and transfers verified on
+  the test copy with TEST-named records, which were deleted afterwards
+  (residue sweep clean).
+- **Known gap, deliberately not changed:** `get_party_net_due` still counts
+  invoices and advances only, so a Party Transfer journal moves the panel's
+  balance but not the "Owes you" total. No party-transfer journals exist on
+  live today. Raised with Ankit rather than changed, because that number feeds
+  Customer Dues, the dashboard and the Payment screens.
+
+---
+
+## 2026-09-21 — Item entry: keep the new line in sight (sticky search, no scroll jitter)
+
+- **Original problem:** three separate reports in one day, all from adding an
+  item to a bill: (a) the screen went "upar niche upar niche, mobile jaise
+  hang"; (b) the new item landed below the fold and had to be scrolled to;
+  (c) once the view did follow it, the search box scrolled off the top, so
+  every next item meant scrolling back up.
+- **What was actually happening (measured live):** `$search.focus()` yanked the
+  page 3085px up; `santu_scroll_row_into_view` then pulled it back down with
+  TWO smooth animations (wrapper, then a page-level `scrollIntoView` measured
+  mid-animation), and every quick add queued another one. Separately, a
+  wrapper that reported itself scrollable for one frame made the helper record
+  "handled" and never scroll the page at all.
+- **Alternatives considered:**
+  1. Keep appending at the bottom and only fix the scrolling — rejected: even
+     perfect scrolling means the eye travels down the list on every item.
+  2. Make the grid its own scroll box at every window size — rejected: the
+     stacked layout (<1200px) deliberately lets the page grow, and forcing an
+     inner scrollbar hides the totals.
+  3. Newest line at the TOP (`unshift`) — built and tested on all 8 screens,
+     then **rejected by Ankit the same day**: the bill must stay in the order it
+     was billed. "Jo naya saman add ho wo niche hi add ho, aur wo mere samne
+     dikhe."
+  4. **Chosen:** keep appending at the bottom, but make the screen carry the
+     operator to the new row by itself — sticky search bar on both bar types,
+     plus an instant, single, cancellable row reveal that subtracts the pinned
+     bar's height. Nothing to scroll, in either direction.
+- **Measurable result:** 8 item-entry screens, 12 items each at 1024x700 —
+  direction changes in scroll position 0, every new row visible below the bar,
+  search box visible after every add, on all 8 screens. Saved bill on the test
+  copy kept the entry order with totals intact (₹1,560.40 = sum of lines).
+- **Rule written down:** `UI_GUIDELINES.md` §2.1.
+
+---
+
 ## 2026-07-30 — Number-card widget-title truncation (Accounting dashboard)
 
 - **Original problem:** Number Card widgets on the Accounting workspace

@@ -1,0 +1,109 @@
+<title>Santu Billing Preview</title>
+<style>
+  :root{
+    --bg:#F1F5F9; --card:#FFFFFF; --border:#E2E8F0;
+    --text:#0F172A; --muted:#64748B; --faint:#94A3B8;
+    --blue:#2563EB; --blueLight:#3B82F6; --green:#16A34A;
+    --amberBg:#FFFBEB; --amberBorder:#FDE68A; --amberText:#92400E;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,Roboto,'Segoe UI',sans-serif;padding:16px}
+  .note{max-width:900px;margin:0 auto 14px;font-size:13px;color:var(--muted);background:#fff;border:1px solid var(--border);border-radius:8px;padding:10px 14px}
+  .note b{color:var(--text)}
+  .phone{max-width:900px;margin:0 auto;background:var(--card);border-radius:14px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.08);border:1px solid var(--border)}
+  .appbar{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border)}
+  .appbar .title{font-weight:700;font-size:17px}
+  .tabbar{display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--bg);overflow-x:auto}
+  .tab{padding:8px 14px;border-radius:8px 8px 0 0;font-size:13px;color:var(--muted);white-space:nowrap}
+  .tab.active{background:#fff;color:var(--text);font-weight:600}
+  .newtab{border:1px solid var(--border);background:#fff;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:600;color:var(--blue);white-space:nowrap}
+  .main{display:flex;flex-direction:column;gap:12px;padding:12px}
+  @media(min-width:700px){.main{flex-direction:row}}
+  .left{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
+  .right{flex:0 0 280px;display:flex;flex-direction:column;gap:10px}
+  .search{position:relative}
+  .search input{width:100%;height:46px;border:2px solid var(--blueLight);border-radius:8px;padding:0 16px 0 40px;font-size:14px}
+  .search span{position:absolute;left:14px;top:50%;transform:translateY(-50%);opacity:.6}
+  .grid{border:1px solid var(--border);border-radius:8px;overflow:hidden;background:#fff}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{background:#f8fafc;color:var(--muted);text-align:left;padding:8px 10px;font-size:11px;font-weight:700;border-bottom:1px solid var(--border)}
+  td{padding:9px 10px;border-bottom:1px solid #f1f5f9}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .gridfoot{display:flex;justify-content:flex-end;padding:8px 12px;background:#f8fafc;font-weight:700}
+  .datewrap input{width:100%;height:40px;border:1px solid var(--border);border-radius:8px;padding:0 10px;font-size:13px}
+  .custwrap input{width:100%;height:40px;border:1px solid var(--border);border-radius:8px;padding:0 10px;font-size:13px;margin-top:4px}
+  .totalcard{display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid var(--border);border-radius:8px;padding:12px}
+  .totalcard-left{display:flex;align-items:center;gap:10px}
+  .total-big{font-weight:800;font-size:17px}
+  .total-sub{font-size:11px;color:var(--muted)}
+  .breakup{border:none;background:none;color:var(--blue);font-size:11px;font-weight:600;text-align:right}
+  .payrow{display:flex;gap:10px}
+  .field{flex:1}
+  .field label{font-size:11px;color:var(--muted);font-weight:600}
+  .field select,.field input{width:100%;height:38px;border:1px solid var(--border);border-radius:8px;padding:0 10px;font-size:13px;margin-top:3px}
+  .savecol{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+  .btn-more{border:1px solid var(--border);background:#fff;border-radius:8px;padding:9px;font-size:12px;font-weight:600;color:var(--text)}
+  .btn-print{background:var(--green);color:#fff;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700}
+  .save-row{display:flex;gap:8px}
+  .save-row button{flex:1;border-radius:8px;padding:9px;font-size:12px;font-weight:600;border:1px solid var(--border);background:#fff}
+  .btn-credit{border:1px solid var(--border);background:#fff;border-radius:8px;padding:9px;font-size:12px;font-weight:600;color:var(--muted)}
+  .flutter-badge{display:inline-flex;align-items:center;gap:6px;background:#0f172a;color:#fff;font-size:11px;padding:4px 10px;border-radius:999px;margin-bottom:10px}
+  .flutter-badge svg{width:12px;height:12px}
+</style>
+
+<div class="note">
+  <span class="flutter-badge">📱 Flutter · Android · local-first</span><br>
+  Ye <b>design preview</b> hai — web billing screen (santu_billing.css/js) ke colors, layout aur elements se match karte hue banaya gaya, taaki progress dikh sake. Asli screen Flutter mein ban rahi hai; iska APK alag se bhejunga jab chalने laayak hoga.
+</div>
+
+<div class="phone">
+  <div class="appbar"><span class="title">Santu Hardware</span><span style="font-size:12px;color:var(--muted)">Billing</span></div>
+
+  <div class="tabbar">
+    <div class="tab active">Bill #1</div>
+    <div class="tab">Bill #2</div>
+    <div class="newtab">+ New Bill</div>
+  </div>
+
+  <div class="main">
+    <div class="left">
+      <div class="search"><span>🔍</span><input placeholder="Scan or search by item code, model no or item name"></div>
+      <div class="grid">
+        <table>
+          <thead><tr><th>#</th><th>ITEM</th><th>QTY</th><th>UNIT</th><th>RATE ₹</th><th>DISC ₹</th><th>TOTAL ₹</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>Tata Steel Pipe 2"</td><td class="num">4</td><td>Nos</td><td class="num">450.00</td><td class="num">0.00</td><td class="num">1,800.00</td></tr>
+            <tr><td>2</td><td>Asian Paints 1L White</td><td class="num">2</td><td>Nos</td><td class="num">320.00</td><td class="num">20.00</td><td class="num">600.00</td></tr>
+            <tr><td>3</td><td>Cement Bag 50kg</td><td class="num">1</td><td>Bag</td><td class="num">380.00</td><td class="num">0.00</td><td class="num">380.00</td></tr>
+          </tbody>
+        </table>
+        <div class="gridfoot">₹ 2,780.00</div>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="datewrap"><input type="date" value="2026-10-09"></div>
+      <div class="custwrap"><input placeholder="Search customer by name, phone [F11]" value="Ramesh Traders"></div>
+
+      <div class="totalcard">
+        <div class="totalcard-left">
+          <span>🧾</span>
+          <div><div class="total-big">Total ₹ 2,780.00</div><div class="total-sub">Items: 3, Quantity: 7</div></div>
+        </div>
+        <button class="breakup">Full Breakup ›</button>
+      </div>
+
+      <div class="payrow">
+        <div class="field"><label>Payment Mode</label><select><option>Cash</option></select></div>
+        <div class="field"><label>Amount Received</label><input value="2780.00"></div>
+      </div>
+
+      <div class="savecol">
+        <button class="btn-more">More ▾</button>
+        <button class="btn-print">🖨️ Save &amp; Print</button>
+        <div class="save-row"><button>Save</button><button>💬 WhatsApp</button></div>
+        <button class="btn-credit">Other/Credit Payments</button>
+      </div>
+    </div>
+  </div>
+</div>

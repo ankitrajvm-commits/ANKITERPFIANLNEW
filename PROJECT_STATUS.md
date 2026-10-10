@@ -9,6 +9,11 @@
 > you *what state things are in*; the other docs tell you *why* and *what
 > the rules are*.
 >
+> **Scope right now (2026-10-10): the Android app only.** Everything goes
+> into `SantuHardwareApp/mobile/`; the PC app is a read-only reference to
+> copy parity from, not something to fix. Full rule in
+> `AI_OPERATING_RULES.md` §0 — read it before your first edit.
+>
 > Last updated: 2026-07-30. Two things happened this session: (1) the
 > Complete Billing Simulation (`UX_STRATEGY.md` §10) ran end-to-end through
 > the real browser UI — price override, split payment, GST, POS Closing
@@ -369,6 +374,38 @@ cross-sell — flagged, never resolved).
     2026-07-30 billing simulation. Not fixed yet — needs a custom Item list
     view/report reusing `get_pos_reserved_qty()` so the two screens never
     disagree about what's "available." See `IMPROVEMENT_LOG.md` 2026-07-30.
+
+11. **Android: Invoice Settings print format shows a different shop address
+    than Shop Profile.** Reported 2026-10-10 from the shop. A fix is already
+    pushed but was not in the reporter's build: `invoice_settings_screen.dart`
+    assembled the preview address from city/state/pincode only, dropping the
+    street line, and fell through to the sample shop's address whenever those
+    three were blank. It now calls `AppSettings.companyAddressLine()`, the same
+    helper `a4_invoice_pdf.dart` and `thermal_receipt.dart` already used, so all
+    three agree. Shop Profile reads and writes those same SharedPreferences
+    keys, so there is no second store to reconcile. **Rebuild the APK and
+    re-check before investigating further** — if the two still disagree after
+    that, the cause is something new and not this.
+
+12. **Android: "Scan & Pay" UPI QR prints wrong on the thermal slip.**
+    Reported 2026-10-10 from the shop; exact symptom (garbage characters /
+    unscannable / wrong amount) not yet pinned down. The `GS ( k` sequence in
+    `ThermalReceipt._qr()` was checked command by command against the Epson
+    spec — model select, module size, error-correction level, store and print
+    are all well-formed, and the store length is `len(data)+3` as required. So
+    suspect, in order: (a) the printer's firmware does not implement the native
+    QR commands at all, which is common on cheap ESC/POS units and prints the
+    payload as text instead — note the PC never hits this, as it sends a PNG
+    through CUPS and lets that raster it; (b) module size is hard-coded at 6
+    regardless of paper width, so a long `upi://` payload on a 58mm roll can
+    print too dense or too wide to scan; (c) the content itself, since the
+    amount is `thisDue > 0 ? thisDue : grandTotal`, which asks a fully-paid
+    bill's reader to pay the whole total again.
+    Diagnose first: compare the bill's QR against Printer Settings → Test
+    Print, and check whether anything QR-shaped appears at all. If it is (a),
+    the real fix is to encode the QR in-app and send it as a raster bitmap
+    (`GS v 0`) rather than relying on printer firmware — which is what the PC
+    effectively already does.
 
 ---
 

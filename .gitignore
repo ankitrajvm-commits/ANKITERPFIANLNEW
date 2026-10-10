@@ -15,3 +15,35 @@ __pycache__
 santu_hardware/whatsapp_bridge/site1.local/
 santu_hardware/whatsapp_bridge/*/private/
 santu_hardware/tests/tmp_*
+
+# Timestamped scratch output a test run drops in tests/reports/ -- real
+# fixtures in tests/ live elsewhere, so this only ever catches throwaway logs.
+santu_hardware/tests/reports/*_scratch.local_*
+santu_hardware/tests/reports/*_site1.local_*
+
+# Flutter and build artifacts
+**/build/
+**/.dart_tool/
+**/.flutter-plugins*
+**/.pub-cache/
+**/.pub/
+*.mov
+frappe-bench/
+logs/
+hard_regression_results.json
+test_results.txt
+SantuHardwareApp/frames/
+SantuHardwareApp/frames_key/
+SantuHardwareApp/build-new/
+SantuHardwareApp/ffmpeg_*.txt
+**/.gradle/
+**/local.properties
+.claude/
+.vscode/
+*.apk
+*.aab
+SantuHardwareApp/mobile/*.png
+SantuHardwareApp/android/
+*.png
+!SantuHardwareApp/mobile/assets/*.png
+pre_wipe_backup_*/
