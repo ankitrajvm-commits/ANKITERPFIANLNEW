@@ -54,9 +54,6 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> with Sing
     setState(() => _loading = true);
     final shopName = await AppSettings.shopName();
     final gstin = await AppSettings.gstin();
-    final city = await AppSettings.city();
-    final state = await AppSettings.state();
-    final pincode = await AppSettings.pincode();
     final website = await AppSettings.website();
     final footer = await AppSettings.billFooter();
     final phone = await AppSettings.phone();
@@ -66,8 +63,12 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> with Sing
     final thermalLogoWidth = await AppSettings.thermalLogoWidth();
     final a4LogoWidth = await AppSettings.a4LogoWidth();
 
-    final addrParts = [city, state, pincode].where((s) => s != null && s.isNotEmpty).cast<String>().toList();
-    final address = addrParts.isNotEmpty ? addrParts.join(', ') : null;
+    // Same helper the real thermal/A4 bills use (a4_invoice_pdf.dart,
+    // thermal_receipt.dart) -- this screen used to join only city/state/
+    // pincode and drop the street line, so an address with no city/state/
+    // pincode set fell through to the sample shop's address in the preview.
+    final companyAddress = await AppSettings.companyAddressLine();
+    final address = companyAddress.isNotEmpty ? companyAddress : null;
 
     for (final dt in _docTypes) {
       _defaultThermal[dt.key] = await AppSettings.defaultTemplate('Thermal Invoice Library', dt.key);
