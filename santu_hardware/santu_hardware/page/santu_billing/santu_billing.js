@@ -111,21 +111,44 @@ window.santu_billing_page = {
 			this.init_data = data;
 			const prefill = frappe.route_options && frappe.route_options.prefill;
 			const source_doctype = frappe.route_options && frappe.route_options.source_doctype;
+			// Read EVERY handoff field before clearing: edit_invoice used to
+			// be read after this line, i.e. always undefined, so "Edit Bill"
+			// landed on an empty screen on a cold open (2026-10-02).
+			const edit_invoice_early = frappe.route_options && frappe.route_options.edit_invoice;
 			frappe.route_options = null;
 			if (prefill) {
+				// Bring back the bills already open first -- skipping this
+				// made a cold arrival start from an empty list and then
+				// persist ONLY the converted bill, wiping the other drafts.
+				this._load();
 				this._apply_prefill(prefill, source_doctype);
 				return;
 			}
-			const edit_invoice = frappe.route_options && frappe.route_options.edit_invoice;
-			if (edit_invoice) {
-				frappe.route_options = null;
-				this._apply_edit_invoice(edit_invoice);
+			if (edit_invoice_early) {
+				this._load();
+				this._apply_edit_invoice(edit_invoice_early);
 				return;
 			}
 			this._load();
 			if (!this.tabs.length) this._new_bill(false);
 			this.render();
 		});
+	},
+
+	// Safety net for the convert buttons (santu_sale_transactions.js): a
+	// set_route to the route Desk is ALREADY on does not re-fire
+	// on_page_show, so a handoff could sit unread in frappe.route_options
+	// and the bill never appeared until the user converted a second time
+	// (2026-10-02 report, three times over). Calling this after set_route
+	// is harmless when the hook already ran -- route_options is null then.
+	consume_prefill() {
+		const ro = frappe.route_options;
+		if (!ro || !ro.prefill) return false;
+		if (!this.page || !this.init_data) return false;
+		frappe.route_options = null;
+		if (!this.tabs || !this.tabs.length) this._load();
+		this._apply_prefill(ro.prefill, ro.source_doctype || null);
+		return true;
 	},
 
 	// A converted Quotation/Sales Order arrives here unsaved (see
@@ -169,8 +192,14 @@ window.santu_billing_page = {
 				// Negotiated if final rate < base price, or if explicit discount exists
 				const is_negotiated = (quotation_base_price > 0 && quotation_final_rate < quotation_base_price) || quotation_discount_percentage > 0 || quotation_discount_amount > 0;
 				
-				// Calculate difference based on base price
-				const price_diff = current_base_price - quotation_base_price;
+				// Compare what this line would COST TODAY against the rate the
+				// estimate actually promised -- not base-price vs base-price.
+				// A rate the shopkeeper typed down (or up) on the estimate
+				// leaves the base price untouched, so the old base-vs-base
+				// test found no difference and the choice never appeared,
+				// which is precisely the case Ankit asks about
+				// (2026-10-02: "estimate me rate ghata kar ya badha kr bane").
+				const price_diff = current_base_price - quotation_final_rate;
 				
 				const m = {
 					r, row, uom_options, r_uom,
@@ -243,17 +272,17 @@ window.santu_billing_page = {
 					</div>
 					<div class="santu-bill-modal-body" style="padding: 16px; font-size: 14px;">
 						<p style="margin-bottom: 16px; color: #4B5563;">
-							${__("Some item prices have changed since this quotation was created. Which price do you want to use?")}
+							${__("These items cost a different price today than the estimate promised. Which price should the bill use?")}
 						</p>
 						<div class="santu-price-change-list" style="max-height: 350px; overflow-y: auto; border: 1px solid #E5E7EB; border-radius: 6px; padding: 12px; margin-bottom: 16px;">
 						</div>
 					</div>
 					<div class="santu-bill-modal-foot" style="justify-content: flex-end; gap: 10px;">
 						<button type="button" class="santu-bill-modal-save" style="background: #2563EB; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 500; cursor: pointer;">
-							${__("Keep Quotation Price")}
+							${__("Keep Estimate Price")}
 						</button>
 						<button type="button" class="santu-bill-modal-update" style="background: white; color: #2563EB; border: 1px solid #2563EB; padding: 8px 16px; border-radius: 6px; font-weight: 500; cursor: pointer;">
-							${__("Update to Current Price")}
+							${__("Use Today's Price")}
 						</button>
 					</div>
 				</div>
@@ -262,7 +291,7 @@ window.santu_billing_page = {
 
 		const $list = $m.find(".santu-price-change-list");
 		changed_items.forEach((c) => {
-			const diff_pct = c.quotation_base_price > 0 ? (Math.abs(c.price_diff) / c.quotation_base_price) * 100 : 0;
+			const diff_pct = c.quotation_final_rate > 0 ? (Math.abs(c.price_diff) / c.quotation_final_rate) * 100 : 0;
 			const diff_sign = c.price_diff > 0 ? "+" : "";
 			const diff_color = c.price_diff > 0 ? "#DC2626" : "#16A34A";
 			
@@ -274,11 +303,11 @@ window.santu_billing_page = {
 					</div>
 					<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; font-size: 13px; color: #4B5563;">
 						<div>
-							<div style="font-size: 11px; color: #6B7280; text-transform: uppercase;">Quotation</div>
-							<div style="font-weight: 500;">₹ ${format_number(c.quotation_base_price, null, 2)}</div>
+							<div style="font-size: 11px; color: #6B7280; text-transform: uppercase;">Estimate</div>
+							<div style="font-weight: 500;">₹ ${format_number(c.quotation_final_rate, null, 2)}</div>
 						</div>
 						<div>
-							<div style="font-size: 11px; color: #6B7280; text-transform: uppercase;">Current</div>
+							<div style="font-size: 11px; color: #6B7280; text-transform: uppercase;">Today</div>
 							<div style="font-weight: 500;">₹ ${format_number(c.current_base_price, null, 2)}</div>
 						</div>
 						<div>
@@ -318,17 +347,12 @@ window.santu_billing_page = {
 				const m = all_items.find((i) => i.r.item_code === c.r.item_code); // find mapped item ref
 				if (!m) return;
 				
-				// Recalculate rate while preserving discount semantic
-				if (c.quotation_discount_percentage > 0) {
-					m.final_rate = c.current_base_price * (1 - (c.quotation_discount_percentage / 100));
-				} else if (c.quotation_base_price > c.quotation_final_rate) {
-					const per_unit_discount = c.quotation_base_price - c.quotation_final_rate;
-					m.final_rate = Math.max(c.current_base_price - per_unit_discount, 0);
-				} else {
-					m.final_rate = c.current_base_price;
-				}
-				// final_discount is deliberately NOT carried over -- the
-				// negotiated amount is already folded into final_rate above.
+				// Today's plain price, exactly the number the modal showed
+				// under "Today". Re-applying the estimate's old negotiation
+				// on top would have made this button produce the SAME rate
+				// as "Keep Estimate Price" whenever the negotiation was the
+				// only difference -- two buttons, one outcome.
+				m.final_rate = c.current_base_price;
 			});
 			close();
 			self._finish_apply_prefill(all_items, b);

@@ -29,6 +29,14 @@ santu_sale.transactions = {
 				if (!r.message) return;
 				frappe.route_options = { prefill: r.message, source_doctype: source_doctype };
 				frappe.set_route("santu-billing");
+				// on_page_show does not fire when Desk is already on this
+				// route, and the screen's own init only reads the handoff
+				// once -- so claim it directly if it is still sitting there.
+				setTimeout(() => {
+					if (window.santu_billing_page && santu_billing_page.consume_prefill) {
+						santu_billing_page.consume_prefill();
+					}
+				}, 400);
 			},
 		});
 	},

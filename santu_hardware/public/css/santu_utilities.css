@@ -1652,3 +1652,34 @@
 .santu-import-prompt-bar .santu-utilities-muted {
 	font-size: 12px;
 }
+
+/* "Minus stock ko 0 kar do" on Verify My Data (2026-10-02). Stock reads below
+   zero when goods go out before the purchase bill is keyed in; this is the
+   one button that squares it off. */
+.santu-verify-negfix {
+	display: flex;
+	gap: 16px;
+	align-items: flex-start;
+	justify-content: space-between;
+	margin: 0 20px 16px;
+	padding: 14px 16px;
+	border: 1px solid #fcd34d;
+	background: #fffbeb;
+	border-radius: 8px;
+}
+.santu-verify-negfix-text p {
+	margin: 6px 0 8px;
+	color: #78350f;
+	font-size: 13px;
+}
+.santu-verify-neglist {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px 14px;
+	font-size: 12px;
+	color: #92400e;
+}
+.santu-verify-fixneg {
+	white-space: nowrap;
+	flex: 0 0 auto;
+}

@@ -10,7 +10,7 @@ from datetime import datetime
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt, getdate, now_datetime, today
+from frappe.utils import cint, flt, getdate, now_datetime, nowtime, today
 
 from santu_hardware.santu_hardware.api import default_selling_warehouse, force_overwrite_item_unit
 
@@ -30,22 +30,59 @@ def _ensure_brand_exists(brand_name):
 		frappe.get_doc({"doctype": "Brand", "brand": brand_name}).insert(ignore_permissions=True)
 	return brand_name or None
 
+# Column wording follows the sheet the shop already knows -- Vyapar's own
+# item import/export (sample reviewed 2026-10-02). The first twelve are
+# Vyapar's, in Vyapar's order; the rest are this shop's own columns, kept
+# AFTER them so an exported sheet still carries Brand, Item Group, MRP, UOM
+# and Barcode and can be edited and imported straight back without losing
+# them (Ankit chose this over a strict 12-column file).
 ITEM_IMPORT_FIELDS = {
-	"item_name": "Item Name",
 	"item_code": "Item Code",
+	"item_name": "Item Name",
+	"gst_hsn_code": "HSN",
+	"standard_rate": "Sale Price",
+	"valuation_rate": "Purchase Price",
+	# Read so a Vyapar sheet maps in one click, then dropped: this shop stores
+	# a percentage ceiling (max_discount) and every selling price already
+	# includes tax, so these three carry no fact the import can keep. Nothing
+	# is silently written to another field.
+	"discount_type": "Discount Type",
+	"max_discount": "Sale Discount",
+	"opening_stock": "Opening Stock Quantity",
+	"min_order_qty": "Minimum Stock Quantity",
+	"custom_rack_number": "Item Location",
+	"tax_rate": "Tax Rate",
+	"tax_inclusive": "Tax Inclusive",
 	"item_group": "Item Group",
 	"brand": "Brand",
-	"hsn_code": "HSN Code",
-	"description": "Description",
-	"standard_rate": "Selling Price",
-	"valuation_rate": "Purchase Price",
 	"custom_mrp": "MRP",
 	"stock_uom": "Stock UOM",
-	"opening_stock": "Opening Stock",
-	"min_order_qty": "Minimum Stock",
 	"barcode": "Barcode",
-	"gst_hsn_code": "HSN Code",
+	"description": "Description",
+	"hsn_code": "HSN",
 }
+
+# The order the export writes and the import expects.
+ITEM_EXPORT_COLUMNS = [
+	("item_code", "Item Code"),
+	("item_name", "Item Name"),
+	("gst_hsn_code", "HSN"),
+	("standard_rate", "Sale Price"),
+	("valuation_rate", "Purchase Price"),
+	("discount_type", "Discount Type"),
+	("max_discount", "Sale Discount"),
+	("opening_stock", "Opening Stock Quantity"),
+	("min_order_qty", "Minimum Stock Quantity"),
+	("custom_rack_number", "Item Location"),
+	("tax_rate", "Tax Rate"),
+	("tax_inclusive", "Tax Inclusive"),
+	("item_group", "Item Group"),
+	("brand", "Brand"),
+	("custom_mrp", "MRP"),
+	("stock_uom", "Stock UOM"),
+	("barcode", "Barcode"),
+	("description", "Description"),
+]
 
 PARTY_IMPORT_FIELDS = {
 	"party_name": "Party Name",
@@ -57,6 +94,41 @@ PARTY_IMPORT_FIELDS = {
 	"email_id": "Email",
 	"opening_balance": "Opening Balance",
 }
+
+
+def _is_number(value) -> bool:
+	"""True only for something that is really a number.
+
+	frappe's flt() turns anything it cannot read into 0.0 without complaining,
+	so a price column holding "call for rate" validated clean and then imported
+	as a selling price of ZERO -- the counter would have given the item away
+	(2026-10-02). Every numeric column is checked here instead.
+	"""
+	if value in (None, ""):
+		return True
+	if isinstance(value, (int, float)):
+		return True
+	try:
+		float(str(value).strip().replace(",", ""))
+		return True
+	except (TypeError, ValueError):
+		return False
+
+
+def _valid_hsn(value):
+	"""An HSN ERPNext actually knows, or nothing.
+
+	ERPNext validates gst_hsn_code against the GST HSN Code list and throws
+	"Could not find HSN/SAC" -- raw English, mid-import. A supplier's or
+	Vyapar's sheet routinely carries a code that is not on that list, and
+	losing the whole item over it is the wrong trade: the item matters, the
+	HSN can be filled in later from Update Items In Bulk (2026-10-02).
+	The validation screen already warns about this before anything is saved.
+	"""
+	value = (value or "").strip()
+	if not value:
+		return None
+	return value if frappe.db.exists("GST HSN Code", value) else None
 
 
 def _require_manager():
@@ -123,10 +195,40 @@ def _drop_dead_columns(headers, rows):
 def _parse_tabular_file(file_url: str):
 	fname, content = _read_uploaded_file(file_url)
 	lower = (fname or "").lower()
+	# A text attachment can come back already decoded, and .decode() on a str
+	# then threw mid-upload (2026-10-02). Both readers below want bytes.
+	if isinstance(content, str):
+		content = content.encode("utf-8", errors="replace")
 	if lower.endswith((".xlsx", ".xls")):
 		from frappe.utils.xlsxutils import read_xlsx_file_from_attached_file
 
-		rows = read_xlsx_file_from_attached_file(fcontent=content)
+		# A real .xls is an old binary workbook, not a zip, and openpyxl dies
+		# on it with "File is not a zip file" -- which is exactly what Vyapar
+		# hands the shop when it exports an item list (2026-10-02). openpyxl
+		# is still tried first because plenty of files named .xls are really
+		# .xlsx inside.
+		try:
+			rows = read_xlsx_file_from_attached_file(fcontent=content)
+		except Exception:
+			import xlrd
+
+			book = xlrd.open_workbook(file_contents=content)
+			sheet = book.sheet_by_index(0)
+			rows = []
+			for ri in range(sheet.nrows):
+				row = []
+				for ci in range(sheet.ncols):
+					cell = sheet.cell(ri, ci)
+					value = cell.value
+					# xlrd gives every number as a float, so an item code like
+					# 101 would arrive as "101.0" and never match the
+					# catalogue; whole numbers go back to int.
+					if cell.ctype == xlrd.XL_CELL_NUMBER and float(value).is_integer():
+						value = int(value)
+					elif cell.ctype == xlrd.XL_CELL_DATE:
+						value = xlrd.xldate.xldate_as_datetime(value, book.datemode).date().isoformat()
+					row.append(value)
+				rows.append(row)
 		if not rows:
 			return [], []
 		headers = [str(h or "").strip() for h in rows[0]]
@@ -167,6 +269,27 @@ def lookup_barcode_item(barcode: str):
 # without the user touching a dropdown (2026-09-03 request: "1 click me
 # kaam karao, jo v ho excel same format ka hi aayega").
 ITEM_IMPORT_FIELD_ALIASES = {
+	# Vyapar's wording, and this app's own older headers, so a sheet exported
+	# by either one re-imports without touching a single dropdown.
+	"sale price": "standard_rate",
+	"selling price": "standard_rate",
+	"selling price (mrp)": "standard_rate",
+	"sales price": "standard_rate",
+	"purchase price": "valuation_rate",
+	"opening stock quantity": "opening_stock",
+	"opening stock": "opening_stock",
+	"stock": "opening_stock",
+	"minimum stock quantity": "min_order_qty",
+	"minimum stock": "min_order_qty",
+	"item location": "custom_rack_number",
+	"location": "custom_rack_number",
+	"hsn code": "gst_hsn_code",
+	"stock unit (uom)": "stock_uom",
+	"stock uom": "stock_uom",
+	"sale discount": "max_discount",
+	"discount type": "discount_type",
+	"tax rate": "tax_rate",
+	"tax inclusive": "tax_inclusive",
 	"sp": "standard_rate",
 	"cp": "valuation_rate",
 	"pp": "valuation_rate",
@@ -207,6 +330,7 @@ def parse_items_import_file(file_url: str):
 		for h in headers
 		if h not in suggested and re.search(r"\b(note|notes|source|remark|remarks|comment|comments)\b", h, re.IGNORECASE)
 	]
+
 	return {
 		"headers": headers,
 		"rows": rows[:500],
@@ -304,29 +428,46 @@ def validate_items_import(file_url: str = None, rows: str = None, mapping: str =
 				issues.append("Duplicate item code in file")
 			seen_codes.add(item_code)
 			if frappe.db.exists("Item", item_code):
-				issues.append("Item code already exists")
+				# NOT an error. import_items_valid refreshes an item that is
+				# already in the catalogue instead of duplicating it, which is
+				# the normal case twice over: a supplier revises a price list,
+				# or the shop exports its own items, edits the sheet and
+				# imports it back. Calling it an error blocked all 789 rows of
+				# a straight round-trip (2026-10-02).
+				issues.append("Already in the catalogue - its prices will be updated")
 		if barcode:
 			if barcode in seen_barcodes:
 				issues.append("Duplicate barcode in file")
 			seen_barcodes.add(barcode)
 			existing = frappe.db.get_value("Item Barcode", {"barcode": barcode}, "parent")
-			if existing:
+			# An item carrying its OWN barcode is not a clash. Without this,
+			# re-importing an exported sheet reported every barcoded item as
+			# "already used by <itself>" and refused the row (2026-10-02).
+			if existing and existing != item_code:
 				issues.append(f"Barcode already used by {existing}")
-		try:
-			if row.get("standard_rate") not in (None, ""):
-				flt(row.get("standard_rate"))
-		except Exception:
-			issues.append("Invalid selling price")
-		try:
-			if row.get("custom_mrp") not in (None, ""):
-				flt(row.get("custom_mrp"))
-		except Exception:
-			issues.append("Invalid MRP")
+		for num_field, label in (
+			("standard_rate", "Sale Price"),
+			("valuation_rate", "Purchase Price"),
+			("custom_mrp", "MRP"),
+		):
+			if not _is_number(row.get(num_field)):
+				issues.append(f"Invalid {label}")
+		for num_field, label in (
+			("max_discount", "Sale Discount"),
+			("min_order_qty", "Minimum Stock Quantity"),
+			("opening_stock", "Opening Stock Quantity"),
+		):
+			if not _is_number(row.get(num_field)):
+				issues.append(f"Invalid {label}")
+		hsn_value = (row.get("gst_hsn_code") or row.get("hsn_code") or "").strip()
+		if hsn_value and not frappe.db.exists("GST HSN Code", hsn_value):
+			issues.append(f"HSN '{hsn_value}' not in the GST list - item will be saved without it")
 		if row.get("item_group") and not frappe.db.exists("Item Group", row.get("item_group")):
 			issues.append(f"Item Group '{row.get('item_group')}' not found")
 
 		entry = {"row": idx, "data": row, "issues": issues}
-		if any("Missing" in i or "Invalid" in i or "already" in i or "Duplicate" in i for i in issues):
+		blocking = [i for i in issues if not i.startswith("HSN '") and not i.startswith("Already in the catalogue")]
+		if any("Missing" in i or "Invalid" in i or "already" in i or "Duplicate" in i for i in blocking):
 			errors.append(entry)
 		elif issues:
 			warnings.append(entry)
@@ -379,13 +520,20 @@ def import_items_valid(rows: str):
 					if data.get(key) not in (None, ""):
 						existing.set(field, flt(data.get(key)))
 						touched = True
+				for field in ("min_order_qty", "max_discount"):
+					if data.get(field) not in (None, ""):
+						existing.set(field, flt(data.get(field)))
+						touched = True
+				if data.get("custom_rack_number") not in (None, ""):
+					existing.custom_rack_number = data.get("custom_rack_number")
+					touched = True
 				if data.get("brand"):
 					existing.brand = _ensure_brand_exists(data.get("brand"))
 					touched = True
 				if data.get("description"):
 					existing.description = data.get("description")
 					touched = True
-				hsn = data.get("hsn_code") or data.get("gst_hsn_code")
+				hsn = _valid_hsn(data.get("hsn_code") or data.get("gst_hsn_code"))
 				if hsn:
 					existing.gst_hsn_code = hsn
 					touched = True
@@ -406,8 +554,9 @@ def import_items_valid(rows: str):
 			item.is_stock_item = 1
 			if data.get("brand"):
 				item.brand = _ensure_brand_exists(data.get("brand"))
-			if data.get("hsn_code") or data.get("gst_hsn_code"):
-				item.gst_hsn_code = data.get("hsn_code") or data.get("gst_hsn_code")
+			hsn = _valid_hsn(data.get("hsn_code") or data.get("gst_hsn_code"))
+			if hsn:
+				item.gst_hsn_code = hsn
 			if data.get("description"):
 				item.description = data.get("description")
 			if data.get("standard_rate") not in (None, ""):
@@ -416,6 +565,11 @@ def import_items_valid(rows: str):
 				item.valuation_rate = flt(data.get("valuation_rate"))
 			if data.get("custom_mrp") not in (None, ""):
 				item.custom_mrp = flt(data.get("custom_mrp"))
+			for field in ("min_order_qty", "max_discount"):
+				if data.get(field) not in (None, ""):
+					item.set(field, flt(data.get(field)))
+			if data.get("custom_rack_number") not in (None, ""):
+				item.custom_rack_number = data.get("custom_rack_number")
 			if data.get("barcode"):
 				item.append("barcodes", {"barcode": data.get("barcode")})
 			item.insert(ignore_permissions=True)
@@ -771,6 +925,7 @@ def export_items_file(filters: str = None):
 		fields=[
 			"name", "item_name", "item_code", "item_group", "brand", "gst_hsn_code",
 			"standard_rate", "valuation_rate", "custom_mrp", "min_order_qty", "stock_uom", "description",
+			"max_discount", "custom_rack_number",
 		],
 		order_by="item_name asc",
 		limit_page_length=0,
@@ -805,14 +960,21 @@ def export_items_file(filters: str = None):
 	for r in frappe.db.sql("""select parent, barcode from `tabItem Barcode`""", as_dict=True):
 		barcodes.setdefault(r.parent, r.barcode)
 
-	# Header wording matches ITEM_IMPORT_FIELDS so an exported sheet can be
-	# edited and imported straight back. "Stock" is deliberately NOT called
-	# "Opening Stock": that label makes the importer post a Material Receipt
-	# for a newly created item, which would double the shop's stock.
-	headers = [
-		"Item Name", "Item Code", "Item Group", "Brand", "HSN Code", "Description",
-		"Selling Price", "Purchase Price", "MRP", "Stock UOM", "Stock", "Minimum Stock", "Barcode",
-	]
+	# One Item Tax row per item at most in this shop (none today), so a plain
+	# lookup is enough to fill Vyapar's "Tax Rate" column truthfully: a rate
+	# is printed only where one is actually recorded, never invented as 0%.
+	tax_rate = {}
+	for r in frappe.db.sql(
+		"""select parent, item_tax_template from `tabItem Tax`""", as_dict=True
+	):
+		tax_rate.setdefault(r.parent, r.item_tax_template or "")
+
+	# Header wording and order come from ITEM_EXPORT_COLUMNS (Vyapar's twelve
+	# first, this shop's own after), so an exported sheet re-imports with every
+	# column recognised. "Opening Stock Quantity" carries the stock the item
+	# HAS; the importer only posts a Material Receipt for an item it is
+	# creating, so re-importing an export cannot double the shop's stock.
+	headers = [label for _f, label in ITEM_EXPORT_COLUMNS]
 	rows = [headers]
 	for it in items:
 		sell = sell_price.get(it.name)
@@ -823,11 +985,34 @@ def export_items_file(filters: str = None):
 			cost = buy_price.get(it.name)
 		if cost is None:
 			cost = flt(it.valuation_rate)
-		rows.append([
-			it.item_name, it.item_code, it.item_group, it.brand or "", it.gst_hsn_code or "",
-			it.description or "", sell, cost, flt(it.custom_mrp), it.stock_uom,
-			bin_qty.get(it.name, 0), flt(it.min_order_qty), barcodes.get(it.name, ""),
-		])
+		discount = flt(it.max_discount)
+		values = {
+			"item_code": it.item_code or it.name,
+			"item_name": it.item_name,
+			"gst_hsn_code": it.gst_hsn_code or "",
+			"standard_rate": sell,
+			"valuation_rate": cost,
+			# This shop records a ceiling percentage (Item.max_discount), not a
+			# rupee figure, so the type column says so rather than being left
+			# for the reader to guess.
+			"discount_type": "Discount %" if discount else "",
+			"max_discount": discount,
+			"opening_stock": bin_qty.get(it.name, 0),
+			"min_order_qty": flt(it.min_order_qty),
+			"custom_rack_number": it.custom_rack_number or "",
+			"tax_rate": tax_rate.get(it.name, ""),
+			# Every selling price in this shop already includes tax
+			# (2026-08-18: "all items SP will include taxes"), so this is a
+			# statement of fact, not a default.
+			"tax_inclusive": "Y",
+			"item_group": it.item_group,
+			"brand": it.brand or "",
+			"custom_mrp": flt(it.custom_mrp),
+			"stock_uom": it.stock_uom,
+			"barcode": barcodes.get(it.name, ""),
+			"description": it.description or "",
+		}
+		rows.append([values[f] for f, _label in ITEM_EXPORT_COLUMNS])
 
 	from frappe.utils.xlsxutils import make_xlsx
 	from frappe.utils.file_manager import save_file
@@ -1054,6 +1239,77 @@ def get_data_audit():
 	return {
 		"summary": {"passed": passed, "warnings": warnings, "errors": errors, "health": "Good" if errors == 0 else "Needs Attention"},
 		"issues": issues,
+	}
+
+
+@frappe.whitelist()
+def get_negative_stock():
+	"""Every item sitting below zero, for the Verify My Data screen."""
+	_require_manager()
+	rows = frappe.db.sql(
+		"""SELECT b.item_code, b.warehouse, b.actual_qty, i.item_name
+		   FROM `tabBin` b LEFT JOIN `tabItem` i ON i.name = b.item_code
+		   WHERE b.actual_qty < 0 ORDER BY b.actual_qty ASC""",
+		as_dict=True,
+	)
+	return {"rows": rows, "count": len(rows), "total_qty": sum(flt(r.actual_qty) for r in rows)}
+
+
+@frappe.whitelist()
+def fix_negative_stock():
+	"""Bring every below-zero item up to zero, through the stock ledger.
+
+	The shop sells off the shelf and enters the purchase later, so an item can
+	read minus until the bill is keyed in. Once the shop decides the count is
+	simply wrong, this writes ONE Stock Reconciliation setting those items to
+	0 (2026-10-02 request: "jo item qty minus me ho use 0 kr de").
+
+	A real stock document on purpose -- Bin is only the running total of the
+	ledger, so editing Bin directly would be overwritten by the next repost
+	and would leave the accounts out of step with the stock. The
+	reconciliation is a normal document: it is listed, it can be cancelled,
+	and it says who did it and when.
+	"""
+	_require_manager()
+	rows = frappe.db.sql(
+		"""SELECT item_code, warehouse, actual_qty FROM `tabBin` WHERE actual_qty < 0""",
+		as_dict=True,
+	)
+	if not rows:
+		return {"fixed": 0, "entry": None, "message": _("Koi bhi item minus me nahi hai.")}
+
+	company = frappe.defaults.get_user_default("Company")
+	doc = frappe.new_doc("Stock Reconciliation")
+	doc.company = company
+	doc.purpose = "Stock Reconciliation"
+	doc.posting_date = today()
+	doc.posting_time = nowtime()
+
+	for b in rows:
+		# A valuation rate is required for a line that is being INCREASED, and
+		# every one of these is (from minus to zero). Fall back through the
+		# item's own last known cost rather than letting ERPNext throw.
+		rate = (
+			frappe.db.get_value("Item Price", {"item_code": b.item_code, "price_list": "Standard Buying"}, "price_list_rate")
+			or frappe.db.get_value("Item", b.item_code, "valuation_rate")
+			or frappe.db.get_value("Item", b.item_code, "last_purchase_rate")
+			or frappe.db.get_value("Item Price", {"item_code": b.item_code, "price_list": "Standard Selling"}, "price_list_rate")
+			or 0
+		)
+		doc.append("items", {
+			"item_code": b.item_code,
+			"warehouse": b.warehouse,
+			"qty": 0,
+			"valuation_rate": flt(rate),
+		})
+
+	doc.insert(ignore_permissions=True)
+	doc.submit()
+	frappe.db.commit()
+	return {
+		"fixed": len(rows),
+		"entry": doc.name,
+		"message": _("{0} item ka stock 0 kar diya gaya.").format(len(rows)),
 	}
 
 
@@ -1340,6 +1596,50 @@ def get_recycle_bin_documents(doctype_filter: str = None, doctypes: str = None,
 			"owner": r.owner,
 		})
 	return {"rows": out[:limit], "has_more": len(rows) > limit}
+
+
+@frappe.whitelist()
+def get_recycle_bin_count():
+	"""How much is sitting in the bin, for the empty-it button."""
+	frappe.only_for("System Manager")
+	return {
+		"count": frappe.db.count("Deleted Document", {"restored": 0}),
+		"oldest": frappe.db.sql(
+			"""select min(creation) from `tabDeleted Document` where restored = 0"""
+		)[0][0],
+	}
+
+
+@frappe.whitelist()
+def empty_recycle_bin(names: str = None):
+	"""Throw away the bin's contents for good — only when a person asks.
+
+	NOTHING here ever runs on a timer. Frappe does not auto-clear Deleted
+	Document (it is not in Log Settings and no scheduled job touches it), and
+	nothing added here changes that: the shop's deleted bills stay restorable
+	until somebody deliberately presses the button (2026-10-02 request:
+	"dyaan rhe ki ye auto delete ya erase naa ho").
+
+	This removes the ARCHIVED COPIES only. Live bills, parties and items are
+	untouched -- a row here is a record of something already deleted, so after
+	this it simply can no longer be brought back.
+	"""
+	frappe.only_for("System Manager")
+	selected = frappe.parse_json(names) if isinstance(names, str) else names
+
+	if selected:
+		rows = [
+			r
+			for r in selected
+			if frappe.db.exists("Deleted Document", {"name": r, "restored": 0})
+		]
+	else:
+		rows = frappe.get_all("Deleted Document", filters={"restored": 0}, pluck="name")
+
+	for name in rows:
+		frappe.delete_doc("Deleted Document", name, force=1, ignore_permissions=True)
+	frappe.db.commit()
+	return {"deleted": len(rows), "left": frappe.db.count("Deleted Document", {"restored": 0})}
 
 
 @frappe.whitelist()

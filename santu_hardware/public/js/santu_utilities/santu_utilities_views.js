@@ -1514,6 +1514,9 @@ santu_utilities.views = {
 			$wrap.html(`<div class="santu-shop-profile-loading">Scanning Database Health…</div>`);
 			const r = await santu_utilities.api.getDataAudit();
 			const s = r.summary;
+			const neg = await frappe
+				.xcall("santu_hardware.santu_hardware.utilities_api.get_negative_stock")
+				.catch(() => ({ rows: [], count: 0 }));
 			
 			const issues_html = (r.issues && r.issues.length) ? `
 				<div class="santu-verify-issues">
@@ -1596,6 +1599,22 @@ santu_utilities.views = {
 							${issues_html}
 						</div>
 
+						${neg.count ? `
+						<div class="santu-verify-negfix">
+							<div class="santu-verify-negfix-text">
+								<b>${neg.count} ${__("item ka stock minus me hai")}</b>
+								<p>${__("Jo maal bech diya par bill nahi chadha, wo minus dikhata hai. Neeche daba kar sabko 0 kar dijiye — ye ek Stock Reconciliation banata hai, jise baad me dekha ya hataya ja sakta hai.")}</p>
+								<div class="santu-verify-neglist">${neg.rows
+									.slice(0, 12)
+									.map(
+										(n) =>
+											`<span>${frappe.utils.escape_html(n.item_name || n.item_code)}: <b>${n.actual_qty}</b></span>`
+									)
+									.join("")}${neg.rows.length > 12 ? `<span>+${neg.rows.length - 12} aur…</span>` : ""}</div>
+							</div>
+							<button class="btn btn-warning santu-verify-fixneg">${__("Sabka stock 0 kar do")}</button>
+						</div>` : ""}
+
 						<div class="santu-pm-footer" style="display:flex; justify-content: flex-end;">
 							<button class="btn btn-primary santu-verify-refresh" style="display:flex; gap:8px; align-items:center;">
 								<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.59-9.21l5.67-5.67"/></svg>
@@ -1607,6 +1626,31 @@ santu_utilities.views = {
 			`);
 			
 			$wrap.find(".santu-verify-refresh").on("click", render);
+			$wrap.find(".santu-verify-fixneg").on("click", () => {
+				frappe.confirm(
+					__("{0} item ka stock 0 kar diya jayega. Aage badhein?", [neg.count]),
+					async () => {
+						frappe.dom.freeze(__("Stock theek kiya ja raha hai…"));
+						try {
+							const res = await frappe.xcall(
+								"santu_hardware.santu_hardware.utilities_api.fix_negative_stock"
+							);
+							frappe.dom.unfreeze();
+							frappe.msgprint({
+								title: __("Ho gaya"),
+								message: res.entry
+									? __("{0} item ka stock 0 kar diya. Entry: {1}", [res.fixed, res.entry])
+									: res.message,
+								indicator: "green",
+							});
+							render();
+						} catch (e) {
+							frappe.dom.unfreeze();
+							frappe.msgprint((e && e.message) || __("Stock theek nahi ho paya"));
+						}
+					}
+				);
+			});
 		};
 		render();
 	},
@@ -1620,7 +1664,8 @@ santu_utilities.views = {
 		).join("");
 		$wrap.html(`
 			<div class="santu-utilities-warning">
-				<b>Closing a financial year is an accounting operation and should only be performed after verification.</b>
+				<b>${__("Yeh screen saal ke ant ki jaanch-list hai. Yahan se kuch mitta nahi hai.")}</b>
+				<p>${__("Grahak ka baaki, mahajan ka baaki, stock aur purane bill — sab waise ke waise rehte hain aur agle saal chalte rehte hain. Neeche sirf ye dikhta hai ki saal band karne se pehle kya theek karna baaki hai.")}</p>
 			</div>
 			<div class="santu-utilities-card">
 				<h3>Current Financial Year: ${frappe.utils.escape_html(fy.name || "—")}</h3>
@@ -1628,7 +1673,7 @@ santu_utilities.views = {
 			</div>
 			<div class="santu-utilities-footer-bar">
 				<button class="btn btn-default santu-fy-backup">Create Backup First</button>
-				<button class="btn btn-primary santu-fy-close" ${r.can_close ? "" : "disabled"}>Proceed to Period Closing</button>
+				<button class="btn btn-primary santu-fy-close" ${r.can_close ? "" : "disabled"}>${__("Aage kya karna hai")}</button>
 			</div>
 		`);
 		$wrap.find(".santu-fy-backup").on("click", async () => {
@@ -1636,11 +1681,18 @@ santu_utilities.views = {
 			await santu_utilities.api.createBackup();
 			frappe.show_alert({ message: "Backup created", indicator: "green" });
 		});
+		// This button used to ask "This will close the financial year in your
+		// books. Continue?" and then do NOTHING but show a note -- it closed
+		// nothing, and the question implied it had (2026-10-02). It now says
+		// plainly what this screen is and is not.
 		$wrap.find(".santu-fy-close").on("click", () => {
-			frappe.confirm(
-				"This will close the financial year in your books. Continue?",
-				() => frappe.show_alert({ message: "Use Shop Profile / your accountant to finish year-end from Utilities.", indicator: "blue" })
-			);
+			frappe.msgprint({
+				title: __("Saal band karna"),
+				message: __(
+					"Yahan se koi khata band ya saaf nahi hota — na grahak ka baaki, na mahajan ka, na stock. Sab agle saal chalta rehta hai.<br><br>Saal band karne ka asli kaam (Period Closing Voucher) accountant karte hain. Upar wali list theek ho jaane ke baad unhe bula lijiye, aur pehle <b>Backup</b> zaroor le lijiye."
+				),
+				indicator: "blue",
+			});
 		});
 	},
 

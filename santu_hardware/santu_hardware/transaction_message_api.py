@@ -298,3 +298,66 @@ def whatsapp_webhook():
 						frappe.db.set_value("Santu WhatsApp Chat Message", chat_name, updates)
 	frappe.db.commit()
 	return {"ok": True}
+
+
+@frappe.whitelist()
+def save_transaction_pdf(doctype: str, name: str):
+	"""The bill as a file on this computer, with the message text beside it.
+
+	Baileys is an unofficial WhatsApp library, so the link WILL break again --
+	not on a schedule, but whenever WhatsApp changes something (see the shop's
+	own history: logged out again 2026-10-02). When that happens the counter
+	still has to get the bill to the customer, so this is the way out that
+	depends on nothing: save the same PDF that WhatsApp would have sent, then
+	send it from the phone's own WhatsApp.
+
+	Deliberately the SAME pdf builder the send path uses, so the customer gets
+	an identical file either way, named after the party rather than an
+	internal docname.
+	"""
+	_require_access()
+	from santu_hardware.santu_hardware.transaction_message_service import (
+		build_message_context,
+		get_invoice_pdf_bytes,
+		get_party_phone,
+		get_template,
+		render_template,
+		resolve_transaction_type,
+	)
+
+	doc = frappe.get_doc(doctype, name)
+	transaction_type = resolve_transaction_type(doc)
+	context = build_message_context(doc, transaction_type)
+	message = render_template(get_template(transaction_type), context)
+
+	pdf_bytes, file_name = get_invoice_pdf_bytes(doc)
+
+	from frappe.utils.file_manager import save_file
+
+	# Saving the same bill twice must not leave two copies attached to it --
+	# the counter may well press this again if the first send did not go.
+	# Matched on the STEM, not the exact name: Frappe appends a random suffix
+	# whenever a file of that name already exists, so an exact-name lookup
+	# never matched and the copies piled up (seen 2026-10-02).
+	stem = file_name.rsplit(".", 1)[0]
+	for old in frappe.get_all(
+		"File",
+		filters={
+			"attached_to_doctype": doctype,
+			"attached_to_name": name,
+			"file_name": ["like", f"{stem}%"],
+		},
+		pluck="name",
+	):
+		frappe.delete_doc("File", old, force=1, ignore_permissions=True)
+
+	# is_private=1: a bill is the customer's business, not something to leave
+	# on a guessable public URL.
+	file_doc = save_file(file_name, pdf_bytes, doctype, name, is_private=1)
+	return {
+		"file_url": file_doc.file_url,
+		"file_name": file_name,
+		"message": message,
+		"party_name": context.get("party_name"),
+		"phone": get_party_phone(context.get("_party_type"), context.get("_party_name"), "mobile"),
+	}

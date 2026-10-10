@@ -6,16 +6,93 @@
 	const TXN_API = "santu_hardware.santu_hardware.transaction_message_api";
 	const CONN_API = "santu_hardware.santu_hardware.whatsapp_connect_api";
 
-	function prompt_connect() {
+	// The way out when the link is down. Baileys is unofficial, so WhatsApp
+	// WILL break it again some day -- and a counter with a customer waiting
+	// cannot be told "come back when it is fixed". This saves the very same
+	// PDF the send would have carried, so the bill goes out from the phone's
+	// own WhatsApp instead (2026-10-02 request).
+	async function save_file_instead(doctype, name) {
+		frappe.dom.freeze(__("Bill ki file ban rahi hai…"));
+		let r;
+		try {
+			r = await frappe.xcall(`${TXN_API}.save_transaction_pdf`, { doctype, name });
+		} catch (e) {
+			frappe.dom.unfreeze();
+			frappe.msgprint((e && e.message) || __("File nahi ban payi"));
+			return { ok: false };
+		}
+		frappe.dom.unfreeze();
+		// A download link, NOT window.open: opening the PDF navigated the whole
+		// Desk tab away and took this dialog with it (seen 2026-10-02). The
+		// point here is to put the file on the computer, not to read it.
+		const $a = $("<a>", { href: r.file_url, download: r.file_name }).appendTo("body");
+		$a[0].click();
+		$a.remove();
+		const d = new frappe.ui.Dialog({
+			title: __("Bill Saved"),
+			fields: [
+				{
+					fieldtype: "HTML",
+					fieldname: "body",
+					options: `
+						<div class="santu-wa-saved">
+							<div class="santu-wa-saved-file">${frappe.utils.escape_html(r.file_name)}</div>
+							<p>${__("File computer me save ho gayi. Ab apne phone ke WhatsApp se {0} ko bhej dijiye.", [
+								frappe.utils.escape_html(r.party_name || "customer"),
+							])}</p>
+							<textarea class="santu-wa-saved-msg" readonly rows="6">${frappe.utils.escape_html(r.message || "")}</textarea>
+							<button type="button" class="santu-wa-copy">${__("Message copy karein")}</button>
+						</div>`,
+				},
+			],
+			primary_action_label: __("Close"),
+			primary_action: () => d.hide(),
+		});
+		d.show();
+		d.fields_dict.body.$wrapper.find(".santu-wa-copy").on("click", function () {
+			const $t = d.fields_dict.body.$wrapper.find(".santu-wa-saved-msg");
+			$t.select();
+			// navigator.clipboard needs a secure context; this shop runs on
+			// plain http://localhost, so the old execCommand is the one that
+			// actually works here.
+			try {
+				document.execCommand("copy");
+				frappe.show_alert({ message: __("Message copy ho gaya"), indicator: "green" });
+			} catch (e) {
+				frappe.show_alert({ message: __("Copy nahi hua — text select karke khud copy karein"), indicator: "orange" });
+			}
+		});
+		return { ok: true, saved: true, file_url: r.file_url };
+	}
+
+	function prompt_connect(doctype, name) {
+		const can_save = !!(doctype && name);
 		frappe.msgprint({
 			title: __("WhatsApp Not Connected"),
-			message: __("Pehle WhatsApp Smart Connect se link karo — uske baad sale/invoice yahin se share hoga."),
-			primary_action: {
-				label: __("Open WhatsApp Connect"),
-				action() {
-					frappe.set_route("santu-whatsapp-connect");
+			message: can_save
+				? __("WhatsApp abhi juda nahi hai. Bill ki file save karke apne phone ke WhatsApp se bhej sakte hain, ya pehle WhatsApp jod lijiye.")
+				: __("Pehle WhatsApp Smart Connect se link karo — uske baad sale/invoice yahin se share hoga."),
+			primary_action: can_save
+				? {
+					label: __("File save karein"),
+					action() {
+						save_file_instead(doctype, name);
+					},
+				}
+				: {
+					label: __("Open WhatsApp Connect"),
+					action() {
+						frappe.set_route("santu-whatsapp-connect");
+					},
 				},
-			},
+			secondary_action: can_save
+				? {
+					label: __("WhatsApp jodein"),
+					action() {
+						frappe.set_route("santu-whatsapp-connect");
+					},
+				}
+				: undefined,
 		});
 	}
 
@@ -27,10 +104,10 @@
 		}
 	}
 
-	async function ensure_connected() {
+	async function ensure_connected(doctype, name) {
 		const st = await connection_status();
 		if ((st.state || "").toUpperCase() === "CONNECTED") return true;
-		prompt_connect();
+		prompt_connect(doctype, name);
 		return false;
 	}
 
@@ -45,10 +122,13 @@
 	}
 
 	window.santu_whatsapp_share = {
+		// Usable on its own, not only as the fallback -- "save it, I will send
+		// it myself" is a reasonable thing to want on any bill.
+		save_pdf: save_file_instead,
 		// opts.other = true: bill goes to a number the operator types (an
 		// accountant, a relative, a driver), not the party's own number.
 		async send_transaction(doctype, name, opts = {}) {
-			if (!(await ensure_connected())) return { ok: false };
+			if (!(await ensure_connected(doctype, name))) return { ok: false };
 			const other = !!opts.other;
 
 			let preview;
