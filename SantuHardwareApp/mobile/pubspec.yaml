@@ -63,7 +63,10 @@ dependencies:
   # ESC/POS bytes as the Bluetooth path (thermal_receipt.dart), just a
   # different transport: a raw USB bulk write, no ESC/POS abstraction of
   # its own to conflict with the one already built here.
-  another_flutter_usb_write: ^1.0.1
+  # Local fork of the (unmaintained) 1.0.1 release: upstream cannot obtain USB
+  # permission at all on Android 12+. third_party/.../README.md has the detail.
+  another_flutter_usb_write:
+    path: third_party/another_flutter_usb_write
   permission_handler: ^11.3.1
   shared_preferences: ^2.3.3
   # Import Items — same .xlsx template as the PC Utilities screen.

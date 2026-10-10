@@ -181,13 +181,21 @@ class ThermalReceipt {
     final isLarge = template == 'Large Print Bill';
     final showPrice = _on(v, 'price');
 
+    // Every other builder already threads getColumns() through; the sale bill
+    // used to take the 48-column defaults, so a shop set to a 58mm roll got a
+    // correct test print and wrapped, unreadable sale bills. Bound once here
+    // so no call site can silently fall back to 48.
+    final cols = await getColumns();
+    String line() => _line('-', cols);
+    String twoCol(String l, String r) => _twoCol(l, r, cols);
+
     final previousBalance = await AppDb.instance.previousBalanceForCustomer(inv.customer, excludeInvoiceId: inv.id);
     final thisDue = inv.baaki;
     final currentBalance = previousBalance + thisDue;
 
     final bytes = await _header(withAddress: _on(v, 'addr'));
 
-    bytes.addAll(_asciiLine(_line()));
+    bytes.addAll(_asciiLine(line()));
     final banner = v['banner'] as String? ?? '';
     if (banner.isNotEmpty) {
       bytes.addAll(alignCenter);
@@ -203,7 +211,7 @@ class ThermalReceipt {
             ? 'INVOICE'
             : 'QUOTATION'));
     bytes.addAll(boldOff);
-    bytes.addAll(_asciiLine(_line()));
+    bytes.addAll(_asciiLine(line()));
 
     if (isUdhaar && currentBalance > 0) {
       bytes.addAll(alignCenter);
@@ -213,29 +221,29 @@ class ThermalReceipt {
       bytes.addAll(_asciiLine('Rs. ${_money(currentBalance)}'));
       bytes.addAll(tallOff);
       bytes.addAll(boldOff);
-      bytes.addAll(_asciiLine(_line()));
+      bytes.addAll(_asciiLine(line()));
     }
 
     bytes.addAll(alignLeft);
-    bytes.addAll(_asciiLine(_twoCol('Bill No.', inv.billNo ?? '-')));
+    bytes.addAll(_asciiLine(twoCol('Bill No.', inv.billNo ?? '-')));
     final time = _time12h(inv.createdAt);
-    bytes.addAll(_asciiLine(_twoCol('Date', time.isEmpty ? inv.postingDate : '${inv.postingDate} $time')));
+    bytes.addAll(_asciiLine(twoCol('Date', time.isEmpty ? inv.postingDate : '${inv.postingDate} $time')));
     if (_on(v, 'cust')) {
-      bytes.addAll(_asciiLine(_twoCol('Customer', inv.customerLabel ?? 'Walk-in')));
+      bytes.addAll(_asciiLine(twoCol('Customer', inv.customerLabel ?? 'Walk-in')));
       final phone = inv.customer == null ? null : (await AppDb.instance.customerByName(inv.customer!))?.phone;
-      if (phone != null && phone.isNotEmpty) bytes.addAll(_asciiLine(_twoCol('Phone', phone)));
+      if (phone != null && phone.isNotEmpty) bytes.addAll(_asciiLine(twoCol('Phone', phone)));
     }
-    bytes.addAll(_asciiLine(_line()));
+    bytes.addAll(_asciiLine(line()));
 
     double totalQty = 0;
     if (isMinimal) {
       totalQty = inv.items.fold(0, (s, i) => s + i.qty);
-      bytes.addAll(_asciiLine(_twoCol('Items', '${inv.items.length}')));
-      bytes.addAll(_asciiLine(_twoCol('Total Qty', _qtyStr(totalQty))));
+      bytes.addAll(_asciiLine(twoCol('Items', '${inv.items.length}')));
+      bytes.addAll(_asciiLine(twoCol('Total Qty', _qtyStr(totalQty))));
     } else {
       bytes.addAll(_asciiLine(showPrice
-          ? _twoCol('# Item', _on(v, 'disc') ? 'Qty  Rate  Disc   Amount' : 'Qty    Rate      Amount')
-          : _twoCol('# Item', 'Qty')));
+          ? twoCol('# Item', _on(v, 'disc') ? 'Qty  Rate  Disc   Amount' : 'Qty    Rate      Amount')
+          : twoCol('# Item', 'Qty')));
       for (var i = 0; i < inv.items.length; i++) {
         final it = inv.items[i];
         totalQty += it.qty;
@@ -250,9 +258,9 @@ class ThermalReceipt {
           final right = disc == null
               ? '$qty x ${_money(it.rate)} = ${_money(it.lineTotal)}'
               : '$qty x ${_money(it.rate)} $disc = ${_money(it.lineTotal)}';
-          bytes.addAll(_asciiLine(_twoCol('', right)));
+          bytes.addAll(_asciiLine(twoCol('', right)));
         } else {
-          bytes.addAll(_asciiLine(_twoCol('', qty)));
+          bytes.addAll(_asciiLine(twoCol('', qty)));
         }
         if (isLarge) bytes.addAll(tallOff);
       }
@@ -260,42 +268,42 @@ class ThermalReceipt {
 
     if (showPrice) {
       final discount = inv.billDiscount.abs();
-      if (discount >= 1) bytes.addAll(_asciiLine(_twoCol('Discount', '-${_money(discount)}')));
+      if (discount >= 1) bytes.addAll(_asciiLine(twoCol('Discount', '-${_money(discount)}')));
       if (inv.redeemPoints > 0) {
-        bytes.addAll(_asciiLine(_twoCol('Points Redeemed', '-${_money(inv.redeemPoints)}')));
+        bytes.addAll(_asciiLine(twoCol('Points Redeemed', '-${_money(inv.redeemPoints)}')));
       }
-      bytes.addAll(_asciiLine(_line()));
+      bytes.addAll(_asciiLine(line()));
       bytes.addAll(boldOn);
-      bytes.addAll(_asciiLine(_twoCol('TOTAL', _money(inv.grandTotal))));
+      bytes.addAll(_asciiLine(twoCol('TOTAL', _money(inv.grandTotal))));
       bytes.addAll(boldOff);
-      bytes.addAll(_asciiLine(_twoCol('PAID', _money(inv.amountReceived ?? 0))));
+      bytes.addAll(_asciiLine(twoCol('PAID', _money(inv.amountReceived ?? 0))));
 
       if (_on(v, 'pay')) {
-        bytes.addAll(_asciiLine(_line()));
+        bytes.addAll(_asciiLine(line()));
         bytes.addAll(alignCenter);
         bytes.addAll(boldOn);
         bytes.addAll(_asciiLine('PAYMENT RECEIPT'));
         bytes.addAll(boldOff);
         bytes.addAll(alignLeft);
-        bytes.addAll(_asciiLine(_twoCol(inv.paymentMode ?? 'Cash', _money(inv.amountReceived ?? 0))));
+        bytes.addAll(_asciiLine(twoCol(inv.paymentMode ?? 'Cash', _money(inv.amountReceived ?? 0))));
         bytes.addAll(boldOn);
-        bytes.addAll(_asciiLine(_twoCol('Total Received', _money(inv.amountReceived ?? 0))));
+        bytes.addAll(_asciiLine(twoCol('Total Received', _money(inv.amountReceived ?? 0))));
         bytes.addAll(boldOff);
-        if (inv.change > 0) bytes.addAll(_asciiLine(_twoCol('Change Returned', _money(inv.change))));
+        if (inv.change > 0) bytes.addAll(_asciiLine(twoCol('Change Returned', _money(inv.change))));
       }
 
       if (_on(v, 'acct') && (previousBalance != 0 || thisDue != 0)) {
-        bytes.addAll(_asciiLine(_line()));
+        bytes.addAll(_asciiLine(line()));
         bytes.addAll(alignCenter);
         bytes.addAll(boldOn);
         bytes.addAll(_asciiLine('ACCOUNT SUMMARY'));
         bytes.addAll(boldOff);
         bytes.addAll(alignLeft);
-        bytes.addAll(_asciiLine(_twoCol('Previous Balance', 'Rs. ${_money(previousBalance)}')));
-        bytes.addAll(_asciiLine(_twoCol('This Bill Due', 'Rs. ${_money(thisDue)}')));
+        bytes.addAll(_asciiLine(twoCol('Previous Balance', 'Rs. ${_money(previousBalance)}')));
+        bytes.addAll(_asciiLine(twoCol('This Bill Due', 'Rs. ${_money(thisDue)}')));
         bytes.addAll(boldOn);
         if (isUdhaar) bytes.addAll(tallOn);
-        bytes.addAll(_asciiLine(_twoCol('TOTAL DUE', 'Rs. ${_money(currentBalance)}')));
+        bytes.addAll(_asciiLine(twoCol('TOTAL DUE', 'Rs. ${_money(currentBalance)}')));
         if (isUdhaar) bytes.addAll(tallOff);
         bytes.addAll(boldOff);
       }
@@ -304,7 +312,7 @@ class ThermalReceipt {
     if (_on(v, 'qr')) {
       final upi = await AppSettings.upiId();
       if (upi != null && upi.isNotEmpty) {
-        bytes.addAll(_asciiLine(_line()));
+        bytes.addAll(_asciiLine(line()));
         bytes.addAll(alignCenter);
         bytes.addAll(boldOn);
         bytes.addAll(_asciiLine('Scan & Pay'));
@@ -324,18 +332,18 @@ class ThermalReceipt {
     }
 
     if (_on(v, 'sign')) {
-      bytes.addAll(_asciiLine(_line()));
-      bytes.addAll(_asciiLine(_twoCol(showPrice ? 'Customer Sign' : 'Received by', 'For ${await AppSettings.shopName()}')));
-      bytes.addAll(_asciiLine(_twoCol('____________________', '____________________')));
+      bytes.addAll(_asciiLine(line()));
+      bytes.addAll(_asciiLine(twoCol(showPrice ? 'Customer Sign' : 'Received by', 'For ${await AppSettings.shopName()}')));
+      bytes.addAll(_asciiLine(twoCol('____________________', '____________________')));
     }
 
-    bytes.addAll(_asciiLine(_line()));
+    bytes.addAll(_asciiLine(line()));
     bytes.addAll(alignCenter);
     if (_on(v, 'foot')) {
       bytes.addAll(boldOn);
       bytes.addAll(_asciiLine('Bill is required for exchange. E&OE.'));
       bytes.addAll(boldOff);
-      bytes.addAll(_asciiLine(_line()));
+      bytes.addAll(_asciiLine(line()));
     }
 
     // Reward points earned on THIS bill — the PC prints it on every rung so
@@ -343,7 +351,7 @@ class ThermalReceipt {
     final loyalty = await AppDb.instance.getCustomerLoyaltySummary(inv.customer);
     if (loyalty.earned > 0) {
       bytes.addAll(_asciiLine('Reward Pts Earned: ${_qtyStr(loyalty.earned)}'));
-      bytes.addAll(_asciiLine(_line()));
+      bytes.addAll(_asciiLine(line()));
     }
 
     bytes.addAll(boldOn);

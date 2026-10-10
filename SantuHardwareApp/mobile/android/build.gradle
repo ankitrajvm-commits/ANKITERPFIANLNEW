@@ -13,28 +13,6 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
-// another_flutter_usb_write is an old, unmaintained plugin that never set a
-// namespace in its own build.gradle — AGP 8+ requires one and fails the
-// whole build without it. Can't edit a dependency's build.gradle (lives in
-// the global pub cache, shared across every Flutter project), so the
-// namespace is injected here instead, read from the plugin's own
-// AndroidManifest.xml package attribute, right before AGP would otherwise
-// reject it for not having one.
-subprojects { proj ->
-    if (proj.name == "another_flutter_usb_write") {
-        def setNamespace = {
-            if (proj.hasProperty("android") && proj.android.namespace == null) {
-                proj.android.namespace = "hr.integrator.flutter_usb_write"
-            }
-        }
-        if (proj.state.executed) {
-            setNamespace()
-        } else {
-            proj.afterEvaluate { setNamespace() }
-        }
-    }
-}
-
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }

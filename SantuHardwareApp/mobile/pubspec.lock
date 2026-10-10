@@ -4,10 +4,9 @@ packages:
   another_flutter_usb_write:
     dependency: "direct main"
     description:
-      name: another_flutter_usb_write
-      sha256: "3b80433d422007b5ad304789b8ab2b3e197928c146d3bfbba1b297c82bda7703"
-      url: "https://pub.dev"
-    source: hosted
+      path: third_party/another_flutter_usb_write
+      relative: true
+    source: path
     version: "1.0.1"
   archive:
     dependency: transitive
