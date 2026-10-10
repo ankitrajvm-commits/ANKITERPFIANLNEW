@@ -72,6 +72,11 @@ dependencies:
   # Import Items — same .xlsx template as the PC Utilities screen.
   excel: ^4.0.6
   pdf: ^3.11.3
+  # Scan & Pay QR. The modules are encoded in-app and sent to the printer as a
+  # raster bitmap, because the ESC/POS native QR commands are optional and
+  # plenty of cheap thermal units ignore them (thermal_receipt.dart _qr).
+  # Already in the tree via pdf → barcode; declared here since we use it.
+  qr: ^3.0.2
 
 dev_dependencies:
   flutter_test:

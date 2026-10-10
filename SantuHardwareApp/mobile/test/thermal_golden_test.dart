@@ -25,12 +25,15 @@ String render(List<int> bytes) {
       final n = bytes[i + 1];
       if (n == 0x21) { i += 3; continue; }
       if (n == 0x56) { i += 4; continue; }
-      if (n == 0x28) {
-        final len = bytes[i + 3] | (bytes[i + 4] << 8);
-        if (bytes[i + 5] == 0x31 && bytes[i + 6] == 0x50) {
-          out.writeln('[QR] ${String.fromCharCodes(bytes.sublist(i + 8, i + 5 + len))}');
-        }
-        i += 5 + len;
+      // GS v 0 — raster bit image, which is how the Scan & Pay QR is sent now
+      // that the modules are encoded in-app rather than by the printer. The
+      // payload can't be read back out of a bitmap, so note the block and its
+      // size; buildUpiLink has its own test above for the content.
+      if (n == 0x76) {
+        final bytesPerRow = bytes[i + 4] | (bytes[i + 5] << 8);
+        final rows = bytes[i + 6] | (bytes[i + 7] << 8);
+        out.writeln('[QR] ${bytesPerRow * 8}x$rows dots');
+        i += 8 + bytesPerRow * rows;
         continue;
       }
       i += 1;
