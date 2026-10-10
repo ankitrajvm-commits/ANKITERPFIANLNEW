@@ -500,10 +500,15 @@ window.santu_purchase_return_page = {
 	// ---------- items ----------
 	_search(q) {
 		const $dd = this.$root.find(".santu-bill-dropdown");
+		// "5x tee" / "5* tee" -> 5 tee (santu_qty_prefix.js)
+		const parsed = santu_qty.split(q);
+		this._pending_qty = parsed.qty;
+		if (parsed.qty) q = parsed.text;
 		if (!q || q.length < 2) return $dd.hide().empty();
 		santu_purchase_invoice.api.search_items(q).then((res) => {
 			const rows = res.results || res || [];
 			$dd.empty();
+			if (parsed.qty) $dd.append(santu_qty.hint_html(parsed.qty, "santu-bill-dd-row"));
 			rows.forEach((it) => {
 				$(`
 					<div class="santu-bill-dd-row ${santu_item_dd_class(it.item_code, it.item_name)}">
@@ -526,24 +531,31 @@ window.santu_purchase_return_page = {
 	},
 
 	_add_item(item_code) {
+		// "5x tee" typed in search -> 5, else 1 (santu_qty_prefix.js)
+		const add_qty = santu_qty.take(this);
 		const b = this._bill();
 		this.$root.find(".santu-bill-dropdown").hide().empty();
-		this.$root.find(".santu-bill-search").val("").focus();
+		// preventScroll: focusing the search box used to yank the page back up
+		// to it while the new row was scrolling into view -- the two fought and
+		// the screen jumped up and down (2026-09-21). The box still takes the
+		// keyboard, it just does not drag the view along.
+		const $sb = this.$root.find(".santu-bill-search").val("");
+		if ($sb[0]) $sb[0].focus({ preventScroll: true });
 		const existing = b.items.find((r) => r.item_code === item_code);
 		if (existing) {
-			existing.qty = this._clamp_qty(existing, (Number(existing.qty) || 0) + 1);
+			existing.qty = this._clamp_qty(existing, (Number(existing.qty) || 0) + add_qty);
 			b.selected_row = existing.id;
 			this._persist_soon();
 			// Wahi item dobara -- uski qty badhi, wo row dikhni chahiye.
 			this._render_rows({ reveal_row_id: existing.id });
 			return;
 		}
-		santu_purchase_invoice.api.item_row(b.supplier, item_code, this.init_data.warehouse, 1).then((row) => {
+		santu_purchase_invoice.api.item_row(b.supplier, item_code, this.init_data.warehouse, add_qty).then((row) => {
 			b.items.push({
 				id: santu_purchase_invoice.utils.uid(),
 				item_code: row.item_code || item_code,
 				item_name: row.item_name || item_code,
-				qty: 1,
+				qty: add_qty,
 				uom: row.uom || row.stock_uom,
 				uom_options: [row.uom, row.stock_uom].filter((v, i, a) => v && a.indexOf(v) === i),
 				rate: row.price_list_rate || row.rate || 0,
@@ -744,11 +756,11 @@ window.santu_purchase_return_page = {
 				.appendTo($dd);
 			$dd.show();
 		};
-		if (!q || q.length < 2) {
-			draw([]);
-			return;
-		}
-		santu_purchase_invoice.api.search_suppliers(q).then((rows) => draw(rows || []));
+		// Khaali box par bhi poore mahajan dikhein (2026-09-23).
+		santu_purchase_invoice.api
+			.list_suppliers_for_picker(q)
+			.then((rows) => draw(rows || []))
+			.catch(() => draw([]));
 	},
 
 	// Renders right inside the existing supplier dropdown, in the empty
@@ -916,7 +928,7 @@ window.santu_purchase_return_page = {
 			)
 			.then((r) => {
 				frappe.dom.unfreeze();
-				frappe.show_alert({ message: __("Saved {0}", [r.name]), indicator: "green" });
+				window.santu_save_buttons ? santu_save_buttons.saved_alert("Purchase Return", r) : frappe.show_alert({ message: __("Saved"), indicator: "green" });
 				// "Supplier ne abhi cash/UPI refund diya" — settle it with a
 				// real Payment Entry right away (2026-08-19, matching the
 				// same fix on Sales Return).

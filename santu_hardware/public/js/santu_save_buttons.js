@@ -33,14 +33,17 @@
 			<div class="santu-bill-save-row">
 				<button type="button" class="santu-bill-save">${save_label}</button>
 				<button type="button" class="santu-bill-save-whatsapp">💬 ${__("Send WhatsApp")}</button>
+				<button type="button" class="santu-bill-save-whatsapp-other" title="${__("Kisi aur ke number par bhejein")}">↗ ${__("Kisi aur ko")}</button>
 			</div>`;
 	}
 
-	// `on_save(after)` gets undefined / "print" / "whatsapp".
+	// `on_save(after)` gets undefined / "print" / "whatsapp" (to the party) /
+	// "whatsapp_other" (to a number typed in).
 	function bind($root, on_save) {
 		$root.find(".santu-bill-save").off("click.santu-save").on("click.santu-save", () => on_save());
 		$root.find(".santu-bill-save-print").off("click.santu-save").on("click.santu-save", () => on_save("print"));
 		$root.find(".santu-bill-save-whatsapp").off("click.santu-save").on("click.santu-save", () => on_save("whatsapp"));
+		$root.find(".santu-bill-save-whatsapp-other").off("click.santu-save").on("click.santu-save", () => on_save("whatsapp_other"));
 	}
 
 	// Call once the document is saved. Returns a promise so callers can wait
@@ -63,8 +66,28 @@
 			}
 			return window.santu_whatsapp_share.send_transaction(doctype, name, { skip_dialog: true });
 		}
+		if (after === "whatsapp_other") {
+			if (!window.santu_whatsapp_share) return false;
+			return window.santu_whatsapp_share.send_transaction(doctype, name, { other: true });
+		}
 		return true;
 	}
 
-	window.santu_save_buttons = { html, bind, after_save, THERMAL };
+	// "Saved SINV-26-01242" showed the counter an internal code no customer
+	// or bhaiya ever sees (2026-09-19 browser test). The shop's own number
+	// (bill / estimate #) is shown when there is one, otherwise just the kind
+	// of document -- in Hindi.
+	const SAVED_LABEL = {
+		"Sales Invoice": "Bill", "POS Invoice": "Bill", "Quotation": "Estimate", "Delivery Note": "Chalan",
+		"Sales Order": "Order", "Purchase Invoice": "Kharid Bill", "Purchase Order": "Kharid Order",
+		"Payment Entry": "Payment", "Journal Entry": "Kharcha / Entry", "Sales Return": "Wapsi", "Purchase Return": "Kharid Wapsi",
+	};
+	function saved_alert(doctype, r) {
+		const label = SAVED_LABEL[doctype] || "";
+		const no = r && (r.santu_bill_no || r.receipt_no);
+		const msg = no ? `✅ ${label} #${no} save ho gaya` : `✅ ${label} save ho gaya`;
+		frappe.show_alert({ message: msg, indicator: "green" }, 5);
+	}
+
+	window.santu_save_buttons = { html, bind, after_save, THERMAL, saved_alert };
 })();

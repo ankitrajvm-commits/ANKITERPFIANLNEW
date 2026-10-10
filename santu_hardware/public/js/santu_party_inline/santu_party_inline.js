@@ -36,7 +36,7 @@ santu_party_inline.fields_html = function (opts = {}) {
 santu_party_inline.get_api = function (cfg) {
 	if (cfg.partyType === "Customer") {
 		return {
-			search: (q) => santu_sale_invoice.api.search_customers(q),
+			search: (q) => santu_sale_invoice.api.list_customers_for_picker(q),
 			details: (name) => santu_sale_invoice.api.customer_details(name),
 			create_full: (payload) => santu_sale_invoice.api.create_customer_full(payload),
 			update_inline: (party, party_name, phone, address) =>
@@ -47,7 +47,7 @@ santu_party_inline.get_api = function (cfg) {
 		};
 	}
 	return {
-		search: (q) => santu_purchase_invoice.api.search_suppliers(q),
+		search: (q) => santu_purchase_invoice.api.list_suppliers_for_picker(q),
 		details: (name) => santu_purchase_invoice.api.supplier_details(name),
 		create_full: (payload) => santu_purchase_invoice.api.create_supplier_full(payload),
 		update_inline: (party, party_name, phone, address) =>
@@ -248,10 +248,9 @@ santu_party_inline.open_advanced_dialog = function (ctx, name) {
 santu_party_inline.run_search = function (ctx, q) {
 	const { $root, cfg, api } = ctx;
 	const $dd = $root.find(".santu-si2-customer-dropdown");
-	if (!q || q.length < 2) {
-		$dd.hide().empty();
-		return;
-	}
+	// Khaali box par bhi poori list dikhe (jinse haal me kaam hua wo upar) --
+	// Billing me ye pehle se tha, in screens par do akshar likhe bina kuch
+	// nahi aata tha (2026-09-23 report).
 	api.search(q).then((rows) => {
 		$dd.empty();
 		const exact_match = rows.some(
@@ -333,9 +332,7 @@ santu_party_inline.bind_search_events = function (ctx) {
 	const { $root, api, ddNamespace } = ctx;
 	const $custSearch = $root.find(".santu-si2-customer-search");
 	$custSearch.on("input", api.debounce((e) => santu_party_inline.run_search(ctx, e.target.value)));
-	$custSearch.on("focus", (e) => {
-		if (e.target.value) santu_party_inline.run_search(ctx, e.target.value);
-	});
+	$custSearch.on("focus", (e) => santu_party_inline.run_search(ctx, e.target.value));
 	$(document)
 		.off(`click.${ddNamespace}`)
 		.on(`click.${ddNamespace}`, (e) => {

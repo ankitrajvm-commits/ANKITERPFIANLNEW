@@ -38,6 +38,7 @@ function render_dashboard(page) {
 	// manipulate (BUG-20260827-00329, 5x on this route, never caught before
 	// because nothing ever tore this down on navigation/reload).
 	santu_stop_watching_chart_resize();
+	santu_destroy_sale_chart();
 	$(page.body).find(".santu-dash").remove();
 	const $root = $(`<div class="santu-dash"></div>`).appendTo(page.body);
 	$root.html(`<div class="santu-dash-loading">Loading...</div>`);
@@ -294,10 +295,25 @@ function load_sale_chart($section, range, from_date, to_date) {
 // the two identical, and also fixes the chart after any later window resize.
 let santu_chart_resize_observer = null;
 
+// Every frappe.Chart hooks its OWN window "resize" listener and
+// ResizeObserver. Emptying the container without destroy() left the old
+// chart listening; the next resize made it redraw into a container it no
+// longer owned and removeChild threw "NotFoundError" (BUG-20260827-00329,
+// still seen 2026-09-16 after the observer fix above). Destroy first.
+let santu_sale_chart = null;
+
+function santu_destroy_sale_chart() {
+	if (santu_sale_chart) {
+		try { santu_sale_chart.destroy(); } catch (e) { /* already gone */ }
+		santu_sale_chart = null;
+	}
+}
+
 function draw_sale_chart($chart_el, points) {
 	const chart_h = Math.max(180, ($chart_el.height() || 220) - 8);
+	santu_destroy_sale_chart();
 	$chart_el.empty();
-	new frappe.Chart($chart_el[0], {
+	santu_sale_chart = new frappe.Chart($chart_el[0], {
 		data: {
 			labels: points.map((p) => p.date),
 			datasets: [{ name: "Sales", values: points.map((p) => p.total) }],

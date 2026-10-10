@@ -217,6 +217,16 @@ var SANTU_THERMAL_FORMATS = {
 	"Sales Invoice": "Santu Hardware Thermal Bill (Sales Invoice)",
 	"POS Invoice": "Santu Hardware Thermal Bill",
 	"Quotation": "Santu Hardware Thermal Estimate (Quotation)",
+	// 2026-09-23: in sab ke apne thermal roop ban gaye (Invoice Settings me
+	// chune jaate hain), isliye ab ye bhi roll par chhap sakte hain. Server
+	// khud sahi roop chunta hai (print_service._thermal_format_for) —
+	// yahan ka naam sirf "iska thermal hota hai" ka nishaan hai.
+	"Sales Order": "Santu Hardware Thermal Sales Order",
+	"Delivery Note": "Santu Hardware Thermal Challan (Delivery Note)",
+	"Purchase Invoice": "Santu Hardware Thermal Purchase Bill",
+	"Purchase Order": "Santu Hardware Thermal Purchase Order",
+	"Payment Entry": "Santu Hardware Thermal Payment Receipt",
+	"Stock Entry": "Santu Hardware Thermal Goods Received",
 };
 var SANTU_THERMAL_DOCTYPES = Object.keys(SANTU_THERMAL_FORMATS);
 

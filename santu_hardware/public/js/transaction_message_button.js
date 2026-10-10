@@ -13,6 +13,7 @@
 		if (frm.doc.docstatus !== 1 && frm.doctype !== "Quotation") return;
 
 		frm.add_custom_button(__("WhatsApp"), () => open_send_dialog(frm), __("Actions"));
+		frm.add_custom_button(__("WhatsApp — Kisi aur ko"), () => open_send_dialog(frm, true), __("Actions"));
 
 		show_whatsapp_status(frm);
 	}
@@ -49,9 +50,9 @@
 		}
 	}
 
-	async function open_send_dialog(frm) {
+	async function open_send_dialog(frm, other) {
 		if (window.santu_whatsapp_share) {
-			await window.santu_whatsapp_share.send_transaction(frm.doctype, frm.doc.name);
+			await window.santu_whatsapp_share.send_transaction(frm.doctype, frm.doc.name, { other: !!other });
 			return;
 		}
 		frappe.msgprint(__("WhatsApp share is loading — please try again."));

@@ -128,8 +128,27 @@ window.santu_delivery_challan_page = {
 		return !tab.customer && !tab.items.length && !tab.saved_challan;
 	},
 
+	// A tab left open (or restored from localStorage) from an earlier day
+	// kept that day's date, so a sale/payment made today was booked on the
+	// old date -- Payment In showed 06/09 on 19/09 (2026-09-19). Billing,
+	// Estimate and Returns already roll forward; this does the same, but a
+	// date the user picked by hand TODAY (date_set_on) is left alone.
+	_roll_dates_forward() {
+		const today = frappe.datetime.get_today();
+		let changed = false;
+		(this.tabs || []).forEach((t) => {
+			if (t.saved || t.editing || t.saved_challan || t.saved_doc || t.saved_invoice || t.saved_order) return;
+			if (t.posting_date && t.posting_date < today && (t.date_set_on || "") < today) {
+				t.posting_date = today;
+				changed = true;
+			}
+		});
+		if (changed && this._persist) this._persist();
+	},
+
 	render() {
 		if (!this.tabs.length) this._new_tab();
+		this._roll_dates_forward();
 		const $body = $(this.page.body);
 		$body.html(`
 			<div class="santu-si2">
@@ -238,6 +257,10 @@ window.santu_delivery_challan_page = {
 			</div>
 
 			<div class="santu-si2-table-wrap">
+				<!-- Only the table scrolls sideways: the item-search dropdown is a
+				     child of the WRAP, so it must stay outside this box or it gets
+				     clipped (that bug made searching look like it found nothing). -->
+				<div class="santu-si2-table-scroll">
 				<table class="santu-si2-table">
 					<thead>
 						<tr>
@@ -266,6 +289,7 @@ window.santu_delivery_challan_page = {
 						</tr>
 					</tfoot>
 				</table>
+				</div>
 			</div>
 
 			<div class="santu-si2-lowerrow">
@@ -307,6 +331,7 @@ window.santu_delivery_challan_page = {
 					     rule: the button pressed IS the answer, nothing asks
 					     again afterwards (2026-09-07). -->
 					<button type="button" class="santu-si2-btn" data-action="save_whatsapp">💬 Send WhatsApp</button>
+					<button type="button" class="santu-si2-btn" data-action="save_whatsapp_other">↗ Kisi aur ko</button>
 					<button type="button" class="santu-si2-btn" data-action="save_print">🖨️ Save &amp; Print</button>
 					<button type="button" class="santu-si2-btn santu-si2-btn-primary" data-action="save">Save <span class="santu-si2-kbd">Ctrl+S</span></button>
 				</div>
@@ -401,6 +426,10 @@ window.santu_delivery_challan_page = {
 	},
 
 	_item_search(q) {
+		// "5x tee" / "5* tee" -> 5 tee (santu_qty_prefix.js)
+		const parsed = santu_qty.split(q);
+		this._pending_qty = parsed.qty;
+		if (parsed.qty) q = parsed.text;
 		let $dd = this.$root.find(".santu-si2-item-dropdown");
 		if (!$dd.length) {
 			$dd = $(`<div class="santu-si2-item-dropdown" style="display:none;"></div>`).appendTo(this.$root.find(".santu-si2-table-wrap"));
@@ -414,6 +443,7 @@ window.santu_delivery_challan_page = {
 
 	_render_item_dropdown($dd, rows, heading, query) {
 		$dd.empty();
+		if (this._pending_qty) $dd.append(santu_qty.hint_html(this._pending_qty, "santu-si2-dd-row"));
 		if (heading) $dd.append(`<div class="santu-si2-dd-heading">${heading}</div>`);
 		if (!rows.length) {
 			$dd.append(`<div class="santu-si2-dd-empty">No items found.</div>`);
@@ -479,24 +509,26 @@ window.santu_delivery_challan_page = {
 	},
 
 	_add_item(item_code) {
+		// "5x tee" typed in search -> 5, else 1 (santu_qty_prefix.js)
+		const add_qty = santu_qty.take(this);
 		const tab = this._active_tab();
 		this.$root.find(".santu-si2-item-dropdown").hide();
 		this.$root.find(".santu-si2-item-search").val("");
 
 		const existing = tab.items.find((r) => r.item_code === item_code);
 		if (existing) {
-			existing.qty = (Number(existing.qty) || 0) + 1;
+			existing.qty = (Number(existing.qty) || 0) + add_qty;
 			this._render_items({ reveal_row_id: existing.id });
 			this._save_debounced();
 			return;
 		}
 
-		santu_sale_invoice.api.item_row(tab.customer, item_code, this.init_data.warehouse, 1).then((row) => {
+		santu_sale_invoice.api.item_row(tab.customer, item_code, this.init_data.warehouse, add_qty).then((row) => {
 			const new_row = {
 				id: santu_sale_invoice.utils.uid(),
 				item_code,
 				item_name: row.item_name || item_code,
-				qty: 1,
+				qty: add_qty,
 				uom: row.uom || row.stock_uom,
 				uom_options: row.uom ? [row.uom, row.stock_uom].filter((v, i, a) => v && a.indexOf(v) === i) : [row.stock_uom],
 				rate: row.price_list_rate || row.rate || 0,
@@ -505,7 +537,7 @@ window.santu_delivery_challan_page = {
 				tax_rate: row.tax_rate || 0,
 				amount: row.price_list_rate || row.rate || 0,
 			};
-			tab.items.push(new_row);
+		tab.items.push(new_row);
 			this._save_debounced();
 			this._render_items({ reveal_row_id: new_row.id });
 		});
@@ -562,6 +594,7 @@ window.santu_delivery_challan_page = {
 
 		$root.find(".santu-si2-posting-date").on("change", (e) => {
 			tab.posting_date = e.target.value;
+			tab.date_set_on = frappe.datetime.get_today();
 			this._save_debounced();
 		});
 		$root.find(".santu-si2-po-no").on("input", (e) => {
@@ -614,7 +647,9 @@ window.santu_delivery_challan_page = {
 		$input.on("focus", () => this._item_search($input.val().trim()));
 		$input.on("keydown", (e) => {
 			if (e.key === "Enter") {
-				const q = $input.val().trim();
+				const typed = santu_qty.split($input.val().trim());
+				this._pending_qty = typed.qty;
+				const q = typed.qty ? typed.text : $input.val().trim();
 				if (!q) return;
 				santu_sale_invoice.api.search_items(q).then((r) => {
 					if (r.exact_match) this._add_item(r.exact_match);
@@ -787,8 +822,8 @@ window.santu_delivery_challan_page = {
 			window.santu_open_invoice_view("Delivery Note", tab.saved_challan.name);
 			return;
 		}
-		if (action === "save" || action === "save_print" || action === "save_whatsapp") {
-			this._save_challan(tab, action === "save_print" ? "print" : action === "save_whatsapp" ? "whatsapp" : null);
+		if (action === "save" || action === "save_print" || action === "save_whatsapp" || action === "save_whatsapp_other") {
+			this._save_challan(tab, action === "save_print" ? "print" : action === "save_whatsapp" ? "whatsapp" : action === "save_whatsapp_other" ? "whatsapp_other" : null);
 			return;
 		}
 	},
@@ -850,7 +885,7 @@ window.santu_delivery_challan_page = {
 				frappe.dom.unfreeze();
 				tab.saved_challan = r;
 				this._save_debounced();
-				frappe.show_alert({ message: __("Saved {0}", [r.name]), indicator: "green" });
+				window.santu_save_buttons ? santu_save_buttons.saved_alert("Delivery Note", r) : frappe.show_alert({ message: __("Saved"), indicator: "green" });
 				santu_save_buttons.after_save("Delivery Note", r.name, after, { has_party: !!tab.customer });
 				// The review view only opens on a plain Save -- it must not
 				// land on top of a print or a send the operator just asked for.

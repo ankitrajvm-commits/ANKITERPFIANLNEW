@@ -143,7 +143,10 @@ santu_reports.REPORTS = [
 			};
 		},
 	},
-	{ id: "form_27eq", label: "Form No. 27EQ", category: "taxes", type: "erpnext", report_name: "TDS Computation Summary-India", less_used: true },
+	// party_type is required by the report itself (it crashed with "can only
+	// concatenate str (not NoneType)" without it -- full-app test 2026-09-19).
+	// 27EQ is the TCS return: tax collected from CUSTOMERS.
+	{ id: "form_27eq", label: "Form No. 27EQ", category: "taxes", type: "erpnext", report_name: "TDS Computation Summary-India", extra_filters: { party_type: "Customer" }, less_used: true },
 	{ id: "tcs_receivable", label: "TCS Receivable", category: "taxes", type: "erpnext", report_name: "Tax Withholding Details-India", extra_filters: { party_type: "Customer" }, less_used: true },
 	{ id: "tds_payable", label: "TDS Payable", category: "taxes", type: "erpnext", report_name: "Tax Withholding Details-India", extra_filters: { party_type: "Supplier" }, less_used: true },
 	{ id: "tds_receivable", label: "TDS Receivable", category: "taxes", type: "erpnext", report_name: "Tax Withholding Details-India", extra_filters: { party_type: "Customer" }, less_used: true },

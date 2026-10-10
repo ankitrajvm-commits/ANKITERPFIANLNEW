@@ -460,14 +460,19 @@ def _check_bug_reports():
 		"Santu Bug Report",
 		filters={"status": "New"},
 		fields=["title"],
-		order_by="last_seen_on desc",
+		# last_seen_on is NULL on older rows, and NULLs sort unpredictably --
+		# fall back to creation so "latest" really is the latest.
+		order_by="ifnull(last_seen_on, creation) desc",
 		limit_page_length=3,
 	)
 	return _result(
 		"bug_reports",
-		_("Koi nayi shikayat nahi"),
+		# Said "Koi nayi shikayat nahi" (no new complaints) even while listing
+		# them right underneath -- the operator saw a warning that read like an
+		# all-clear (2026-09-25).
+		_("{0} nayi shikayat hai").format(count),
 		WARN,
-		_("{0} nayi shikayat: {1}").format(count, "; ".join(r.title for r in latest)),
+		_("{0}").format("; ".join(r.title for r in latest)),
 	)
 
 

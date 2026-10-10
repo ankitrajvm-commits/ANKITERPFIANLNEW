@@ -1065,6 +1065,7 @@ async function load_party_detail($detail, row) {
 	$detail.find(".santu-parties-khata-btn").on("click", () => open_party_khata_dialog(row));
 
 	const $bills = $detail.find(".santu-parties-bills");
+	const is_supplier_party = row.party_type === "Supplier";
 
 	if (!bills.length) {
 		$bills.append(
@@ -1076,7 +1077,14 @@ async function load_party_detail($detail, row) {
 	const $table = $(`
 		<table class="santu-parties-table">
 			<thead>
-				<tr><th>Type</th><th>Number</th><th>Date</th><th class="num">Total</th><th class="num">Balance</th></tr>
+				<tr>
+					<th>${__("Type")}</th>
+					<th>${__("Number")}</th>
+					<th>${__("Date")}</th>
+					<th class="num">${is_supplier_party ? __("Debit (Purchase)") : __("Debit (Sale)")}</th>
+					<th class="num">${__("Credit (Paid)")}</th>
+					<th class="num">${__("Balance")}</th>
+				</tr>
 			</thead>
 			<tbody></tbody>
 		</table>
@@ -1084,20 +1092,26 @@ async function load_party_detail($detail, row) {
 	const $tbody = $table.find("tbody");
 
 	bills.forEach((b) => {
-		// Shows the shop's own running Bill No (100, 101 ... same number
-		// printed on the thermal slip), not the document ID (SINV-26-00254) —
-		// that ID means nothing to an operator; the Bill No is what they'd
-		// actually search or ask a customer for (2026-08-23 direct request).
-		// Falls back to the document name when there's no santu_bill_no
-		// (Purchase Invoice rows, or a Sales/POS Invoice that predates the
-		// counter).
+		// Every ledger movement, not just sales (2026-09-23): a sale and a
+		// purchase sit in the Debit column, a payment or a return in Credit,
+		// and the Balance column carries the running total after that row --
+		// the same three columns the khata dialog already uses, so the panel
+		// and the full account read the same way.
+		//
+		// Number still shows the shop's own running Bill No (100, 101 ... the
+		// number printed on the thermal slip), never the document ID
+		// (SINV-26-00254), which means nothing to an operator.
+		const debit = Number(b.debit) || 0;
+		const credit = Number(b.credit) || 0;
+		const note = b.note ? ` <span class="santu-parties-txn-note">${frappe.utils.escape_html(b.note)}</span>` : "";
 		$(`
 			<tr class="santu-parties-bill-row">
-				<td>${frappe.utils.escape_html(b.type)}</td>
+				<td>${frappe.utils.escape_html(b.type)}${note}</td>
 				<td>${frappe.utils.escape_html(b.display_number || santu_bill_label(b.santu_bill_no))}</td>
 				<td>${frappe.datetime.str_to_user(b.posting_date)}</td>
-				<td class="num">₹ ${format_currency_plain(b.grand_total)}</td>
-				<td class="num">${b.outstanding_amount > 0 ? "₹ " + format_currency_plain(b.outstanding_amount) : "-"}</td>
+				<td class="num">${debit ? "₹ " + format_currency_plain(debit) : "-"}</td>
+				<td class="num">${credit ? "₹ " + format_currency_plain(credit) : "-"}</td>
+				<td class="num">₹ ${format_currency_plain(Math.abs(Number(b.balance_after) || 0))}</td>
 			</tr>
 		`)
 			.on("click", () => window.santu_open_invoice_view(b.doctype, b.name))

@@ -6,6 +6,7 @@ import json
 import re
 import uuid
 import frappe
+from frappe.utils import cint
 from frappe import _
 
 DEFAULT_FRACTIONS = [
@@ -747,7 +748,7 @@ def get_catalog_items_for_training(item_group=None, search=None, status="all", l
 		FROM `tabItem`
 		WHERE {' AND '.join(conditions)}
 		ORDER BY item_name ASC
-		LIMIT {int(limit)}
+		LIMIT {cint(limit) or 1000}
 	"""
 	raw_items = frappe.db.sql(sql, tuple(values), as_dict=True)
 

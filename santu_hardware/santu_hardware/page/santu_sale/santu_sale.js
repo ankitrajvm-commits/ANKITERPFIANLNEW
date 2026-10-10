@@ -1,6 +1,9 @@
 frappe.pages["santu-sale"].on_page_load = function (wrapper) {
 	frappe.require(
 		[
+			// customer_details() -- the address/phone lookup Billing (POS)
+			// already uses, reused for the party line on each bill row.
+			"/assets/santu_hardware/js/santu_sale_invoice/santu_sale_invoice_api.js",
 			"/assets/santu_hardware/js/santu_sale/santu_sale_utils.js",
 			"/assets/santu_hardware/js/santu_sale/santu_sale_api.js",
 			"/assets/santu_hardware/js/santu_sale/santu_sale_summary.js",

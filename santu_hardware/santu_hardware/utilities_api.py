@@ -756,7 +756,9 @@ def import_parties(rows: str, party_type: str = "Customer"):
 @frappe.whitelist()
 def export_items_file(filters: str = None):
 	_require_manager()
-	filters = frappe.parse_json(filters) if isinstance(filters, str) else (filters or {})
+	from santu_hardware.santu_hardware.api import _json_arg
+
+	filters = _json_arg(filters) or {}
 	item_filters = {"disabled": 0}
 	if filters.get("item_group"):
 		item_filters["item_group"] = filters.get("item_group")
@@ -766,16 +768,66 @@ def export_items_file(filters: str = None):
 	items = frappe.get_all(
 		"Item",
 		filters=item_filters,
-		fields=["name", "item_name", "item_code", "item_group", "brand", "gst_hsn_code", "standard_rate", "valuation_rate", "stock_uom", "description"],
+		fields=[
+			"name", "item_name", "item_code", "item_group", "brand", "gst_hsn_code",
+			"standard_rate", "valuation_rate", "custom_mrp", "min_order_qty", "stock_uom", "description",
+		],
 		order_by="item_name asc",
 		limit_page_length=0,
 	)
-	headers = ["Item Name", "Item Code", "Item Group", "Brand", "HSN", "Sale Price", "Purchase Price", "UOM", "Stock", "Barcode", "Description"]
+
+	# Selling price does NOT live on Item.standard_rate in this app -- the tick,
+	# Stock Summary and Update Items In Bulk all write Item Price (Standard
+	# Selling). Reading the Item field exported a blank for 624 of 817 items
+	# (2026-09-25). Cost is worse: Item.valuation_rate is 0 on EVERY item here,
+	# because real cost is the weighted average on Bin. Both are now read from
+	# where the app actually keeps them, with the old fields as a last resort.
+	sell_price, buy_price = {}, {}
+	for r in frappe.db.sql(
+		"""select item_code, price_list, price_list_rate from `tabItem Price`
+		   where price_list in ('Standard Selling','Standard Buying')""",
+		as_dict=True,
+	):
+		(sell_price if r.price_list == "Standard Selling" else buy_price)[r.item_code] = flt(r.price_list_rate)
+
+	bin_qty, bin_val = {}, {}
+	for r in frappe.db.sql(
+		"""select item_code, sum(actual_qty) qty,
+		          sum(stock_value) / nullif(sum(actual_qty), 0) val
+		   from `tabBin` group by item_code""",
+		as_dict=True,
+	):
+		bin_qty[r.item_code] = flt(r.qty)
+		if r.val:
+			bin_val[r.item_code] = flt(r.val)
+
+	barcodes = {}
+	for r in frappe.db.sql("""select parent, barcode from `tabItem Barcode`""", as_dict=True):
+		barcodes.setdefault(r.parent, r.barcode)
+
+	# Header wording matches ITEM_IMPORT_FIELDS so an exported sheet can be
+	# edited and imported straight back. "Stock" is deliberately NOT called
+	# "Opening Stock": that label makes the importer post a Material Receipt
+	# for a newly created item, which would double the shop's stock.
+	headers = [
+		"Item Name", "Item Code", "Item Group", "Brand", "HSN Code", "Description",
+		"Selling Price", "Purchase Price", "MRP", "Stock UOM", "Stock", "Minimum Stock", "Barcode",
+	]
 	rows = [headers]
 	for it in items:
-		barcode = frappe.db.get_value("Item Barcode", {"parent": it.name}, "barcode") or ""
-		qty = frappe.db.sql("SELECT SUM(actual_qty) FROM `tabBin` WHERE item_code = %s", it.name)[0][0] or 0
-		rows.append([it.item_name, it.item_code, it.item_group, it.brand or "", it.gst_hsn_code or "", it.standard_rate, it.valuation_rate, it.stock_uom, qty, barcode, it.description or ""])
+		sell = sell_price.get(it.name)
+		if sell is None:
+			sell = flt(it.standard_rate)
+		cost = bin_val.get(it.name)
+		if cost is None:
+			cost = buy_price.get(it.name)
+		if cost is None:
+			cost = flt(it.valuation_rate)
+		rows.append([
+			it.item_name, it.item_code, it.item_group, it.brand or "", it.gst_hsn_code or "",
+			it.description or "", sell, cost, flt(it.custom_mrp), it.stock_uom,
+			bin_qty.get(it.name, 0), flt(it.min_order_qty), barcodes.get(it.name, ""),
+		])
 
 	from frappe.utils.xlsxutils import make_xlsx
 	from frappe.utils.file_manager import save_file
@@ -965,8 +1017,20 @@ def get_data_audit():
 		"""SELECT item_code, warehouse, actual_qty FROM `tabBin` WHERE actual_qty < 0 LIMIT 50""",
 		as_dict=True,
 	)
+	# Warning, never Error (2026-09-25). Negative stock here is not corruption:
+	# the shop sells off the shelf and enters the purchase later, and Stock
+	# Settings has Allow Negative Stock on for exactly that reason. Traced on
+	# MALHOTRA-PIPE-1-2MM: 70 sold on 2026-05-19 with nothing on file, 100
+	# received on 2026-08-26, sold back under zero after. Flagging that red
+	# made a healthy shop read "Needs Attention" every single day.
 	for b in neg_stock:
-		issues.append({"category": "Stock", "severity": "Error", "record": f"{b.item_code} @ {b.warehouse}", "description": f"Negative stock ({b.actual_qty})", "fix": "Review Required"})
+		issues.append({
+			"category": "Stock",
+			"severity": "Warning",
+			"record": f"{b.item_code} @ {b.warehouse}",
+			"description": f"Stock minus me hai ({b.actual_qty}) — maal aaya par chadha nahi",
+			"fix": "Bill me item ke neeche 'Available' pe dabakar stock chadha do",
+		})
 
 	dup_gstin = frappe.db.sql(
 		"""SELECT gstin, COUNT(*) c FROM `tabCustomer` WHERE gstin IS NOT NULL AND gstin != '' GROUP BY gstin HAVING c > 1""",
@@ -1005,14 +1069,24 @@ def get_fiscal_year_checklist():
 	checks = []
 	checks.append({"label": "No draft sales invoices", "ok": frappe.db.count("Sales Invoice", {"docstatus": 0}) == 0, "detail": f"{frappe.db.count('Sales Invoice', {'docstatus': 0})} draft"})
 	checks.append({"label": "No draft purchase invoices", "ok": frappe.db.count("Purchase Invoice", {"docstatus": 0}) == 0, "detail": f"{frappe.db.count('Purchase Invoice', {'docstatus': 0})} draft"})
+	# Udhaar is INFORMATION, not a blocker. A hardware shop always carries
+	# outstanding into the next year -- gating on "outstanding == 0" meant the
+	# Proceed button could never light up (₹72,523 outstanding on 2026-09-25,
+	# and it is supposed to be there). These two lines are shown to be read,
+	# not passed.
 	cust_out = frappe.db.sql("""SELECT SUM(outstanding_amount) FROM `tabSales Invoice` WHERE docstatus=1 AND outstanding_amount > 0""")[0][0] or 0
-	checks.append({"label": "Customer outstanding reviewed", "ok": flt(cust_out) == 0, "detail": f"₹ {flt(cust_out):,.2f} outstanding"})
+	checks.append({"label": "Customer udhaar (agle saal chalega)", "ok": True, "kind": "info", "detail": f"₹ {flt(cust_out):,.2f} baaki"})
 	sup_out = frappe.db.sql("""SELECT SUM(outstanding_amount) FROM `tabPurchase Invoice` WHERE docstatus=1 AND outstanding_amount > 0""")[0][0] or 0
-	checks.append({"label": "Supplier outstanding reviewed", "ok": flt(sup_out) == 0, "detail": f"₹ {flt(sup_out):,.2f} outstanding"})
+	checks.append({"label": "Supplier ka baaki (agle saal chalega)", "ok": True, "kind": "info", "detail": f"₹ {flt(sup_out):,.2f} baaki"})
 	neg = frappe.db.count("Bin", {"actual_qty": ["<", 0]})
 	checks.append({"label": "No negative stock", "ok": neg == 0, "detail": f"{neg} negative bins"})
 
-	all_ok = all(c["ok"] for c in checks[:3])  # strict on drafts + stock
+	# The old gate was `checks[:3]` with the comment "strict on drafts + stock"
+	# -- but the first three are the two draft checks plus CUSTOMER OUTSTANDING,
+	# so it gated on udhaar and skipped negative stock entirely, the exact
+	# opposite of what it says. Gate on what the shop can actually clear.
+	gate_labels = {"No draft sales invoices", "No draft purchase invoices", "No negative stock"}
+	all_ok = all(c["ok"] for c in checks if c["label"] in gate_labels)
 	return {"fiscal_year": fy, "checks": checks, "can_close": all_ok, "company": company}
 
 

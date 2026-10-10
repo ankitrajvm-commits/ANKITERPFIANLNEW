@@ -223,14 +223,11 @@ window.santu_party_transfer_page = {
 	_search(side, q) {
 		const s = this.state;
 		const $dd = this.$root.find(`.santu-ptp-side[data-side="${side}"] .santu-si2-customer-dropdown`);
-		if (!q || q.length < 2) {
-			$dd.hide().empty();
-			return;
-		}
+		// Khaali box par bhi poori list (2026-09-23 report).
 		const is_customer = s[side].party_type === "Customer";
 		const search = is_customer
-			? santu_sale_invoice.api.search_customers(q)
-			: santu_purchase_invoice.api.search_suppliers(q);
+			? santu_sale_invoice.api.list_customers_for_picker(q)
+			: santu_purchase_invoice.api.list_suppliers_for_picker(q);
 		search.then((rows) => {
 			$dd.empty();
 			(rows || []).forEach((p) => {
@@ -300,7 +297,7 @@ window.santu_party_transfer_page = {
 			)
 			.then((r) => {
 				frappe.dom.unfreeze();
-				frappe.show_alert({ message: __("Saved {0}", [r.name]), indicator: "green" });
+				window.santu_save_buttons ? santu_save_buttons.saved_alert("Journal Entry", r) : frappe.show_alert({ message: __("Saved"), indicator: "green" });
 				window.santu_open_invoice_view("Journal Entry", r.name);
 			})
 			.catch(() => frappe.dom.unfreeze());

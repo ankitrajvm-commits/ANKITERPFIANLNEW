@@ -30,20 +30,16 @@ TRANSACTION_TYPES = [
 ]
 
 DEFAULT_TEMPLATES = {
+	# No payment figures here on purpose (2026-09-25): the attached bill already
+	# shows the total, what was paid and the account balance, and repeating it
+	# in the chat made the message long and easy to misread. The message just
+	# says which bill is attached.
 	"Sales Transaction": """🧾 *{{ company_name }}*
 
 Hi {{ customer_name }},
 
-Thank you for shopping with us!
-
 *Bill No:* {{ invoice_no }}
-*Date:* {{ posting_date }}
-
-💰 *Payment Breakdown:*
-*Total Bill:* ₹{{ grand_total }}
-*Amount Paid:* ₹{{ paid_amount }}
-*Balance Due:* ₹{{ outstanding_amount }}{{ balance_note_line }}
-{{ invoice_link_line }}{{ footer_contact_line }}
+*Date:* {{ posting_date }}{{ invoice_link_line }}
 
 We appreciate your business 🙏""",
 	"Purchase Transaction": """🧾 *{{ company_name }}*
@@ -54,18 +50,16 @@ We've recorded a purchase from you.
 
 *Bill No:* {{ invoice_no }}
 *Date:* {{ posting_date }}
-*Amount:* ₹{{ grand_total }}{{ footer_contact_line }}
+*Amount:* ₹{{ grand_total }}
 
 Thank you!""",
 	"Sales Return": """🧾 *{{ company_name }}*
 
 Hi {{ customer_name }},
 
-Your return has been processed.
-
 *Credit Note:* {{ invoice_no }}
 *Date:* {{ posting_date }}
-*Amount:* ₹{{ grand_total }}{{ footer_contact_line }}
+*Amount:* ₹{{ grand_total }}
 
 Thank you!""",
 	"Purchase Return": """🧾 *{{ company_name }}*
@@ -76,16 +70,14 @@ A purchase return has been recorded.
 
 *Debit Note:* {{ invoice_no }}
 *Date:* {{ posting_date }}
-*Amount:* ₹{{ grand_total }}{{ footer_contact_line }}""",
+*Amount:* ₹{{ grand_total }}""",
 	"Payment In": """✅ *{{ company_name }}*
 
 Hi {{ party_name }},
 
-We've received your payment. Thank you!
-
 *Amount Received:* ₹{{ paid_amount }}
 *Reference:* {{ invoice_no }}
-*Date:* {{ posting_date }}{{ balance_note_line }}{{ footer_contact_line }}""",
+*Date:* {{ posting_date }}{{ balance_note_line }}""",
 	"Payment Out": """*{{ company_name }}*
 
 Hi {{ party_name }},
@@ -93,7 +85,7 @@ Hi {{ party_name }},
 A payment of ₹{{ paid_amount }} has been processed.
 
 *Reference:* {{ invoice_no }}
-*Date:* {{ posting_date }}{{ footer_contact_line }}""",
+*Date:* {{ posting_date }}""",
 	"Sales Order": """🧾 *{{ company_name }}*
 
 Hi {{ customer_name }},
@@ -102,7 +94,7 @@ Your Sales Order has been created.
 
 *Order No:* {{ invoice_no }}
 *Date:* {{ posting_date }}
-*Amount:* ₹{{ grand_total }}{{ invoice_link_line }}{{ footer_contact_line }}
+*Amount:* ₹{{ grand_total }}{{ invoice_link_line }}
 
 Thank you!""",
 	"Purchase Order": """🧾 *{{ company_name }}*
@@ -113,16 +105,14 @@ A Purchase Order has been created.
 
 *Order No:* {{ invoice_no }}
 *Date:* {{ posting_date }}
-*Amount:* ₹{{ grand_total }}{{ footer_contact_line }}""",
+*Amount:* ₹{{ grand_total }}""",
 	"Estimate / Quotation": """🧾 *{{ company_name }}*
 
 Hi {{ customer_name }},
 
-Here's your estimate.
-
 *Estimate No:* {{ invoice_no }}
 *Date:* {{ posting_date }}
-*Amount:* ₹{{ grand_total }}{{ invoice_link_line }}{{ footer_contact_line }}
+*Amount:* ₹{{ grand_total }}{{ invoice_link_line }}
 
 Let us know if you'd like to go ahead!""",
 	"Proforma Invoice": """🧾 *{{ company_name }}*
@@ -131,20 +121,18 @@ Hi {{ customer_name }},
 
 *Proforma Invoice:* {{ invoice_no }}
 *Date:* {{ posting_date }}
-*Amount:* ₹{{ grand_total }}{{ invoice_link_line }}{{ footer_contact_line }}""",
+*Amount:* ₹{{ grand_total }}{{ invoice_link_line }}""",
 	"Delivery Challan": """🚚 *{{ company_name }}*
 
 Hi {{ customer_name }},
 
-Your goods are on the way.
-
 *Delivery Challan:* {{ invoice_no }}
-*Date:* {{ posting_date }}{{ footer_contact_line }}""",
+*Date:* {{ posting_date }}""",
 	"Cancelled Invoice": """*{{ company_name }}*
 
 Hi {{ customer_name }},
 
-Invoice {{ invoice_no }} dated {{ posting_date }} has been cancelled.{{ footer_contact_line }}""",
+Invoice {{ invoice_no }} dated {{ posting_date }} has been cancelled.""",
 }
 
 DOCTYPE_TRANSACTION_MAP = [
@@ -396,7 +384,10 @@ def build_message_context(doc, transaction_type: str) -> dict:
 
 	invoice_link_line = f"\nView bill: {invoice_link}" if invoice_link else ""
 	payment_link_line = f"\nPay online: {payment_link}" if payment_link else ""
-	footer_contact_line = f"\nQuestions? Call {company_doc.phone_no}." if company_doc and company_doc.phone_no else ""
+	# Phone number message me nahi jata (2026-09-25 bug report): kagaz par
+	# aur PDF me dukaan ka number pehle se hai, chat me dobara bhejna
+	# sirf message lamba karta tha.
+	footer_contact_line = ""
 	# What the party owes IN TOTAL, not just on this bill. A credit customer
 	# reading "Balance Due: ₹370" assumed that was everything they owed, while
 	# their account actually stood at ₹455 (2026-08-17 report). Only shown when
@@ -453,6 +444,121 @@ def _ensure_print_request():
 	frappe.local.request = Request(EnvironBuilder(method="GET").get_environ())
 
 
+# WhatsApp Library me har document ka apna naam hai; format ka naam uske
+# prefix se banta hai ("Santu A4 - Estimate - Standard A4"). Return ka apna
+# document type hai kyunki wo bill nahi, wapsi hai (2026-09-23).
+_A4_PREFIX = {
+	("Sales Invoice", False): ("Sales Invoice", ""),
+	("Sales Invoice", True): ("Sales Return", "Return"),
+	("Purchase Invoice", False): ("Purchase Invoice", "Purchase"),
+	("Purchase Invoice", True): ("Purchase Return", "Purchase Return"),
+	("Quotation", False): ("Quotation", "Estimate"),
+	("Sales Order", False): ("Sales Order", "Order"),
+	("Delivery Note", False): ("Delivery Note", "Challan"),
+	("Purchase Order", False): ("Purchase Order", "Purchase Order"),
+	("Payment Entry", False): ("Payment Entry", "Receipt"),
+	("Stock Entry", False): ("Stock Entry", "Goods Received"),
+}
+
+
+def _chosen_a4_format(doctype: str, name: str = None):
+	"""Invoice Settings > WhatsApp Library ka chuna hua A4 roop, agar wo sach
+	me ek Print Format hai. Kuch bhi gadbad ho to None -- bhejna kabhi ruke
+	nahi, bas purane layout par chala jaye."""
+	try:
+		is_return = False
+		if name and frappe.db.has_column(doctype, "is_return"):
+			is_return = bool(frappe.db.get_value(doctype, name, "is_return"))
+		doc_key, prefix = _A4_PREFIX.get((doctype, is_return), (doctype, ""))
+		settings = frappe.get_cached_doc("Santu POS Settings")
+		chosen = None
+		for row in settings.get("document_templates") or []:
+			if row.library == "WhatsApp Library" and row.document_type == doc_key:
+				chosen = row.template_name
+				break
+		for style in (chosen, "Standard A4"):
+			if not style:
+				continue
+			candidate = f"Santu A4 - {prefix} - {style}" if prefix else f"Santu A4 - {style}"
+			if frappe.db.exists("Print Format", {"name": candidate, "doc_type": doctype}):
+				return candidate
+	except Exception:
+		pass
+	return None
+
+
+#: What each kind of document is called when the customer sees the file name.
+_ATTACHMENT_LABELS = {
+	"Sales Invoice": "Bill",
+	"POS Invoice": "Bill",
+	"Purchase Invoice": "Purchase Bill",
+	"Quotation": "Estimate",
+	"Delivery Note": "Chalan",
+	"Payment Entry": "Payment",
+	"Sales Order": "Order",
+	"Purchase Order": "Purchase Order",
+}
+
+
+def attachment_file_name(doc, ext: str) -> str:
+	"""Name the WhatsApp attachment after the PARTY, not the docname.
+
+	The customer used to receive "SINV-26-01109-1.pdf" -- an internal code that
+	means nothing to them, and that looks identical to every other bill in
+	their chat (2026-09-25). It is now "<Party> - Bill <no>.<ext>".
+
+	The number on the end is what keeps several bills for the same customer
+	apart, so their WhatsApp does not end up holding three files with one
+	name. It is the shop's own bill number where the doctype has one
+	(santu_bill_no), otherwise the docname.
+	"""
+	from santu_hardware.santu_hardware.api import bill_label
+
+	party = (
+		doc.get("customer_name")
+		or doc.get("supplier_name")
+		or doc.get("party_name")
+		or doc.get("customer")
+		or doc.get("supplier")
+		or doc.get("party")
+		or ""
+	)
+	label = _ATTACHMENT_LABELS.get(doc.doctype, doc.doctype)
+	if doc.doctype in ("Sales Invoice", "POS Invoice") and doc.get("is_return"):
+		label = "Return"
+	elif doc.doctype == "Purchase Invoice" and doc.get("is_return"):
+		label = "Purchase Return"
+
+	# The docname must NEVER stand in for a bill number anywhere the shop or a
+	# customer can see it -- that is an absolute rule (see bill_label, and it
+	# applies to a file name just as much as to a slip). bill_label gives "—"
+	# when there is no number, and doctypes like Delivery Note and Payment
+	# Entry never have one, so those are told apart by date + time instead.
+	number = bill_label(doc.get("santu_bill_no")) or ""
+	if not number.strip() or number.strip() == "—":
+		stamp = doc.get("posting_date") or doc.get("transaction_date") or today()
+		try:
+			number = frappe.utils.formatdate(stamp, "dd-MM-yyyy")
+		except Exception:
+			number = str(stamp)
+		clock = str(doc.get("posting_time") or "")[:5].replace(":", "")
+		if clock:
+			number = f"{number} {clock}"
+
+	def clean(part):
+		# Only what a file system or WhatsApp actually chokes on. A character
+		# class of \w would have shredded Hindi names -- the matras are not
+		# word characters, so "श्याम" came out as "श य म".
+		part = re.sub(r'[\\/:*?"<>|\x00-\x1f]', " ", str(part or ""))
+		return re.sub(r"\s+", " ", part).strip(" .-")
+
+	# Trim the PARTY, never the tail: the number on the end is the whole point
+	# of the name, so it must survive a long shop name.
+	party = clean(party)[:45].strip(" .-")
+	stem = " - ".join(p for p in (party, f"{clean(label)} {clean(number)}".strip()) if p)
+	return f"{(stem or clean(label) or 'Bill')}.{ext}"
+
+
 def get_invoice_pdf_bytes(doc) -> tuple[bytes, str]:
 	"""Thermal bill for WhatsApp attachment.
 
@@ -477,31 +583,49 @@ def get_invoice_pdf_bytes(doc) -> tuple[bytes, str]:
 	"""
 	from santu_hardware.santu_hardware.api import _thermal_image_bytes
 
+	# PICTURE is only ever for the 80mm counter slip. Everything else -- above
+	# all the A4 bill -- goes as a PDF.
+	#
+	# This used to be one `print_format` variable for both paths, with the PDF
+	# return nested inside `if not print_format`. That held only while nothing
+	# filled the variable. The moment the WhatsApp A4 Library landed
+	# (2026-09-23) and the shop picked a layout, _chosen_a4_format() started
+	# returning "Santu A4 - Standard A4" -- so the PDF branch was skipped and
+	# the A4 bill fell through to the thermal-image renderer. Customers began
+	# getting a 2 MB PNG of an A4 page instead of the PDF, which is exactly
+	# what was reverted once before on 2026-08-19 ("wo pdf jo jata tha pahle
+	# whatsapp pe wahi same jane de... ye thermal image thoda thik naa hai").
+	# Kept as two separate variables so the two paths can never merge again.
 	thermal_formats = {
 		"POS Invoice": "Santu Hardware Thermal Bill",
 	}
-	print_format = thermal_formats.get(doc.doctype)
-	if not print_format:
-		print_format = frappe.db.get_value("DocType", doc.doctype, "default_print_format")
-		if not print_format:
-			print_format = frappe.db.get_value(
-				"Property Setter",
-				{"doc_type": doc.doctype, "property": "default_print_format"},
-				"value",
-			)
-		# No custom format saved is not an error — frappe.get_print(...,
-		# print_format=None, ...) renders Frappe's own standard layout for
-		# the doctype fine (Payment Entry has never had a custom one, and
-		# that's exactly the doctype this was blocking — 2026-08-19 bug
-		# report: "payment in ka pdf nh jaa raha"). Only throw for real
-		# failures, not "nobody customized this one yet".
+	thermal_format = thermal_formats.get(doc.doctype)
+	if thermal_format:
 		_ensure_print_request()
-		pdf_bytes = frappe.get_print(doc.doctype, doc.name, print_format, as_pdf=True)
-		return pdf_bytes, f"{doc.name}.pdf"
+		image_bytes = _thermal_image_bytes(doc.doctype, doc.name, thermal_format)
+		return image_bytes, attachment_file_name(doc, "png")
 
+	# Jo A4 roop shop ne Invoice Settings > WhatsApp Library me chuna hai,
+	# wahi bheja bhi jaye. Pehle ye chunav sirf preview badalta tha aur
+	# WhatsApp par hamesha wahi purana layout jata tha (2026-09-23).
+	pdf_format = _chosen_a4_format(doc.doctype, doc.name)
+	if not pdf_format:
+		pdf_format = frappe.db.get_value("DocType", doc.doctype, "default_print_format")
+	if not pdf_format:
+		pdf_format = frappe.db.get_value(
+			"Property Setter",
+			{"doc_type": doc.doctype, "property": "default_print_format"},
+			"value",
+		)
+	# No custom format saved is not an error — frappe.get_print(...,
+	# print_format=None, ...) renders Frappe's own standard layout for
+	# the doctype fine (Payment Entry has never had a custom one, and
+	# that's exactly the doctype this was blocking — 2026-08-19 bug
+	# report: "payment in ka pdf nh jaa raha"). Only throw for real
+	# failures, not "nobody customized this one yet".
 	_ensure_print_request()
-	image_bytes = _thermal_image_bytes(doc.doctype, doc.name, print_format)
-	return image_bytes, f"{doc.name}.png"
+	pdf_bytes = frappe.get_print(doc.doctype, doc.name, pdf_format, as_pdf=True)
+	return pdf_bytes, attachment_file_name(doc, "pdf")
 
 
 def create_message_log(**kwargs):
@@ -524,6 +648,8 @@ def send_transaction_message(
 	phone_field: str = "mobile",
 	message_type: str = "Transaction",
 	force: bool = False,
+	to_phone: str = None,
+	to_name: str = None,
 ) -> dict:
 	settings = frappe.get_single("Santu Transaction Message Settings")
 	doc = frappe.get_doc(doctype, name)
@@ -544,7 +670,12 @@ def send_transaction_message(
 
 	party_type = context.get("_party_type")
 	party_name = context.get("_party_name")
-	phone = get_party_phone(party_type, party_name, phone_field)
+	if to_phone:
+		phone = normalize_indian_phone(to_phone)
+		if not phone or len(phone) < 12:
+			frappe.throw("Sahi 10 digit WhatsApp number daalo.")
+	else:
+		phone = get_party_phone(party_type, party_name, phone_field)
 
 	if not phone:
 		frappe.throw("No WhatsApp number found for this party.")
@@ -567,15 +698,15 @@ def send_transaction_message(
 	# Use unified WhatsApp Connect send path
 	from santu_hardware.santu_hardware.whatsapp_connect_service import send_transaction_from_connect
 
-	result = send_transaction_from_connect(doctype, name, custom_message=custom_message)
+	result = send_transaction_from_connect(doctype, name, custom_message=custom_message, to_phone=to_phone, to_name=to_name)
 	if result.get("ok"):
 		create_message_log(
 			reference_doctype=doctype,
 			reference_name=name,
 			transaction_type=transaction_type,
 			message_type=message_type,
-			party_type=party_type,
-			party_name=party_name,
+			party_type=None if to_phone else party_type,
+			party_name=None if to_phone else party_name,
 			phone_number=phone,
 			message_body=message_body,
 			message_template_used=template,
@@ -585,10 +716,15 @@ def send_transaction_message(
 			sent_by=frappe.session.user,
 			sent_at=now_datetime(),
 		)
-		update_doc_whatsapp_status(doctype, name, "Sent")
+		# A share to some other number says nothing about whether the PARTY got
+		# their bill, so it must not flip the document's own WhatsApp status --
+		# that badge is read as "the customer has it".
+		if not to_phone:
+			update_doc_whatsapp_status(doctype, name, "Sent")
 		frappe.db.commit()
 	else:
-		update_doc_whatsapp_status(doctype, name, "Failed")
+		if not to_phone:
+			update_doc_whatsapp_status(doctype, name, "Failed")
 		frappe.db.commit()
 	return result
 

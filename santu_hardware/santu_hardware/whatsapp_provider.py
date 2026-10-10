@@ -66,6 +66,9 @@ class MetaCloudAPIProvider(WhatsAppProvider):
 		return {"ok": True, "display_phone_number": data.get("display_phone_number"), "verified_name": data.get("verified_name")}
 
 	def send_text(self, to: str, body: str) -> dict:
+		from santu_hardware.santu_hardware.smart_connect_bridge import block_non_live_send
+
+		block_non_live_send()  # Meta API too: never from a test copy / test user
 		to = _guard_recipient(to)
 		url = f"{self.api_url}/{self.phone_number_id}/messages"
 		payload = {
@@ -84,6 +87,9 @@ class MetaCloudAPIProvider(WhatsAppProvider):
 		return {"provider_message_id": msg_id, "raw": data}
 
 	def _upload_media(self, file_bytes: bytes, filename: str, mimetype: str = "application/pdf") -> str:
+		from santu_hardware.santu_hardware.smart_connect_bridge import block_non_live_send
+
+		block_non_live_send()  # Meta API too: never from a test copy / test user
 		url = f"{self.api_url}/{self.phone_number_id}/media"
 		headers = {"Authorization": f"Bearer {self.token}"}
 		files = {"file": (filename, file_bytes, mimetype)}
@@ -96,6 +102,9 @@ class MetaCloudAPIProvider(WhatsAppProvider):
 		return result.get("id")
 
 	def send_document(self, to: str, file_bytes: bytes, filename: str, caption: str = "") -> dict:
+		from santu_hardware.santu_hardware.smart_connect_bridge import block_non_live_send
+
+		block_non_live_send()  # Meta API too: never from a test copy / test user
 		to = _guard_recipient(to)
 		media_id = self._upload_media(file_bytes, filename)
 		url = f"{self.api_url}/{self.phone_number_id}/messages"
@@ -117,6 +126,9 @@ class MetaCloudAPIProvider(WhatsAppProvider):
 		return {"provider_message_id": msg_id, "raw": data}
 
 	def send_image(self, to: str, file_bytes: bytes, caption: str = "", mimetype: str = "image/png") -> dict:
+		from santu_hardware.santu_hardware.smart_connect_bridge import block_non_live_send
+
+		block_non_live_send()  # Meta API too: never from a test copy / test user
 		to = _guard_recipient(to)
 		media_id = self._upload_media(file_bytes, f"bill.{mimetype.split('/')[-1]}", mimetype)
 		url = f"{self.api_url}/{self.phone_number_id}/messages"

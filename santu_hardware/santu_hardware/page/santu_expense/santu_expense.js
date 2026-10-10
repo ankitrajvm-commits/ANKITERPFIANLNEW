@@ -111,6 +111,9 @@ window.santu_expense_page = {
 					</div>
 
 					<div class="santu-si2-table-wrap">
+						<!-- Only the table scrolls sideways; the search dropdown lives on
+						     the WRAP and must stay outside this box. -->
+						<div class="santu-si2-table-scroll">
 						<table class="santu-si2-table santu-exp-table">
 							<thead>
 								<tr>
@@ -130,6 +133,7 @@ window.santu_expense_page = {
 								</tr>
 							</tfoot>
 						</table>
+						</div>
 					</div>
 
 					<div class="santu-si2-lowerrow">
@@ -265,13 +269,12 @@ window.santu_expense_page = {
 	_party_search(q) {
 		const s = this.state;
 		const $dd = this.$root.find(".santu-si2-customer-dropdown");
-		if (!q || q.length < 2) {
+		if (!q) {
 			s.party = null;
 			s.party_name = null;
-			$dd.hide().empty();
-			return;
 		}
-		santu_purchase_invoice.api.search_suppliers(q).then((rows) => {
+		// Khaali box par bhi poori list (2026-09-23 report).
+		santu_purchase_invoice.api.list_suppliers_for_picker(q).then((rows) => {
 			$dd.empty();
 			(rows || []).forEach((p) => {
 				$(`
@@ -332,7 +335,7 @@ window.santu_expense_page = {
 			)
 			.then((r) => {
 				frappe.dom.unfreeze();
-				frappe.show_alert({ message: __("Saved {0}", [r.name]), indicator: "green" });
+				window.santu_save_buttons ? santu_save_buttons.saved_alert("Journal Entry", r) : frappe.show_alert({ message: __("Saved"), indicator: "green" });
 				window.santu_open_invoice_view("Journal Entry", r.name);
 			})
 			.catch(() => frappe.dom.unfreeze());

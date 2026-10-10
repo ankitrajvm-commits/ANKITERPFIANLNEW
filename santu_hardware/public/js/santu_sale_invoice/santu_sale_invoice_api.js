@@ -252,6 +252,9 @@ santu_sale_invoice.api = {
 	},
 	// One call for both "I'm typing a name/phone" and "show me everyone so I
 	// can scroll" -- an empty query lists all customers, most recent first.
+	list_suppliers_for_picker(q) {
+		return frappe.xcall("santu_hardware.santu_hardware.api.list_suppliers_for_picker", { query: q || "" });
+	},
 	list_customers_for_picker(q) {
 		return frappe.xcall("santu_hardware.santu_hardware.api.list_customers_for_picker", { query: q || "" });
 	},

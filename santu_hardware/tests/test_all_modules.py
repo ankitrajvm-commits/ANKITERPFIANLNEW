@@ -17,7 +17,7 @@ from santu_hardware.santu_hardware import transaction_message_api
 from santu_hardware.santu_hardware import whatsapp_connect_service
 
 def run_test_suite():
-	frappe.set_user("Administrator")
+	from santu_hardware.tests.claude_test_user import use_test_user_with_cleanup, TEST_USER; use_test_user_with_cleanup()  # never Administrator -- see claude_test_user.py
 	results = []
 
 	def _test(name, fn):
@@ -484,6 +484,19 @@ def run_test_suite():
 		frappe.db.commit()
 	except Exception:
 		pass
+
+	# The bills/estimate above were deleted, but each one took a number from
+	# the shop's counter. Pin the counters back on the highest number that
+	# still exists, or the next real bill skips ahead (2026-09-10).
+	for series, dts in (("SANTU-BILL-NO", ("Sales Invoice", "POS Invoice")),
+	                    ("SANTU-ESTIMATE-NO", ("Quotation",))):
+		top = 0
+		for dt in dts:
+			if frappe.db.has_column(dt, "santu_bill_no"):
+				top = max(top, int(frappe.db.sql(f"select ifnull(max(santu_bill_no),0) from `tab{dt}`")[0][0] or 0))
+		if top:
+			frappe.db.sql("update tabSeries set current=%s where name=%s", (top, series))
+	frappe.db.commit()
 
 	# ------------------------------------------------------------
 	# SUMMARY

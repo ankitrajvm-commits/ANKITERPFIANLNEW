@@ -12,7 +12,10 @@ def create_session():
 	frappe.local.request = SimpleNamespace(cookies={"sid": "Guest"})
 	from frappe.sessions import Session
 
-	s = Session(user="Administrator", resume=False)
+	from santu_hardware.tests.claude_test_user import TEST_USER, ensure_test_user
+
+	ensure_test_user()
+	s = Session(user=TEST_USER, resume=False)  # never Administrator -- see claude_test_user.py
 	return {"sid": s.sid, "user": s.user}
 
 

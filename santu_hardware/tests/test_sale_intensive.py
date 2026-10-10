@@ -86,7 +86,7 @@ def run_sale_tests(frappe, report: TestReport):
 	from santu_hardware.santu_hardware.transaction_message_api import get_send_preview
 	from santu_hardware.santu_hardware.smart_connect_bridge import read_bridge_status
 
-	frappe.set_user("Administrator")
+	from santu_hardware.tests.claude_test_user import use_test_user_with_cleanup, TEST_USER; use_test_user_with_cleanup()  # never Administrator -- see claude_test_user.py
 
 	# 1. Dashboard — all views
 	for view in VIEWS:
@@ -143,7 +143,7 @@ def run_sale_tests(frappe, report: TestReport):
 	# 7. Create + submit test invoice
 	def _save_invoice():
 		init = get_sale_invoice_init()
-		customer = init.get("default_customer") or "Walk-in Customer"
+		customer = init.get("default_customer") or "SALES"
 		db_items = frappe.get_all(
 			"Item", filters={"disabled": 0, "is_sales_item": 1}, fields=["name"], limit=1
 		)
@@ -171,7 +171,8 @@ def run_sale_tests(frappe, report: TestReport):
 			],
 			"payments": [{"mode_of_payment": init.get("default_mode_of_payment") or "Cash", "amount": rate}],
 		}
-		inv = save_sale_invoice(json.dumps(payload), submit=1)
+		# draft only: a submitted test bill eats a real bill number (844 -> gap)
+		inv = save_sale_invoice(json.dumps(payload), submit=0)
 		assert inv.get("name"), "invoice not created"
 		report._last_invoice = inv["name"]
 		report._last_doctype = "Sales Invoice"
@@ -207,6 +208,16 @@ def run_sale_tests(frappe, report: TestReport):
 
 		_run("whatsapp.preview", _wa_preview, report)
 
+	# 10b. Remove the draft made in step 7 -- only if it is ours and still a draft
+	if getattr(report, "_last_invoice", None):
+		def _cleanup_draft():
+			d = frappe.db.get_value("Sales Invoice", report._last_invoice, ["docstatus", "owner"], as_dict=True)
+			assert d and d.docstatus == 0 and d.owner == TEST_USER, f"not our draft: {d}"
+			frappe.delete_doc("Sales Invoice", report._last_invoice, force=1, ignore_permissions=True)
+			frappe.db.commit()
+
+		_run("sale_invoice.cleanup_draft", _cleanup_draft, report)
+
 	# 11. Bridge status
 	def _bridge():
 		st = read_bridge_status()
@@ -214,28 +225,10 @@ def run_sale_tests(frappe, report: TestReport):
 
 	_run("whatsapp.bridge_status", _bridge, report)
 
-	# 12. WhatsApp send (only if connected + party has phone)
-	if inv_name:
-		def _wa_send():
-			st = read_bridge_status()
-			if st.get("state") != "CONNECTED":
-				raise AssertionError("skip: bridge not connected")
-			# Prefer an invoice for a customer that has a mobile number
-			phone_inv = frappe.db.sql(
-				"""
-				SELECT si.name FROM `tabSales Invoice` si
-				INNER JOIN `tabCustomer` c ON c.name = si.customer
-				WHERE si.docstatus = 1 AND IFNULL(c.mobile_no, '') != ''
-				ORDER BY si.creation DESC LIMIT 1
-				"""
-			)
-			target = phone_inv[0][0] if phone_inv else inv_name
-			from santu_hardware.santu_hardware.transaction_message_api import send_whatsapp_message
-
-			r = send_whatsapp_message("Sales Invoice", target)
-			assert r.get("ok"), r.get("error") or r.get("message")
-
-		_run("whatsapp.send_with_pdf", _wa_send, report)
+	# 12. WhatsApp send -- REMOVED 2026-09-10. It picked the newest real bill
+	# with a phone and really sent it (SAILENDRA KR got his bill 844 from a
+	# test run). A test must never message a real customer; the preview above
+	# already covers message + PDF building without sending.
 
 	# 13. Validation — no customer
 	def _val_no_customer():
@@ -243,24 +236,26 @@ def run_sale_tests(frappe, report: TestReport):
 			save_sale_invoice(json.dumps({"items": [{"item_code": "X", "qty": 1}]}), submit=0)
 			raise AssertionError("should have thrown")
 		except Exception as e:
-			assert "customer" in str(e).lower()
+			# the app speaks Hinglish to the counter: "Grahak chuniye."
+			assert any(w in str(e).lower() for w in ("customer", "grahak")), str(e)
 
 	_run("validation.no_customer", _val_no_customer, report)
 
 	# 14. Validation — no items
 	def _val_no_items():
 		try:
-			save_sale_invoice(json.dumps({"customer": "Walk-in Customer", "items": []}), submit=0)
+			save_sale_invoice(json.dumps({"customer": "SALES", "items": []}), submit=0)
 			raise AssertionError("should have thrown")
 		except Exception as e:
-			assert "item" in str(e).lower()
+			# "Kam se kam ek saaman daaliye."
+			assert any(w in str(e).lower() for w in ("item", "saaman")), str(e)
 
 	_run("validation.no_items", _val_no_items, report)
 
 	# 15. Item row rate should not be zero when price list has a rate
 	def _item_row_rate():
 		init = get_sale_invoice_init()
-		customer = "Walk-in Customer"
+		customer = "SALES"  # the shop's walk-in bucket
 		item = frappe.db.get_value("Item", {"disabled": 0, "is_sales_item": 1}, "name")
 		if not item:
 			raise AssertionError("no item")
@@ -295,7 +290,7 @@ def soak_loop(duration_sec: int, interval_sec: int = 60):
 	import frappe
 
 	os.chdir(str(Path(__file__).resolve().parents[4] / "sites"))
-	frappe.init(site="site1.local")
+	frappe.init(site=__import__("os").environ.get("SANTU_TEST_SITE", "scratch.local"))
 	frappe.connect()
 
 	report = TestReport(started=datetime.now().isoformat())
@@ -333,7 +328,7 @@ def main():
 	# Single run (for bench run-tests)
 	import frappe
 
-	frappe.init(site="site1.local")
+	frappe.init(site=__import__("os").environ.get("SANTU_TEST_SITE", "scratch.local"))
 	frappe.connect()
 	report = TestReport(started=datetime.now().isoformat())
 	run_sale_tests(frappe, report)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import frappe
+from frappe.utils import cint
 from frappe.utils import now_datetime
 
 from santu_hardware.santu_hardware.transaction_message_service import (
@@ -166,9 +167,9 @@ def get_message_preview(transaction_type: str = "Sales Transaction", template: s
 
 
 @frappe.whitelist()
-def send_whatsapp_message(doctype: str, name: str, custom_message: str = None, phone_field: str = "mobile"):
+def send_whatsapp_message(doctype: str, name: str, custom_message: str = None, phone_field: str = "mobile", to_phone: str = None, to_name: str = None):
 	_require_access()
-	return send_transaction_message(doctype, name, custom_message=custom_message, phone_field=phone_field, force=True)
+	return send_transaction_message(doctype, name, custom_message=custom_message, phone_field=phone_field, force=True, to_phone=to_phone, to_name=to_name)
 
 
 @frappe.whitelist()
@@ -223,7 +224,7 @@ def retry_whatsapp_message(log_name: str):
 @frappe.whitelist()
 def get_message_history(page: int = 1, page_size: int = 50, search: str = None):
 	_require_manager()
-	page, page_size = int(page or 1), min(int(page_size or 50), 200)
+	page, page_size = max(cint(page), 1), min(cint(page_size) or 50, 200)
 	filters = {}
 	if search:
 		filters["party_name"] = ["like", f"%{search}%"]

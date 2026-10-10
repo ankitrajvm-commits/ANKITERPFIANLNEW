@@ -35,6 +35,9 @@ IGNORED_ERROR_TITLES = (
 	"Scheduled Job Type",
 	"Error in Scheduled Job",
 	"Backup Job",
+	# Frappe's daily "what's new" fetch from frappe.io. The shop runs on
+	# localhost, often offline; nothing to fix (BUG-20260913-01015).
+	"Failed to fetch changelog",
 )
 
 
@@ -114,7 +117,17 @@ def record_bug(
 				"fingerprint": fp,
 			}
 		)
-		doc.insert(ignore_permissions=True)
+		try:
+			doc.insert(ignore_permissions=True)
+		except frappe.QueryDeadlockError:
+			# 1020 on `tabseries` (BUG-20260913-01027): the BUG-##### counter
+			# was being bumped by another process. Rolling back here is not
+			# an option -- this often runs inside Error Log's own insert --
+			# so skip the counter and name the row from its fingerprint.
+			doc = frappe.get_doc(doc.as_dict())
+			doc.name = f"BUG-{now_datetime():%Y%m%d%H%M%S}-{fp[:6]}"
+			doc.flags.name_set = True
+			doc.insert(ignore_permissions=True, set_name=doc.name)
 		return doc.name
 	except Exception:
 		# Last resort only — do not recurse back into record_bug. The insert
@@ -229,7 +242,12 @@ def report_browser_errors(errors):
 	import json
 
 	if isinstance(errors, str):
-		errors = json.loads(errors)
+		try:
+			errors = json.loads(errors)
+		except Exception:
+			errors = []  # a broken report must not become an error of its own
+	if not isinstance(errors, list):
+		errors = []
 	names = []
 	for err in errors or []:
 		names.append(

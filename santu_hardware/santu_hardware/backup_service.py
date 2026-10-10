@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import os
 from datetime import datetime, timedelta
 
@@ -106,21 +108,50 @@ def _verify_backup_file(db_path: str | None) -> tuple[bool, str]:
 	return True, f"OK — {size} bytes, decompresses cleanly, dump completed"
 
 
-def create_site_backup(backup_type: str = "Manual", include_files: bool = True, location: str = "Local Server"):
-	"""Create a real Frappe site backup and log it."""
-	_require_system_manager()
+from santu_hardware.santu_hardware.singles_write import set_single_fields
 
-	log = frappe.get_doc(
-		{
-			"doctype": "Santu Backup Log",
-			"backup_type": backup_type,
-			"location": location,
-			"status": "In Progress",
-			"created_by_user": frappe.session.user,
-		}
-	)
-	log.insert(ignore_permissions=True)
-	frappe.db.commit()
+
+def create_site_backup(backup_type: str = "Manual", include_files: bool = True, location: str = "Local Server"):
+	"""Create a real Frappe site backup and log it.
+
+	One backup at a time. On 2026-09-11 12:25:29 the hourly backup and the
+	2-hourly snapshot started in the same second; Frappe names the dump by
+	the second, so both wrote ONE file and both came out corrupt ("Not a
+	gzipped file"). The lock makes the second one wait for the first.
+	"""
+	_require_system_manager()
+	from frappe.utils.synchronization import filelock
+
+	with filelock("santu_site_backup", timeout=900):
+		time.sleep(1.1)  # never reuse the previous dump's timestamp-to-the-second name
+		return _create_site_backup(backup_type, include_files, location)
+
+
+def _create_site_backup(backup_type: str, include_files: bool, location: str):
+
+	log_fields = {
+		"doctype": "Santu Backup Log",
+		"backup_type": backup_type,
+		"location": location,
+		"status": "In Progress",
+		"created_by_user": frappe.session.user,
+	}
+	# The log's own number comes from `tabseries`; the hourly backup and the
+	# 2-hourly snapshot (and any bill) can bump that same table at once and
+	# MariaDB answers 1020 (BUG-20260905-00581 again, 2026-09-19 07:45).
+	# Nothing else is in this transaction yet, so a fresh retry is safe.
+	for attempt in range(5):
+		try:
+			frappe.db.commit()
+			log = frappe.get_doc(dict(log_fields))
+			log.insert(ignore_permissions=True)
+			frappe.db.commit()
+			break
+		except frappe.QueryDeadlockError:
+			frappe.db.rollback()
+			if attempt == 4:
+				raise
+			time.sleep(0.5 * (attempt + 1))
 
 	try:
 		odb = new_backup(force=True, ignore_files=not include_files)
@@ -178,15 +209,16 @@ def create_site_backup(backup_type: str = "Manual", include_files: bool = True, 
 		if backup_type != "Snapshot":
 			# Snapshots run on their own 2-hourly clock and must not move the
 			# nightly full backup's schedule or masquerade as it.
-			frappe.db.set_value(
+			# Retrying helper: the dump is verified by now, and a 1020 on this
+			# bookkeeping write was still marking good backups Failed
+			# (SBL-20260911-00953, SBL-20260913-01036).
+			set_single_fields(
 				"Santu Backup Settings",
-				None,
 				{
 					"last_backup_on": now_datetime(),
 					"last_backup_status": "Success",
 					"next_backup_on": compute_next_backup_time(settings),
 				},
-				update_modified=False,
 			)
 
 		_cleanup_old_backups(cint(settings.retention_count) or 10)
@@ -199,9 +231,10 @@ def create_site_backup(backup_type: str = "Manual", include_files: bool = True, 
 			# Same targeted write as the success path — recording a FAILURE
 			# must never be the thing that throws (it was: the full save
 			# hit the same tabSingles collision and buried the real error).
-			frappe.db.set_value(
-				"Santu Backup Settings", None, "last_backup_status", "Failed", update_modified=False
-			)
+			try:
+				set_single_fields("Santu Backup Settings", {"last_backup_status": "Failed"})
+			except Exception:
+				pass  # never let the bookkeeping hide the real error
 		frappe.db.commit()
 		frappe.log_error(title="Santu Backup Failed", message=frappe.get_traceback())
 		raise

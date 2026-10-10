@@ -53,13 +53,73 @@ SANTU_THERMAL_DOCTYPES = {
 }
 
 
-def _thermal_format_for(invoice_doctype: str) -> str:
+
+# The test user must never reach paper. On 2026-09-18 a suite check called
+# print_customer_khata("BRIJ KISHOR SINGH") for real and the counter printer
+# pushed out his account statement mid-afternoon. Every route to the printer
+# (CUPS lp, raw USB, khata, test print) checks this first.
+TEST_USER_NO_PRINT = "claude.test@santuhardware.local"
+
+
+class TestUserPrintBlocked(frappe.ValidationError):
+	pass
+
+
+def block_test_user_printing():
+	if frappe.session and frappe.session.user == TEST_USER_NO_PRINT:
+		raise TestUserPrintBlocked("Test user cannot send anything to the real printer.")
+	# the printer is one device for the whole Mac: a test copy of the site
+	# (scratch.local) must never reach it either
+	if getattr(frappe.local, "site", None) != "site1.local":
+		raise TestUserPrintBlocked("Only the live shop site may print.")
+
+def _library_style(library: str, document_type: str):
+	"""Invoice Settings me us document ke liye chuna hua roop (ya None)."""
+	try:
+		settings = frappe.get_cached_doc("Santu POS Settings")
+		for row in settings.get("document_templates") or []:
+			if row.library == library and row.document_type == document_type:
+				return row.template_name
+	except Exception:
+		pass
+	return None
+
+
+def _thermal_format_for(invoice_doctype: str, name: str = None) -> str:
 	# A Sales Invoice honours the template the shop picked in Printer Settings.
 	# Each template is its own Print Format ("Santu Thermal - <name>"), so the
 	# choice is a real change of layout, not a label -- and the same format the
 	# preview showed is the one that reaches the printer. Anything missing or
 	# unset falls straight back to the long-standing default, so a bad value in
 	# settings can never stop a bill printing.
+	# Return ki apni parchi hai -- "Santu Thermal - Return - <roop>" -- kyunki
+	# wo bill nahi, wapsi hai (2026-09-23). Wahi baat purchase return ki.
+	LIB = "Thermal Invoice Library"
+	DOC_KEYS = {
+		("Sales Invoice", True): ("Sales Return", "Return"),
+		("Purchase Invoice", True): ("Purchase Return", "Purchase Return"),
+		("Quotation", False): ("Quotation", "Estimate"),
+		("Sales Order", False): ("Sales Order", "Order"),
+		("Delivery Note", False): ("Delivery Note", "Challan"),
+		("Purchase Invoice", False): ("Purchase Invoice", "Purchase"),
+		("Purchase Order", False): ("Purchase Order", "Purchase Order"),
+		("Payment Entry", False): ("Payment Entry", "Receipt"),
+		("Stock Entry", False): ("Stock Entry", "Goods Received"),
+	}
+	is_return = False
+	if name and frappe.db.has_column(invoice_doctype, "is_return"):
+		is_return = bool(frappe.db.get_value(invoice_doctype, name, "is_return"))
+	key = DOC_KEYS.get((invoice_doctype, is_return))
+	if key:
+		doc_key, prefix = key
+		chosen = _library_style(LIB, doc_key) or "Standard"
+		candidate = f"Santu Thermal - {prefix} - {chosen}"
+		if frappe.db.exists("Print Format", candidate):
+			return candidate
+		candidate = f"Santu Thermal - {prefix} - Standard"
+		if frappe.db.exists("Print Format", candidate):
+			return candidate
+
 	if invoice_doctype == "Sales Invoice":
 		try:
 			chosen = frappe.db.get_single_value("Santu POS Settings", "invoice_template_style")
@@ -78,6 +138,18 @@ def _thermal_format_for(invoice_doctype: str) -> str:
 			)
 		)
 	return fmt
+
+def _run_lp(args, **kwargs):
+	"""The ONLY way this file hands a job to CUPS. The site/user check is
+	inline so a test cannot disable it by replacing block_test_user_printing
+	(2026-09-19: that is how a test printed a real customer's statement)."""
+	import subprocess
+
+	if getattr(frappe.local, "site", None) != "site1.local" or \
+			getattr(getattr(frappe, "session", None), "user", None) == TEST_USER_NO_PRINT:
+		raise TestUserPrintBlocked("Paper is for the live shop only (site/user not allowed to print).")
+	return subprocess.run(args, **kwargs)
+
 
 
 # Epson TM-T82X-II, Font A, 80 mm roll: 576 dots / 12 dots per char.
@@ -131,7 +203,7 @@ def escpos_bill_bytes(doctype: str, name: str, is_duplicate: bool = False) -> by
 	thing that broke. It carries what a customer and the shop actually need:
 	who, what, how much, what is still owed.
 	"""
-	_thermal_format_for(doctype)
+	_thermal_format_for(doctype, name)
 	doc = frappe.get_doc(doctype, name)
 	settings = frappe.get_single("Santu POS Settings")
 
@@ -488,13 +560,14 @@ def print_via_cups(invoice_doctype: str, invoice_name: str, is_duplicate=0):
 	cut-behavior flag, not a page-geometry one, so it doesn't carry the risk
 	the comment above warns about.
 	"""
+	block_test_user_printing()
 	import os
 	import subprocess
 	import tempfile
 
 	from santu_hardware.santu_hardware.api import _print_request_context, _thermal_pdf_bytes
 
-	print_format = _thermal_format_for(invoice_doctype)
+	print_format = _thermal_format_for(invoice_doctype, invoice_name)
 	queue = _cups_queue_name()
 	# The bill template calls frappe.call() from Jinja, which needs an HTTP
 	# request. That exists when the browser triggers a print and not when the
@@ -511,7 +584,7 @@ def print_via_cups(invoice_doctype: str, invoice_name: str, is_duplicate=0):
 			path = fh.name
 
 		title = f"{invoice_name}{' DUPLICATE' if cint(is_duplicate) else ''}"
-		result = subprocess.run(
+		result = _run_lp(
 			["lp", "-d", queue, "-o", "TmxPaperCut=CutPerJob", "-t", title, path],
 			capture_output=True,
 			text=True,
@@ -570,6 +643,7 @@ def test_print():
 	A test print that uses a different path from the bill can pass while
 	bills fail, which is exactly how the shop ended up trusting QZ Tray.
 	"""
+	block_test_user_printing()
 	from santu_hardware.santu_hardware.api import _usb_send
 
 	slip = b"".join([
@@ -609,7 +683,7 @@ def test_print():
 			fh.write(slip)
 			path = fh.name
 		try:
-			result = subprocess.run(
+			result = _run_lp(
 				["lp", "-d", queue, "-o", "TmxPaperCut=CutPerJob", path], capture_output=True, text=True, timeout=20
 			)
 			if result.returncode != 0:
@@ -631,6 +705,7 @@ def print_via_usb(invoice_doctype: str, invoice_name: str, is_duplicate=0):
 	Deliberately server-side: this path exists precisely for when the
 	browser's route to the printer (QZ Tray) is the thing that is broken.
 	"""
+	block_test_user_printing()
 	from santu_hardware.santu_hardware.api import _usb_send
 
 	payload = escpos_bill_bytes(invoice_doctype, invoice_name, is_duplicate=cint(is_duplicate))
@@ -644,9 +719,16 @@ def open_print_jobs(hours: int = 24):
 	from frappe.utils import add_to_date
 
 	since = add_to_date(now_datetime(), hours=-int(hours))
+	# A print takes a couple of seconds: the job is "Queued" while the paper
+	# is still coming out. The screen asks for this list the moment a bill is
+	# saved, so a bill that printed perfectly was being announced as "Ye bill
+	# print nahi hue" every single time -- the shop dismissed that false
+	# alarm on nearly every bill from 14 to 20 Sept. Anything younger than
+	# this is still on its way, not a failure (2026-09-21).
+	settling = add_to_date(now_datetime(), seconds=-45)
 	jobs = frappe.get_all(
 		"Santu Print Job",
-		filters={"creation": (">", since), "status": ("in", ["Queued", "Failed", "Not Printed"])},
+		filters={"creation": (">", since), "modified": ("<", settling), "status": ("in", ["Queued", "Failed", "Not Printed"])},
 		fields=["name", "invoice_doctype", "invoice_name", "status", "method", "attempts", "error_message"],
 		order_by="creation desc",
 		limit_page_length=50,
@@ -827,10 +909,13 @@ def _print_party_khata(
 	`compact` drops the item breakdown per bill (2026-09-06) — see
 	api._customer_khata_thermal_html. Only Rung 1 (CUPS, the PDF renderer)
 	honours it; Rung 2's raw ESC/POS text is already terse and stays as is."""
+	block_test_user_printing()
 	import os
 	import subprocess
 	import tempfile
-	from santu_hardware.santu_hardware.api import _thermal_khata_pdf_bytes
+	# _usb_send was never imported here, so the khata's USB fallback died with
+	# "name '_usb_send' is not defined" every time CUPS jammed (seen 2026-09-18).
+	from santu_hardware.santu_hardware.api import _thermal_khata_pdf_bytes, _usb_send
 
 	job = None
 	try:
@@ -849,7 +934,7 @@ def _print_party_khata(
 					fh.write(pdf)
 					path = fh.name
 
-				result = subprocess.run(
+				result = _run_lp(
 					["lp", "-d", queue, "-o", "TmxPaperCut=CutPerJob", "-t", f"Account-{customer}", path],
 					capture_output=True,
 					text=True,

@@ -42,16 +42,15 @@ def create_hardware_uoms():
 	are the purchase-pack units. The site was set up via bench CLI rather than
 	the browser Setup Wizard, so none of ERPNext's default UOMs exist yet.
 
-	must_be_whole_number is False only for Litre — paint is sold in fractional
-	litres (e.g. 2.5L custom-mixed), everything else here is counted in whole units.
+	must_be_whole_number is off for every UOM -- see allow_fractional_quantities.
 	"""
 	uoms = [
-		{"uom_name": "Nos", "must_be_whole_number": 1},
+		{"uom_name": "Nos", "must_be_whole_number": 0},
 		{"uom_name": "Litre", "must_be_whole_number": 0},
-		{"uom_name": "Box", "must_be_whole_number": 1},
-		{"uom_name": "Bundle", "must_be_whole_number": 1},
-		{"uom_name": "Packet", "must_be_whole_number": 1},
-		{"uom_name": "Can", "must_be_whole_number": 1},
+		{"uom_name": "Box", "must_be_whole_number": 0},
+		{"uom_name": "Bundle", "must_be_whole_number": 0},
+		{"uom_name": "Packet", "must_be_whole_number": 0},
+		{"uom_name": "Can", "must_be_whole_number": 0},
 	]
 
 	for uom in uoms:
@@ -685,3 +684,33 @@ def enforce_unique_supplier_bill_numbers():
 		frappe.db.commit()
 		return True
 	return False
+
+
+def uom_allow_fraction(doc, method=None):
+	doc.must_be_whole_number = 0
+
+
+def allow_fractional_quantities():
+	"""Turn the "Must be Whole Number" lock off on every UOM.
+
+	2026-09-18: a counter bill stopped with "Row 7: Quantity (9.5) cannot be
+	a fraction ... in UOM Nos". The shop sells loose and cut goods by the
+	half, and a bill that cannot be saved is worse than any typo the lock
+	might catch. Re-asserted after every migrate, and UOM validate keeps new
+	units the same, so it cannot come back.
+	"""
+	frappe.db.sql("update `tabUOM` set must_be_whole_number = 0 where must_be_whole_number = 1")
+	frappe.db.commit()
+
+
+
+def create_payment_request_key_field():
+	"""Payment Entry.custom_request_key -- one Save on the Payment In/Out
+	screen = one payment, even if the click repeats or the network retries
+	(2026-09-19). Hidden; never copied to an amended payment."""
+	create_custom_fields({
+		"Payment Entry": [{
+			"fieldname": "custom_request_key", "label": "Request Key", "fieldtype": "Data",
+			"hidden": 1, "read_only": 1, "no_copy": 1, "insert_after": "remarks", "search_index": 1,
+		}]
+	}, ignore_validate=True)

@@ -188,8 +188,27 @@ window.santu_payment_entry_page = {
 		return this.tabs.find((t) => t.id === this.active_id) || this.tabs[0];
 	},
 
+	// A tab left open (or restored from localStorage) from an earlier day
+	// kept that day's date, so a sale/payment made today was booked on the
+	// old date -- Payment In showed 06/09 on 19/09 (2026-09-19). Billing,
+	// Estimate and Returns already roll forward; this does the same, but a
+	// date the user picked by hand TODAY (date_set_on) is left alone.
+	_roll_dates_forward() {
+		const today = frappe.datetime.get_today();
+		let changed = false;
+		(this.tabs || []).forEach((t) => {
+			if (t.saved || t.editing || t.saved_challan || t.saved_doc || t.saved_invoice || t.saved_order) return;
+			if (t.posting_date && t.posting_date < today && (t.date_set_on || "") < today) {
+				t.posting_date = today;
+				changed = true;
+			}
+		});
+		if (changed && this._persist) this._persist();
+	},
+
 	render() {
 		if (!this.tabs.length) this._new_bill(false);
+		this._roll_dates_forward();
 		const b = this._payment();
 		if (this.page && this.page.set_title) this.page.set_title(this._screen_title());
 		$(this.page.body).html(`
@@ -364,7 +383,7 @@ window.santu_payment_entry_page = {
 				const label = p.customer_name || p.supplier_name || p.name;
 				$(`
 					<div class="santu-bill-cust-row">
-						<span>${frappe.utils.escape_html(label)}</span>
+						<span class="santu-bill-cust-namecol"><span class="santu-bill-cust-name">${frappe.utils.escape_html(label)}</span>${p.santu_village ? `<span class="santu-bill-cust-village">${frappe.utils.escape_html(p.santu_village)}</span>` : ""}</span>
 						<span class="santu-bill-cust-phone">${frappe.utils.escape_html(p.mobile_no || "—")}</span>
 					</div>
 				`)
@@ -380,26 +399,11 @@ window.santu_payment_entry_page = {
 			$dd.show();
 		};
 
-		if (!q || q.length < 2) {
-			draw([]);
-			return;
-		}
+		// Khaali box par bhi poori list (jinse haal me kaam hua wo upar) --
+		// Billing me ye pehle se tha, Payment me nahi (2026-09-23 report).
 		const api = this._party_api(b).api;
-		if (is_in) {
-			Promise.all([api.search_customers(q), api.search_customers_by_phone(q)]).then(([by_name, by_phone]) => {
-				const rows = by_name || [];
-				const seen = new Set(rows.map((r) => r.name));
-				(by_phone || []).forEach((r) => {
-					if (!seen.has(r.name)) {
-						seen.add(r.name);
-						rows.push(r);
-					}
-				});
-				draw(rows);
-			});
-		} else {
-			api.search_suppliers(q).then((rows) => draw(rows || []));
-		}
+		const search = is_in ? api.list_customers_for_picker(q) : api.list_suppliers_for_picker(q);
+		search.then((rows) => draw(rows || [])).catch(() => draw([]));
 	},
 
 	_select_party(name) {
@@ -550,6 +554,7 @@ window.santu_payment_entry_page = {
 
 		$r.find(".santu-pay-date").on("change", (e) => {
 			this._payment().posting_date = $(e.target).val();
+			this._payment().date_set_on = frappe.datetime.get_today();
 			this._persist_soon();
 		});
 		$r.find(".santu-pay-mode").on("change", (e) => {
@@ -609,7 +614,16 @@ window.santu_payment_entry_page = {
 		// Booked as a lump sum against the party, not any one bill (2026-09-03:
 		// "full bill se minus hona chahiye, individual bill se nahi") —
 		// create_payment_entry no longer takes/uses per-invoice allocations.
+		// One key per Save: a double-click or a retry after the network drops
+		// sends the same key, and the server hands back the SAME payment
+		// instead of booking it twice (2026-09-19).
+		if (!b.request_key) {
+			b.request_key = frappe.utils.get_random(20);
+			this._persist(); // at once, not debounced: a reload right after Save must not lose it
+		}
 		const submit = () => {
+			if (this._saving) return;
+			this._saving = true;
 			frappe.dom.freeze(__("Saving…"));
 			frappe
 				.xcall("santu_hardware.santu_hardware.api.create_payment_entry", {
@@ -620,10 +634,12 @@ window.santu_payment_entry_page = {
 					posting_date: b.posting_date,
 					reference_no: b.reference_no || null,
 					remarks: b.remarks || null,
+					request_key: b.request_key,
 				})
 				.then((r) => {
+					this._saving = false;
 					frappe.dom.unfreeze();
-					frappe.show_alert({ message: __("Saved {0}", [r.name]), indicator: "green" });
+					window.santu_save_buttons ? santu_save_buttons.saved_alert("Payment Entry", r) : frappe.show_alert({ message: __("Saved"), indicator: "green" });
 					this._show_payment_share_popup(r.name, b, amount);
 					b.saved = { name: r.name };
 					// Receipt done: drop this tab and open a clean one, the
@@ -634,7 +650,10 @@ window.santu_payment_entry_page = {
 					this._persist_soon();
 					this.render();
 				})
-				.catch(() => frappe.dom.unfreeze());
+				.catch(() => {
+					this._saving = false;
+					frappe.dom.unfreeze();
+				});
 		};
 
 		const advance = amount - flt(b.total_outstanding);
@@ -658,7 +677,7 @@ window.santu_payment_entry_page = {
 	// new send path is needed, just the button).
 	_show_payment_share_popup(name, b, amount) {
 		const d = new frappe.ui.Dialog({
-			title: __("Payment Saved — {0}", [name]),
+			title: "✅ Payment save ho gaya",
 			fields: [
 				{
 					fieldtype: "HTML",
@@ -678,6 +697,10 @@ window.santu_payment_entry_page = {
 			},
 		});
 		d.set_secondary_action_label(__("Close"));
+		d.add_custom_action(__("Kisi aur ko bhejein"), () => {
+			if (window.santu_whatsapp_share) window.santu_whatsapp_share.send_transaction("Payment Entry", name, { other: true });
+			d.hide();
+		});
 		d.show();
 	},
 };

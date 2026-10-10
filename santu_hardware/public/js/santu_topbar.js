@@ -1001,9 +1001,17 @@ window.santu_open_payment_modes = function () {
 };
 
 window.santu_scroll_row_into_view = function ($root, opts = {}) {
+	// Adding several items quickly used to queue several of these, each with
+	// its own smooth animation, and they fought each other -- the screen went
+	// up, down, up, down and looked like the app had hung (2026-09-21:
+	// "upar niche upar niche wo ja raha h, yani mobile jese hang krta hai").
+	// Only the newest request survives, and nothing animates: the row simply
+	// IS where it should be on the next frame.
+	if (window.__santu_scroll_raf) cancelAnimationFrame(window.__santu_scroll_raf);
 	// The POS grid is rebuilt synchronously, but it must be measured after
 	// layout. requestAnimationFrame is the browser's post-frame callback.
-	requestAnimationFrame(() => {
+	window.__santu_scroll_raf = requestAnimationFrame(() => {
+		window.__santu_scroll_raf = null;
 		// Matched on data-row alone, NOT on `.santu-bill-tr`. Only Billing
 		// puts that class on its rows -- Estimate, Sales Return and Purchase
 		// Return all called this function and it silently found nothing, so
@@ -1018,6 +1026,19 @@ window.santu_scroll_row_into_view = function ($root, opts = {}) {
 
 		const row = $target[0];
 		const padding = 10;
+		// The scan bar is sticky at the top of the billing screen, so "visible"
+		// means below IT, not below the window edge -- otherwise the row we
+		// just revealed sits behind the search box.
+		// Billing / Estimate / Returns use .santu-bill-searchwrap; Sales Order,
+		// Challan, Purchase Bill and Purchase Order use .santu-si2-item-search-wrap.
+		let stick_h = 0;
+		$root.find(".santu-bill-searchwrap, .santu-si2-item-search-wrap").each(function () {
+			if (getComputedStyle(this).position !== "sticky") return;
+			const box = this.getBoundingClientRect();
+			// Only a bar that is actually pinned at the top hides the row.
+			if (box.top <= padding + 1) stick_h = Math.max(stick_h, Math.round(box.bottom));
+		});
+		const top_pad = padding + stick_h;
 		const $wrap = opts.wrapper || $root.find(".santu-bill-gridscroll").first();
 		const wrap = $wrap.length ? $wrap[0] : null;
 		// A wrapper that is not actually scrolling is not the thing to move.
@@ -1030,6 +1051,7 @@ window.santu_scroll_row_into_view = function ($root, opts = {}) {
 		// dekhne ke liye scroll krna par raha hai").
 		const wrap_scrolls = !!wrap && wrap.scrollHeight > wrap.clientHeight + 1;
 
+		let wrap_moved = false;
 		if (wrap_scrolls) {
 			const wrapRect = wrap.getBoundingClientRect();
 			const targetRect = row.getBoundingClientRect();
@@ -1041,20 +1063,40 @@ window.santu_scroll_row_into_view = function ($root, opts = {}) {
 			} else if (bottom > wrap.scrollTop + wrap.clientHeight - padding) {
 				nextTop = Math.max(0, bottom - wrap.clientHeight + padding);
 			}
-			if (nextTop !== null) wrap.scrollTo({ top: nextTop, behavior: "smooth" });
+			if (nextTop !== null) {
+				wrap.scrollTop = nextTop;
+				wrap_moved = true;
+			}
 		}
 
 		// Wrapper theek bhi ho jaye tab bhi wo khud page ke neeche ho sakta
-		// hai. Isliye ek frame baad dekhte hain ki row sach me AANKHON ke
-		// saamne hai ya nahi -- aur nahi hai to page ko le aate hain.
-		requestAnimationFrame(() => {
-			const r = row.getBoundingClientRect();
-			const viewH = window.innerHeight || document.documentElement.clientHeight;
-			const above = r.top < padding;
-			const below = r.bottom > viewH - padding;
-			if (above || below) {
-				row.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+		// hai. Nothing animates any more, so the row's new position is final
+		// the moment the wrapper has been moved -- measure it again right
+		// here and, if it is still off-screen, bring the PAGE to it.
+		//
+		// Skipping this whenever the wrapper had moved was wrong: under the
+		// stacked layout .santu-bill-gridscroll can report itself scrollable
+		// for one frame while its height is still settling, so "the wrapper
+		// handled it" was recorded, the wrapper in fact moved nowhere, and
+		// the new row sat below the fold -- 2026-09-21: "item add ho raha hai
+		// but wo niche chala ja raha hai, phir usko upar karna padta hai".
+		void wrap_moved;
+		const r = row.getBoundingClientRect();
+		const viewH = window.innerHeight || document.documentElement.clientHeight;
+		if (r.top < top_pad || r.bottom > viewH - padding) {
+			const doc = document.scrollingElement || document.documentElement;
+			// Put the row a little above the bottom edge, so the next row and
+			// the search box both stay in sight instead of the row landing
+			// exactly on the fold.
+			const delta = r.bottom > viewH - padding ? r.bottom - viewH + padding + 40 : r.top - top_pad;
+			const next = Math.max(0, Math.min(doc.scrollTop + delta, doc.scrollHeight - doc.clientHeight));
+			doc.scrollTop = next;
+			// A row inside some other scrolling box (a dialog, a narrow app
+			// window) still needs the browser's own logic as a backstop.
+			const after = row.getBoundingClientRect();
+			if (after.top < top_pad || after.bottom > viewH - padding) {
+				row.scrollIntoView({ behavior: "auto", block: "nearest", inline: "nearest" });
 			}
-		});
+		}
 	});
 };

@@ -12,7 +12,7 @@
 
 ## 0. DOCUMENT MAP
 
-This project's brain is split across 11 files, kept at the repo root:
+This project's brain is split across 12 files, kept at the repo root:
 
 | File | Purpose |
 |---|---|
@@ -24,13 +24,15 @@ This project's brain is split across 11 files, kept at the repo root:
 | `UX_STRATEGY.md` | User journeys, workflow redesign, screen hierarchy, branding/design system, printing, loyalty — the product vision layer on top of the data model |
 | `ROADMAP.md` | Phase 1→10 build plan, future feature ideas, open decisions |
 | `CODING_STANDARDS.md` | Code quality rules, testing checklist, response format, things never to do |
+| `AI_OPERATING_RULES.md` | **Read this before your first edit, every session.** How to work on *this machine and this database* — the two app copies that must be kept in sync, what is safe to run against the shop's live data, where values actually live (selling price is not on the Item), Hinglish-only messages, and the Frappe mechanics that bite. Every rule in it exists because ignoring it already cost time or data. |
 | `PROJECT_STATUS.md` | **Read this one first, always.** Living snapshot of exact current state — structure, what's done, every customization, pending tasks, known bugs, commands, so a new session needs zero prior context |
 | `IMPROVEMENT_LOG.md` | Running log of problems found + fixed + future ideas while building — not a plan, a record |
 | `CORE_PATCHES.md` | **Required reading before touching any ERPNext/Frappe core file.** Running log of every core modification — file, reason, before/after, impact, rollback. See §8.1's Core Modification Policy. |
 | `DESIGN_DECISIONS.md` | Record of every screen/workflow redesign — original problem, alternatives considered and why rejected, chosen solution, before/after screenshots, measurable UX improvement (clicks/fields/dialogs/decisions/time). See §5.1's redesign mandate. |
 
-Read this file fully every session. Read the relevant companion file(s) before
-starting work on that area. If a companion file doesn't yet cover something needed,
+Read this file fully every session, and `AI_OPERATING_RULES.md` before your
+first edit. Read the relevant companion file(s) before starting work on that
+area. If a companion file doesn't yet cover something needed,
 propose an addition to it before coding — don't let undocumented decisions pile up.
 
 Process rule (added 2026-07-30, after Phase 2 UI work started before Product

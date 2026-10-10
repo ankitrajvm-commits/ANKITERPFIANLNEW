@@ -182,15 +182,28 @@
 		// Order had an A4 layout but no way to see or pick it, and Khata
 		// Statement — the statement handed to a customer — was missing from
 		// the library altogether.
+		// Har wo kagaz jo dukaan sach me deti hai, apne naam se — aur har ek
+		// ke apne kai roop (2026-09-23: "return ka koi document type nh tha...
+		// multiple formats banao"). Return ab apni entry hai: wo hai to Sales
+		// Invoice hi, par kagaz par bill nahi, wapsi ki parchi hai.
 		const docTypes = [
-			{ value: "Sales Invoice", label: "Invoice / Credit Note" },
-			{ value: "Quotation", label: "Estimate / Quotation" },
-			{ value: "Delivery Note", label: "Delivery Challan" },
-			{ value: "Purchase Invoice", label: "Purchase Invoice / Debit Note" },
-			{ value: "Purchase Order", label: "Purchase Order" },
-			{ value: "Payment Entry", label: "Payment In / Out" },
+			{ value: "Sales Invoice", label: "Sale Bill" },
+			{ value: "Sales Return", label: "Sales Return / Credit Note", real: "Sales Invoice", prefix: "Return", ret: 1 },
+			{ value: "Quotation", label: "Estimate / Quotation", prefix: "Estimate" },
+			{ value: "Sales Order", label: "Sales Order", prefix: "Order" },
+			{ value: "Delivery Note", label: "Delivery Challan", prefix: "Challan" },
+			{ value: "Purchase Invoice", label: "Purchase Bill", prefix: "Purchase" },
+			{ value: "Purchase Return", label: "Purchase Return / Debit Note", real: "Purchase Invoice", prefix: "Purchase Return", ret: 1 },
+			{ value: "Purchase Order", label: "Purchase Order", prefix: "Purchase Order" },
+			{ value: "Payment Entry", label: "Payment In / Out", prefix: "Receipt" },
+			{ value: "Stock Entry", label: "Receive Stock (Goods Received)", prefix: "Goods Received" },
 			{ value: "Khata Statement", label: "Account Statement" },
 		];
+		const DOC_META = {};
+		docTypes.forEach((d) => (DOC_META[d.value] = d));
+		// Jo doctype ERPNext ke paas sach me hai (Return ka apna doctype nahi hota)
+		const real_doctype = (dt) => (DOC_META[dt] && DOC_META[dt].real) || dt;
+		const format_prefix = (dt) => (DOC_META[dt] && DOC_META[dt].prefix) || "";
 
 		// The khata is generated markup, not a Print Format (a statement
 		// spans many bills), so it previews through its own page instead of
@@ -234,27 +247,54 @@
 		// against a Purchase Order suggested a choice that does not exist —
 		// whichever one was clicked, the same single layout appeared. Each
 		// document now shows the layouts it actually has (2026-09-05).
+		// Har document ke apne roop. Sale Bill ke 11 thermal / 6 A4 pehle se the;
+		// baaki har document ke liye 2026-09-23 ko asli formats banaye gaye
+		// (pehle ek hi tha, ya tha hi nahi). Jo yahan nahi hai wo poori list
+		// dikhata hai (sirf Sale Bill).
+		const T = (id, name, desc) => ({ id, name, desc });
+		const THERMAL_SET = [
+			T("Standard", "Standard", "Poora parcha — saaman, matra, rate aur total."),
+			T("Compact", "Compact", "Chhote akshar, kam jagah. Lambi list me roll bachta hai."),
+			T("Detailed", "Detailed", "Har saaman ke neeche uska code bhi."),
+			T("Large Print", "Large Print", "Bade akshar — door se bhi padha jaye."),
+			T("Duplicate Copy", "Duplicate Copy", "Upar DUPLICATE COPY ki mohar, saath me item code."),
+		];
+		const A4_SET = [
+			T("Standard A4", "Standard A4", "Saaf-suthra A4 dastavez."),
+			T("Professional A4", "Professional A4", "Gehra header, bada title."),
+			T("Detailed A4", "Detailed A4", "Har saaman ke neeche uska code."),
+			T("Simple A4", "Simple A4", "Halki lines, bina signature — kam jagah."),
+			T("Office Copy", "Office Copy", "Upar OFFICE COPY ki mohar."),
+		];
+		const pick = (set, ids) => set.filter((t) => ids.includes(t.id));
+
 		const SINGLE_LAYOUTS = {
 			"Thermal Invoice Library": {
-				"Quotation": { id: "Thermal Estimate", name: "Thermal Estimate", desc: "Roll-width estimate — items, quantities and the total. No dues, no QR." },
-				"Delivery Note": { id: "Thermal Challan", name: "Thermal Challan", desc: "Items and quantities only, no rates, with a signature line for whoever takes delivery." },
-				"Purchase Invoice": { id: "Thermal Purchase Bill", name: "Thermal Purchase Bill", desc: "A mahajan's bill on the roll — items, total, what was paid and what is left." },
-				"Purchase Order": { id: "Thermal Purchase Order", name: "Thermal Purchase Order", desc: "The order slip for a mahajan — items, quantities and the date goods are needed." },
-				"Payment Entry": { id: "Thermal Payment Receipt", name: "Thermal Payment Receipt", desc: "Money in or out, how it was paid, and what the party still owes after it." },
-				// Two cards, not one — the standard roll (every item of every
-				// bill) and a compact one that drops the item lines and keeps
-				// just the money (2026-09-06 direct request: "isme ek compact
-				// version v bana do"). A party with a lot of history is most
-				// of what a khata roll actually costs in paper, and this is
-				// the one place that saving is worth offering as a choice
-				// rather than a global setting.
+				"Sales Return": pick(THERMAL_SET, ["Standard", "Compact", "Detailed", "Large Print"]),
+				"Quotation": pick(THERMAL_SET, ["Standard", "Compact", "Detailed", "Large Print"]),
+				"Sales Order": pick(THERMAL_SET, ["Standard", "Compact", "Detailed", "Large Print"]),
+				"Delivery Note": pick(THERMAL_SET, ["Standard", "Compact", "Detailed", "Large Print"]),
+				"Purchase Invoice": pick(THERMAL_SET, ["Standard", "Compact", "Detailed", "Duplicate Copy"]),
+				"Purchase Return": pick(THERMAL_SET, ["Standard", "Compact", "Detailed"]),
+				"Purchase Order": pick(THERMAL_SET, ["Standard", "Compact", "Detailed", "Large Print"]),
+				"Payment Entry": pick(THERMAL_SET, ["Standard", "Compact", "Large Print", "Duplicate Copy"]),
+				"Stock Entry": pick(THERMAL_SET, ["Standard", "Compact", "Large Print"]),
 				"Khata Statement": [
-					{ id: "Thermal Khata", name: "Thermal Account Statement", desc: "The running account on the roll — every bill's items, every payment, with the balance." },
-					{ id: "Thermal Khata (Compact)", name: "Thermal Account Statement (Compact)", desc: "Same account, no item lines — just dates, bill numbers and the money. Saves roll on a long history." },
+					T("Thermal Khata", "Thermal Account Statement", "Poora chalta account — har bill ke saaman, har payment, balance ke saath."),
+					T("Thermal Khata (Compact)", "Thermal Account Statement (Compact)", "Wahi account, bina saaman ki line — sirf date, bill no aur paisa."),
 				],
 			},
 			"WhatsApp Library": {
-				"Khata Statement": { id: "A4 Khata", name: "A4 Account Statement", desc: "The full A4 statement, laid out as the sale bill, with every item of every bill listed." },
+				"Sales Return": pick(A4_SET, ["Standard A4", "Professional A4", "Simple A4"]),
+				"Quotation": pick(A4_SET, ["Standard A4", "Professional A4", "Detailed A4", "Simple A4"]),
+				"Sales Order": pick(A4_SET, ["Standard A4", "Professional A4", "Detailed A4", "Simple A4"]),
+				"Delivery Note": pick(A4_SET, ["Standard A4", "Professional A4", "Detailed A4", "Simple A4"]),
+				"Purchase Invoice": pick(A4_SET, ["Standard A4", "Professional A4", "Detailed A4", "Office Copy"]),
+				"Purchase Return": pick(A4_SET, ["Standard A4", "Simple A4"]),
+				"Purchase Order": pick(A4_SET, ["Standard A4", "Professional A4", "Detailed A4", "Simple A4"]),
+				"Payment Entry": pick(A4_SET, ["Standard A4", "Professional A4", "Simple A4"]),
+				"Stock Entry": pick(A4_SET, ["Standard A4", "Simple A4"]),
+				"Khata Statement": [T("A4 Khata", "A4 Account Statement", "Poora A4 statement — har bill ke saaman ke saath.")],
 			},
 		};
 
@@ -281,12 +321,17 @@
 				return latest_docs[doctype];
 			}
 
-			let invoices = await frappe.db.get_list(doctype, { limit: 1, filters: { docstatus: 1 }, order_by: "creation desc" });
+			// Return ka apna doctype nahi hota — wahi Sales/Purchase Invoice hai
+			// jis par is_return lagi ho. Preview usi tarah ka document dhoondhta hai,
+			// warna wapsi ka roop ek saadhe bill par dikhta (2026-09-23).
+			const meta = DOC_META[doctype] || {};
+			const real = meta.real || doctype;
+			const filters = meta.ret ? { docstatus: 1, is_return: 1 } : { docstatus: 1 };
+			let invoices = await frappe.db.get_list(real, { limit: 1, filters, order_by: "creation desc" });
 			if (invoices.length) {
-				latest_docs[doctype] = { doctype: doctype, name: invoices[0].name };
+				latest_docs[doctype] = { doctype: real, name: invoices[0].name };
 				return latest_docs[doctype];
 			}
-
 			// Fallback to POS Invoice if Sales Invoice is empty
 			if (doctype === "Sales Invoice") {
 				invoices = await frappe.db.get_list("POS Invoice", { limit: 1, filters: { docstatus: 1 }, order_by: "creation desc" });
@@ -312,18 +357,25 @@
 			// format, and an A4 slot only to an A4 one; where one genuinely
 			// does not exist the panel says so instead of quietly showing the
 			// other kind.
+			// Har document ke apne format ka naam: "Santu Thermal - <Document> - <Style>"
+			// (Sale Bill purane naam "Santu Thermal - <Style>" par hi rehta hai).
+			const pfx = format_prefix(dt);
+			const real = real_doctype(dt);
+			const own = lib === "Thermal Invoice Library"
+				? (pfx ? [`Santu Thermal - ${pfx} - ${style}`] : [])
+				: (pfx ? [`Santu A4 - ${pfx} - ${style}`] : []);
 			const candidates = lib === "Thermal Invoice Library"
-				? [`Santu Thermal - ${style}`, "Santu Hardware Thermal Bill (Sales Invoice)",
+				? [...own, `Santu Thermal - ${style}`, "Santu Hardware Thermal Bill (Sales Invoice)",
 				   "Santu Hardware Thermal Estimate (Quotation)",
 				   "Santu Hardware Thermal Challan (Delivery Note)",
 				   "Santu Hardware Thermal Purchase Bill",
 				   "Santu Hardware Thermal Purchase Order",
 				   "Santu Hardware Thermal Payment Receipt", "Santu Hardware Thermal Bill"]
-				: [`Santu A4 - WhatsApp (${dt})`, `Santu Hardware Bill (${dt})`, "Santu Hardware Bill",
+				: [...own, `Santu A4 - ${style}`, `Santu A4 - WhatsApp (${real})`, `Santu Hardware Bill (${real})`, "Santu Hardware Bill",
 				   "Santu Hardware Challan (Delivery Note)", "Santu Hardware Purchase Bill",
 				   "Santu Hardware Purchase Order", "Santu Hardware Payment Receipt"];
 			return candidates.find((name) =>
-				available_formats.some((f) => f.name === name && f.doc_type === dt)
+				available_formats.some((f) => f.name === name && f.doc_type === real)
 			) || null;
 		}
 
@@ -332,6 +384,15 @@
 			const dt = active_doc_type[lib];
 			const doc = latest_docs[dt];
 			const style = active_preview_template[lib];
+			// Jis tarah ka document dukaan me abhi bana hi nahi (Sales Order,
+			// Purchase Bill...) uska preview pehle khaali reh jata tha aur
+			// layout dekhne ka koi tareeka nahi tha (2026-09-23). Ab server
+			// ek NAMUNA parcha bana kar dikhata hai -- kuch save nahi hota.
+			if (!doc && dt !== KHATA_DOCTYPE) {
+				const fmt = resolve_format(lib, dt, style);
+				if (!fmt) return "";
+				return `/api/method/santu_hardware.santu_hardware.api.sample_print_preview?doctype=${encodeURIComponent(real_doctype(dt))}&print_format=${encodeURIComponent(fmt)}&_=${Date.now()}`;
+			}
 			if (!doc) return "";
 			if (dt === KHATA_DOCTYPE) {
 				const layout = lib === "Thermal Invoice Library" ? "thermal" : "a4";
@@ -487,20 +548,42 @@
 							<div class="santu-prn-preview-content">
 								${(() => {
 									const dt = active_doc_type[previewing_library];
-									if (!latest_docs[dt]) {
-										return `<div class="santu-prn-no-preview">${__("Is document type ka koi bill abhi bana hi nahi hai, isliye preview nahi dikha sakte.")}</div>`;
-									}
 									const url = get_preview_url();
 									if (!url) {
 										return `<div class="santu-prn-no-preview">${__("Ye template abhi sirf Invoice ke liye bana hai. {0} ke liye abhi nahi.", [__(dt)])}</div>`;
 									}
-									return `<iframe class="santu-prn-preview-frame" src="${url}"></iframe>`;
+									// Preview kabhi chup-chaap khaali na rahe: agar frame
+									// na khule (purana cache, format mit gaya, request
+									// ruk gayi) to yahi jagah batati hai kya karna hai
+									// (2026-09-23: "live preview show nh kar raha").
+									return `
+										<iframe class="santu-prn-preview-frame" src="${url}" onload="this.dataset.loaded=1"></iframe>
+										<div class="santu-prn-preview-fallback" style="display:none;">
+											<div class="santu-prn-no-preview">
+												${__("Preview nahi khul paaya.")}<br>
+												${__("Ek baar Cmd+Shift+R dabakar screen dobara kholiye.")}
+											</div>
+											<button type="button" class="santu-prn-preview-retry">${__("Dobara dikhao")}</button>
+										</div>`;
 								})()}
 							</div>
 						</div>
 					</div>
 				</div>
 			`);
+
+			// Frame khula ya nahi -- 6 second me na khule to fallback dikhao.
+			const $frame = $body.find(".santu-prn-preview-frame");
+			const $fallback = $body.find(".santu-prn-preview-fallback");
+			if ($frame.length) {
+				setTimeout(() => {
+					if (!$frame[0] || $frame[0].dataset.loaded !== "1") {
+						$frame.hide();
+						$fallback.show();
+					}
+				}, 6000);
+			}
+			$body.find(".santu-prn-preview-retry").on("click", () => render());
 
 			$body.find(".santu-prn-upload-thermal-logo").on("click", () => {
 				new frappe.ui.FileUploader({

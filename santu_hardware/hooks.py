@@ -224,6 +224,10 @@ app_include_js = _LiveAssets([
 	f"/assets/santu_hardware/js/santu_app_lock.js?v={SANTU_ASSET_VERSION}",
 	# First, so it is listening before anything else can throw.
 	f"/assets/santu_hardware/js/santu_error_capture.js?v={SANTU_ASSET_VERSION}",
+	# Every error / warning on screen in simple Hindi (क्या हुआ + क्या करें),
+	# Ankit 2026-09-19. Early, so it wraps frappe.msgprint before any screen.
+	f"/assets/santu_hardware/js/santu_hindi_errors.js?v={SANTU_ASSET_VERSION}",
+	f"/assets/santu_hardware/js/santu_qty_prefix.js?v={SANTU_ASSET_VERSION}",
 	f"/assets/santu_hardware/js/santu_bill_label.js?v={SANTU_ASSET_VERSION}",
 	# Jaldi: har item-list screen isse row ka rang (CPVC/UPVC) poochti hai.
 	f"/assets/santu_hardware/js/santu_item_highlight.js?v={SANTU_ASSET_VERSION}",
@@ -241,6 +245,11 @@ app_include_js = _LiveAssets([
 	# used by Billing, Estimate, both returns, Purchase Invoice and the
 	# Challan. Must load after thermal_print.js, which it calls into.
 	f"/assets/santu_hardware/js/santu_save_buttons.js?v={SANTU_ASSET_VERSION}",
+	# The row ✓ (push this line's price + unit into the item). Shared by
+	# Billing and Estimate so the two can never drift apart.
+	f"/assets/santu_hardware/js/santu_tick_to_master.js?v={SANTU_ASSET_VERSION}",
+	# "Available: N" on a bill row -> put stock in without leaving the bill.
+	f"/assets/santu_hardware/js/santu_add_stock_inline.js?v={SANTU_ASSET_VERSION}",
 	# Must load before any billing screen — that screen's save path calls into
 	# it the moment the server cannot be reached (Offline Billing, 2026-09-08).
 	f"/assets/santu_hardware/js/santu_offline_queue.js?v={SANTU_ASSET_VERSION}",
@@ -377,6 +386,8 @@ after_migrate = [
 	"santu_hardware.setup.install.create_item_pricing_fields",
 	"santu_hardware.setup.install.create_wholesale_price_list",
 	"santu_hardware.santu_hardware.api.migrate_privacy_pin",
+	"santu_hardware.setup.install.allow_fractional_quantities",
+	"santu_hardware.setup.install.create_payment_request_key_field",
 ]
 
 # Uninstallation
@@ -432,6 +443,15 @@ after_migrate = [
 # Hook on document methods and events
 
 doc_events = {
+	# A counter sale must never be stopped by "Quantity (9.5) cannot be a
+	# fraction" -- loose/cut items are sold in halves (2026-09-18 report).
+	# Any UOM added later is saved with the whole-number lock off too.
+	"UOM": {"validate": "santu_hardware.setup.install.uom_allow_fraction"},
+	# Only 10-digit mobiles; one item per name (Ankit, 2026-09-19).
+	("Customer", "Supplier", "Contact"): {"before_validate": "santu_hardware.santu_hardware.api.enforce_ten_digit_mobile"},
+	"Item": {"before_insert": "santu_hardware.santu_hardware.api.block_duplicate_item_name"},
+	# A mistyped UPI ID prints a QR no app can pay (2026-09-18).
+	"Santu POS Settings": {"validate": "santu_hardware.santu_hardware.api.validate_pos_settings_upi"},
 	# Mirror every server error into Santu Bug Report. Hooking Error Log
 	# rather than the app's own nine log_error call sites means core ERPNext
 	# failures get caught too, and no future call site can forget to report.
@@ -453,7 +473,11 @@ doc_events = {
 	("POS Invoice", "Sales Invoice"): {
 		"before_validate": "santu_hardware.santu_hardware.api.strip_gst_line_items",
 		"validate": "santu_hardware.santu_hardware.api.strip_gst_line_items",
-		"before_submit": "santu_hardware.santu_hardware.api.apply_billing_defaults",
+		"before_submit": [
+			"santu_hardware.santu_hardware.api.apply_billing_defaults",
+			# No cost price must never block a sale/return (2026-09-19).
+			"santu_hardware.santu_hardware.api.allow_zero_cost_lines",
+		],
 		"onload": "santu_hardware.santu_hardware.api.update_payment_summary_fields",
 		"on_submit": [
 			"santu_hardware.santu_hardware.api.save_invoice_pdf_to_dated_folder",
@@ -485,6 +509,7 @@ doc_events = {
 		"on_submit": "santu_hardware.santu_hardware.transaction_message_service.on_transaction_submit",
 	},
 	"Delivery Note": {
+		"before_submit": "santu_hardware.santu_hardware.api.allow_zero_cost_lines",
 		"on_submit": "santu_hardware.santu_hardware.transaction_message_service.on_transaction_submit",
 	},
 }
@@ -561,7 +586,9 @@ override_whitelisted_methods = {
 
 # Request Events
 # ----------------
-# before_request = ["santu_hardware.utils.before_request"]
+# One door in front of every santu API: no-role users out, owner-only actions
+# need System Manager (permission tests, 2026-09-19).
+before_request = ["santu_hardware.santu_hardware.access_gate.gate"]
 # Any 5xx the shop actually hits gets recorded as a bug. Needed because a
 # failed page render otherwise leaves no trace at all -- the browser capture
 # cannot run (its own page is the one that failed to load) and the Error Log

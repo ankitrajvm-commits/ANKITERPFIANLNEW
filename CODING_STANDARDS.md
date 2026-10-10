@@ -95,6 +95,12 @@ find a custom-app-only way instead.
 - ❌ Never skip the Decision Matrix / plan-before-code step for non-trivial features
 - ❌ Never over-engineer for scale this single shop will never reach
 - ❌ Never guess at an unclear business rule — stop and ask (`ERP_MASTER_PROMPT.md` §3)
+- ❌ Never edit only the repo copy — the server runs
+  `frappe-bench/apps/santu_hardware/`; see `AI_OPERATING_RULES.md` §1
+- ❌ Never blanket-delete anything to clean up after a test — exact record
+  names only (`AI_OPERATING_RULES.md` §2)
+- ❌ Never write an error, warning or confirm in Devanagari — Hinglish only
+  (`AI_OPERATING_RULES.md` §4)
 
 ---
 
@@ -110,6 +116,11 @@ find a custom-app-only way instead.
 - [ ] Works correctly after `bench migrate` (upgrade-safe)
 - [ ] Tested on the actual MacBook Air M5 setup, not just dev assumptions
 - [ ] Rollback steps documented and verified
+- [ ] Repo and running copy identical — `diff -rq` prints `0`
+      (`AI_OPERATING_RULES.md` §1)
+- [ ] Every screen touched still renders with zero JS errors
+- [ ] Every test record created is gone, verified by a re-query
+- [ ] `CHANGELOG.md` updated in plain Hindi — it is the shop's workbook
 - [ ] Decision Matrix was filled before building (for non-trivial features)
 - [ ] If any core file was touched: `SANTU CUSTOMIZATION` tag present,
       `CORE_PATCHES.md` entry written, none of the six non-negotiables
