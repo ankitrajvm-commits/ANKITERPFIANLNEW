@@ -11,6 +11,30 @@
 
 ---
 
+## 0. THE ANDROID APP IS THE ONLY THING WE CHANGE RIGHT NOW
+
+Current scope, stated 2026-10-10: **work goes into
+`SantuHardwareApp/mobile/` only. Do not fix the PC app.**
+
+The PC side — `santu_hardware/` (the Frappe app, its print formats,
+`print_service.py`, the Desk pages and their JS/CSS) — is a **read-only
+reference**. Copy from it freely: it is the source of truth for how a thermal
+slip, an A4 bill, a loyalty rule or a khata statement is supposed to come out,
+and parity with it is the goal. That is what the Flutter app's print paths were
+ported from.
+
+So, when a PC-side bug turns up while working on the Android app:
+
+- **Do** write it down (`PROJECT_STATUS.md` §5) and say so.
+- **Don't** edit PC files to fix it. Not even a one-liner, not even an obvious
+  one. It is out of scope and it puts the running shop at risk for no gain.
+
+The one exception is mechanical, not a fix: resolving conflicts when the base
+branch is merged in touches whatever files that merge touched, PC files
+included. That is reconciling someone else's change, not repairing the PC app.
+
+---
+
 ## 1. YOUR EDIT PROBABLY ISN'T RUNNING YET
 
 There are **two copies of the app** on this Mac:
