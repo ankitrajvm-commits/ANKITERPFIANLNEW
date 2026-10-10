@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:another_flutter_usb_write/another_flutter_usb_write.dart';
 import 'package:intl/intl.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
+import 'package:qr/qr.dart';
 
 import 'app_settings.dart';
 import 'db.dart';
@@ -117,23 +118,63 @@ class ThermalReceipt {
     return 'upi://pay?pa=$upiId&pn=$pn&am=${amount.toStringAsFixed(2)}&cu=INR&tn=$tn';
   }
 
-  /// Native ESC/POS model-2 QR (GS ( k). The PC embeds a PNG in HTML and
-  /// lets CUPS raster it; a raw printer has to be told to draw it itself.
-  static List<int> _qr(String data, {int moduleSize = 6}) {
-    final bytes = <int>[];
-    final payload = _ascii(data);
-    final len = payload.length + 3;
-    // model 2
-    bytes.addAll([_gs, 0x28, 0x6b, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00]);
-    // module size
-    bytes.addAll([_gs, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, moduleSize.clamp(1, 16)]);
-    // error correction level M — survives a smudged thermal print
-    bytes.addAll([_gs, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x45, 0x31]);
-    // store
-    bytes.addAll([_gs, 0x28, 0x6b, len & 0xff, (len >> 8) & 0xff, 0x31, 0x50, 0x30, ...payload]);
-    // print
-    bytes.addAll([_gs, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30]);
-    return bytes;
+  /// Printable width in dots: 576 on an 80mm roll, 384 on 58mm. Used to size
+  /// the QR, which is drawn as an image and so has to be given a pixel size.
+  static Future<int> getDots() async {
+    final width = await AppSettings.paperWidth();
+    return width == '58mm' ? 384 : 576;
+  }
+
+  /// The UPI QR, encoded here and sent as a raster bitmap (GS v 0).
+  ///
+  /// This used to ask the printer to draw the QR itself with GS ( k. Those
+  /// commands are optional in ESC/POS and a lot of cheap thermal units simply
+  /// do not implement them — the printer then spits the `upi://` payload out
+  /// as a line of text, or nothing at all, which is what "the QR is not
+  /// printing right" looks like at the counter. GS v 0 is the same command
+  /// path a logo takes, so it works essentially everywhere, and encoding the
+  /// modules here means the size is ours to choose rather than the firmware's.
+  ///
+  /// Error correction M, matching what the old GS ( k call asked for: enough
+  /// redundancy to survive a smudged or half-faded thermal print.
+  static List<int> _qr(String data, {required int dots}) {
+    final image = QrImage(QrCode.fromData(data: data, errorCorrectLevel: QrErrorCorrectLevel.M));
+    final modules = image.moduleCount;
+    // The spec's 4-module quiet zone. Without it phone scanners hunt for the
+    // finder patterns and often give up, especially against printed text.
+    const quiet = 4;
+    final units = modules + quiet * 2;
+    // Aim for a ~30mm square (240 dots at the 203dpi both roll widths print
+    // at): comfortable to scan without eating roll. Dots per module then falls
+    // out of how long the payload is, instead of being fixed at a size that
+    // overflows a 58mm roll once the amount makes the payload longer.
+    var scale = (240 / units).round().clamp(2, 8);
+    while (units * scale > dots && scale > 1) {
+      scale--;
+    }
+    final side = units * scale;
+    final bytesPerRow = (side + 7) ~/ 8;
+    final raster = List<int>.filled(bytesPerRow * side, 0);
+
+    for (var row = 0; row < modules; row++) {
+      for (var col = 0; col < modules; col++) {
+        if (!image.isDark(row, col)) continue;
+        for (var dy = 0; dy < scale; dy++) {
+          final rowStart = ((row + quiet) * scale + dy) * bytesPerRow;
+          for (var dx = 0; dx < scale; dx++) {
+            final x = (col + quiet) * scale + dx;
+            raster[rowStart + (x >> 3)] |= 0x80 >> (x & 7);
+          }
+        }
+      }
+    }
+
+    return [
+      _gs, 0x76, 0x30, 0x00, // GS v 0, mode 0 (no scaling — already scaled)
+      bytesPerRow & 0xff, (bytesPerRow >> 8) & 0xff,
+      side & 0xff, (side >> 8) & 0xff,
+      ...raster,
+    ];
   }
 
   /// "02:30 PM" — the PC template derives the same 12-hour stamp from
@@ -311,21 +352,29 @@ class ThermalReceipt {
 
     if (_on(v, 'qr')) {
       final upi = await AppSettings.upiId();
-      if (upi != null && upi.isNotEmpty) {
+      // A "Scan & Pay" QR is only worth printing while money is still owed
+      // (inv.baaki is already clamped at zero). It used to fall back to the
+      // full grand total once the bill was settled, which put a QR for the
+      // whole amount on an already-paid slip — scanning it would pay twice.
+      if (upi != null && upi.isNotEmpty && thisDue > 0) {
         bytes.addAll(_asciiLine(line()));
         bytes.addAll(alignCenter);
         bytes.addAll(boldOn);
         bytes.addAll(_asciiLine('Scan & Pay'));
         bytes.addAll(boldOff);
-        bytes.addAll(_qr(buildUpiLink(
-          upiId: upi,
-          payeeName: await AppSettings.shopName(),
-          // The QR must always carry an amount or the customer's UPI app
-          // opens on "enter amount" — same rule as the PC format.
-          amount: thisDue > 0 ? thisDue : inv.grandTotal,
-          note: 'Bill ${inv.billNo ?? ''}',
-        )));
+        bytes.addAll(_qr(
+          buildUpiLink(
+            upiId: upi,
+            payeeName: await AppSettings.shopName(),
+            // Carrying the amount is the whole point of a dynamic QR: without
+            // it the customer's UPI app opens on an empty "enter amount".
+            amount: thisDue,
+            note: 'Bill ${inv.billNo ?? ''}',
+          ),
+          dots: await getDots(),
+        ));
         bytes.addAll([0x0a]);
+        bytes.addAll(_asciiLine('Pay Rs. ${_money(thisDue)}'));
         bytes.addAll(_asciiLine('UPI ID: $upi'));
         bytes.addAll(alignLeft);
       }

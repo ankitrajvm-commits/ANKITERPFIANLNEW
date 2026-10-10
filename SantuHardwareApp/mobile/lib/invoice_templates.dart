@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:qr/qr.dart';
 
 import 'theme.dart';
+import 'thermal_receipt.dart';
 
 class DocTypeDefinition {
   final String key;
@@ -197,6 +199,10 @@ class InvoicePreviewData {
   final double thermalLogoWidth;
   final double a4LogoWidth;
 
+  /// The shop's own UPI ID, so the preview's Scan & Pay block shows the real
+  /// QR that would print rather than a stand-in. Null when none is saved yet.
+  final String? upiId;
+
   const InvoicePreviewData({
     required this.shopName,
     this.gstin,
@@ -221,6 +227,7 @@ class InvoicePreviewData {
     this.showLogo = true,
     this.thermalLogoWidth = 65.0,
     this.a4LogoWidth = 40.0,
+    this.upiId,
   });
 
   factory InvoicePreviewData.sample(String docType, {bool showLogo = true, double thermalLogoWidth = 65.0, double a4LogoWidth = 40.0}) {
@@ -624,27 +631,37 @@ class ThermalReceiptWidget extends StatelessWidget {
               const SizedBox(height: 4),
               Center(child: Text('Scan & Pay', style: TextStyle(fontFamily: 'monospace', fontSize: baseFontSize - 1, fontWeight: FontWeight.bold))),
               const SizedBox(height: 4),
-              Center(
-                child: Container(
-                  width: 84,
-                  height: 84,
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
+              // The real scannable QR for this shop's UPI ID and this amount,
+              // built by the same encoder the printer gets. It used to be an
+              // Icons.qr_code_2 glyph over a hardcoded "santu.hardware@upi",
+              // so the preview showed a QR that could not be scanned and a
+              // UPI ID belonging to nobody.
+              if (data.upiId != null && data.upiId!.isNotEmpty) ...[
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
                     color: Colors.white,
-                    border: Border.all(color: Colors.black, width: 1.5),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.qr_code_2, size: 54, color: Colors.black),
-                      Text('₹${data.grandTotal.toStringAsFixed(0)}', style: const TextStyle(fontFamily: 'monospace', fontSize: 9, fontWeight: FontWeight.bold)),
-                    ],
+                    child: CustomPaint(
+                      size: const Size(84, 84),
+                      painter: _QrPainter(ThermalReceipt.buildUpiLink(
+                        upiId: data.upiId!,
+                        payeeName: data.shopName,
+                        amount: data.balance > 0 ? data.balance : data.grandTotal,
+                        note: 'Bill ${data.docNo}',
+                      )),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 3),
-              Center(child: Text('UPI ID: santu.hardware@upi', style: TextStyle(fontFamily: 'monospace', fontSize: baseFontSize - 2))),
+                const SizedBox(height: 3),
+                Center(child: Text('UPI ID: ${data.upiId}', style: TextStyle(fontFamily: 'monospace', fontSize: baseFontSize - 2))),
+              ] else
+                Center(
+                  child: Text(
+                    'UPI ID set karein — Shop Profile me\n(bina UPI ID, QR print nahi hoga)',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontFamily: 'monospace', fontSize: baseFontSize - 2, color: Colors.black54),
+                  ),
+                ),
             ],
 
             // Signatures
@@ -1060,4 +1077,38 @@ class A4InvoiceWidget extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Paints a QR from its modules. Same encoder and error-correction level the
+/// printer is sent (`ThermalReceipt._qr`), so what the preview shows is what
+/// comes off the roll.
+class _QrPainter extends CustomPainter {
+  _QrPainter(this.data);
+
+  final String data;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final image = QrImage(QrCode.fromData(data: data, errorCorrectLevel: QrErrorCorrectLevel.M));
+    final modules = image.moduleCount;
+    // Same 4-module quiet zone the printed slip leaves, so the preview is
+    // honest about how much room the block actually takes.
+    const quiet = 4;
+    final cell = size.width / (modules + quiet * 2);
+    final paint = Paint()..color = Colors.black;
+    for (var row = 0; row < modules; row++) {
+      for (var col = 0; col < modules; col++) {
+        if (!image.isDark(row, col)) continue;
+        canvas.drawRect(
+          // Half a pixel of overdraw, or antialiasing leaves hairlines between
+          // neighbouring modules and the on-screen code scans poorly.
+          Rect.fromLTWH((col + quiet) * cell, (row + quiet) * cell, cell + 0.5, cell + 0.5),
+          paint,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_QrPainter oldDelegate) => oldDelegate.data != data;
 }

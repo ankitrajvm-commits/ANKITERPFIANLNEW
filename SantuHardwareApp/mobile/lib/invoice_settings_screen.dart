@@ -23,6 +23,7 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> with Sing
   String _shopName = 'Santu Hardware';
   String? _gstin;
   String? _address;
+  String? _upiId;
   String? _phone;
   String? _website;
   String? _billFooter;
@@ -69,6 +70,7 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> with Sing
     // pincode set fell through to the sample shop's address in the preview.
     final companyAddress = await AppSettings.companyAddressLine();
     final address = companyAddress.isNotEmpty ? companyAddress : null;
+    final upiId = await AppSettings.upiId();
 
     for (final dt in _docTypes) {
       _defaultThermal[dt.key] = await AppSettings.defaultTemplate('Thermal Invoice Library', dt.key);
@@ -82,6 +84,7 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> with Sing
       _shopName = shopName;
       _gstin = gstin;
       _address = address;
+      _upiId = upiId;
       _phone = phone;
       _website = website;
       _billFooter = footer;
@@ -160,6 +163,7 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> with Sing
       showLogo: _tabController.index == 0 ? _showLogoOnBill : _showLogoOnA4Bill,
       thermalLogoWidth: _thermalLogoWidth,
       a4LogoWidth: _a4LogoWidth,
+      upiId: _upiId,
     );
   }
 
