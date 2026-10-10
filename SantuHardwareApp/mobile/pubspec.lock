@@ -4,7 +4,7 @@ packages:
   another_flutter_usb_write:
     dependency: "direct main"
     description:
-      path: third_party/another_flutter_usb_write
+      path: "third_party/another_flutter_usb_write"
       relative: true
     source: path
     version: "1.0.1"

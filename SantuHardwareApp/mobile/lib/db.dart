@@ -964,18 +964,35 @@ class AppDb {
 
   Future<List<MapEntry<Customer, double>>> customerDues() async {
     final db = await database;
-    final invRows = await db.query('invoice', where: "status = 'saved' AND deleted_at IS NULL");
+    final rows = await db.rawQuery('''
+      SELECT 
+        i.customer,
+        i.customer_label,
+        COALESCE(i.additional_charges, 0) as additional_charges,
+        COALESCE(i.bill_discount, 0) as bill_discount,
+        COALESCE(i.redeem_points, 0) as redeem_points,
+        COALESCE(i.amount_received, 0) as amount_received,
+        COALESCE(SUM(bi.qty * bi.rate - COALESCE(bi.discount_amount, 0)), 0) as subtotal
+      FROM invoice i
+      LEFT JOIN bill_item bi ON bi.invoice_id = i.id
+      WHERE i.status = 'saved' AND i.deleted_at IS NULL AND i.customer IS NOT NULL
+      GROUP BY i.id
+    ''');
     final duesByCustomer = <String, double>{};
     final labelByCustomer = <String, String>{};
-    for (final row in invRows) {
-      final customer = row['customer'] as String?;
-      if (customer == null) continue;
-      final itemRows = await db.query('bill_item', where: 'invoice_id = ?', whereArgs: [row['id']]);
-      final inv = Invoice.fromMap(row, itemRows.map(BillItem.fromMap).toList());
-      final baaki = inv.baaki;
+    for (final r in rows) {
+      final customer = r['customer'] as String?;
+      if (customer == null || customer.isEmpty) continue;
+      final subtotal = (r['subtotal'] as num).toDouble();
+      final addCharges = (r['additional_charges'] as num).toDouble();
+      final discount = (r['bill_discount'] as num).toDouble();
+      final redeem = (r['redeem_points'] as num).toDouble();
+      final recv = (r['amount_received'] as num).toDouble();
+      final grandTotal = (subtotal + addCharges - discount - redeem).clamp(0.0, double.infinity);
+      final baaki = recv < grandTotal ? grandTotal - recv : 0.0;
       if (baaki > 0) {
         duesByCustomer[customer] = (duesByCustomer[customer] ?? 0) + baaki;
-        labelByCustomer[customer] = row['customer_label'] as String? ?? customer;
+        labelByCustomer[customer] = r['customer_label'] as String? ?? customer;
       }
     }
     final manualDues = await db.query('manual_due', where: "party_type = 'Customer'");
@@ -1111,17 +1128,27 @@ class AppDb {
   /// fills the gaps so the chart has one point per day in range.
   Future<Map<String, double>> salesByDay(String fromDate, String toDate) async {
     final db = await database;
-    final invRows = await db.query(
-      'invoice',
-      where: "status = 'saved' AND deleted_at IS NULL AND posting_date BETWEEN ? AND ?",
-      whereArgs: [fromDate, toDate],
-    );
+    final rows = await db.rawQuery('''
+      SELECT 
+        i.posting_date,
+        COALESCE(i.additional_charges, 0) as additional_charges,
+        COALESCE(i.bill_discount, 0) as bill_discount,
+        COALESCE(i.redeem_points, 0) as redeem_points,
+        COALESCE(SUM(bi.qty * bi.rate - COALESCE(bi.discount_amount, 0)), 0) as subtotal
+      FROM invoice i
+      LEFT JOIN bill_item bi ON bi.invoice_id = i.id
+      WHERE i.status = 'saved' AND i.deleted_at IS NULL AND i.posting_date BETWEEN ? AND ?
+      GROUP BY i.id
+    ''', [fromDate, toDate]);
     final totals = <String, double>{};
-    for (final row in invRows) {
-      final itemRows = await db.query('bill_item', where: 'invoice_id = ?', whereArgs: [row['id']]);
-      final inv = Invoice.fromMap(row, itemRows.map(BillItem.fromMap).toList());
-      final day = row['posting_date'] as String;
-      totals[day] = (totals[day] ?? 0) + inv.grandTotal;
+    for (final r in rows) {
+      final day = r['posting_date'] as String;
+      final subtotal = (r['subtotal'] as num).toDouble();
+      final addCharges = (r['additional_charges'] as num).toDouble();
+      final discount = (r['bill_discount'] as num).toDouble();
+      final redeem = (r['redeem_points'] as num).toDouble();
+      final grandTotal = (subtotal + addCharges - discount - redeem).clamp(0.0, double.infinity);
+      totals[day] = (totals[day] ?? 0) + grandTotal;
     }
     return totals;
   }

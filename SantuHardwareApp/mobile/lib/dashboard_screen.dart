@@ -46,7 +46,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _privacyOn = false;
   bool _loading = true;
   List<Invoice> _todayBills = [];
-  List<Item> _lowStock = [];
   double _totalBaki = 0;
   int _baakiPartyCount = 0;
 
@@ -88,21 +87,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // instead of aborting the rest.
   Future<void> _load() async {
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    final bills = await _safe(() => AppDb.instance.savedInvoicesForToday(today), <Invoice>[]);
-    final items = await _safe(() => AppDb.instance.allItems(), <Item>[]);
-    final dues = await _safe(() => AppDb.instance.customerDues(), <MapEntry<Customer, double>>[]);
 
-    final widgets = await _safe(() => AppSettings.dashboardWidgets(), _activeWidgets);
-    final purchases = await _safe(() => AppDb.instance.totalPurchasesAmount(), 0.0);
-    final expenses = await _safe(() => AppDb.instance.totalExpensesAmount(), 0.0);
-    final stockVal = await _safe(() => AppDb.instance.totalStockValueSale(), 0.0);
-    final counts = await _safe(() => AppDb.instance.stockSummaryCounts(), <String, int>{});
+    // Execute all independent queries concurrently in parallel
+    final results = await Future.wait([
+      _safe(() => AppDb.instance.savedInvoicesForToday(today), <Invoice>[]),
+      _safe(() => AppDb.instance.customerDues(), <MapEntry<Customer, double>>[]),
+      _safe(() => AppSettings.dashboardWidgets(), _activeWidgets),
+      _safe(() => AppDb.instance.totalPurchasesAmount(), 0.0),
+      _safe(() => AppDb.instance.totalExpensesAmount(), 0.0),
+      _safe(() => AppDb.instance.totalStockValueSale(), 0.0),
+      _safe(() => AppDb.instance.stockSummaryCounts(), <String, int>{}),
+    ]);
 
-    await _loadChart();
+    final bills = results[0] as List<Invoice>;
+    final dues = results[1] as List<MapEntry<Customer, double>>;
+    final widgets = results[2] as List<String>;
+    final purchases = results[3] as double;
+    final expenses = results[4] as double;
+    final stockVal = results[5] as double;
+    final counts = results[6] as Map<String, int>;
+
     if (!mounted) return;
     setState(() {
       _todayBills = bills;
-      _lowStock = items.where((i) => i.availableQty <= 5).toList();
       _totalBaki = dues.fold(0.0, (s, e) => s + e.value);
       _baakiPartyCount = dues.length;
 
@@ -112,8 +119,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _stockValue = stockVal;
       _stockCounts = counts;
 
+      // Render dashboard instantly!
       _loading = false;
     });
+
+    // Run chart loading concurrently without blocking UI
+    _loadChart();
   }
 
   Future<T> _safe<T>(Future<T> Function() query, T fallback) async {
@@ -243,11 +254,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('Santu Hardware'),
+        title: const Text('Santu Hardware', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
         actions: [
           IconButton(
-            icon: Icon(_privacyOn ? Icons.visibility_off : Icons.visibility),
+            icon: Icon(_privacyOn ? Icons.visibility_off : Icons.visibility, color: SantuColors.blue),
             tooltip: 'Privacy Toggle',
             onPressed: () => setState(() => _privacyOn = !_privacyOn),
           ),
@@ -270,54 +282,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
             : RefreshIndicator(
                 onRefresh: _load,
                 child: ListView(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   children: [
-                    // Top Bar: Search Transactions & Quick Action Buttons (Frame 000)
+                    // Top Bar: Search Transactions & Quick Action Buttons
                     _topSearchBarAndActions(),
                     const SizedBox(height: 12),
 
-                    // Total Receivable Card
+                    // Total Receivable Card (Udhaar / Baaki)
                     _totalBaakiCard(),
                     const SizedBox(height: 14),
 
                     // Total Sale & Graph Card
                     _salesChartCard(),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 16),
 
-                    // Most Used Reports (Frame 000)
+                    // Most Used Reports
                     _quickLinksRow(),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 18),
 
-                    // Frame 115 Customizable Widgets Header & Cards
+                    // Customizable Widgets Header & Cards
                     _customizableWidgetsSection(),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 18),
 
                     // Aaj ke Bills
-                    const Text('Aaj ke Bills', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                    const SizedBox(height: 8),
-                    if (_todayBills.isEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(color: SantuColors.card, border: Border.all(color: SantuColors.border), borderRadius: BorderRadius.circular(8)),
-                        alignment: Alignment.center,
-                        child: const Text('Abhi tak koi bill nahi', style: TextStyle(color: SantuColors.textMuted)),
-                      )
-                    else
-                      Container(
-                        decoration: BoxDecoration(color: SantuColors.card, border: Border.all(color: SantuColors.border), borderRadius: BorderRadius.circular(8)),
-                        child: Column(
-                          children: [
-                            for (final b in _todayBills)
-                              ListTile(
-                                dense: true,
-                                title: Text(b.billNo ?? '-'),
-                                subtitle: Text(b.customerLabel ?? 'Walk-in'),
-                                trailing: Text('₹${b.grandTotal.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w600)),
-                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SaleInvoicesScreen())),
-                              ),
-                          ],
-                        ),
-                      ),
+                    _todayBillsSection(),
                     const SizedBox(height: 24),
                   ],
                 ),
@@ -330,10 +318,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: SantuColors.card,
-        border: Border.all(color: SantuColors.border),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: const [BoxShadow(color: Color(0x06000000), blurRadius: 4, offset: Offset(0, 1))],
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: const [
+          BoxShadow(color: Color(0x08000000), blurRadius: 6, offset: Offset(0, 2)),
+        ],
       ),
       child: Column(
         children: [
@@ -344,55 +334,108 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Navigator.push(context, MaterialPageRoute(builder: (_) => const SaleInvoicesScreen()));
             },
             decoration: InputDecoration(
+              filled: true,
+              fillColor: const Color(0xFFF1F5F9),
               hintText: 'Search Transactions (bills, customers...)',
-              hintStyle: const TextStyle(fontSize: 13, color: SantuColors.textMuted),
-              prefixIcon: const Icon(Icons.search, size: 18, color: SantuColors.blue),
+              hintStyle: const TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
+              prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Color(0xFF4F46E5)),
               suffixIcon: IconButton(
-                icon: const Icon(Icons.mic, size: 18, color: SantuColors.textMuted),
+                icon: const Icon(Icons.mic_rounded, size: 19, color: Color(0xFF4F46E5)),
                 onPressed: () {
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Voice search: Search Transactions')));
                 },
               ),
               contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
               isDense: true,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Color(0xFF4F46E5), width: 1.5),
+              ),
             ),
           ),
           const SizedBox(height: 10),
           Row(
             children: [
               Expanded(
-                child: FilledButton.icon(
-                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BillingScreen())),
-                  icon: const Icon(Icons.add_shopping_cart, size: 18),
-                  label: const Text('+ Add Sale', style: TextStyle(fontWeight: FontWeight.bold)),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: SantuColors.blue,
-                    padding: const EdgeInsets.symmetric(vertical: 11),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BillingScreen())),
+                    borderRadius: BorderRadius.circular(11),
+                    child: Ink(
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF4F46E5), Color(0xFF2563EB)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(11),
+                        boxShadow: const [
+                          BoxShadow(color: Color(0x354F46E5), blurRadius: 6, offset: Offset(0, 3)),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          Icon(Icons.point_of_sale_rounded, size: 18, color: Colors.white),
+                          SizedBox(width: 6),
+                          Text('+ Add Sale', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const QuickDocScreen(
-                        kind: 'stock_entry',
-                        title: 'Receive Stock',
-                        partyKind: 'Supplier',
-                        stockSign: 1,
-                        docPrefix: 'GRN-',
-                        actionLabel: 'Receive Stock',
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const QuickDocScreen(
+                          kind: 'stock_entry',
+                          title: 'Receive Stock',
+                          partyKind: 'Supplier',
+                          stockSign: 1,
+                          docPrefix: 'GRN-',
+                          actionLabel: 'Receive Stock',
+                        ),
                       ),
                     ),
-                  ),
-                  icon: const Icon(Icons.inventory_2_outlined, size: 18),
-                  label: const Text('+ Stock In', style: TextStyle(fontWeight: FontWeight.w600)),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 11),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    borderRadius: BorderRadius.circular(11),
+                    child: Ink(
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF059669), Color(0xFF10B981)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(11),
+                        boxShadow: const [
+                          BoxShadow(color: Color(0x33059669), blurRadius: 6, offset: Offset(0, 3)),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          Icon(Icons.inventory_2_rounded, size: 18, color: Colors.white),
+                          SizedBox(width: 6),
+                          Text('+ Stock In', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -406,40 +449,86 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _totalBaakiCard() {
     return InkWell(
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CustomerDuesScreen())),
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: SantuColors.card,
-          border: Border.all(color: SantuColors.border),
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: const [BoxShadow(color: Color(0x06000000), blurRadius: 4, offset: Offset(0, 1))],
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFFF1F2), Color(0xFFFFE4E6), Color(0xFFFFF7ED)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          border: Border.all(color: const Color(0xFFFECDD3), width: 1.2),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: const [
+            BoxShadow(color: Color(0x10E11D48), blurRadius: 8, offset: Offset(0, 3)),
+          ],
         ),
         child: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: const Color(0xFFFEE2E2), borderRadius: BorderRadius.circular(10)),
-              child: const Icon(Icons.account_balance_wallet_outlined, color: SantuColors.red, size: 24),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFF43F5E), Color(0xFFE11D48)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: const [
+                  BoxShadow(color: Color(0x3DF43F5E), blurRadius: 6, offset: Offset(0, 2)),
+                ],
+              ),
+              child: const Icon(Icons.account_balance_wallet_rounded, color: Colors.white, size: 24),
             ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Total Receivable (Udhaar / Baaki)', style: TextStyle(fontSize: 12, color: SantuColors.textMuted, fontWeight: FontWeight.w500)),
+                  Row(
+                    children: [
+                      const Text(
+                        'Total Receivable (Baaki)',
+                        style: TextStyle(fontSize: 12, color: Color(0xFF9F1239), fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEE2E2),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: const Color(0xFFFCA5A5), width: 0.8),
+                        ),
+                        child: const Text('Udhaar', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Color(0xFFBE123C))),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 3),
-                  Text('₹ ${_totalBaki.toStringAsFixed(1)}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: SantuColors.textDark)),
+                  Text(
+                    '₹ ${_totalBaki.toStringAsFixed(1)}',
+                    style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900, color: Color(0xFF881337)),
+                  ),
                   const SizedBox(height: 2),
-                  Text('From $_baakiPartyCount Parties', style: const TextStyle(fontSize: 11, color: SantuColors.textMuted)),
+                  Row(
+                    children: [
+                      const Icon(Icons.people_alt_rounded, size: 12, color: Color(0xFFBE123C)),
+                      const SizedBox(width: 4),
+                      Text('From $_baakiPartyCount Parties', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: Color(0xFFBE123C))),
+                    ],
+                  ),
                 ],
               ),
             ),
             Container(
               padding: const EdgeInsets.all(8),
-              decoration: const BoxDecoration(color: Color(0xFFF1F5F9), shape: BoxShape.circle),
-              child: const Icon(Icons.arrow_forward_ios, color: SantuColors.textMuted, size: 14),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.85),
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFFFECDD3)),
+              ),
+              child: const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFFE11D48), size: 12),
             ),
           ],
         ),
@@ -452,28 +541,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: SantuColors.card,
-        border: Border.all(color: SantuColors.border),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: const [BoxShadow(color: Color(0x06000000), blurRadius: 4, offset: Offset(0, 1))],
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFE0E7FF), width: 1.2),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(color: Color(0x0C2563EB), blurRadius: 8, offset: Offset(0, 3)),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Expanded(child: Text('Total Sale', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: SantuColors.textDark))),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.all(7),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
+                  color: const Color(0xFFEEF2FF),
                   borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.trending_up_rounded, color: Color(0xFF4F46E5), size: 18),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text('Total Sale', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF0F172A))),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFBFDBFE), width: 0.8),
                 ),
                 child: DropdownButton<String>(
                   value: _range,
                   underline: const SizedBox.shrink(),
                   isDense: true,
-                  items: _chartRanges.map((r) => DropdownMenuItem(value: r, child: Text(r, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)))).toList(),
+                  icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Color(0xFF2563EB)),
+                  items: _chartRanges.map((r) => DropdownMenuItem(value: r, child: Text(r, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1D4ED8))))).toList(),
                   onChanged: (v) {
                     if (v == null) return;
                     setState(() => _range = v);
@@ -483,22 +587,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 10),
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text('₹ ${_periodTotal.toStringAsFixed(1)}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: SantuColors.textDark)),
+              Text(
+                '₹ ${_periodTotal.toStringAsFixed(1)}',
+                style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+              ),
               const SizedBox(width: 8),
               if (_percentChange != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(color: (up ? SantuColors.green : SantuColors.red).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: up ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: up ? const Color(0xFF86EFAC) : const Color(0xFFFCA5A5), width: 0.8),
+                  ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(up ? Icons.arrow_upward : Icons.arrow_downward, size: 12, color: up ? SantuColors.green : SantuColors.red),
-                      Text('${_percentChange!.abs().toStringAsFixed(1)}%', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: up ? SantuColors.green : SantuColors.red)),
+                      Icon(up ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded, size: 12, color: up ? const Color(0xFF15803D) : const Color(0xFFB91C1C)),
+                      const SizedBox(width: 2),
+                      Text('${_percentChange!.abs().toStringAsFixed(1)}%', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: up ? const Color(0xFF15803D) : const Color(0xFFB91C1C))),
                     ],
                   ),
                 ),
@@ -508,9 +620,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
           SizedBox(
             height: 150,
             child: _chartValues.isEmpty
-                ? const Center(child: Text('Koi data nahi', style: TextStyle(color: SantuColors.textMuted)))
+                ? const Center(child: Text('Koi data nahi mila', style: TextStyle(color: SantuColors.textMuted)))
                 : LineChart(
                     LineChartData(
+                      lineTouchData: const LineTouchData(
+                        enabled: false,
+                        handleBuiltInTouches: false,
+                      ),
                       gridData: const FlGridData(show: false),
                       borderData: FlBorderData(show: false),
                       titlesData: FlTitlesData(
@@ -525,7 +641,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             getTitlesWidget: (value, meta) {
                               final i = value.toInt();
                               if (i < 0 || i >= _chartLabels.length) return const SizedBox.shrink();
-                              return Padding(padding: const EdgeInsets.only(top: 6), child: Text(_chartLabels[i], style: const TextStyle(fontSize: 9, color: SantuColors.textMuted)));
+                              return Padding(padding: const EdgeInsets.only(top: 6), child: Text(_chartLabels[i], style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: Color(0xFF64748B))));
                             },
                           ),
                         ),
@@ -535,13 +651,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           spots: [for (var i = 0; i < _chartValues.length; i++) FlSpot(i.toDouble(), _chartValues[i])],
                           isCurved: true,
                           preventCurveOverShooting: true,
-                          color: SantuColors.green,
-                          barWidth: 2.5,
+                          color: const Color(0xFF2563EB),
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF2563EB), Color(0xFF06B6D4), Color(0xFF10B981)],
+                          ),
+                          barWidth: 3,
                           dotData: const FlDotData(show: false),
                           belowBarData: BarAreaData(
                             show: true,
                             gradient: LinearGradient(
-                              colors: [SantuColors.green.withValues(alpha: 0.22), SantuColors.green.withValues(alpha: 0.01)],
+                              colors: [
+                                const Color(0xFF2563EB).withValues(alpha: 0.22),
+                                const Color(0xFF06B6D4).withValues(alpha: 0.05),
+                                Colors.transparent,
+                              ],
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
                             ),
@@ -563,43 +686,112 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text('Most Used Reports', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF3C7),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Icon(Icons.auto_awesome_rounded, size: 14, color: Color(0xFFD97706)),
+                ),
+                const SizedBox(width: 6),
+                const Text('Most Used Reports', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF0F172A))),
+              ],
+            ),
             TextButton(
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsScreen())),
-              child: const Text('View All', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: SantuColors.blue)),
+              child: const Text('View All', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF2563EB))),
             ),
           ],
         ),
         const SizedBox(height: 6),
         Row(
           children: [
-            _quickReportBtn('Sale Report', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsScreen()))),
-            const SizedBox(width: 6),
-            _quickReportBtn('All Trans.', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ViewInvoiceScreen()))),
-            const SizedBox(width: 6),
-            _quickReportBtn('Daybook', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsScreen()))),
-            const SizedBox(width: 6),
-            _quickReportBtn('Printer', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrinterSettingsScreen()))),
+            _quickReportTile(
+              title: 'Sale Report',
+              icon: Icons.bar_chart_rounded,
+              gradient: const LinearGradient(colors: [Color(0xFFEEF2FF), Color(0xFFE0E7FF)]),
+              borderColor: const Color(0xFFC7D2FE),
+              iconColor: const Color(0xFF4F46E5),
+              textColor: const Color(0xFF3730A3),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsScreen())),
+            ),
+            const SizedBox(width: 8),
+            _quickReportTile(
+              title: 'All Trans.',
+              icon: Icons.receipt_long_rounded,
+              gradient: const LinearGradient(colors: [Color(0xFFECFDF5), Color(0xFFD1FAE5)]),
+              borderColor: const Color(0xFFA7F3D0),
+              iconColor: const Color(0xFF059669),
+              textColor: const Color(0xFF065F46),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ViewInvoiceScreen())),
+            ),
+            const SizedBox(width: 8),
+            _quickReportTile(
+              title: 'Daybook',
+              icon: Icons.menu_book_rounded,
+              gradient: const LinearGradient(colors: [Color(0xFFFFFBEB), Color(0xFFFEF3C7)]),
+              borderColor: const Color(0xFFFDE68A),
+              iconColor: const Color(0xFFD97706),
+              textColor: const Color(0xFF92400E),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsScreen())),
+            ),
+            const SizedBox(width: 8),
+            _quickReportTile(
+              title: 'Printer',
+              icon: Icons.print_rounded,
+              gradient: const LinearGradient(colors: [Color(0xFFFAF5FF), Color(0xFFF3E8FF)]),
+              borderColor: const Color(0xFFE9D5FF),
+              iconColor: const Color(0xFF9333EA),
+              textColor: const Color(0xFF6B21A8),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrinterSettingsScreen())),
+            ),
           ],
         ),
       ],
     );
   }
 
-  Widget _quickReportBtn(String title, VoidCallback onTap) {
+  Widget _quickReportTile({
+    required String title,
+    required IconData icon,
+    required LinearGradient gradient,
+    required Color borderColor,
+    required Color iconColor,
+    required Color textColor,
+    required VoidCallback onTap,
+  }) {
     return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
-          decoration: BoxDecoration(
-            color: SantuColors.card,
-            border: Border.all(color: SantuColors.border),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Center(
-            child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Ink(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+            decoration: BoxDecoration(
+              gradient: gradient,
+              border: Border.all(color: borderColor, width: 1.2),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(color: iconColor.withValues(alpha: 0.08), blurRadius: 4, offset: const Offset(0, 2)),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: iconColor, size: 22),
+                const SizedBox(height: 6),
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: textColor),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -610,18 +802,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEDE9FE),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Icon(Icons.widgets_rounded, size: 14, color: Color(0xFF7C3AED)),
+            ),
+            const SizedBox(width: 6),
+            const Text('Quick Overview', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF0F172A))),
+          ],
+        ),
+        const SizedBox(height: 10),
+
         if (_activeWidgets.contains('Low Stocks Items')) ...[
           _widgetCard(
             title: 'Low Stocks Items',
-            subtitle: '${_stockCounts['low'] ?? _lowStock.length} running low  ·  ${_stockCounts['critical'] ?? 0} critical',
+            subtitle: '${_stockCounts['low'] ?? 0} running low  ·  ${_stockCounts['critical'] ?? 0} critical',
+            icon: Icons.warning_amber_rounded,
+            gradient: const LinearGradient(colors: [Color(0xFFFFFBEB), Color(0xFFFEF3C7)]),
+            borderColor: const Color(0xFFFDE68A),
+            iconBgColor: const Color(0xFFFEF08A),
+            iconColor: const Color(0xFFD97706),
+            titleColor: const Color(0xFF92400E),
+            subColor: const Color(0xFFB45309),
             badge: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(4)),
-              child: const Text('Added ✓', style: TextStyle(fontSize: 11, color: Color(0xFF15803D), fontWeight: FontWeight.w600)),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEE2E2),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFFFCA5A5), width: 0.8),
+              ),
+              child: const Text('Check Stock', style: TextStyle(fontSize: 10.5, color: Color(0xFFDC2626), fontWeight: FontWeight.bold)),
             ),
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LowStockScreen())),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
         ],
 
         // Purchases widget
@@ -629,11 +848,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _widgetCard(
             title: 'Purchases',
             subtitle: '₹ ${_purchasesTotal.toStringAsFixed(1)}',
+            icon: Icons.shopping_bag_outlined,
+            gradient: const LinearGradient(colors: [Color(0xFFF0FDF4), Color(0xFFDCFCE7)]),
+            borderColor: const Color(0xFFBBF7D0),
+            iconBgColor: const Color(0xFFBBF7D0),
+            iconColor: const Color(0xFF16A34A),
+            titleColor: const Color(0xFF166534),
+            subColor: const Color(0xFF15803D),
             trailingIcon: Icons.add,
             onAction: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PurchaseScreen())),
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PurchaseScreen())),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
         ],
 
         // Expenses widget
@@ -641,11 +867,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _widgetCard(
             title: 'Expenses',
             subtitle: '₹ ${_expensesTotal.toStringAsFixed(1)}',
+            icon: Icons.payments_outlined,
+            gradient: const LinearGradient(colors: [Color(0xFFFAF5FF), Color(0xFFF3E8FF)]),
+            borderColor: const Color(0xFFE9D5FF),
+            iconBgColor: const Color(0xFFE9D5FF),
+            iconColor: const Color(0xFF9333EA),
+            titleColor: const Color(0xFF6B21A8),
+            subColor: const Color(0xFF7E22CE),
             trailingIcon: Icons.add,
             onAction: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ExpenseScreen())),
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ExpenseScreen())),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
         ],
 
         // Stock Value widget
@@ -653,11 +886,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _widgetCard(
             title: 'Stock Value',
             subtitle: '₹ ${_stockValue.toStringAsFixed(2)}',
+            icon: Icons.inventory_2_outlined,
+            gradient: const LinearGradient(colors: [Color(0xFFF0FDFA), Color(0xFFCCFBF1)]),
+            borderColor: const Color(0xFF99F6E4),
+            iconBgColor: const Color(0xFF99F6E4),
+            iconColor: const Color(0xFF0D9488),
+            titleColor: const Color(0xFF115E59),
+            subColor: const Color(0xFF0F766E),
             trailingIcon: Icons.add,
             onAction: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const InventoryScreen())),
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const InventoryScreen())),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
         ],
 
         // WhatsApp Smart Connect widget
@@ -665,31 +905,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _widgetCard(
             title: 'WhatsApp Smart Connect',
             subtitle: 'Connected with Parties',
-            trailingIcon: Icons.add,
+            icon: Icons.chat_bubble_rounded,
+            gradient: const LinearGradient(colors: [Color(0xFFF0FDF4), Color(0xFFDCFCE7)]),
+            borderColor: const Color(0xFF86EFAC),
+            iconBgColor: const Color(0xFF86EFAC),
+            iconColor: const Color(0xFF16A34A),
+            titleColor: const Color(0xFF14532D),
+            subColor: const Color(0xFF15803D),
+            trailingIcon: Icons.send_rounded,
             onAction: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessageTemplatesScreen())),
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessageTemplatesScreen())),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
         ],
 
         // Add Widget of Your Choice button
-        InkWell(
-          onTap: _openWidgetPicker,
-          borderRadius: BorderRadius.circular(10),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
-            decoration: BoxDecoration(
-              color: SantuColors.card,
-              border: Border.all(color: SantuColors.border),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: const [
-                Text('+ Add Widget of Your Choice', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: SantuColors.blue)),
-                Icon(Icons.dashboard_customize_outlined, size: 18, color: SantuColors.blue),
-              ],
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: _openWidgetPicker,
+            borderRadius: BorderRadius.circular(12),
+            child: Ink(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 16),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(colors: [Color(0xFFEEF2FF), Color(0xFFF5F3FF)]),
+                border: Border.all(color: const Color(0xFFC7D2FE), width: 1.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: const [
+                  Text('+ Add Widget of Your Choice', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF4F46E5))),
+                  Icon(Icons.dashboard_customize_rounded, size: 18, color: Color(0xFF4F46E5)),
+                ],
+              ),
             ),
           ),
         ),
@@ -700,48 +950,168 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _widgetCard({
     required String title,
     required String subtitle,
+    required IconData icon,
+    required LinearGradient gradient,
+    required Color borderColor,
+    required Color iconBgColor,
+    required Color iconColor,
+    required Color titleColor,
+    required Color subColor,
     Widget? badge,
     IconData? trailingIcon,
     VoidCallback? onAction,
     VoidCallback? onTap,
   }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: SantuColors.card,
-          border: Border.all(color: SantuColors.border),
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: const [BoxShadow(color: Color(0x04000000), blurRadius: 4, offset: Offset(0, 1))],
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: const TextStyle(fontSize: 12, color: SantuColors.textMuted, fontWeight: FontWeight.w500)),
-                  const SizedBox(height: 3),
-                  Text(subtitle, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: SantuColors.textDark)),
-                ],
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Ink(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            gradient: gradient,
+            border: Border.all(color: borderColor, width: 1.2),
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(color: iconColor.withValues(alpha: 0.06), blurRadius: 6, offset: const Offset(0, 2)),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                  color: iconBgColor,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: iconColor, size: 20),
               ),
-            ),
-            if (badge != null) badge,
-            if (trailingIcon != null)
-              IconButton(
-                icon: Icon(trailingIcon, size: 18, color: SantuColors.blue),
-                onPressed: onAction,
-                style: IconButton.styleFrom(
-                  backgroundColor: const Color(0xFFEFF6FF),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: TextStyle(fontSize: 12, color: titleColor, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 3),
+                    Text(subtitle, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: subColor)),
+                  ],
                 ),
               ),
-          ],
+              if (badge != null) badge,
+              if (trailingIcon != null)
+                IconButton(
+                  icon: Icon(trailingIcon, size: 18, color: iconColor),
+                  onPressed: onAction,
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.white.withValues(alpha: 0.8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _todayBillsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDBEAFE),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Icon(Icons.receipt_rounded, size: 14, color: Color(0xFF2563EB)),
+                ),
+                const SizedBox(width: 6),
+                const Text('Aaj ke Bills', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF0F172A))),
+              ],
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFBFDBFE), width: 0.8),
+              ),
+              child: Text('${_todayBills.length} Bills Today', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF1D4ED8))),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (_todayBills.isEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            alignment: Alignment.center,
+            child: Column(
+              children: const [
+                Icon(Icons.receipt_long_outlined, size: 36, color: Color(0xFF94A3B8)),
+                SizedBox(height: 8),
+                Text('Aaj abhi tak koi bill nahi bana', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF64748B))),
+              ],
+            ),
+          )
+        else
+          Column(
+            children: [
+              for (final b in _todayBills)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    boxShadow: const [
+                      BoxShadow(color: Color(0x06000000), blurRadius: 4, offset: Offset(0, 1)),
+                    ],
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                    dense: true,
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SaleInvoicesScreen())),
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [Color(0xFF4F46E5), Color(0xFF2563EB)]),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.receipt_rounded, color: Colors.white, size: 18),
+                    ),
+                    title: Text(b.billNo ?? '-', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A))),
+                    subtitle: Text(b.customerLabel ?? 'Walk-in', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                    trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text('₹${b.grandTotal.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF059669))),
+                        const SizedBox(height: 2),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(3)),
+                          child: const Text('Saved', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF15803D))),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+      ],
     );
   }
 }
