@@ -523,10 +523,52 @@ class AppDb {
   /// dashboard's low-stock count), as opposed to [searchItems]'s default
   /// 30-row limit, which exists only to keep a live-typing search dropdown
   /// short.
-  Future<List<Item>> allItems() async {
+  Future<List<Item>> allItems({String? orderBy}) async {
+    final db = await database;
+    final rows = await db.query(
+      'item',
+      where: 'deleted_at IS NULL',
+      orderBy: orderBy ?? 'item_name COLLATE NOCASE ASC',
+    );
+    return rows.map(Item.fromMap).toList();
+  }
+
+  /// Merges duplicate items where the normalized item_name is identical.
+  /// Combines stock quantities into the primary item and soft-deletes the duplicate.
+  Future<int> deduplicateItems() async {
     final db = await database;
     final rows = await db.query('item', where: 'deleted_at IS NULL');
-    return rows.map(Item.fromMap).toList();
+    final Map<String, List<Map<String, Object?>>> byNorm = {};
+    for (final r in rows) {
+      final name = (r['item_name'] as String? ?? '').trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+      if (name.isNotEmpty) {
+        byNorm.putIfAbsent(name, () => []).add(r);
+      }
+    }
+    int merged = 0;
+    for (final entry in byNorm.entries) {
+      if (entry.value.length > 1) {
+        final list = entry.value;
+        list.sort((a, b) {
+          final stockA = (a['available_qty'] as num?)?.toDouble() ?? 0;
+          final stockB = (b['available_qty'] as num?)?.toDouble() ?? 0;
+          return stockB.compareTo(stockA);
+        });
+        final primary = list.first;
+        final primaryCode = primary['item_code'] as String;
+        for (var i = 1; i < list.length; i++) {
+          final dup = list[i];
+          final dupCode = dup['item_code'] as String;
+          final dupQty = (dup['available_qty'] as num?)?.toDouble() ?? 0;
+          if (dupQty > 0) {
+            await db.rawUpdate('UPDATE item SET available_qty = available_qty + ? WHERE item_code = ?', [dupQty, primaryCode]);
+          }
+          await db.update('item', {'deleted_at': DateTime.now().toIso8601String()}, where: 'item_code = ?', whereArgs: [dupCode]);
+          merged++;
+        }
+      }
+    }
+    return merged;
   }
 
   Future<Item?> itemByCode(String code) async {
