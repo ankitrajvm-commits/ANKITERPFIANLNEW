@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Which plugged-in USB devices this app offers to handle. Paired with the
+     USB_DEVICE_ATTACHED intent-filter in AndroidManifest.xml, this is what
+     lets the counter tick "use by default for this USB device" once and get
+     permission granted automatically on every later replug. Without it,
+     permission comes only from UsbManager.requestPermission(), which dies with
+     the device: every unplug means another Allow tap before the first bill
+     prints.
+
+     Class 7 is the USB printer class. Android also matches these entries
+     against a device's interfaces, so a composite printer reporting class 0 at
+     the device level still matches on its interface. Class 255 is
+     vendor-specific, which is what a lot of cheap ESC/POS thermal printers
+     report instead of 7 — included deliberately, since printing is this app's
+     whole job, at the cost of the app also offering itself for other
+     vendor-specific gadgets (rare on a shop's billing phone). -->
+<resources>
+    <usb-device class="7" />
+    <usb-device class="255" />
+</resources>
