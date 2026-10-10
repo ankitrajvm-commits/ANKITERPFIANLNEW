@@ -9,6 +9,11 @@
 > you *what state things are in*; the other docs tell you *why* and *what
 > the rules are*.
 >
+> **Scope right now (2026-10-10): the Android app only.** Everything goes
+> into `SantuHardwareApp/mobile/`; the PC app is a read-only reference to
+> copy parity from, not something to fix. Full rule in
+> `AI_OPERATING_RULES.md` §0 — read it before your first edit.
+>
 > Last updated: 2026-07-30. Two things happened this session: (1) the
 > Complete Billing Simulation (`UX_STRATEGY.md` §10) ran end-to-end through
 > the real browser UI — price override, split payment, GST, POS Closing
