@@ -35,7 +35,7 @@ cities, no multi-company.
 4. Bill-level optional additions: delivery charge, loading charge, transport charge,
    labour charge, round-off, notes.
 5. Payment: Cash / UPI / Card / Bank Transfer / Split / Partial / Credit (Udhaar).
-6. Print (thermal or A4) and/or WhatsApp send.
+6. Print (always the thermal slip — see 2.5) and/or WhatsApp send.
 7. Screen resets instantly for the next customer.
 
 ### 2.2 Price editing (explicit rule)
@@ -53,6 +53,23 @@ slow down a simple walk-in sale.
 ### 2.4 Speed target
 A simple 3-item cash sale should be completable in under 30 seconds from opening
 "New Bill" to print.
+
+### 2.5 Print means thermal (explicit rule)
+> **Print always prints the thermal slip, never the A4 bill.** Every Print and
+> "Save & Print" control — sale bill, estimate, challan, purchase bill, on the
+> counter PC and on the Android app alike — goes to the thermal printer with the
+> ESC/POS slip. There is no control anywhere that sends A4 to a printer.
+>
+> The A4 bill exists for exactly two jobs: the PDF sent on WhatsApp (or saved to
+> hand over by hand), and the on-screen preview in Invoice Settings. It is a
+> document to send, not a thing to print.
+>
+> Reason: the shop has one 80mm thermal printer at the counter. An A4 page sent
+> to it does not come out as a page — it crawls out as metres of wrapped,
+> useless roll while a customer waits.
+>
+> Guarded by `SantuHardwareApp/mobile/test/print_is_always_thermal_test.dart`,
+> which fails if a Print control is ever wired to the A4 builder.
 
 ---
 
